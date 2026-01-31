@@ -38,7 +38,7 @@ export default async function DiagnosisResultsPage() {
           Your Diagnosis Results
         </h1>
         <p className="text-slate-600">
-          Based on your quiz performance, here's your personalized learning path
+          Based on your quiz performance, here&apos;s your personalized learning path
         </p>
       </div>
 
