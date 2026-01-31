@@ -119,6 +119,7 @@ export default async function ConceptPage({ params }: ConceptPageProps) {
         mdxSource={mdxSource}
         sprintId={params.sprintId}
         conceptId={params.conceptId}
+        conceptTitle={conceptContent.metadata.title}
         nextConceptId={nextConcept?.id}
         previousConceptId={previousConcept?.id}
         isCompleted={progress?.status === 'completed'}

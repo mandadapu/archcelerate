@@ -4,11 +4,13 @@ import { MDXRemote, MDXRemoteSerializeResult } from 'next-mdx-remote'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
+import { AskMentorButton } from './AskMentorButton'
 
 interface ConceptViewerProps {
   mdxSource: MDXRemoteSerializeResult
   sprintId: string
   conceptId: string
+  conceptTitle: string
   nextConceptId?: string
   previousConceptId?: string
   isCompleted: boolean
@@ -18,6 +20,7 @@ export default function ConceptViewer({
   mdxSource,
   sprintId,
   conceptId,
+  conceptTitle,
   nextConceptId,
   previousConceptId,
   isCompleted: initialCompleted,
@@ -51,6 +54,15 @@ export default function ConceptViewer({
       {/* MDX Content */}
       <div className="prose prose-slate max-w-none">
         <MDXRemote {...mdxSource} />
+      </div>
+
+      {/* Ask Mentor Button */}
+      <div className="pt-4">
+        <AskMentorButton
+          sprintId={sprintId}
+          conceptId={conceptId}
+          conceptTitle={conceptTitle}
+        />
       </div>
 
       {/* Navigation Footer */}
