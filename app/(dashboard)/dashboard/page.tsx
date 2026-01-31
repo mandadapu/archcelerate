@@ -23,8 +23,9 @@ export default async function DashboardPage() {
 
   const diagnosisCompleted = !!user?.skillDiagnosis
 
-  // Fetch Sprint 1 progress
+  // Fetch Sprint 1 and Sprint 2 progress
   const sprint1Progress = user ? await getSprintProgress(user.id, 'sprint-1') : null
+  const sprint2Progress = user ? await getSprintProgress(user.id, 'sprint-2') : null
 
   return (
     <div className="space-y-6">
@@ -128,6 +129,53 @@ export default async function DashboardPage() {
               <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">
                 Loading...
               </span>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Sprint 2</CardTitle>
+            <CardDescription>RAG System</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-slate-600 mb-4">
+              Build intelligent document Q&A systems with vector search
+            </p>
+            {sprint2Progress && sprint2Progress.totalCount > 0 ? (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-slate-600">
+                    <span>
+                      {sprint2Progress.completedCount} of {sprint2Progress.totalCount} concepts
+                    </span>
+                    <span className="font-medium">
+                      {Math.round(sprint2Progress.percentComplete)}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-200 rounded-full h-1.5">
+                    <div
+                      className="bg-blue-600 h-1.5 rounded-full transition-all"
+                      style={{ width: `${sprint2Progress.percentComplete}%` }}
+                    />
+                  </div>
+                </div>
+                <Link href="/learn/sprint-2">
+                  <Button size="sm" variant="outline" className="w-full">
+                    {sprint2Progress.completedCount === 0
+                      ? 'Start Sprint'
+                      : sprint2Progress.completedCount === sprint2Progress.totalCount
+                      ? 'Review Sprint'
+                      : 'Continue Sprint'}
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              <Link href="/learn/sprint-2">
+                <Button size="sm" variant="outline">
+                  Start Sprint
+                </Button>
+              </Link>
             )}
           </CardContent>
         </Card>
