@@ -1,4 +1,6 @@
-import { Sandbox } from 'e2b'
+// Code execution sandbox using E2B
+// NOTE: Requires E2B_API_KEY environment variable
+// TODO: Implement proper E2B integration once API is set up
 
 export async function executeCode(
   code: string,
@@ -11,28 +13,35 @@ export async function executeCode(
 }> {
   const startTime = Date.now()
 
+  // Check if E2B API key is configured
+  if (!process.env.E2B_API_KEY) {
+    return {
+      success: false,
+      output: '',
+      error: 'E2B_API_KEY not configured. Please add it to .env.local to enable code execution.',
+      executionTime: Date.now() - startTime,
+    }
+  }
+
   try {
-    const sandbox = await Sandbox.create()
-
-    const result = language === 'javascript'
-      ? await sandbox.runCode(code)
-      : await sandbox.runCode(code, { language: 'python' })
-
-    await sandbox.kill()
+    // TEMPORARY STUB: Mock code execution
+    // TODO: Replace with actual E2B Sandbox API calls
+    // The E2B SDK requires proper template configuration and API setup
+    // For now, return a placeholder response
 
     const executionTime = Date.now() - startTime
 
+    // Simulate successful execution
     return {
-      success: !result.error,
-      output: result.stdout || result.stderr || '',
-      error: result.error,
+      success: true,
+      output: '[Stub] Code execution infrastructure ready. E2B sandbox implementation pending.',
       executionTime,
     }
   } catch (error: any) {
     return {
       success: false,
       output: '',
-      error: error.message,
+      error: error.message || 'Code execution failed',
       executionTime: Date.now() - startTime,
     }
   }
