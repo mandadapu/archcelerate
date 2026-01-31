@@ -61,6 +61,7 @@ model User {
   userProgress         UserProgress[]
   conceptCompletions   ConceptCompletion[]
   labAttempts          LabAttempt[]
+  projectSubmissions   ProjectSubmission[]
 }
 
 model VerificationToken {
@@ -159,4 +160,62 @@ model LabAttempt {
 
   @@index([userId, labId])
   @@index([userId, sprintId])
+}
+
+// Project Submission & Code Review Models
+model ProjectSubmission {
+  id             String   @id @default(cuid())
+  userId         String
+  projectNumber  Int
+  githubRepoUrl  String
+  deployedUrl    String?
+  submissionData Json?
+  reviewStatus   String   @default("pending") // 'pending' | 'reviewed' | 'failed'
+  overallScore   Float?
+  reviewedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user             User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviewFeedback   CodeReviewFeedback[]
+
+  @@index([userId, projectNumber])
+  @@index([userId, createdAt])
+}
+
+model CodeReviewFeedback {
+  id                     String   @id @default(cuid())
+  submissionId           String
+  overallScore           Float?
+  functionalityScore     Float?
+  codeQualityScore       Float?
+  aiBestPracticesScore   Float?
+  architectureScore      Float?
+  suggestions            Json?
+  goodPractices          Json?
+  criticalIssues         Json?
+  improvementsNeeded     Json?
+  reviewIteration        Int      @default(1)
+  createdAt              DateTime @default(now())
+
+  submission      ProjectSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  reviewComments  ReviewComment[]
+
+  @@index([submissionId])
+}
+
+model ReviewComment {
+  id         String   @id @default(cuid())
+  feedbackId String
+  filePath   String?
+  lineNumber Int?
+  severity   String   // 'error' | 'warning' | 'suggestion' | 'praise'
+  category   String?
+  message    String   @db.Text
+  suggestion String?  @db.Text
+  createdAt  DateTime @default(now())
+
+  feedback CodeReviewFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+
+  @@index([feedbackId])
 }
