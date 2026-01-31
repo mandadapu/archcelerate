@@ -1,7 +1,9 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { prisma } from '@/lib/prisma'
+import Link from 'next/link'
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions)
@@ -9,7 +11,12 @@ export default async function DashboardPage() {
   // Fetch user from database
   const user = await prisma.user.findUnique({
     where: { id: session!.user!.id },
+    include: {
+      skillDiagnosis: true,
+    },
   })
+
+  const diagnosisCompleted = !!user?.skillDiagnosis
 
   return (
     <div className="space-y-6">
@@ -18,9 +25,30 @@ export default async function DashboardPage() {
           Welcome back, {user?.name || session!.user!.name}!
         </h2>
         <p className="text-slate-600 mt-2">
-          Ready to build AI products?
+          {diagnosisCompleted
+            ? `You're on the ${user?.skillDiagnosis?.recommendedPath.replace(/-/g, ' ')} path`
+            : 'Take the skill diagnosis to get started'
+          }
         </p>
       </div>
+
+      {!diagnosisCompleted && (
+        <Card className="border-2 border-blue-200 bg-blue-50">
+          <CardHeader>
+            <CardTitle>🎯 Start Here</CardTitle>
+            <CardDescription>
+              Take a quick 10-minute assessment to personalize your learning
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/diagnosis">
+              <Button className="bg-blue-600 hover:bg-blue-700">
+                Start Skill Diagnosis
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Card>
@@ -29,14 +57,25 @@ export default async function DashboardPage() {
             <CardDescription>Skill Diagnosis</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-slate-600 mb-4">
               Take a quick assessment to personalize your learning path
             </p>
-            <div className="mt-4">
-              <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">
-                Not started
-              </span>
-            </div>
+            {diagnosisCompleted ? (
+              <div className="flex items-center space-x-2">
+                <span className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded">
+                  ✓ Completed
+                </span>
+                <Link href="/diagnosis/results" className="text-xs text-blue-600 hover:underline">
+                  View results
+                </Link>
+              </div>
+            ) : (
+              <Link href="/diagnosis">
+                <Button size="sm" variant="outline">
+                  Start
+                </Button>
+              </Link>
+            )}
           </CardContent>
         </Card>
 
@@ -46,14 +85,12 @@ export default async function DashboardPage() {
             <CardDescription>Foundation + Chat Assistant</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-slate-600 mb-4">
               Learn LLM fundamentals and build your first AI product
             </p>
-            <div className="mt-4">
-              <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">
-                Locked
-              </span>
-            </div>
+            <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">
+              {diagnosisCompleted ? 'Coming soon' : 'Complete diagnosis first'}
+            </span>
           </CardContent>
         </Card>
 
@@ -63,14 +100,12 @@ export default async function DashboardPage() {
             <CardDescription>24/7 Support</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-slate-600 mb-4">
               Get help from your AI learning assistant anytime
             </p>
-            <div className="mt-4">
-              <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded">
-                Available
-              </span>
-            </div>
+            <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">
+              Coming soon
+            </span>
           </CardContent>
         </Card>
       </div>
