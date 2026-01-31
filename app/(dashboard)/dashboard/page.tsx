@@ -1,8 +1,8 @@
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/db'
 import Link from 'next/link'
 
 export default async function DashboardPage() {
@@ -103,9 +103,11 @@ export default async function DashboardPage() {
             <p className="text-sm text-slate-600 mb-4">
               Get help from your AI learning assistant anytime
             </p>
-            <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">
-              Coming soon
-            </span>
+            <Link href="/mentor/new">
+              <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                Start Chat
+              </Button>
+            </Link>
           </CardContent>
         </Card>
       </div>
