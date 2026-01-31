@@ -92,7 +92,7 @@ export async function POST(request: Request) {
         submissionData: {
           files_reviewed: files.length,
           total_size: files.reduce((sum, f) => sum + f.size, 0),
-        },
+        } as any,
         reviewStatus: 'pending',
       },
     })
@@ -109,10 +109,10 @@ export async function POST(request: Request) {
         codeQualityScore: review.scores.codeQuality / 100,
         aiBestPracticesScore: review.scores.aiBestPractices / 100,
         architectureScore: review.scores.architecture / 100,
-        suggestions: review.suggestions,
-        goodPractices: review.goodPractices,
-        criticalIssues: review.criticalIssues,
-        improvementsNeeded: review.improvementsNeeded,
+        suggestions: review.suggestions as any,
+        goodPractices: review.goodPractices as any,
+        criticalIssues: review.criticalIssues as any,
+        improvementsNeeded: review.improvementsNeeded as any,
         reviewIteration: iteration,
       },
     })
@@ -151,7 +151,7 @@ export async function POST(request: Request) {
           project_number: projectNumber,
           score: review.overallScore,
           iteration,
-        },
+        } as any,
       },
     })
 
