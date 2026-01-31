@@ -5,8 +5,6 @@ import Anthropic from '@anthropic-ai/sdk'
 import { prisma } from '@/lib/db'
 import { rateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 
-export const runtime = 'edge'
-
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 })
