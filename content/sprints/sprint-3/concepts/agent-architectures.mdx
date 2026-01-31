@@ -2,7 +2,7 @@
 id: agent-architectures
 title: Agent Architectures & ReAct Pattern
 description: Learn how AI agents reason, act, and observe in loops
-difficulty: intermediate
+difficulty: advanced
 estimatedMinutes: 60
 order: 1
 prerequisites: [chat-assistant, retrieval-pipelines]
@@ -325,16 +325,23 @@ Plan (JSON format):
 }
 
 async function executePlan(plan: Plan): Promise<any[]> {
-  const results: any[] = []
+  const results: any[] = new Array(plan.steps.length)
 
-  for (const step of plan.steps) {
-    // Wait for dependencies
-    const deps = step.dependsOn || []
-    await Promise.all(deps.map(i => results[i]))
+  for (let i = 0; i < plan.steps.length; i++) {
+    const step = plan.steps[i]
+
+    // Wait for all dependencies to complete
+    if (step.dependsOn && step.dependsOn.length > 0) {
+      await Promise.all(step.dependsOn.map(async (depIndex) => {
+        while (results[depIndex] === undefined) {
+          await new Promise(resolve => setTimeout(resolve, 10))
+        }
+      }))
+    }
 
     // Execute step
     const result = await executeAction(step.tool, step.input)
-    results.push(result)
+    results[i] = result
   }
 
   return results
