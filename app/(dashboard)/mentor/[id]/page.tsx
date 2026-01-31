@@ -12,6 +12,13 @@ interface Message {
   timestamp: string
 }
 
+interface MentorContext {
+  sprintId?: string
+  conceptId?: string
+  conceptTitle?: string
+  conversationId?: string
+}
+
 export default function MentorConversationPage() {
   const params = useParams()
   const router = useRouter()
@@ -21,14 +28,22 @@ export default function MentorConversationPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [userName, setUserName] = useState<string>()
+  const [context, setContext] = useState<MentorContext>()
 
-  // Load existing conversation
+  // Load context from session storage or existing conversation
   useEffect(() => {
-    if (!isNew) {
+    if (isNew) {
+      const storedContext = sessionStorage.getItem('mentor_context')
+      if (storedContext) {
+        const parsed = JSON.parse(storedContext)
+        setContext(parsed)
+        sessionStorage.removeItem('mentor_context')
+      }
+    } else {
       loadConversation()
     }
     loadUserName()
-  }, [conversationId])
+  }, [conversationId, isNew])
 
   const loadConversation = async () => {
     try {
@@ -36,13 +51,21 @@ export default function MentorConversationPage() {
       if (response.ok) {
         const data = await response.json()
         setMessages(data.messages || [])
+
+        // Load context from conversation
+        if (data.contextSprint) {
+          setContext({
+            sprintId: data.contextSprint,
+            conceptId: data.contextConcept,
+          })
+        }
       }
     } catch (error) {
       console.error('Failed to load conversation:', error)
     }
   }
 
-  const loadUserName = async () => {
+  const loadUserName = async () {
     try {
       const response = await fetch('/api/user/profile')
       if (response.ok) {
@@ -54,7 +77,7 @@ export default function MentorConversationPage() {
     }
   }
 
-  const handleSendMessage = async (content: string) => {
+  const handleSendMessage = async (content: string) {
     const userMessage: Message = {
       role: 'user',
       content,
@@ -70,8 +93,9 @@ export default function MentorConversationPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: [...messages, userMessage],
-          systemPrompt: MENTOR_SYSTEM_PROMPT,
-          conversationId: isNew ? generateId() : conversationId,
+          conversationId: context?.conversationId || conversationId,
+          sprintId: context?.sprintId,
+          conceptId: context?.conceptId,
         }),
       })
 
@@ -124,9 +148,8 @@ export default function MentorConversationPage() {
       }
 
       // If this was a new conversation, redirect to the saved one
-      if (isNew) {
-        const newId = generateId()
-        router.push(`/mentor/${newId}`)
+      if (isNew && context?.conversationId) {
+        router.push(`/mentor/${context.conversationId}`)
       }
     } catch (error) {
       console.error('Send message error:', error)
@@ -139,13 +162,35 @@ export default function MentorConversationPage() {
   return (
     <div className="max-w-4xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">
-          {isNew ? 'New Conversation' : 'AI Mentor Chat'}
-        </h1>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">
+            {isNew ? 'New Conversation' : 'AI Mentor Chat'}
+          </h1>
+          {context?.conceptTitle && (
+            <div className="flex items-center gap-2 mt-2">
+              <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                {context.sprintId?.replace('-', ' ').toUpperCase()}
+              </span>
+              <span className="text-sm text-slate-600">
+                About: {context.conceptTitle}
+              </span>
+            </div>
+          )}
+        </div>
         <Button variant="outline" onClick={() => router.push('/mentor')}>
           Back to Conversations
         </Button>
       </div>
+
+      {context?.conceptTitle && messages.length === 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <p className="text-sm text-blue-900">
+            💡 I'm aware you're learning about <strong>{context.conceptTitle}</strong>{' '}
+            {context.sprintId && `in ${context.sprintId.replace('-', ' ')}`}.
+            Feel free to ask me anything about this concept!
+          </p>
+        </div>
+      )}
 
       <ChatContainer
         messages={messages}
@@ -156,18 +201,4 @@ export default function MentorConversationPage() {
       />
     </div>
   )
-}
-
-const MENTOR_SYSTEM_PROMPT = `You are an AI mentor for the AI Architect Accelerator program. Your role is to help learners understand concepts, debug code, and complete projects.
-
-Guidelines:
-- Provide guidance without giving away complete solutions
-- Ask probing questions to help learners think through problems
-- Be encouraging and supportive
-- Keep responses concise and actionable
-- Use examples when explaining concepts
-- If you don&apos;t know something, say so honestly`
-
-function generateId(): string {
-  return `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 }
