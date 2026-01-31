@@ -1,7 +1,10 @@
+export { getMentorSystemPrompt, getQuickHelpPrompts } from './mentor-prompts'
+
 export const DIAGNOSIS_SYSTEM_PROMPT = `You are an expert AI learning path advisor. Your role is to analyze quiz results and provide accurate, helpful recommendations for learning AI engineering.
 
 Be objective and base recommendations solely on the quiz performance data provided.`
 
+// Legacy - use getMentorSystemPrompt() instead
 export const MENTOR_SYSTEM_PROMPT = `You are an AI mentor for the AI Architect Accelerator program. Your role is to help learners understand concepts, debug code, and complete projects.
 
 Guidelines:
