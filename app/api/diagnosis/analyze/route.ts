@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { analyzeDiagnosis, DiagnosisAnalysisInput } from '@/lib/ai/client'
 import { quizQuestions } from '@/lib/quiz/questions'
 import { QuizAnswer } from '@/types/diagnosis'
+import { validateQuizAnswers } from '@/lib/utils/validation'
 import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
@@ -22,9 +23,10 @@ export async function POST(request: Request) {
     const { answers }: { answers: QuizAnswer[] } = await request.json()
 
     // Validate answers
-    if (!answers || answers.length !== quizQuestions.length) {
+    const validation = validateQuizAnswers(answers)
+    if (!validation.isValid) {
       return NextResponse.json(
-        { error: 'Invalid answers' },
+        { error: 'Invalid answers', details: validation.errors },
         { status: 400 }
       )
     }
