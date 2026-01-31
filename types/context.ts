@@ -27,9 +27,34 @@ export interface ProjectContext {
   lastSubmission?: string
 }
 
+export interface LearningContext {
+  currentSprint?: {
+    id: string
+    title: string
+    conceptsCompleted: string[]
+    conceptsTotal: number
+    percentComplete: number
+  }
+  currentConcept?: {
+    id: string
+    title: string
+    tags: string[]
+    order: number
+  }
+  recentConcepts?: Array<{
+    id: string
+    title: string
+    completedAt: string
+  }>
+  skillScores?: Record<string, number>
+  recommendedPath?: string
+  strugglingAreas?: string[]
+}
+
 export interface AssembledContext {
   user: UserContext
   conversation?: ConversationContext
   project?: ProjectContext
+  learning?: LearningContext
   additionalData?: Record<string, any>
 }
