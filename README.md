@@ -193,6 +193,7 @@ aicelerate/
 - ✅ 7 learning sprints with structured content
 - ✅ **Sprint 1**: AI Engineering Foundations (LLMs, prompts, chat)
 - ✅ **Sprint 2**: RAG System (embeddings, chunking, retrieval, citations)
+- ✅ **Sprint 3**: AI Agents (ReAct, tool use, multi-step automation)
 - ✅ MDX-based concept pages
 - ✅ Progress tracking per sprint/concept
 - ✅ Concept completion system
