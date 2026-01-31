@@ -14,9 +14,19 @@
       "description": "Returns result on success"
     },
     {
-      "input": "let count = 0; retryWithBackoff(() => { count++; if (count < 2) throw new Error(); return 'ok'; }, 3, 10)",
-      "expectedOutput": "ok",
-      "description": "Retries on failure then succeeds"
+      "input": "await retryWithBackoff(() => Promise.resolve('success'), 3, 100)",
+      "expectedOutput": "success",
+      "description": "Returns result on first success"
+    },
+    {
+      "input": "await retryWithBackoff(() => Promise.reject(new Error('fail')), 2, 10).catch(() => 'caught')",
+      "expectedOutput": "caught",
+      "description": "Throws error after retries exhausted"
+    },
+    {
+      "input": "let attempts = 0; await retryWithBackoff(() => { attempts++; if (attempts < 3) throw new Error(); return attempts; }, 5, 10)",
+      "expectedOutput": "3",
+      "description": "Retries until success"
     }
   ],
   "hints": [
