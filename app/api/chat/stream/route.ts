@@ -1,4 +1,3 @@
-import { StreamingTextResponse } from 'ai'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import Anthropic from '@anthropic-ai/sdk'
@@ -91,7 +90,12 @@ export async function POST(req: Request) {
       },
     })
 
-    return new StreamingTextResponse(readableStream)
+    return new Response(readableStream, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Transfer-Encoding': 'chunked',
+      },
+    })
   } catch (error) {
     console.error('Stream error:', error)
     return new Response('Internal Server Error', { status: 500 })
