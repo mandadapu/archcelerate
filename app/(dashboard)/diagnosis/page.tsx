@@ -73,16 +73,18 @@ export default function DiagnosisPage() {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to analyze quiz')
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to analyze quiz')
       }
 
       const result = await response.json()
 
       // Redirect to results page
-      router.push(`/diagnosis/results?id=${result.userId}`)
+      router.push('/diagnosis/results')
     } catch (error) {
       console.error('Error submitting quiz:', error)
-      alert('Failed to submit quiz. Please try again.')
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      alert(`Failed to submit quiz: ${message}. Please try again.`)
     } finally {
       setIsSubmitting(false)
     }
