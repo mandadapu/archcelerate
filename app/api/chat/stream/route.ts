@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db'
 import { rateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { assembleContext } from '@/lib/ai/context'
 import { getMentorSystemPrompt } from '@/lib/ai/prompts'
+import { trackMentorQuestion } from '@/lib/analytics/mentor'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -65,6 +66,16 @@ export async function POST(req: Request) {
 
     // Generate context-aware system prompt
     const systemPrompt = getMentorSystemPrompt(context.learning)
+
+    // Track the question
+    const userQuestion = messages.find((m: any) => m.role === 'user')
+    if (userQuestion && conversationId) {
+      await trackMentorQuestion(user.id, userQuestion.content, {
+        sprintId,
+        conceptId,
+        conversationId,
+      })
+    }
 
     // Create streaming response
     const stream = await anthropic.messages.create({
