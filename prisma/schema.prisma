@@ -42,19 +42,21 @@ model Session {
 }
 
 model User {
-  id             String    @id @default(cuid())
-  name           String?
-  email          String?   @unique
-  emailVerified  DateTime?
-  image          String?
-  experienceYears Int?
-  targetRole     String?
-  onboardedAt    DateTime?
-  createdAt      DateTime  @default(now())
+  id                 String    @id @default(cuid())
+  name               String?
+  email              String?   @unique
+  emailVerified      DateTime?
+  image              String?
+  experienceYears    Int?
+  targetRole         String?
+  onboardedAt        DateTime?
+  diagnosisCompleted Boolean   @default(false)
+  createdAt          DateTime  @default(now())
 
-  accounts       Account[]
-  sessions       Session[]
-  learningEvents LearningEvent[]
+  accounts        Account[]
+  sessions        Session[]
+  learningEvents  LearningEvent[]
+  skillDiagnosis  SkillDiagnosis?
 }
 
 model VerificationToken {
@@ -77,4 +79,14 @@ model LearningEvent {
 
   @@index([userId, occurredAt])
   @@index([eventType, occurredAt])
+}
+
+model SkillDiagnosis {
+  userId          String   @id
+  quizAnswers     Json
+  skillScores     Json
+  recommendedPath String
+  completedAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
