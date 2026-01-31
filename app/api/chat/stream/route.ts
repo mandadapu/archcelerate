@@ -3,6 +3,8 @@ import { authOptions } from '@/lib/auth'
 import Anthropic from '@anthropic-ai/sdk'
 import { prisma } from '@/lib/db'
 import { rateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { assembleContext } from '@/lib/ai/context'
+import { getMentorSystemPrompt } from '@/lib/ai/prompts'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -10,7 +12,12 @@ const anthropic = new Anthropic({
 
 export async function POST(req: Request) {
   try {
-    const { messages, systemPrompt, conversationId } = await req.json()
+    const {
+      messages,
+      conversationId,
+      sprintId,
+      conceptId,
+    } = await req.json()
 
     // Verify authentication
     const session = await getServerSession(authOptions)
@@ -47,6 +54,18 @@ export async function POST(req: Request) {
       )
     }
 
+    // Assemble context with learning information
+    const context = await assembleContext({
+      userId: user.id,
+      conversationId,
+      sprintId,
+      conceptId,
+      includeHistory: false,
+    })
+
+    // Generate context-aware system prompt
+    const systemPrompt = getMentorSystemPrompt(context.learning)
+
     // Create streaming response
     const stream = await anthropic.messages.create({
       model: 'claude-3-haiku-20240307',
@@ -80,7 +99,14 @@ export async function POST(req: Request) {
 
           // Save conversation to database after streaming completes
           if (conversationId) {
-            await saveConversation(user.id, conversationId, messages, fullResponse)
+            await saveConversation(
+              user.id,
+              conversationId,
+              messages,
+              fullResponse,
+              sprintId,
+              conceptId
+            )
           }
 
           controller.close()
@@ -106,7 +132,9 @@ async function saveConversation(
   userId: string,
   conversationId: string,
   userMessages: any[],
-  assistantResponse: string
+  assistantResponse: string,
+  sprintId?: string,
+  conceptId?: string
 ) {
   // Get existing conversation
   const existing = await prisma.mentorConversation.findUnique({
@@ -137,7 +165,7 @@ async function saveConversation(
     }
   }
 
-  // Upsert conversation
+  // Upsert conversation with context
   await prisma.mentorConversation.upsert({
     where: { id: conversationId },
     create: {
@@ -145,10 +173,14 @@ async function saveConversation(
       userId,
       messages: allMessages as any,
       title,
+      contextSprint: sprintId || null,
+      contextConcept: conceptId || null,
     },
     update: {
       messages: allMessages as any,
       title,
+      contextSprint: sprintId || existing?.contextSprint || null,
+      contextConcept: conceptId || existing?.contextConcept || null,
     },
   })
 
@@ -158,7 +190,11 @@ async function saveConversation(
       data: {
         userId,
         eventType: 'mentor.conversation_started',
-        eventData: { conversation_id: conversationId } as any,
+        eventData: {
+          conversation_id: conversationId,
+          sprint_id: sprintId,
+          concept_id: conceptId,
+        } as any,
       },
     })
   }
