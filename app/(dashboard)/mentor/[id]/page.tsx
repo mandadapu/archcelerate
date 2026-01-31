@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { ChatContainer } from '@/components/chat/ChatContainer'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
+import { QuickHelpSuggestions } from '@/components/mentor/QuickHelpSuggestions'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -43,6 +44,7 @@ export default function MentorConversationPage() {
       loadConversation()
     }
     loadUserName()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, isNew])
 
   const loadConversation = async () => {
@@ -190,6 +192,13 @@ export default function MentorConversationPage() {
             Feel free to ask me anything about this concept!
           </p>
         </div>
+      )}
+
+      {messages.length === 0 && (
+        <QuickHelpSuggestions
+          onSelect={handleSendMessage}
+          conceptTitle={context?.conceptTitle}
+        />
       )}
 
       <ChatContainer
