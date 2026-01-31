@@ -1,0 +1,237 @@
+---
+id: vector-embeddings
+title: Vector Embeddings & Similarity Search
+description: Learn how to convert text to vectors and find semantically similar content
+difficulty: intermediate
+estimatedMinutes: 60
+order: 1
+prerequisites: [llm-fundamentals]
+tags: [rag, embeddings, vectors, similarity-search]
+---
+
+# Vector Embeddings & Similarity Search
+
+RAG (Retrieval-Augmented Generation) systems rely on finding relevant information to answer questions. Vector embeddings are the key technology that makes semantic search possible.
+
+## What are Vector Embeddings?
+
+A **vector embedding** is a numerical representation of text that captures its semantic meaning. Instead of comparing words character-by-character, embeddings let us compare the *meaning* of text.
+
+### Key Characteristics
+
+- **Dense vectors**: Typically 768-1536 dimensions (numbers)
+- **Semantic similarity**: Similar meanings → similar vectors
+- **Learned representations**: Trained on massive text corpora
+- **Language agnostic**: Works across languages
+
+## How Embeddings Work
+
+```mermaid
+graph LR
+    A[Input Text] --> B[Embedding Model]
+    B --> C[Vector 768-1536 dims]
+    C --> D[Vector Database]
+    D --> E[Similarity Search]
+```
+
+### The Process
+
+1. **Input**: "What is machine learning?"
+2. **Embedding Model**: Converts to vector `[0.23, -0.45, 0.67, ...]`
+3. **Storage**: Saved in vector database
+4. **Search**: Find vectors close to query vector
+
+## Similarity Metrics
+
+### Cosine Similarity
+
+Measures the angle between two vectors (most common for text):
+
+```
+similarity = (A · B) / (||A|| × ||B||)
+```
+
+- Range: -1 to 1
+- 1 = identical meaning
+- 0 = unrelated
+- -1 = opposite meaning
+
+### Euclidean Distance
+
+Measures straight-line distance between vectors:
+
+```
+distance = √(Σ(A_i - B_i)²)
+```
+
+- Lower distance = more similar
+- Used when magnitude matters
+
+### Dot Product
+
+Fast similarity measure:
+
+```
+similarity = Σ(A_i × B_i)
+```
+
+- Higher value = more similar
+- Efficient for normalized vectors
+
+## Popular Embedding Models
+
+### OpenAI Embeddings
+- **Model**: `text-embedding-3-small`, `text-embedding-3-large`
+- **Dimensions**: 1536 (configurable)
+- **Cost**: $0.02 per 1M tokens
+- **Best for**: General purpose, multilingual
+
+### Voyage AI
+- **Model**: `voyage-2`, `voyage-code-2`
+- **Dimensions**: 1024
+- **Cost**: $0.10 per 1M tokens
+- **Best for**: Higher quality, specialized domains
+
+### Cohere Embed
+- **Model**: `embed-english-v3.0`
+- **Dimensions**: 1024
+- **Cost**: Free tier available
+- **Best for**: Budget-friendly projects
+
+## Vector Databases
+
+### Purpose-Built Vector DBs
+
+**Pinecone**
+- Fully managed, serverless
+- Easy to use, scales automatically
+- Good free tier (1M vectors)
+
+**Weaviate**
+- Open source, self-hosted
+- Supports hybrid search (vector + keyword)
+- GraphQL API
+
+**Qdrant**
+- Open source, Rust-based
+- Fast performance
+- Docker-friendly
+
+### PostgreSQL + pgvector
+
+**Pros**:
+- Use existing PostgreSQL database
+- No new infrastructure
+- Familiar SQL interface
+- Good for <1M vectors
+
+**Cons**:
+- Not as fast as purpose-built DBs
+- Limited scaling compared to Pinecone
+
+## Building a Simple Semantic Search
+
+### Step 1: Generate Embeddings
+
+```typescript
+import OpenAI from 'openai'
+
+const openai = new OpenAI()
+
+async function getEmbedding(text: string): Promise<number[]> {
+  const response = await openai.embeddings.create({
+    model: 'text-embedding-3-small',
+    input: text,
+  })
+
+  return response.data[0].embedding
+}
+```
+
+### Step 2: Store in Database
+
+```typescript
+import { prisma } from '@/lib/db'
+
+async function storeDocument(
+  content: string,
+  metadata: { title: string; source: string }
+) {
+  const embedding = await getEmbedding(content)
+
+  await prisma.documentChunk.create({
+    data: {
+      content,
+      embedding: `[${embedding.join(',')}]`,
+      metadata,
+    },
+  })
+}
+```
+
+### Step 3: Semantic Search
+
+```sql
+-- Using pgvector cosine similarity
+SELECT
+  content,
+  1 - (embedding <=> '[query_vector]') AS similarity
+FROM document_chunks
+ORDER BY embedding <=> '[query_vector]'
+LIMIT 5;
+```
+
+## Common Pitfalls
+
+### 1. Not Normalizing Vectors
+
+Always normalize vectors before cosine similarity if your embedding model doesn't do it automatically.
+
+### 2. Ignoring Context Window
+
+Embeddings work best on ~500 token chunks. Don't embed entire documents.
+
+### 3. Wrong Similarity Metric
+
+- Text: Use cosine similarity
+- Images: Use Euclidean distance
+- Don't mix metrics
+
+### 4. No Reranking
+
+Initial vector search returns ~20-50 results. Use a reranker for final top-5.
+
+## Real-World Applications
+
+### Document Q&A
+"Which contract mentions payment terms?"
+→ Find relevant contract chunks
+→ LLM answers with context
+
+### Code Search
+"Find functions that handle authentication"
+→ Search codebase semantically
+→ More accurate than keyword search
+
+### Customer Support
+"How do I reset my password?"
+→ Find relevant help articles
+→ Generate personalized answer
+
+## Best Practices
+
+1. **Chunk strategically**: 200-500 tokens per chunk
+2. **Include metadata**: Store title, source, page number
+3. **Batch embed**: Process multiple chunks together
+4. **Cache embeddings**: Don't re-embed the same text
+5. **Monitor costs**: Track embedding API usage
+
+## Next Steps
+
+In the next lesson, you'll learn chunking strategies to prepare documents for optimal retrieval performance.
+
+## Resources
+
+- [OpenAI Embeddings Guide](https://platform.openai.com/docs/guides/embeddings)
+- [Vector Database Comparison](https://www.pinecone.io/learn/vector-database/)
+- [pgvector Documentation](https://github.com/pgvector/pgvector)
