@@ -56,15 +56,15 @@ export async function POST(request: Request) {
         userId: session.user.id,
       },
       update: {
-        quizAnswers: answers,
-        skillScores: analysis.skillScores,
+        quizAnswers: answers as any,
+        skillScores: analysis.skillScores as any,
         recommendedPath: analysis.recommendedPath,
         completedAt: new Date(),
       },
       create: {
         userId: session.user.id,
-        quizAnswers: answers,
-        skillScores: analysis.skillScores,
+        quizAnswers: answers as any,
+        skillScores: analysis.skillScores as any,
         recommendedPath: analysis.recommendedPath,
       },
     })
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
           score: answers.filter(a => a.isCorrect).length,
           total: quizQuestions.length,
           recommended_path: analysis.recommendedPath,
-        },
+        } as any,
       },
     })
 

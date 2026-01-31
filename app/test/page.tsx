@@ -39,12 +39,12 @@ export default function TestPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>What's Missing?</CardTitle>
+            <CardTitle>What&apos;s Missing?</CardTitle>
             <CardDescription>To enable authentication</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-sm text-slate-600">
-              The login buttons won't work until you configure OAuth credentials in <code className="bg-slate-100 px-1 rounded">.env.local</code>
+              The login buttons won&apos;t work until you configure OAuth credentials in <code className="bg-slate-100 px-1 rounded">.env.local</code>
             </p>
             <p className="text-sm text-slate-600">
               See <code className="bg-slate-100 px-1 rounded">SETUP_CHECKLIST.md</code> for step-by-step instructions.
