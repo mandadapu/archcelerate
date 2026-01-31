@@ -1,8 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk'
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-})
+import { aiService } from './service'
 
 export interface DiagnosisAnalysisInput {
   answers: Array<{
@@ -36,24 +32,15 @@ export async function analyzeDiagnosis(
 ): Promise<DiagnosisAnalysisOutput> {
   const prompt = createDiagnosisPrompt(input)
 
-  const message = await anthropic.messages.create({
-    model: 'claude-3-haiku-20240307',
-    max_tokens: 2000,
+  const response = await aiService.chat({
+    systemPrompt: 'You are an expert AI learning path advisor.',
+    messages: [{ role: 'user', content: prompt }],
     temperature: 0.3,
-    messages: [
-      {
-        role: 'user',
-        content: prompt,
-      },
-    ],
+    maxTokens: 2000,
   })
 
-  const responseText = message.content[0].type === 'text'
-    ? message.content[0].text
-    : ''
-
   // Parse JSON response
-  const jsonMatch = responseText.match(/\{[\s\S]*\}/)
+  const jsonMatch = response.content.match(/\{[\s\S]*\}/)
   if (!jsonMatch) {
     throw new Error('Failed to parse AI response')
   }
