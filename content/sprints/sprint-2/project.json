@@ -1,0 +1,140 @@
+{
+  "id": "document-qa-system",
+  "title": "Document Q&A System with Citations",
+  "description": "Build an intelligent document Q&A system that uploads PDFs, processes them into chunks, and answers questions with proper citations",
+  "difficulty": "advanced",
+  "estimatedHours": 4,
+  "technologies": ["Next.js", "PostgreSQL", "pgvector", "Claude API", "pdf-parse"],
+  "learningObjectives": [
+    "Implement document upload and text extraction",
+    "Chunk documents optimally for RAG",
+    "Generate and store vector embeddings",
+    "Build semantic search with pgvector",
+    "Create citation-tracked answers",
+    "Handle multiple documents in one knowledge base"
+  ],
+  "requirements": {
+    "functional": [
+      "Upload 3-5 PDF documents",
+      "Extract and chunk document text automatically",
+      "Generate embeddings and store in vector database",
+      "Answer user questions using RAG pipeline",
+      "Provide citations with page numbers",
+      "Display confidence scores for answers",
+      "Support follow-up questions in same conversation"
+    ],
+    "technical": [
+      "Use PostgreSQL with pgvector for vector storage",
+      "Implement document chunking with 400-500 token chunks",
+      "Use OpenAI embeddings or compatible API",
+      "Generate answers with Claude API",
+      "Track and display source citations",
+      "Cache embeddings to reduce API costs"
+    ],
+    "ui": [
+      "Document upload interface (drag-and-drop)",
+      "List of uploaded documents with delete option",
+      "Chat interface for asking questions",
+      "Display citations below answers",
+      "Clickable citations linking to source documents",
+      "Confidence indicator (high/medium/low)"
+    ]
+  },
+  "successCriteria": [
+    {
+      "criterion": "Document Processing",
+      "description": "Successfully uploads and processes 3-5 PDFs",
+      "weight": 20
+    },
+    {
+      "criterion": "Answer Accuracy",
+      "description": "Correctly answers 8/10 test questions about uploaded documents",
+      "weight": 30
+    },
+    {
+      "criterion": "Citation Quality",
+      "description": "All answers include valid citations with page numbers",
+      "weight": 25
+    },
+    {
+      "criterion": "Code Quality",
+      "description": "Clean code, proper error handling, good UX",
+      "weight": 15
+    },
+    {
+      "criterion": "Performance",
+      "description": "Answers generated in <5 seconds",
+      "weight": 10
+    }
+  ],
+  "testQuestions": [
+    "What are the key terms mentioned in document X?",
+    "On which page is [specific topic] discussed?",
+    "Compare the approaches in documents X and Y",
+    "What does the document say about [specific detail]?",
+    "Find the section about [topic] and summarize it",
+    "Who is mentioned as responsible for [task] in the document?",
+    "What is the deadline mentioned in document X?",
+    "How many times is [term] mentioned across all documents?",
+    "What evidence supports [claim] in the documents?",
+    "Synthesize information from multiple documents about [topic]"
+  ],
+  "starterFiles": {
+    "structure": [
+      "app/api/documents/upload/route.ts",
+      "app/api/documents/[id]/route.ts",
+      "app/api/rag/query/route.ts",
+      "lib/document-processor.ts",
+      "lib/vector-db.ts (from Task 1)",
+      "components/DocumentUpload.tsx",
+      "components/ChatInterface.tsx",
+      "components/CitedAnswer.tsx"
+    ]
+  },
+  "technicalGuidance": {
+    "fileExtraction": "Use pdf-parse npm package for PDF text extraction",
+    "chunking": "Aim for 400-500 tokens (~300-400 words) per chunk with 50 token overlap",
+    "embeddings": "Use text-embedding-3-small from OpenAI ($0.02 per 1M tokens)",
+    "vectorSearch": "pgvector cosine similarity search with threshold > 0.7",
+    "llm": "Claude 3.5 Sonnet for answer generation with citation instructions",
+    "caching": "Cache document embeddings in database, cache search results for 5 minutes"
+  },
+  "deploymentRequirements": {
+    "platform": "Vercel",
+    "database": "Neon or Supabase PostgreSQL with pgvector",
+    "environment": [
+      "DATABASE_URL",
+      "OPENAI_API_KEY (for embeddings)",
+      "ANTHROPIC_API_KEY (for Claude)"
+    ],
+    "instructions": "Deploy to Vercel, ensure PostgreSQL has pgvector extension enabled, configure environment variables"
+  },
+  "estimatedCosts": {
+    "development": {
+      "embeddings": "$0.10 (5000 chunks × $0.02/1M tokens)",
+      "llm": "$0.50 (testing 50 questions)",
+      "total": "$0.60"
+    },
+    "production": {
+      "embeddings": "$1/month (caching reduces re-embedding)",
+      "llm": "$5/month (100 questions/day)",
+      "database": "Free tier (Neon) or $5/month"
+    }
+  },
+  "extensionIdeas": [
+    "Support DOCX and TXT files in addition to PDFs",
+    "Implement hybrid search (vector + keyword)",
+    "Add reranking with a separate model",
+    "Build conversation memory for multi-turn Q&A",
+    "Add document comparison feature",
+    "Implement semantic highlighting (show exact chunk that answers question)",
+    "Add export answers to PDF report",
+    "Build admin dashboard to monitor usage and costs"
+  ],
+  "rubric": {
+    "exceeds": "All 10/10 test questions answered correctly, citations accurate, <3s response time, polished UI with interactive citations",
+    "meets": "8/10 questions correct, valid citations, <5s response time, functional UI",
+    "approaching": "6/10 questions correct, some citations missing, slow responses, basic UI",
+    "incomplete": "<6/10 questions correct, no citations, or not deployed"
+  }
+}
