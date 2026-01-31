@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import Anthropic from '@anthropic-ai/sdk'
 import { prisma } from '@/lib/db'
+import { rateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 
 export const runtime = 'edge'
 
@@ -28,6 +29,25 @@ export async function POST(req: Request) {
 
     if (!user) {
       return new Response('User not found', { status: 404 })
+    }
+
+    // Rate limiting
+    const limitResult = await rateLimit(
+      `chat:${user.id}`,
+      RATE_LIMITS.MENTOR_CHAT
+    )
+
+    if (!limitResult.success) {
+      return new Response(
+        JSON.stringify({
+          error: 'Rate limit exceeded',
+          reset: limitResult.reset,
+        }),
+        {
+          status: 429,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      )
     }
 
     // Create streaming response

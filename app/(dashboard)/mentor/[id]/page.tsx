@@ -75,6 +75,16 @@ export default function MentorConversationPage() {
         }),
       })
 
+      if (response.status === 429) {
+        const data = await response.json()
+        const resetTime = new Date(data.reset).toLocaleTimeString()
+        toast.error('Rate limit reached', {
+          description: `Please try again after ${resetTime}`,
+        })
+        setIsLoading(false)
+        return
+      }
+
       if (!response.ok) {
         throw new Error('Failed to get response')
       }
