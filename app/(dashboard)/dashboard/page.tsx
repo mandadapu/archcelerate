@@ -1,9 +1,10 @@
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/auth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { prisma } from '@/lib/db'
 import Link from 'next/link'
+import { getSprintProgress } from '@/lib/progress-tracker'
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions)
@@ -21,6 +22,9 @@ export default async function DashboardPage() {
   })
 
   const diagnosisCompleted = !!user?.skillDiagnosis
+
+  // Fetch Sprint 1 progress
+  const sprint1Progress = user ? await getSprintProgress(user.id, 'sprint-1') : null
 
   return (
     <div className="space-y-6">
@@ -86,15 +90,45 @@ export default async function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>Sprint 1</CardTitle>
-            <CardDescription>Foundation + Chat Assistant</CardDescription>
+            <CardDescription>AI Engineering Foundations</CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-slate-600 mb-4">
               Learn LLM fundamentals and build your first AI product
             </p>
-            <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">
-              {diagnosisCompleted ? 'Coming soon' : 'Complete diagnosis first'}
-            </span>
+            {sprint1Progress && sprint1Progress.totalCount > 0 ? (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-slate-600">
+                    <span>
+                      {sprint1Progress.completedCount} of {sprint1Progress.totalCount} concepts
+                    </span>
+                    <span className="font-medium">
+                      {Math.round(sprint1Progress.percentComplete)}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-200 rounded-full h-1.5">
+                    <div
+                      className="bg-blue-600 h-1.5 rounded-full transition-all"
+                      style={{ width: `${sprint1Progress.percentComplete}%` }}
+                    />
+                  </div>
+                </div>
+                <Link href="/learn/sprint-1">
+                  <Button size="sm" variant="outline" className="w-full">
+                    {sprint1Progress.completedCount === 0
+                      ? 'Start Sprint'
+                      : sprint1Progress.completedCount === sprint1Progress.totalCount
+                      ? 'Review Sprint'
+                      : 'Continue Sprint'}
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">
+                Loading...
+              </span>
+            )}
           </CardContent>
         </Card>
 
