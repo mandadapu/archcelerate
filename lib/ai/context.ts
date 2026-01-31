@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db'
 import { UserContext, ConversationContext, ProjectContext, AssembledContext } from '@/types/context'
+import { getLearningContext } from './learning-context'
 
 /**
  * Fetch user context from database
@@ -58,8 +59,17 @@ export async function assembleContext(options: {
   conversationId?: string
   projectNumber?: number
   includeHistory?: boolean
+  sprintId?: string
+  conceptId?: string
 }): Promise<AssembledContext> {
-  const { userId, conversationId, projectNumber, includeHistory = false } = options
+  const {
+    userId,
+    conversationId,
+    projectNumber,
+    includeHistory = false,
+    sprintId,
+    conceptId,
+  } = options
 
   // Always get user context
   const user = await getUserContext(userId)
@@ -77,6 +87,9 @@ export async function assembleContext(options: {
     // TODO: Implement when projects are added
   }
 
+  // Get learning context
+  const learning = await getLearningContext(userId, sprintId, conceptId)
+
   // Optionally include recent history
   let additionalData: Record<string, any> | undefined
   if (includeHistory) {
@@ -90,6 +103,7 @@ export async function assembleContext(options: {
     user,
     conversation,
     project,
+    learning,
     additionalData,
   }
 }
