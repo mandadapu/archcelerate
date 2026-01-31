@@ -8,9 +8,13 @@ import Link from 'next/link'
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions)
 
+  if (!session?.user?.email) {
+    return null // Middleware should redirect, but just in case
+  }
+
   // Fetch user from database
   const user = await prisma.user.findUnique({
-    where: { id: session!.user!.id },
+    where: { email: session.user.email },
     include: {
       skillDiagnosis: true,
     },
