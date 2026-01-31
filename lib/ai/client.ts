@@ -37,7 +37,7 @@ export async function analyzeDiagnosis(
   const prompt = createDiagnosisPrompt(input)
 
   const message = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-3-5-sonnet-20240620',
     max_tokens: 2000,
     temperature: 0.3,
     messages: [
