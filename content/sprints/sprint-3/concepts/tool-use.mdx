@@ -106,7 +106,7 @@ const tools = [
 
 // Make request with tools
 const response = await client.messages.create({
-  model: 'claude-3-5-sonnet-20241022',
+  model: 'claude-3-5-sonnet-20250129', // Latest model as of January 2025
   max_tokens: 1024,
   tools,
   messages: [
@@ -156,7 +156,7 @@ const weatherResult = await getWeather('Tokyo', 'celsius')
 
 // Send result back to Claude
 const finalResponse = await client.messages.create({
-  model: 'claude-3-5-sonnet-20241022',
+  model: 'claude-3-5-sonnet-20250129', // Latest model as of January 2025
   max_tokens: 1024,
   tools,
   messages: [
@@ -352,7 +352,7 @@ async function singleStepToolUse(userMessage: string) {
 
   // Initial request
   const response = await client.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-3-5-sonnet-20250129', // Latest model as of January 2025
     max_tokens: 1024,
     tools,
     messages: [{ role: 'user', content: userMessage }],
@@ -367,7 +367,7 @@ async function singleStepToolUse(userMessage: string) {
 
     // Get final answer
     const finalResponse = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-3-5-sonnet-20250129', // Latest model as of January 2025
       max_tokens: 1024,
       tools,
       messages: [
@@ -405,7 +405,7 @@ async function agentLoop(userMessage: string, maxSteps: number = 10) {
 
   for (let step = 0; step < maxSteps; step++) {
     const response = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-3-5-sonnet-20250129', // Latest model as of January 2025
       max_tokens: 1024,
       tools,
       messages,
@@ -502,7 +502,7 @@ async function chainedToolExecution(userMessage: string) {
 
   // Step 1: Search for user
   let response = await client.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-3-5-sonnet-20250129', // Latest model as of January 2025
     max_tokens: 1024,
     tools: [searchUserTool],
     messages,
@@ -525,7 +525,7 @@ async function chainedToolExecution(userMessage: string) {
 
   // Step 2: Get user's orders using user.id from previous step
   response = await client.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-3-5-sonnet-20250129', // Latest model as of January 2025
     max_tokens: 1024,
     tools: [getOrdersTool],
     messages,
@@ -548,7 +548,7 @@ async function chainedToolExecution(userMessage: string) {
 
   // Step 3: Generate final response
   const final = await client.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-3-5-sonnet-20250129', // Latest model as of January 2025
     max_tokens: 1024,
     tools: [],
     messages,
@@ -565,7 +565,7 @@ async function chainedToolExecution(userMessage: string) {
 Access external data sources.
 
 ```typescript
-const retrivalTools = [
+const retrievalTools = [
   {
     name: 'search_web',
     description: 'Search the internet for current information',
@@ -797,14 +797,11 @@ function validateToolInput(
   }
 
   if (toolName === 'read_file') {
-    // Prevent path traversal
-    if (input.path.includes('..')) {
-      throw new Error('Path traversal not allowed')
-    }
+    // Resolve to absolute path and check it's within allowed directories
+    const absolutePath = path.resolve(input.path)
+    const allowedPaths = ['/app/data', '/app/uploads'].map(p => path.resolve(p))
 
-    // Restrict to allowed directories
-    const allowedPaths = ['/app/data', '/app/uploads']
-    const isAllowed = allowedPaths.some(p => input.path.startsWith(p))
+    const isAllowed = allowedPaths.some(p => absolutePath.startsWith(p))
     if (!isAllowed) {
       throw new Error('Access to this path is not allowed')
     }
@@ -817,6 +814,7 @@ function validateToolInput(
 **Execute untrusted code in isolated environments.**
 
 ```typescript
+// Note: vm2 is deprecated. For production, use isolated-vm or Docker containers
 import { VM } from 'vm2'
 
 async function executePythonSafely(code: string, timeout: number = 5000) {
