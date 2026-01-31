@@ -59,8 +59,8 @@ export async function getLearningContext(
     orderBy: { completedAt: 'desc' },
     take: 5,
     select: {
-      conceptId,
-      sprintId,
+      conceptId: true,
+      sprintId: true,
       completedAt: true,
     },
   })

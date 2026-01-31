@@ -47,7 +47,7 @@ export default function MentorConversationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, isNew])
 
-  const loadConversation = async () => {
+  async function loadConversation() {
     try {
       const response = await fetch(`/api/mentor/${conversationId}`)
       if (response.ok) {
@@ -67,7 +67,7 @@ export default function MentorConversationPage() {
     }
   }
 
-  const loadUserName = async () {
+  async function loadUserName() {
     try {
       const response = await fetch('/api/user/profile')
       if (response.ok) {
@@ -79,7 +79,7 @@ export default function MentorConversationPage() {
     }
   }
 
-  const handleSendMessage = async (content: string) {
+  const handleSendMessage = async (content: string) => {
     const userMessage: Message = {
       role: 'user',
       content,
@@ -187,7 +187,7 @@ export default function MentorConversationPage() {
       {context?.conceptTitle && messages.length === 0 && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <p className="text-sm text-blue-900">
-            💡 I'm aware you're learning about <strong>{context.conceptTitle}</strong>{' '}
+            💡 I&apos;m aware you&apos;re learning about <strong>{context.conceptTitle}</strong>{' '}
             {context.sprintId && `in ${context.sprintId.replace('-', ' ')}`}.
             Feel free to ask me anything about this concept!
           </p>
