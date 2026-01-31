@@ -38,14 +38,15 @@ export async function storeDocumentChunks(
   for (const chunk of chunks) {
     const embedding = await generateEmbedding(chunk.content)
 
+    // Note: embedding field omitted until pgvector extension is enabled
+    // When pgvector is configured, add: embedding: `[${embedding.join(',')}]`
     await prisma.documentChunk.create({
       data: {
         documentId,
         content: chunk.content,
         chunkIndex: chunk.chunkIndex,
         pageNumber: chunk.pageNumber,
-        embedding: `[${embedding.join(',')}]`, // Store as string for now
-      },
+      } as any, // Type cast needed because embedding field is Unsupported type
     })
   }
 }
