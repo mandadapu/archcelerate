@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { quizQuestions } from '@/lib/quiz/questions'
 import { QuizQuestion } from '@/components/quiz/QuizQuestion'
 import { QuizProgress } from '@/components/quiz/QuizProgress'
@@ -84,7 +85,9 @@ export default function DiagnosisPage() {
     } catch (error) {
       console.error('Error submitting quiz:', error)
       const message = error instanceof Error ? error.message : 'Unknown error'
-      alert(`Failed to submit quiz: ${message}. Please try again.`)
+      toast.error('Failed to submit quiz', {
+        description: message,
+      })
     } finally {
       setIsSubmitting(false)
     }
