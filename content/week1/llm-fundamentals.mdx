@@ -1,0 +1,96 @@
+# LLM Fundamentals
+
+Learn how Large Language Models work and how to choose the right model for your use case.
+
+## How LLMs Work
+
+Large Language Models (LLMs) like Claude and GPT-4 are neural networks trained on vast amounts of text data. They work by:
+
+1. **Transformers Architecture**: Using attention mechanisms to understand context
+2. **Token Processing**: Breaking text into tokens (subwords)
+3. **Next Token Prediction**: Predicting the most likely next token given context
+
+### Key Concepts
+
+**Context Windows**: The amount of text an LLM can "remember" at once.
+- Claude 3.5 Sonnet: 200K tokens (~150K words)
+- GPT-4 Turbo: 128K tokens
+- Practical consideration: Cost increases with context size
+
+**Tokens**: The fundamental unit LLMs process.
+- Rule of thumb: 1 token ≈ 0.75 words (English)
+- Example: "Hello world!" = ~3 tokens
+- Why it matters: Pricing is per token (input + output)
+
+## Model Selection
+
+Choosing the right model involves balancing three factors:
+
+| Model | Cost | Latency | Quality | Best For |
+|-------|------|---------|---------|----------|
+| GPT-4 | High | Slow | Excellent | Complex reasoning, critical tasks |
+| Claude 3.5 Sonnet | Medium | Fast | Excellent | Balanced performance, coding |
+| GPT-3.5 Turbo | Low | Fast | Good | Simple tasks, high volume |
+| Claude 3 Haiku | Low | Very Fast | Good | Fast responses, classification |
+
+### Cost/Latency/Quality Tradeoffs
+
+**When to prioritize cost**: High-volume, simple tasks (classification, extraction)
+**When to prioritize latency**: Real-time user interactions, chat applications
+**When to prioritize quality**: Complex reasoning, code generation, critical decisions
+
+## Token Economics
+
+Understanding token costs is critical for production AI systems:
+
+**Example**: Chat application with 1000 daily users
+- Average conversation: 10 messages
+- Average message: 100 tokens input, 200 tokens output
+- Total daily: 1000 users × 10 msgs × 300 tokens = 3M tokens/day
+- Monthly cost (Claude Sonnet): 3M × 30 × $0.015/1K = $1,350/month
+
+**Optimization strategies**:
+1. Use cheaper models for simple tasks
+2. Implement caching for common queries
+3. Summarize long conversations to reduce context
+4. Stream responses to improve perceived latency
+
+## Context Management
+
+Effective context window management:
+
+1. **Prioritize recent messages**: Keep last N messages in full context
+2. **Summarize old context**: Compress older messages into summary
+3. **Remove irrelevant content**: Strip formatting, redundant info
+4. **Smart truncation**: Cut from middle, keep beginning and end
+
+```typescript
+// Example: Context window management
+function manageContext(messages: Message[], maxTokens: number) {
+  if (countTokens(messages) <= maxTokens) {
+    return messages // Fits in window
+  }
+
+  // Keep system prompt + last N messages
+  const systemPrompt = messages[0]
+  const recentMessages = messages.slice(-5)
+
+  // Summarize middle messages
+  const middleMessages = messages.slice(1, -5)
+  const summary = summarizeMessages(middleMessages)
+
+  return [systemPrompt, summary, ...recentMessages]
+}
+```
+
+## Practical Exercises
+
+1. **Token Counting**: Use an LLM API to count tokens in different types of text
+2. **Cost Calculation**: Estimate costs for a real application scenario
+3. **Model Comparison**: Same prompt to different models, compare quality/speed/cost
+
+## Further Reading
+
+- [Attention Is All You Need](https://arxiv.org/abs/1706.03762) - Original Transformers paper
+- [Claude Model Documentation](https://docs.anthropic.com/claude/docs)
+- [OpenAI Tokenizer](https://platform.openai.com/tokenizer)

@@ -1,0 +1,260 @@
+# Prompt Engineering Mastery
+
+Master the art and science of crafting effective prompts for LLMs.
+
+## Prompting Fundamentals
+
+A well-crafted prompt is the difference between mediocre and excellent LLM outputs.
+
+### Anatomy of a Prompt
+
+```
+[System Prompt] - Sets role, behavior, constraints
+[Context] - Relevant background information
+[Instruction] - What you want the LLM to do
+[Examples] - Few-shot demonstrations (optional)
+[Output Format] - How to structure the response
+```
+
+## Zero-Shot Prompting
+
+Getting results without examples.
+
+**Basic pattern**:
+```
+You are an expert [role].
+[Context about the task]
+[Clear instruction]
+Respond in [format].
+```
+
+**Example**:
+```
+You are an expert technical writer.
+I need to explain API rate limiting to junior developers.
+Write a clear, concise explanation with a practical example.
+Use simple language and include a code snippet.
+```
+
+## Few-Shot Prompting
+
+Provide examples to guide the model's behavior.
+
+**Pattern**:
+```
+Here are examples of the task:
+
+Example 1:
+Input: [input]
+Output: [output]
+
+Example 2:
+Input: [input]
+Output: [output]
+
+Now do the same for:
+Input: [your actual input]
+```
+
+**When to use**: Complex formatting, specific style, edge cases to avoid
+
+## Chain-of-Thought (CoT) Prompting
+
+Ask the model to show its reasoning process.
+
+**Simple CoT**:
+```
+Question: [complex problem]
+Let's think step by step:
+```
+
+**Structured CoT**:
+```
+Question: [problem]
+
+Please solve this by:
+1. Understanding the problem
+2. Breaking it into sub-problems
+3. Solving each sub-problem
+4. Combining results
+5. Verifying the answer
+```
+
+**When to use**: Mathematical reasoning, multi-step problems, debugging
+
+## System Prompts and Personas
+
+System prompts set the LLM's behavior for the entire conversation.
+
+**Effective system prompt structure**:
+```
+You are [role with expertise].
+
+Your responsibilities:
+- [Responsibility 1]
+- [Responsibility 2]
+
+Guidelines:
+- [Guideline 1]
+- [Guideline 2]
+
+Constraints:
+- [What NOT to do]
+- [Boundaries]
+
+Output format:
+[How to structure responses]
+```
+
+**Example - Code Review Agent**:
+```
+You are an expert code reviewer with 10 years of experience in production systems.
+
+Your responsibilities:
+- Review code for bugs, security issues, and performance problems
+- Suggest specific improvements with code examples
+- Explain the reasoning behind each suggestion
+
+Guidelines:
+- Be constructive and educational
+- Prioritize security and correctness over style
+- Provide actionable feedback
+
+Constraints:
+- Never approve code with security vulnerabilities
+- Don't nitpick minor style issues
+- Don't suggest changes without explaining why
+
+Output format:
+- Categorize findings by severity (Critical, High, Medium, Low)
+- Include line numbers and specific code snippets
+- Provide corrected code examples
+```
+
+## Output Formatting
+
+### JSON Mode
+
+Request structured output in JSON format.
+
+**Pattern**:
+```
+Extract information and respond in JSON format:
+{
+  "field1": "description",
+  "field2": "description"
+}
+```
+
+**Example**:
+```
+Extract product information from this description and respond in JSON:
+
+{
+  "name": "product name",
+  "price": numeric value,
+  "features": ["feature 1", "feature 2"],
+  "category": "category name"
+}
+
+Description: "The UltraWidget Pro costs $99 and includes wireless connectivity,
+cloud sync, and a 2-year warranty. It's in the Smart Home category."
+```
+
+### Structured Extraction
+
+Guide the model to extract specific information.
+
+```
+From the following text, extract:
+- Company name
+- Revenue (if mentioned)
+- Number of employees (if mentioned)
+- Industry
+
+Text: [input text]
+
+Format:
+Company: [name]
+Revenue: [amount or "Not mentioned"]
+Employees: [number or "Not mentioned"]
+Industry: [industry]
+```
+
+## Common Failure Modes and Fixes
+
+### Vague Outputs
+
+❌ **Problem**: "Write about AI"
+✅ **Fix**: "Write a 300-word explanation of transformers architecture for software engineers, including a code example"
+
+### Inconsistent Formatting
+
+❌ **Problem**: Format changes between responses
+✅ **Fix**: Include explicit formatting instructions + example in system prompt
+
+### Hallucinations
+
+❌ **Problem**: Model makes up facts
+✅ **Fix**: "Only use information from the provided context. If unsure, say 'I don't know'"
+
+### Off-Topic Responses
+
+❌ **Problem**: Model goes beyond scope
+✅ **Fix**: Add constraints in system prompt: "Stay focused on [specific topic]. Do not discuss [off-topic areas]"
+
+## Advanced Techniques
+
+### Prompt Chaining
+
+Break complex tasks into multiple prompts.
+
+```
+Prompt 1: Extract key points from article
+↓
+Prompt 2: Organize points into outline
+↓
+Prompt 3: Write summary from outline
+```
+
+### Self-Consistency
+
+Ask for multiple attempts, choose best/most common answer.
+
+```
+Solve this problem 3 different ways, then pick the most reliable answer.
+```
+
+### Role Prompting
+
+Assign specific expert roles for better responses.
+
+```
+As a [specific expert], explain [topic] considering [constraints]
+```
+
+## Practical Exercises
+
+1. **Zero to Few-Shot**: Start with zero-shot, add examples until quality improves
+2. **CoT Practice**: Solve a complex problem with and without CoT, compare results
+3. **Format Precision**: Extract structured data from unstructured text
+4. **Persona Testing**: Same question to different personas, compare outputs
+
+## Prompt Template Library
+
+Build reusable templates for common tasks:
+
+```typescript
+const TEMPLATES = {
+  codeReview: `Review this code for security and performance issues...`,
+  summarization: `Summarize the following text in [N] bullet points...`,
+  extraction: `Extract [specific fields] from this text and return as JSON...`,
+  classification: `Classify this text into one of [categories]...`
+}
+```
+
+## Further Reading
+
+- [Anthropic Prompt Engineering Guide](https://docs.anthropic.com/claude/docs/prompt-engineering)
+- [OpenAI Prompt Engineering](https://platform.openai.com/docs/guides/prompt-engineering)
+- [Prompt Engineering Guide](https://www.promptingguide.ai/)
