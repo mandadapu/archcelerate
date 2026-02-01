@@ -1,0 +1,1597 @@
+---
+id: launch-deployment
+title: Launch Planning & Deployment
+description: Prepare for launch with deployment strategies, monitoring, and go-to-market planning
+difficulty: advanced
+estimatedMinutes: 120
+order: 3
+prerequisites:
+  - architecture-design
+tags:
+  - deployment
+  - launch
+  - monitoring
+  - operations
+  - marketing
+---
+
+# Launch Planning & Deployment
+
+Shipping AI products to production requires more than `git push`. You need deployment strategies, monitoring, error handling, launch operations, and go-to-market planning. This lesson teaches you to deploy confidently and launch successfully.
+
+## Learning Objectives
+
+By the end of this lesson, you'll understand:
+- Pre-launch checklists to ensure production readiness
+- Deployment strategies (rolling, canary, blue-green)
+- How to deploy AI applications to Vercel with environment management
+- Monitoring and observability for AI systems
+- Launch day operations and incident response
+- Post-launch optimization and iteration strategies
+- Go-to-market planning for AI products
+- Building a portfolio-worthy product showcase
+
+## Pre-Launch Checklist
+
+Before deploying to production, validate that your application is ready. Skipping steps leads to launch-day disasters.
+
+### Technical Readiness
+
+```typescript
+/**
+ * Pre-launch technical checklist
+ */
+interface PreLaunchChecklist {
+  category: string
+  items: ChecklistItem[]
+}
+
+const technicalChecklist: PreLaunchChecklist[] = [
+  {
+    category: "Code Quality",
+    items: [
+      {
+        task: "All tests passing",
+        validation: "Run `npm test` - 100% pass rate",
+        priority: "critical"
+      },
+      {
+        task: "No console.log in production code",
+        validation: "Search codebase for console.log, remove debug statements",
+        priority: "high"
+      },
+      {
+        task: "Environment variables properly configured",
+        validation: "Check .env.example matches production requirements",
+        priority: "critical"
+      },
+      {
+        task: "TypeScript errors resolved",
+        validation: "Run `npm run type-check` - 0 errors",
+        priority: "critical"
+      },
+      {
+        task: "ESLint warnings addressed",
+        validation: "Run `npm run lint` - 0 critical issues",
+        priority: "medium"
+      }
+    ]
+  },
+  {
+    category: "AI/LLM Configuration",
+    items: [
+      {
+        task: "API keys secured in environment variables",
+        validation: "No hardcoded API keys in code",
+        priority: "critical"
+      },
+      {
+        task: "Rate limiting implemented",
+        validation: "Test with 100 concurrent requests",
+        priority: "critical"
+      },
+      {
+        task: "Error handling for LLM failures",
+        validation: "Simulate API failure, verify graceful degradation",
+        priority: "critical"
+      },
+      {
+        task: "Prompt injection protection",
+        validation: "Test with malicious inputs",
+        priority: "high"
+      },
+      {
+        task: "Cost limits configured",
+        validation: "Set up billing alerts at $100, $500, $1000",
+        priority: "critical"
+      },
+      {
+        task: "Caching enabled for repeated queries",
+        validation: "Verify cache hit rate >30% in staging",
+        priority: "medium"
+      }
+    ]
+  },
+  {
+    category: "Performance",
+    items: [
+      {
+        task: "API response times <3s for 95th percentile",
+        validation: "Load test with 50 concurrent users",
+        priority: "high"
+      },
+      {
+        task: "Streaming implemented for long responses",
+        validation: "Test with 1000+ token responses",
+        priority: "medium"
+      },
+      {
+        task: "Database queries optimized",
+        validation: "No N+1 queries, indexes on frequently queried fields",
+        priority: "high"
+      },
+      {
+        task: "Images optimized and lazy-loaded",
+        validation: "Check Lighthouse score >90",
+        priority: "medium"
+      }
+    ]
+  },
+  {
+    category: "Security",
+    items: [
+      {
+        task: "Authentication implemented",
+        validation: "Cannot access protected routes without login",
+        priority: "critical"
+      },
+      {
+        task: "Authorization checks on all endpoints",
+        validation: "User A cannot access User B's data",
+        priority: "critical"
+      },
+      {
+        task: "CORS configured properly",
+        validation: "Only allowed origins can make requests",
+        priority: "high"
+      },
+      {
+        task: "Input validation on all endpoints",
+        validation: "Reject invalid/malicious inputs",
+        priority: "critical"
+      },
+      {
+        task: "SQL injection protection",
+        validation: "Use parameterized queries (Prisma handles this)",
+        priority: "critical"
+      },
+      {
+        task: "XSS protection",
+        validation: "React escapes by default, verify no dangerouslySetInnerHTML",
+        priority: "high"
+      }
+    ]
+  },
+  {
+    category: "Monitoring & Observability",
+    items: [
+      {
+        task: "Error tracking configured (Sentry)",
+        validation: "Trigger test error, verify it appears in Sentry",
+        priority: "critical"
+      },
+      {
+        task: "Analytics tracking (Vercel Analytics)",
+        validation: "Page views, user actions tracked",
+        priority: "medium"
+      },
+      {
+        task: "LLM usage metrics logged",
+        validation: "Track tokens, cost, latency per request",
+        priority: "high"
+      },
+      {
+        task: "Uptime monitoring (Uptime Robot)",
+        validation: "Set up ping every 5 minutes",
+        priority: "high"
+      }
+    ]
+  },
+  {
+    category: "User Experience",
+    items: [
+      {
+        task: "Loading states for all async operations",
+        validation: "No blank screens during LLM calls",
+        priority: "high"
+      },
+      {
+        task: "Error messages are user-friendly",
+        validation: "No stack traces shown to users",
+        priority: "high"
+      },
+      {
+        task: "Mobile responsive design",
+        validation: "Test on iPhone, Android, tablet",
+        priority: "high"
+      },
+      {
+        task: "Accessibility (WCAG AA)",
+        validation: "Run Lighthouse accessibility audit >90",
+        priority: "medium"
+      },
+      {
+        task: "Clear onboarding/tutorial",
+        validation: "New user can complete first task in <2 min",
+        priority: "high"
+      }
+    ]
+  }
+]
+```
+
+### Pre-Launch Testing Script
+
+```typescript
+/**
+ * Automated pre-launch validation script
+ */
+async function runPreLaunchChecks(): Promise<CheckResult> {
+  const results: CheckResult[] = []
+
+  // 1. Run tests
+  console.log('Running tests...')
+  const testResult = await runCommand('npm test')
+  results.push({
+    check: 'Tests',
+    passed: testResult.exitCode === 0,
+    message: testResult.output
+  })
+
+  // 2. Type check
+  console.log('Type checking...')
+  const typeCheck = await runCommand('npm run type-check')
+  results.push({
+    check: 'TypeScript',
+    passed: typeCheck.exitCode === 0,
+    message: `${typeCheck.errors.length} errors`
+  })
+
+  // 3. Lint
+  console.log('Linting...')
+  const lintResult = await runCommand('npm run lint')
+  results.push({
+    check: 'Lint',
+    passed: lintResult.warnings.filter(w => w.severity === 'error').length === 0,
+    message: `${lintResult.warnings.length} warnings`
+  })
+
+  // 4. Environment variables
+  console.log('Checking environment variables...')
+  const requiredEnvVars = [
+    'ANTHROPIC_API_KEY',
+    'DATABASE_URL',
+    'NEXTAUTH_SECRET',
+    'NEXTAUTH_URL'
+  ]
+  const missingVars = requiredEnvVars.filter(v => !process.env[v])
+  results.push({
+    check: 'Environment Variables',
+    passed: missingVars.length === 0,
+    message: missingVars.length > 0 ? `Missing: ${missingVars.join(', ')}` : 'All set'
+  })
+
+  // 5. Build
+  console.log('Building...')
+  const buildResult = await runCommand('npm run build')
+  results.push({
+    check: 'Build',
+    passed: buildResult.exitCode === 0,
+    message: buildResult.output
+  })
+
+  // Print results
+  console.log('\n=== PRE-LAUNCH CHECK RESULTS ===')
+  results.forEach(r => {
+    const icon = r.passed ? '✅' : '❌'
+    console.log(`${icon} ${r.check}: ${r.message}`)
+  })
+
+  const allPassed = results.every(r => r.passed)
+  console.log(`\n${allPassed ? '🚀 Ready to deploy!' : '⚠️  Fix issues before deploying'}`)
+
+  return { passed: allPassed, results }
+}
+```
+
+## Deployment Strategies
+
+Different deployment strategies balance risk and speed. Choose based on your risk tolerance and user base size.
+
+### Deployment Strategy Comparison
+
+```typescript
+interface DeploymentStrategy {
+  name: string
+  description: string
+  risk: 'low' | 'medium' | 'high'
+  complexity: 'simple' | 'medium' | 'complex'
+  rollback_speed: 'instant' | 'fast' | 'slow'
+  use_when: string
+  how_it_works: string
+}
+
+const deploymentStrategies: DeploymentStrategy[] = [
+  {
+    name: "Direct Deployment",
+    description: "Deploy directly to production, all users get new version immediately",
+    risk: 'high',
+    complexity: 'simple',
+    rollback_speed: 'fast',
+    use_when: "MVP, small user base (<100), low-risk changes",
+    how_it_works: "git push → Vercel deploys → All traffic to new version"
+  },
+  {
+    name: "Rolling Deployment",
+    description: "Gradually roll out to users in waves",
+    risk: 'medium',
+    complexity: 'medium',
+    rollback_speed: 'fast',
+    use_when: "Medium user base (100-10k), moderate-risk changes",
+    how_it_works: "Deploy to 10% → Monitor → 50% → 100%"
+  },
+  {
+    name: "Canary Deployment",
+    description: "Deploy to small % of users, monitor, then full rollout",
+    risk: 'low',
+    complexity: 'medium',
+    rollback_speed: 'fast',
+    use_when: "Large user base, high-risk changes, AI model changes",
+    how_it_works: "Deploy to 5% → Monitor metrics → If good, increase to 100%"
+  },
+  {
+    name: "Blue-Green Deployment",
+    description: "Two identical environments, switch traffic atomically",
+    risk: 'low',
+    complexity: 'complex',
+    rollback_speed: 'instant',
+    use_when: "Zero-downtime requirement, complex migrations",
+    how_it_works: "Deploy to Green → Test → Switch traffic → Blue becomes standby"
+  },
+  {
+    name: "Feature Flags",
+    description: "Deploy code, enable features selectively",
+    risk: 'low',
+    complexity: 'medium',
+    rollback_speed: 'instant',
+    use_when: "A/B testing, gradual feature rollout, AI experiments",
+    how_it_works: "Deploy with flag off → Enable for % of users → Monitor → Full rollout"
+  }
+]
+```
+
+### Implementing Feature Flags
+
+```typescript
+/**
+ * Feature flag system for gradual rollout
+ */
+interface FeatureFlag {
+  name: string
+  enabled: boolean
+  rollout_percentage: number // 0-100
+  enabled_for_users?: string[]
+}
+
+class FeatureFlagService {
+  private flags: Map<string, FeatureFlag> = new Map()
+
+  async isEnabled(flagName: string, userId?: string): Promise<boolean> {
+    const flag = await this.getFlag(flagName)
+    if (!flag) return false
+    if (!flag.enabled) return false
+
+    // Specific users
+    if (userId && flag.enabled_for_users?.includes(userId)) {
+      return true
+    }
+
+    // Percentage rollout (consistent for same user)
+    if (userId) {
+      const hash = this.hashUserId(userId)
+      return (hash % 100) < flag.rollout_percentage
+    }
+
+    return flag.rollout_percentage === 100
+  }
+
+  private hashUserId(userId: string): number {
+    let hash = 0
+    for (let i = 0; i < userId.length; i++) {
+      hash = ((hash << 5) - hash) + userId.charCodeAt(i)
+      hash = hash & hash // Convert to 32-bit integer
+    }
+    return Math.abs(hash)
+  }
+}
+
+// Usage
+const featureFlags = new FeatureFlagService()
+
+// In API route
+export async function POST(req: Request) {
+  const { userId, message } = await req.json()
+
+  // Check if new AI model is enabled for this user
+  const useNewModel = await featureFlags.isEnabled('gpt-4-turbo', userId)
+
+  const model = useNewModel ? 'gpt-4-turbo' : 'gpt-4'
+  const response = await llm.generate(message, { model })
+
+  return Response.json({ response })
+}
+
+// Database schema for feature flags
+interface FeatureFlagTable {
+  id: string
+  name: string
+  enabled: boolean
+  rollout_percentage: number
+  description: string
+  created_at: Date
+  updated_at: Date
+}
+```
+
+### Canary Deployment with Vercel
+
+```typescript
+/**
+ * Vercel supports preview deployments and production branches
+ * Use branch-based canary deployment
+ */
+
+// vercel.json
+{
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "canary": true
+    }
+  }
+}
+
+// Workflow:
+// 1. Deploy to 'canary' branch → Vercel creates preview deployment
+// 2. Point 5% of traffic to canary URL via edge config
+// 3. Monitor metrics for 24 hours
+// 4. If successful, merge canary → main
+// 5. Full production deployment
+
+// Edge config for traffic splitting (Vercel Edge Config)
+import { get } from '@vercel/edge-config'
+
+export const config = {
+  runtime: 'edge',
+}
+
+export default async function middleware(req: Request) {
+  const canaryPercentage = await get('canary_percentage') // e.g., 5
+  const random = Math.random() * 100
+
+  if (random < canaryPercentage) {
+    // Route to canary deployment
+    return Response.redirect(new URL('/canary' + req.url, req.url))
+  }
+
+  return Response.next()
+}
+```
+
+## Deploying to Vercel
+
+Vercel is the simplest way to deploy Next.js AI applications. Zero-config, automatic HTTPS, edge network, and serverless functions.
+
+### Step-by-Step Deployment Guide
+
+```bash
+# 1. Install Vercel CLI
+npm install -g vercel
+
+# 2. Login to Vercel
+vercel login
+
+# 3. Initialize project (first time)
+vercel
+
+# Follow prompts:
+# - Link to existing project? No
+# - Project name? ai-writing-assistant
+# - Directory? ./
+# - Override settings? No
+
+# 4. Set environment variables
+vercel env add ANTHROPIC_API_KEY production
+# Paste your API key when prompted
+
+vercel env add DATABASE_URL production
+vercel env add NEXTAUTH_SECRET production
+vercel env add NEXTAUTH_URL production
+
+# 5. Deploy to production
+vercel --prod
+
+# Output:
+# ✅  Production: https://ai-writing-assistant.vercel.app
+```
+
+### Environment Variable Management
+
+```typescript
+/**
+ * Environment variables for different environments
+ */
+
+// .env.example (commit this to git)
+ANTHROPIC_API_KEY=your_key_here
+DATABASE_URL=postgresql://...
+NEXTAUTH_SECRET=generate_with_openssl
+NEXTAUTH_URL=http://localhost:3000
+
+// .env.local (local development, gitignored)
+ANTHROPIC_API_KEY=sk-ant-actual-key
+DATABASE_URL=postgresql://localhost:5432/dev
+NEXTAUTH_SECRET=local-secret
+NEXTAUTH_URL=http://localhost:3000
+
+// Vercel Production (set via Vercel dashboard or CLI)
+ANTHROPIC_API_KEY=sk-ant-prod-key
+DATABASE_URL=postgresql://prod-server/db
+NEXTAUTH_SECRET=super-secure-random-string
+NEXTAUTH_URL=https://ai-writing-assistant.vercel.app
+
+/**
+ * Access environment variables safely
+ */
+function getEnvVar(name: string): string {
+  const value = process.env[name]
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`)
+  }
+  return value
+}
+
+// Usage
+const apiKey = getEnvVar('ANTHROPIC_API_KEY')
+const dbUrl = getEnvVar('DATABASE_URL')
+```
+
+### Vercel Configuration
+
+```json
+// vercel.json
+{
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "regions": ["iad1"], // US East (close to Claude API servers)
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "functions": {
+    "app/api/**/*.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    }
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "s-maxage=0, stale-while-revalidate"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Deployment Checklist
+
+```typescript
+const deploymentChecklist = [
+  {
+    step: "Pre-deployment",
+    tasks: [
+      "Run pre-launch checks script",
+      "Test staging deployment thoroughly",
+      "Update environment variables in Vercel",
+      "Document rollback procedure",
+      "Notify team of deployment window"
+    ]
+  },
+  {
+    step: "Deployment",
+    tasks: [
+      "Merge feature branch to main",
+      "Verify Vercel auto-deploy triggered",
+      "Monitor build logs for errors",
+      "Wait for deployment to complete",
+      "Test production URL immediately"
+    ]
+  },
+  {
+    step: "Post-deployment",
+    tasks: [
+      "Smoke test critical features",
+      "Check error tracking (Sentry) for new errors",
+      "Monitor API response times",
+      "Watch LLM usage/costs spike",
+      "Announce launch to users"
+    ]
+  },
+  {
+    step: "Rollback (if needed)",
+    tasks: [
+      "Go to Vercel dashboard → Deployments",
+      "Find last working deployment",
+      "Click '...' → 'Promote to Production'",
+      "Verify rollback successful",
+      "Investigate and fix issue before redeploying"
+    ]
+  }
+]
+```
+
+## Monitoring & Observability
+
+You can't fix what you can't see. Comprehensive monitoring catches issues before users notice and provides data for optimization.
+
+### Monitoring Stack
+
+```typescript
+/**
+ * Recommended monitoring tools for AI applications
+ */
+const monitoringStack = {
+  error_tracking: {
+    tool: "Sentry",
+    purpose: "Catch and debug errors",
+    setup: "npm install @sentry/nextjs && npx @sentry/wizard -i nextjs",
+    cost: "Free tier: 5k errors/month"
+  },
+
+  analytics: {
+    tool: "Vercel Analytics",
+    purpose: "Page views, user behavior",
+    setup: "Enable in Vercel dashboard",
+    cost: "Free on Pro plan"
+  },
+
+  uptime: {
+    tool: "UptimeRobot",
+    purpose: "Monitor uptime, get alerts",
+    setup: "Add URL to monitor, set up alerts",
+    cost: "Free tier: 50 monitors"
+  },
+
+  llm_metrics: {
+    tool: "Custom logging to database",
+    purpose: "Track tokens, costs, latency",
+    setup: "Log to database on every LLM call",
+    cost: "Free (uses your database)"
+  },
+
+  performance: {
+    tool: "Vercel Speed Insights",
+    purpose: "Real user performance metrics",
+    setup: "Enable in Vercel dashboard",
+    cost: "Free on Pro plan"
+  }
+}
+```
+
+### Setting Up Sentry
+
+```typescript
+// sentry.client.config.ts
+import * as Sentry from "@sentry/nextjs"
+
+Sentry.init({
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+  tracesSampleRate: 0.1, // 10% of transactions
+  environment: process.env.NODE_ENV,
+  beforeSend(event, hint) {
+    // Don't send errors during development
+    if (process.env.NODE_ENV === 'development') {
+      return null
+    }
+    return event
+  }
+})
+
+// Usage: Errors are automatically captured
+// Manual capture:
+try {
+  await riskyOperation()
+} catch (error) {
+  Sentry.captureException(error, {
+    tags: {
+      feature: 'ai-generation',
+      user_id: userId
+    }
+  })
+  throw error
+}
+```
+
+### LLM Metrics Tracking
+
+```typescript
+/**
+ * Track every LLM call for cost and performance monitoring
+ */
+interface LLMMetrics {
+  userId: string
+  feature: string
+  model: string
+  inputTokens: number
+  outputTokens: number
+  latency: number
+  cost: number
+  success: boolean
+  error?: string
+  timestamp: Date
+}
+
+class LLMMetricsTracker {
+  async trackCall(metrics: LLMMetrics) {
+    // Log to database
+    await db.llmMetrics.create({ data: metrics })
+
+    // Also log to console in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[LLM Metrics]', {
+        feature: metrics.feature,
+        tokens: metrics.inputTokens + metrics.outputTokens,
+        cost: `$${metrics.cost.toFixed(4)}`,
+        latency: `${metrics.latency}ms`
+      })
+    }
+  }
+
+  async getDailyStats(): Promise<DailyStats> {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const stats = await db.llmMetrics.aggregate({
+      where: {
+        timestamp: { gte: today }
+      },
+      _sum: {
+        inputTokens: true,
+        outputTokens: true,
+        cost: true
+      },
+      _avg: {
+        latency: true
+      },
+      _count: true
+    })
+
+    return {
+      totalCalls: stats._count,
+      totalTokens: (stats._sum.inputTokens ?? 0) + (stats._sum.outputTokens ?? 0),
+      totalCost: stats._sum.cost ?? 0,
+      avgLatency: stats._avg.latency ?? 0
+    }
+  }
+}
+
+// Middleware to track all LLM calls
+class MonitoredLLMService implements LLMService {
+  constructor(
+    private llm: LLMService,
+    private tracker: LLMMetricsTracker
+  ) {}
+
+  async generate(prompt: string): Promise<string> {
+    const startTime = Date.now()
+    const inputTokens = this.estimateTokens(prompt)
+
+    try {
+      const response = await this.llm.generate(prompt)
+      const outputTokens = this.estimateTokens(response)
+      const latency = Date.now() - startTime
+      const cost = this.calculateCost(inputTokens, outputTokens)
+
+      await this.tracker.trackCall({
+        userId: this.getCurrentUserId(),
+        feature: 'text-generation',
+        model: 'claude-3',
+        inputTokens,
+        outputTokens,
+        latency,
+        cost,
+        success: true,
+        timestamp: new Date()
+      })
+
+      return response
+    } catch (error) {
+      await this.tracker.trackCall({
+        userId: this.getCurrentUserId(),
+        feature: 'text-generation',
+        model: 'claude-3',
+        inputTokens,
+        outputTokens: 0,
+        latency: Date.now() - startTime,
+        cost: 0,
+        success: false,
+        error: error.message,
+        timestamp: new Date()
+      })
+
+      throw error
+    }
+  }
+}
+```
+
+### Uptime Monitoring
+
+```typescript
+/**
+ * Health check endpoint for uptime monitoring
+ */
+// app/api/health/route.ts
+export async function GET() {
+  try {
+    // Check database connection
+    await db.$queryRaw`SELECT 1`
+
+    // Check LLM API (optional - can be expensive)
+    // const testResponse = await llm.generate('test')
+
+    return Response.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      checks: {
+        database: 'ok',
+        // llm: 'ok'
+      }
+    })
+  } catch (error) {
+    return Response.json({
+      status: 'unhealthy',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    }, { status: 503 })
+  }
+}
+
+// Configure UptimeRobot to ping this endpoint every 5 minutes
+// Alert via email/Slack if endpoint returns non-200 status
+```
+
+### Alerting Rules
+
+```typescript
+/**
+ * Set up alerts for critical issues
+ */
+const alertingRules = [
+  {
+    metric: "Error Rate",
+    threshold: ">5% of requests in 5 minutes",
+    action: "Send Slack alert to #incidents",
+    implementation: "Sentry alert rule"
+  },
+  {
+    metric: "API Latency",
+    threshold: "p95 >5s for 10 minutes",
+    action: "Email engineering team",
+    implementation: "Vercel Speed Insights alert"
+  },
+  {
+    metric: "LLM Costs",
+    threshold: ">$100 in 1 hour",
+    action: "Slack alert + email",
+    implementation: "Custom alert from database metrics"
+  },
+  {
+    metric: "Uptime",
+    threshold: "Endpoint down for >1 minute",
+    action: "SMS + Slack alert",
+    implementation: "UptimeRobot alert"
+  },
+  {
+    metric: "Database Connections",
+    threshold: ">80% of pool used",
+    action: "Email alert",
+    implementation: "Database monitoring"
+  }
+]
+
+// Example: Custom cost alert
+async function checkCostAlert() {
+  const lastHourCost = await db.llmMetrics.aggregate({
+    where: {
+      timestamp: {
+        gte: new Date(Date.now() - 60 * 60 * 1000)
+      }
+    },
+    _sum: { cost: true }
+  })
+
+  const cost = lastHourCost._sum.cost ?? 0
+
+  if (cost > 100) {
+    await sendSlackAlert({
+      channel: '#alerts',
+      message: `🚨 High LLM costs: $${cost.toFixed(2)} in last hour`,
+      priority: 'high'
+    })
+  }
+}
+```
+
+## Launch Operations
+
+Launch day is exciting and stressful. Having a clear operations plan prevents chaos.
+
+### Launch Day Runbook
+
+```typescript
+/**
+ * Launch day operations guide
+ */
+const launchRunbook = {
+  t_minus_24_hours: [
+    "Final code freeze (no new features)",
+    "Deploy to staging, full test pass",
+    "Prepare rollback plan",
+    "Schedule team availability for launch window",
+    "Pre-write social media posts",
+    "Set up monitoring dashboards"
+  ],
+
+  t_minus_1_hour: [
+    "Run pre-launch checks script",
+    "Verify environment variables in production",
+    "Test staging one final time",
+    "Clear cache/Redis",
+    "Team on Slack/standby"
+  ],
+
+  launch: [
+    "Merge to main → Vercel auto-deploy",
+    "Monitor deployment logs",
+    "Verify deployment successful",
+    "Smoke test critical features on production URL",
+    "Post launch announcement (Twitter, Product Hunt, LinkedIn)",
+    "Send email to beta users"
+  ],
+
+  t_plus_1_hour: [
+    "Monitor Sentry for new errors",
+    "Check Vercel Analytics for traffic",
+    "Watch LLM costs in database",
+    "Respond to first user feedback",
+    "Check uptime monitor"
+  ],
+
+  t_plus_24_hours: [
+    "Review metrics: users, errors, costs",
+    "Gather user feedback",
+    "Create GitHub issues for bugs",
+    "Plan first iteration",
+    "Write launch retrospective"
+  ]
+}
+```
+
+### Incident Response
+
+```typescript
+/**
+ * When things go wrong (and they will)
+ */
+interface IncidentResponse {
+  severity: 'critical' | 'high' | 'medium' | 'low'
+  steps: string[]
+}
+
+const incidentPlaybook = {
+  critical: {
+    severity: 'critical',
+    description: "Site down, users cannot access",
+    steps: [
+      "1. Acknowledge: Post in #incidents that you're responding",
+      "2. Assess: Check Vercel status, Sentry errors, database status",
+      "3. Rollback: If recent deployment, rollback immediately",
+      "4. Communicate: Update status page, tweet about issue",
+      "5. Fix: Identify root cause, implement fix",
+      "6. Verify: Test fix thoroughly",
+      "7. Deploy: Push fix to production",
+      "8. Monitor: Watch for 1 hour",
+      "9. Postmortem: Write incident report within 24h"
+    ]
+  },
+
+  high: {
+    severity: 'high',
+    description: "Feature broken, some users affected",
+    steps: [
+      "1. Acknowledge incident",
+      "2. Determine impact: How many users? Which features?",
+      "3. Decide: Fix forward or rollback?",
+      "4. If rollback: Revert to last working deployment",
+      "5. If fix forward: Implement fix, test, deploy",
+      "6. Communicate to affected users if >10% impacted",
+      "7. Monitor for 30 minutes",
+      "8. Document in incident log"
+    ]
+  },
+
+  medium: {
+    severity: 'medium',
+    description: "Minor bug, workaround available",
+    steps: [
+      "1. Create GitHub issue",
+      "2. Estimate impact",
+      "3. Prioritize in backlog",
+      "4. Fix in next sprint",
+      "5. No need for rollback"
+    ]
+  }
+}
+
+// Rollback procedure
+async function rollbackDeployment() {
+  // Via Vercel CLI
+  // 1. List deployments: vercel ls
+  // 2. Find last working deployment ID
+  // 3. Promote to production: vercel promote <deployment-id>
+
+  // Via Vercel Dashboard
+  // 1. Go to Deployments tab
+  // 2. Find last working deployment
+  // 3. Click "..." → "Promote to Production"
+
+  console.log('Rollback complete. Verify at production URL.')
+}
+```
+
+## Post-Launch Optimization
+
+After launch, focus on metrics, user feedback, and iteration. The first version is never the final version.
+
+### First Week Priorities
+
+```typescript
+const firstWeekPriorities = [
+  {
+    priority: 1,
+    task: "Fix critical bugs",
+    metric: "Zero critical errors in Sentry",
+    action: "Monitor Sentry daily, fix p0 bugs immediately"
+  },
+  {
+    priority: 2,
+    task: "Optimize costs",
+    metric: "Reduce LLM costs by 30%",
+    action: "Implement caching, optimize prompts, use cheaper models for simple tasks"
+  },
+  {
+    priority: 3,
+    task: "Improve performance",
+    metric: "p95 latency <3s",
+    action: "Add streaming, optimize database queries, implement caching"
+  },
+  {
+    priority: 4,
+    task: "Gather user feedback",
+    metric: "50 feedback responses",
+    action: "Send in-app survey, email users, user interviews"
+  },
+  {
+    priority: 5,
+    task: "Iterate on UX",
+    metric: "Improve task completion rate by 20%",
+    action: "Fix confusing flows, add onboarding, improve error messages"
+  }
+]
+```
+
+### A/B Testing
+
+```typescript
+/**
+ * A/B test different AI prompts or models
+ */
+interface ABTest {
+  name: string
+  variants: Variant[]
+  metric: string
+  hypothesis: string
+}
+
+const abTest: ABTest = {
+  name: "Prompt Temperature Experiment",
+  variants: [
+    {
+      name: "Control (temp=0.7)",
+      allocation: 0.5,
+      config: { temperature: 0.7 }
+    },
+    {
+      name: "Treatment (temp=0.3)",
+      allocation: 0.5,
+      config: { temperature: 0.3 }
+    }
+  ],
+  metric: "User quality rating (1-5 scale)",
+  hypothesis: "Lower temperature (0.3) produces more consistent, higher-rated outputs"
+}
+
+// Implementation
+class ABTestService {
+  getVariant(testName: string, userId: string): Variant {
+    const test = this.getTest(testName)
+    const hash = this.hashUserId(userId)
+    const random = (hash % 100) / 100 // 0.00 to 0.99
+
+    let cumulative = 0
+    for (const variant of test.variants) {
+      cumulative += variant.allocation
+      if (random < cumulative) {
+        return variant
+      }
+    }
+
+    return test.variants[0] // Fallback
+  }
+
+  async trackResult(testName: string, userId: string, metric: number) {
+    const variant = this.getVariant(testName, userId)
+
+    await db.abTestResults.create({
+      data: {
+        testName,
+        variantName: variant.name,
+        userId,
+        metric,
+        timestamp: new Date()
+      }
+    })
+  }
+
+  async analyzeResults(testName: string): Promise<ABTestResults> {
+    const results = await db.abTestResults.groupBy({
+      by: ['variantName'],
+      where: { testName },
+      _avg: { metric: true },
+      _count: true
+    })
+
+    // Statistical significance test (simplified)
+    // In production, use proper t-test or similar
+    return {
+      control: results.find(r => r.variantName === 'Control'),
+      treatment: results.find(r => r.variantName === 'Treatment'),
+      winner: this.determineWinner(results)
+    }
+  }
+}
+```
+
+### Cost Optimization
+
+```typescript
+/**
+ * Strategies to reduce LLM costs post-launch
+ */
+const costOptimizationStrategies = [
+  {
+    strategy: "Aggressive Caching",
+    implementation: "Cache responses for 1 hour, check before every LLM call",
+    expected_savings: "40-60%",
+    code: `
+      async function generateWithCache(prompt: string): Promise<string> {
+        const cacheKey = hash(prompt)
+        const cached = await redis.get(cacheKey)
+        if (cached) return cached
+
+        const response = await llm.generate(prompt)
+        await redis.setex(cacheKey, 3600, response)
+        return response
+      }
+    `
+  },
+  {
+    strategy: "Use Cheaper Models for Simple Tasks",
+    implementation: "Route classification/summarization to Claude Haiku, only use Sonnet for complex tasks",
+    expected_savings: "50-70% on simple tasks",
+    code: `
+      function chooseModel(taskComplexity: 'simple' | 'complex'): string {
+        return taskComplexity === 'simple' ? 'claude-3-haiku' : 'claude-3-5-sonnet'
+      }
+    `
+  },
+  {
+    strategy: "Prompt Optimization",
+    implementation: "Reduce prompt length by 50%, remove unnecessary examples",
+    expected_savings: "30-40%",
+    code: `
+      // Before: 500 tokens
+      const verbosePrompt = 'You are an expert... [lots of examples]'
+
+      // After: 200 tokens
+      const concisePrompt = 'Summarize in 2-3 sentences'
+    `
+  },
+  {
+    strategy: "Rate Limiting",
+    implementation: "Limit users to 50 requests/day on free tier",
+    expected_savings: "Prevents abuse, predictable costs",
+    code: `
+      async function checkRateLimit(userId: string): Promise<boolean> {
+        const count = await redis.incr(\`ratelimit:\${userId}:\${today}\`)
+        if (count === 1) await redis.expire(\`ratelimit:\${userId}:\${today}\`, 86400)
+        return count <= 50
+      }
+    `
+  },
+  {
+    strategy: "Prompt Caching (Anthropic)",
+    implementation: "Use Claude's prompt caching for repeated context",
+    expected_savings: "90% on cached portions",
+    code: `
+      // Mark frequently repeated context for caching
+      const response = await anthropic.messages.create({
+        model: 'claude-3-5-sonnet',
+        system: [
+          {
+            type: 'text',
+            text: largeContext, // This gets cached
+            cache_control: { type: 'ephemeral' }
+          }
+        ],
+        messages: [{ role: 'user', content: userQuery }]
+      })
+    `
+  }
+]
+```
+
+## Go-to-Market Planning
+
+Build in public, gather feedback, iterate. AI products benefit from community and early adopter engagement.
+
+### Launch Channels
+
+```typescript
+/**
+ * Where to launch your AI product
+ */
+const launchChannels = [
+  {
+    channel: "Product Hunt",
+    audience: "Tech enthusiasts, early adopters",
+    preparation: [
+      "Record 60s demo video",
+      "Write compelling tagline (<60 chars)",
+      "Prepare 3-5 screenshots",
+      "Schedule for Tuesday-Thursday launch",
+      "Ask 5 friends to upvote/comment in first hour",
+      "Respond to every comment"
+    ],
+    expected_results: "500-2000 visitors, 50-200 signups",
+    tips: [
+      "Launch at 12:01am PT to maximize visibility",
+      "Engage with comments for 24 hours",
+      "Offer Product Hunt exclusive deal (20% off, etc.)"
+    ]
+  },
+  {
+    channel: "Hacker News (Show HN)",
+    audience: "Developers, technical users",
+    preparation: [
+      "Write technical post explaining how it works",
+      "Be ready for tough questions",
+      "Post during US morning hours (9am-11am PT)"
+    ],
+    expected_results: "1000-5000 visitors if front page",
+    tips: [
+      "Be humble, focus on solving real problem",
+      "Explain architecture briefly",
+      "Engage authentically with criticism"
+    ]
+  },
+  {
+    channel: "Twitter/X",
+    audience: "Your followers + AI community",
+    preparation: [
+      "Build following before launch (100+ followers)",
+      "Create demo video/GIF",
+      "Write thread explaining problem → solution",
+      "Tag relevant AI influencers (don't spam)"
+    ],
+    expected_results: "100-1000 visitors per 1000 followers",
+    tips: [
+      "Post at 9am or 1pm PT for max engagement",
+      "Use hashtags: #ai #buildinpublic",
+      "Reply to every comment/question"
+    ]
+  },
+  {
+    channel: "Reddit",
+    audience: "Niche communities",
+    preparation: [
+      "Find relevant subreddits (r/SideProject, r/AITools)",
+      "Follow each subreddit's rules",
+      "Be authentic, not salesy"
+    ],
+    expected_results: "Varies by subreddit (100-1000 visitors)",
+    tips: [
+      "Don't spam, provide value",
+      "Engage with feedback",
+      "Offer exclusive access/discount"
+    ]
+  },
+  {
+    channel: "Email (Beta Users)",
+    audience: "Users who tested beta",
+    preparation: [
+      "Write email highlighting improvements",
+      "Thank beta testers",
+      "Ask for testimonials/case studies"
+    ],
+    expected_results: "80% open rate, 50% activation",
+    tips: [
+      "Send 1 week before public launch",
+      "Offer early access or discount"
+    ]
+  }
+]
+```
+
+### Launch Post Template
+
+```markdown
+# Product Hunt Launch Post
+
+**Headline**: AI Writing Assistant - Write Professional Emails 10x Faster
+
+**Tagline**: Turn bullet points into polished emails using AI
+
+**Description**:
+Writing professional emails takes forever. You stare at a blank screen, rephrase the same sentence 5 times, and still hit send with anxiety.
+
+We built an AI assistant that writes emails for you. Just provide:
+- Key points you want to communicate
+- Desired tone (professional, casual, friendly)
+
+The AI generates a polished email in seconds. You edit, approve, send.
+
+**What makes it different:**
+- ✨ 10x faster than writing from scratch
+- 🎯 Matches your tone perfectly
+- 🔒 Privacy-first (we don't store your emails)
+- 💰 Free tier available
+
+**Tech stack:** Next.js, Claude AI, Vercel
+
+**I'd love feedback on:**
+- What email scenarios would you use this for?
+- What features are missing?
+- Pricing: Would you pay $15/month for this?
+
+Built this in 4 weeks. First AI product, excited to hear your thoughts!
+```
+
+### Social Media Strategy
+
+```typescript
+/**
+ * Post-launch social media plan
+ */
+const socialMediaPlan = [
+  {
+    day: "Launch Day",
+    posts: [
+      {
+        platform: "Twitter",
+        content: "🚀 Just launched AI Writing Assistant on Product Hunt!\n\nStop staring at blank emails. Turn bullet points into polished messages in seconds.\n\nFree tier available. Would love your feedback!\n\n[Link]",
+        time: "9am PT"
+      },
+      {
+        platform: "LinkedIn",
+        content: "After 4 weeks of building, I'm excited to launch AI Writing Assistant...\n\n[Professional version of story, focus on problem solved]",
+        time: "12pm PT"
+      }
+    ]
+  },
+  {
+    day: "Day 2-7",
+    posts: [
+      {
+        frequency: "Daily",
+        content_ideas: [
+          "Share user testimonial",
+          "Demo specific use case (e.g., 'How to write a salary negotiation email')",
+          "Behind-the-scenes: How the AI works",
+          "Metrics update: '100 users in 3 days!'",
+          "Learning: 'What I learned building my first AI product'",
+          "Feature highlight: Show one feature in depth"
+        ]
+      }
+    ]
+  },
+  {
+    day: "Week 2+",
+    posts: [
+      {
+        frequency: "3x per week",
+        content_ideas: [
+          "Use case examples",
+          "Tips and tricks",
+          "Feature announcements",
+          "User success stories",
+          "Industry insights"
+        ]
+      }
+    ]
+  }
+]
+```
+
+## Building a Portfolio-Worthy Showcase
+
+Your AI product is a resume line. Make it impressive.
+
+### Portfolio Landing Page
+
+```typescript
+/**
+ * Create a compelling project showcase
+ */
+const portfolioShowcase = {
+  hero: {
+    headline: "AI Writing Assistant",
+    subheadline: "Full-stack AI application built with Next.js and Claude",
+    cta: "View Live Demo",
+    github: "View Source Code"
+  },
+
+  problem_solution: {
+    problem: "Professionals waste 2+ hours daily writing emails, struggling with tone and phrasing",
+    solution: "AI-powered email generator that turns bullet points into polished messages in seconds",
+    impact: "10x faster email writing, 95% user satisfaction"
+  },
+
+  technical_highlights: [
+    {
+      title: "AI Integration",
+      description: "Integrated Anthropic Claude API with custom prompt engineering for context-aware email generation",
+      tech: ["Claude API", "Prompt Engineering", "Streaming Responses"]
+    },
+    {
+      title: "Full-Stack Architecture",
+      description: "Built scalable architecture with Next.js 14 App Router, PostgreSQL, and Redis caching",
+      tech: ["Next.js 14", "TypeScript", "Prisma", "PostgreSQL", "Redis"]
+    },
+    {
+      title: "Performance Optimization",
+      description: "Implemented caching and prompt optimization, reducing costs by 60% and latency to <2s",
+      tech: ["Redis Caching", "Prompt Optimization", "Edge Functions"]
+    },
+    {
+      title: "Production Deployment",
+      description: "Deployed to Vercel with monitoring, error tracking, and 99.9% uptime",
+      tech: ["Vercel", "Sentry", "Vercel Analytics"]
+    }
+  ],
+
+  metrics: [
+    { label: "Users", value: "500+", context: "in first month" },
+    { label: "Emails Generated", value: "10,000+", context: "total" },
+    { label: "User Satisfaction", value: "4.7/5", context: "average rating" },
+    { label: "Response Time", value: "<2s", context: "p95 latency" }
+  ],
+
+  screenshots: [
+    "Hero with demo",
+    "Email generation in action",
+    "Results with editing",
+    "Settings/customization"
+  ],
+
+  lessons_learned: [
+    "Prompt engineering is more art than science - iterated 20+ times to get consistent quality",
+    "Caching is critical for AI apps - reduced costs by 60%",
+    "User feedback > assumptions - users wanted tone customization, not longer emails",
+    "Monitoring is non-negotiable - caught and fixed 3 critical bugs via Sentry"
+  ],
+
+  github_readme: {
+    sections: [
+      "Overview with demo GIF",
+      "Features list",
+      "Tech stack",
+      "Architecture diagram",
+      "Getting started (setup instructions)",
+      "Environment variables",
+      "Deployment guide",
+      "Key learnings",
+      "License"
+    ]
+  }
+}
+```
+
+### Demo Video Script
+
+```markdown
+# Demo Video Script (60 seconds)
+
+**[0-10s] Hook + Problem**
+"How long does it take you to write a professional email? 5 minutes? 10?
+
+Let me show you how to do it in 10 seconds."
+
+**[10-20s] Solution**
+"This is AI Writing Assistant. You give it bullet points and a tone..."
+
+[Screen recording: Enter bullet points, select "Professional" tone]
+
+**[20-40s] Demo**
+"...and it generates a polished email instantly."
+
+[Screen recording: AI generates email in 2 seconds]
+
+"You can edit it, adjust the tone, regenerate."
+
+[Screen recording: Quick edits, copy to clipboard]
+
+**[40-50s] Technical Details**
+"Built with Next.js and Claude AI. Deployed on Vercel. Open source."
+
+[Screen recording: Quick architecture diagram, GitHub repo]
+
+**[50-60s] CTA**
+"Try it free at [URL]. Link in description. Built this in 4 weeks as my first AI project."
+
+[End screen: Logo, URL, GitHub link]
+```
+
+## Summary
+
+Launching AI products successfully requires preparation, monitoring, and iteration:
+
+1. **Pre-launch checks**: Validate technical readiness, security, performance
+2. **Deployment strategies**: Choose risk level - direct, rolling, canary, blue-green
+3. **Deploy to Vercel**: Simple, scalable, zero-config deployment
+4. **Monitor everything**: Errors, performance, costs, uptime
+5. **Launch operations**: Follow runbook, have incident response plan
+6. **Optimize post-launch**: Reduce costs, improve UX, A/B test
+7. **Go-to-market**: Launch on Product Hunt, Twitter, build in public
+8. **Showcase your work**: Portfolio page, demo video, case study
+
+Launch is not the end - it's the beginning of learning what users really want.
+
+## Additional Resources
+
+- [Vercel Deployment Docs](https://vercel.com/docs/deployments/overview)
+- [Sentry Next.js Integration](https://docs.sentry.io/platforms/javascript/guides/nextjs/)
+- [Product Hunt Launch Guide](https://www.producthunt.com/launch)
+- [Show HN Guidelines](https://news.ycombinator.com/showhn.html)
+- [Indie Hackers Launch Guide](https://www.indiehackers.com/start)
+
+## Next Steps
+
+You've learned product thinking, architecture design, and launch planning. Now it's time to **build your capstone project** - apply everything you've learned to create and launch your own AI product.
