@@ -1,0 +1,56 @@
+{
+  "id": "lab-1-eval-suite",
+  "title": "Build Comprehensive Evaluation Suite",
+  "description": "Create a complete evaluation system with test cases, metrics, and automated scoring",
+  "difficulty": "intermediate",
+  "estimatedMinutes": 45,
+  "language": "typescript",
+  "starterCode": "import Anthropic from '@anthropic-ai/sdk'\n\ninterface TestCase {\n  id: string\n  input: string\n  expectedOutput: string\n  category: string\n}\n\ninterface EvaluationResult {\n  passed: number\n  failed: number\n  accuracy: number\n}\n\n/**\n * Run evaluation suite on a set of test cases\n * @param testCases Array of test cases to evaluate\n * @param promptTemplate Template function to generate prompts\n * @returns Evaluation results with accuracy metrics\n */\nasync function runEvaluationSuite(\n  testCases: TestCase[],\n  promptTemplate: (input: string) => string\n): Promise<EvaluationResult> {\n  // Your code here\n  return {\n    passed: 0,\n    failed: 0,\n    accuracy: 0\n  }\n}\n",
+  "instructions": "Implement `runEvaluationSuite()` that:\n1. Iterates through all test cases\n2. Generates prompts using the template\n3. Calls Claude API for each test case\n4. Compares actual output with expected output (normalized comparison)\n5. Calculates accuracy as (passed / total)\n6. Returns comprehensive evaluation results\n\nBonus: Add metrics for latency and token usage",
+  "testCases": [
+    {
+      "input": "testCases = [{ id: '1', input: 'What is 2+2?', expectedOutput: '4', category: 'math' }]",
+      "expectedOutput": "accuracy between 0.8 and 1.0",
+      "description": "Single test case evaluation"
+    },
+    {
+      "input": "testCases with 10 items, 8 correct responses",
+      "expectedOutput": "accuracy = 0.8",
+      "description": "Multi-case accuracy calculation"
+    },
+    {
+      "input": "Empty test cases array",
+      "expectedOutput": "accuracy = 0, passed = 0, failed = 0",
+      "description": "Handle empty input"
+    },
+    {
+      "input": "Case-insensitive comparison (Expected: 'PARIS', Actual: 'paris')",
+      "expectedOutput": "Should pass (normalize case)",
+      "description": "Normalized comparison"
+    },
+    {
+      "input": "Whitespace differences (Expected: 'hello world', Actual: 'hello  world')",
+      "expectedOutput": "Should pass (normalize whitespace)",
+      "description": "Handle whitespace variations"
+    },
+    {
+      "input": "testCases with mixed categories",
+      "expectedOutput": "Returns overall accuracy across all categories",
+      "description": "Multi-category evaluation"
+    }
+  ],
+  "hints": [
+    "Use Claude API: await client.messages.create()",
+    "Normalize strings before comparison: toLowerCase() and trim()",
+    "Replace multiple spaces with single space for comparison",
+    "Calculate accuracy: passed / (passed + failed)",
+    "Handle edge cases: empty arrays, null values",
+    "Track both passed and failed counts separately",
+    "Use try-catch for API calls to handle errors",
+    "Consider adding timeout handling for slow responses",
+    "Store individual test results for detailed reporting",
+    "Add optional verbose mode to show each test result",
+    "Consider caching API responses to reduce costs during testing",
+    "Implement retry logic for failed API calls"
+  ]
+}
