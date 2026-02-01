@@ -211,8 +211,13 @@ class VisualQASystem {
     if (!conversation) {
       const cached = await this.redis.get(`conversation:${conversationId}`)
       if (cached) {
-        conversation = JSON.parse(cached)
-        this.conversations.set(conversationId, conversation!)
+        try {
+          conversation = JSON.parse(cached)
+          this.conversations.set(conversationId, conversation!)
+        } catch (error) {
+          console.error('Failed to parse cached conversation:', error)
+          throw new Error('Conversation data corrupted')
+        }
       } else {
         throw new Error('Conversation not found')
       }
@@ -261,7 +266,12 @@ class VisualQASystem {
     if (!conversation) {
       const cached = await this.redis.get(`conversation:${conversationId}`)
       if (!cached) throw new Error('Conversation not found')
-      return JSON.parse(cached).messages
+      try {
+        return JSON.parse(cached).messages
+      } catch (error) {
+        console.error('Failed to parse cached conversation:', error)
+        throw new Error('Conversation data corrupted')
+      }
     }
     return conversation.messages
   }
@@ -616,7 +626,12 @@ Use null for fields that are not visible or unclear.`,
       ],
     })
 
-    return JSON.parse(response.content[0].text)
+    try {
+      return JSON.parse(response.content[0].text)
+    } catch (error) {
+      console.error('Failed to parse JSON response:', error)
+      return { error: 'Invalid JSON response', raw: response.content[0].text }
+    }
   }
 
   /**
@@ -685,7 +700,12 @@ Use null for fields not present.`,
       ],
     })
 
-    return JSON.parse(response.content[0].text)
+    try {
+      return JSON.parse(response.content[0].text)
+    } catch (error) {
+      console.error('Failed to parse JSON response:', error)
+      return { error: 'Invalid JSON response', raw: response.content[0].text }
+    }
   }
 
   /**
@@ -734,7 +754,12 @@ Use null for fields not present.`,
       ],
     })
 
-    return JSON.parse(response.content[0].text)
+    try {
+      return JSON.parse(response.content[0].text)
+    } catch (error) {
+      console.error('Failed to parse JSON response:', error)
+      return { error: 'Invalid JSON response', raw: response.content[0].text }
+    }
   }
 
   /**
@@ -783,7 +808,12 @@ IMPORTANT: Do not extract sensitive data if this is a privacy concern.`,
       ],
     })
 
-    return JSON.parse(response.content[0].text)
+    try {
+      return JSON.parse(response.content[0].text)
+    } catch (error) {
+      console.error('Failed to parse JSON response:', error)
+      return { error: 'Invalid JSON response', raw: response.content[0].text }
+    }
   }
 
   /**
@@ -828,7 +858,12 @@ IMPORTANT: Do not extract sensitive data if this is a privacy concern.`,
       ],
     })
 
-    return JSON.parse(response.content[0].text)
+    try {
+      return JSON.parse(response.content[0].text)
+    } catch (error) {
+      console.error('Failed to parse JSON response:', error)
+      return { error: 'Invalid JSON response', raw: response.content[0].text }
+    }
   }
 
   /**
@@ -875,7 +910,12 @@ IMPORTANT: Do not extract sensitive data if this is a privacy concern.`,
       ],
     })
 
-    return JSON.parse(response.content[0].text)
+    try {
+      return JSON.parse(response.content[0].text)
+    } catch (error) {
+      console.error('Failed to parse JSON response:', error)
+      return { error: 'Invalid JSON response', raw: response.content[0].text }
+    }
   }
 
   /**
@@ -933,7 +973,12 @@ IMPORTANT: Do not extract sensitive data if this is a privacy concern.`,
     if (!document) {
       const cached = await this.redis.get(`document:${documentId}`)
       if (cached) {
-        document = JSON.parse(cached)
+        try {
+          document = JSON.parse(cached)
+        } catch (error) {
+          console.error('Failed to parse cached document:', error)
+          return null
+        }
       }
     }
 
@@ -1085,7 +1130,17 @@ Focus on what makes this product valuable and searchable.`,
       ],
     })
 
-    const data = JSON.parse(response.content[0].text)
+    let data
+    try {
+      data = JSON.parse(response.content[0].text)
+    } catch (error) {
+      console.error('Failed to parse JSON response:', error)
+      return {
+        id: crypto.randomUUID(),
+        error: 'Invalid JSON response',
+        raw: response.content[0].text,
+      } as any
+    }
 
     return {
       id: crypto.randomUUID(),
@@ -1146,7 +1201,17 @@ Return the same JSON format as before, but with higher confidence since you have
       ],
     })
 
-    const data = JSON.parse(response.content[0].text)
+    let data
+    try {
+      data = JSON.parse(response.content[0].text)
+    } catch (error) {
+      console.error('Failed to parse JSON response:', error)
+      return {
+        id: crypto.randomUUID(),
+        error: 'Invalid JSON response',
+        raw: response.content[0].text,
+      } as any
+    }
 
     return {
       id: crypto.randomUUID(),
@@ -1221,7 +1286,12 @@ Return the same JSON format as before, but with higher confidence since you have
       ],
     })
 
-    return JSON.parse(response.content[0].text)
+    try {
+      return JSON.parse(response.content[0].text)
+    } catch (error) {
+      console.error('Failed to parse JSON response:', error)
+      return { error: 'Invalid JSON response', raw: response.content[0].text }
+    }
   }
 }
 
@@ -1341,7 +1411,18 @@ Guidelines:
       ],
     })
 
-    return JSON.parse(response.content[0].text)
+    try {
+      return JSON.parse(response.content[0].text)
+    } catch (error) {
+      console.error('Failed to parse JSON response:', error)
+      return {
+        altText: 'Image description unavailable',
+        longDescription: 'Failed to parse response',
+        objectsDetected: [],
+        error: 'Invalid JSON response',
+        raw: response.content[0].text
+      }
+    }
   }
 
   /**
@@ -1437,7 +1518,19 @@ Help users understand the layout and how to navigate the interface.`,
       ],
     })
 
-    return JSON.parse(response.content[0].text)
+    try {
+      return JSON.parse(response.content[0].text)
+    } catch (error) {
+      console.error('Failed to parse JSON response:', error)
+      return {
+        pageTitle: 'Unknown',
+        mainContent: 'Failed to parse response',
+        interactiveElements: [],
+        navigationStructure: '',
+        error: 'Invalid JSON response',
+        raw: response.content[0].text
+      }
+    }
   }
 }
 
@@ -1585,7 +1678,20 @@ Be objective and err on the side of caution.`,
       ],
     })
 
-    const analysis = JSON.parse(response.content[0].text)
+    let analysis
+    try {
+      analysis = JSON.parse(response.content[0].text)
+    } catch (error) {
+      console.error('Failed to parse JSON response:', error)
+      return {
+        safe: false,
+        categories: [],
+        overallRisk: 'review' as const,
+        explanation: 'Failed to parse moderation response',
+        requiresHumanReview: true,
+        moderatedAt: new Date(),
+      }
+    }
 
     // Calculate overall risk
     const detected = analysis.categories.filter((c: any) => c.detected)
@@ -1843,7 +1949,22 @@ Focus on objective observations. Do not make definitive diagnoses.`,
       ],
     })
 
-    const analysis = JSON.parse(response.content[0].text)
+    let analysis
+    try {
+      analysis = JSON.parse(response.content[0].text)
+    } catch (error) {
+      console.error('Failed to parse JSON response:', error)
+      return {
+        imageType,
+        anatomicalRegion: 'Unknown',
+        observations: [],
+        recommendations: ['Failed to analyze image - please consult a medical professional'],
+        disclaimer: 'This AI-generated analysis failed. All medical imaging must be interpreted by qualified, licensed medical professionals.',
+        confidence: 0,
+        error: 'Invalid JSON response',
+        raw: response.content[0].text
+      } as any
+    }
 
     // Ensure disclaimer is present
     if (!analysis.disclaimer) {
@@ -1932,7 +2053,19 @@ Prior image:`,
       ],
     })
 
-    return JSON.parse(response.content[0].text)
+    try {
+      return JSON.parse(response.content[0].text)
+    } catch (error) {
+      console.error('Failed to parse JSON response:', error)
+      return {
+        changes: [],
+        overallAssessment: 'Failed to analyze comparison',
+        recommendations: ['Unable to parse comparison results - please consult a medical professional'],
+        disclaimer: 'This AI-generated comparison failed. All medical imaging must be interpreted by qualified, licensed medical professionals.',
+        error: 'Invalid JSON response',
+        raw: response.content[0].text
+      }
+    }
   }
 
   /**
@@ -2156,9 +2289,17 @@ async function documentPipelineExample() {
         ],
       })
 
+      let extractedData
+      try {
+        extractedData = JSON.parse(response.content[0].text)
+      } catch (error) {
+        console.error('Failed to parse extraction response:', error)
+        extractedData = { error: 'Invalid JSON response', raw: response.content[0].text }
+      }
+
       return {
         ...input,
-        extractedData: JSON.parse(response.content[0].text),
+        extractedData,
       }
     },
   })
@@ -2310,12 +2451,14 @@ async function eventDrivenExample() {
         },
       })
     } catch (error) {
+      console.error('Failed to parse JSON response:', error)
       await system.emit({
         type: 'processing.failed',
         timestamp: new Date(),
         data: {
           imagePath: event.data.imagePath,
           error: 'Failed to parse analysis',
+          raw: event.data.analysis,
         },
       })
     }
