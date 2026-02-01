@@ -1,0 +1,205 @@
+{
+  "id": "lab-2-caching",
+  "title": "Implement AI Response Caching",
+  "description": "Build an intelligent caching system for AI responses using semantic similarity to reduce API costs and improve response times",
+  "difficulty": "advanced",
+  "estimatedHours": 4,
+  "technologies": [
+    "Upstash Redis",
+    "OpenAI Embeddings",
+    "Semantic Similarity",
+    "Next.js",
+    "TypeScript"
+  ],
+  "learningObjectives": [
+    "Understand caching strategies for AI applications",
+    "Implement semantic similarity matching for cache hits",
+    "Design effective cache keys for AI requests",
+    "Implement cache invalidation strategies",
+    "Balance cache hit rate vs. response quality",
+    "Optimize cache storage and retrieval performance"
+  ],
+  "requirements": {
+    "functional": [
+      "Cache AI responses in Redis with TTL",
+      "Implement semantic similarity matching (cosine similarity > 0.95 = cache hit)",
+      "Return cached responses for similar queries instead of calling API",
+      "Track cache hit/miss rates and cost savings",
+      "Implement manual and automatic cache invalidation",
+      "Support different cache TTLs for different query types"
+    ],
+    "technical": [
+      "Use Upstash Redis for distributed caching",
+      "Generate embeddings for query similarity comparison",
+      "Store embeddings and responses efficiently in Redis",
+      "Implement vector similarity search in Redis",
+      "Handle cache misses by calling AI API and caching result",
+      "Add cache statistics and monitoring"
+    ],
+    "ui": [
+      "Display cache hit/miss indicator in responses (optional)",
+      "Show cache statistics in admin dashboard (optional)",
+      "Provide cache clear functionality (optional)",
+      "Display estimated cost savings from caching (optional)"
+    ]
+  },
+  "successCriteria": [
+    {
+      "criterion": "Semantic similarity matching works accurately",
+      "weight": 25,
+      "verification": "Test with similar queries and verify cache hits above 95% similarity"
+    },
+    {
+      "criterion": "Cache significantly reduces API calls (>50% hit rate in testing)",
+      "weight": 20,
+      "verification": "Run test suite and measure cache hit rate"
+    },
+    {
+      "criterion": "Cached responses returned quickly (<100ms vs 2-3s API call)",
+      "weight": 15,
+      "verification": "Measure response times for cache hits vs misses"
+    },
+    {
+      "criterion": "Cache invalidation works correctly",
+      "weight": 15,
+      "verification": "Test manual clear and TTL expiration"
+    },
+    {
+      "criterion": "Cache storage is efficient and doesn't grow unbounded",
+      "weight": 15,
+      "verification": "Monitor Redis memory usage over time"
+    },
+    {
+      "criterion": "Accurate cost savings tracking and reporting",
+      "weight": 10,
+      "verification": "Verify saved API calls translate to cost savings"
+    }
+  ],
+  "testScenarios": [
+    {
+      "scenario": "Exact query match returns cached response",
+      "steps": [
+        "Send query: 'What is machine learning?'",
+        "Verify API is called and response cached",
+        "Send exact same query again",
+        "Verify response comes from cache (not API)"
+      ],
+      "expectedResult": "Second request is cache hit, response time <100ms"
+    },
+    {
+      "scenario": "Similar query matches semantically",
+      "steps": [
+        "Send query: 'Explain neural networks'",
+        "Cache the response",
+        "Send similar query: 'What are neural networks?'",
+        "Calculate similarity (should be >0.95)",
+        "Return cached response"
+      ],
+      "expectedResult": "Similar query returns cached response without API call"
+    },
+    {
+      "scenario": "Different query misses cache",
+      "steps": [
+        "Cache response for 'What is AI?'",
+        "Send query: 'How to bake a cake?'",
+        "Calculate similarity (should be <0.95)",
+        "Verify API is called for new query"
+      ],
+      "expectedResult": "Unrelated query results in cache miss and API call"
+    },
+    {
+      "scenario": "Cache expires after TTL",
+      "steps": [
+        "Cache response with 60 second TTL",
+        "Verify cache hit within 60 seconds",
+        "Wait 61 seconds",
+        "Send same query",
+        "Verify cache miss and new API call"
+      ],
+      "expectedResult": "Expired cache entry triggers new API call"
+    },
+    {
+      "scenario": "Cache statistics track accurately",
+      "steps": [
+        "Reset statistics",
+        "Make 10 queries (5 unique, 5 duplicates)",
+        "Check statistics",
+        "Verify 5 API calls, 5 cache hits, 50% hit rate"
+      ],
+      "expectedResult": "Statistics show 5 hits, 5 misses, 50% hit rate"
+    }
+  ],
+  "starterFiles": {
+    "lib/cache.ts": "// AI response caching with semantic similarity\nimport { Redis } from '@upstash/redis'\nimport { OpenAI } from 'openai'\n\nconst redis = new Redis({\n  url: process.env.UPSTASH_REDIS_REST_URL!,\n  token: process.env.UPSTASH_REDIS_REST_TOKEN!,\n})\n\nconst openai = new OpenAI({\n  apiKey: process.env.OPENAI_API_KEY,\n})\n\ninterface CachedResponse {\n  query: string\n  embedding: number[]\n  response: string\n  timestamp: number\n  model: string\n}\n\nexport interface CacheStats {\n  hits: number\n  misses: number\n  apiCalls: number\n  costSaved: number\n}\n\nconst SIMILARITY_THRESHOLD = 0.95\nconst CACHE_TTL = 3600 // 1 hour in seconds\n\nexport async function generateEmbedding(text: string): Promise<number[]> {\n  // TODO: Generate embedding using OpenAI embeddings API\n  // Use model: 'text-embedding-3-small'\n  return []\n}\n\nexport function cosineSimilarity(a: number[], b: number[]): number {\n  // TODO: Calculate cosine similarity between two vectors\n  // Formula: dot(a,b) / (magnitude(a) * magnitude(b))\n  return 0\n}\n\nexport async function findSimilarCache(\n  queryEmbedding: number[]\n): Promise<CachedResponse | null> {\n  // TODO: Search Redis for similar cached queries\n  // 1. Get all cached query embeddings\n  // 2. Calculate similarity with each\n  // 3. Return best match if similarity > threshold\n  return null\n}\n\nexport async function getCachedResponse(\n  query: string\n): Promise<string | null> {\n  // TODO: Check cache for similar query\n  // 1. Generate embedding for query\n  // 2. Find similar cached response\n  // 3. Update cache statistics (hit)\n  // 4. Return cached response if found\n  return null\n}\n\nexport async function cacheResponse(\n  query: string,\n  response: string,\n  model: string\n): Promise<void> {\n  // TODO: Cache AI response\n  // 1. Generate embedding for query\n  // 2. Create cache entry with query, embedding, response\n  // 3. Store in Redis with TTL\n  // 4. Update cache statistics (API call)\n}\n\nexport async function getCacheStats(): Promise<CacheStats> {\n  // TODO: Get cache statistics from Redis\n  // Track: hits, misses, API calls, estimated cost saved\n  return {\n    hits: 0,\n    misses: 0,\n    apiCalls: 0,\n    costSaved: 0,\n  }\n}\n\nexport async function clearCache(): Promise<void> {\n  // TODO: Clear all cached responses\n  // Use Redis SCAN to find all cache keys and delete\n}\n",
+    "app/api/ai/chat-cached/route.ts": "// AI chat endpoint with caching\nimport { NextRequest, NextResponse } from 'next/server'\nimport { getCachedResponse, cacheResponse } from '@/lib/cache'\nimport { OpenAI } from 'openai'\n\nconst openai = new OpenAI({\n  apiKey: process.env.OPENAI_API_KEY,\n})\n\nexport async function POST(request: NextRequest) {\n  try {\n    const { message } = await request.json()\n    \n    // TODO: Check cache first\n    const cached = await getCachedResponse(message)\n    if (cached) {\n      return NextResponse.json({\n        response: cached,\n        fromCache: true,\n      })\n    }\n    \n    // TODO: Cache miss - call OpenAI API\n    // TODO: Cache the response\n    // TODO: Return response with cache indicator\n    \n    return NextResponse.json({\n      response: 'Not implemented',\n      fromCache: false,\n    })\n  } catch (error) {\n    console.error('Chat error:', error)\n    return NextResponse.json(\n      { error: 'Internal server error' },\n      { status: 500 }\n    )\n  }\n}\n",
+    "app/api/cache/stats/route.ts": "// Cache statistics endpoint\nimport { NextResponse } from 'next/server'\nimport { getCacheStats } from '@/lib/cache'\n\nexport async function GET() {\n  try {\n    const stats = await getCacheStats()\n    \n    const hitRate = stats.hits + stats.misses > 0\n      ? (stats.hits / (stats.hits + stats.misses)) * 100\n      : 0\n    \n    return NextResponse.json({\n      ...stats,\n      hitRate: Math.round(hitRate),\n    })\n  } catch (error) {\n    console.error('Stats error:', error)\n    return NextResponse.json(\n      { error: 'Failed to get cache stats' },\n      { status: 500 }\n    )\n  }\n}\n"
+  },
+  "technicalGuidance": {
+    "embeddings": "Use OpenAI text-embedding-3-small model for cost-effective embeddings. Each embedding costs ~$0.00002 per 1K tokens. Cache embeddings to avoid regenerating.",
+    "similarity": "Cosine similarity formula: dot(a,b) / (||a|| * ||b||). Implement efficiently using array operations. Threshold of 0.95 balances accuracy and hit rate.",
+    "storage": "Store embeddings as JSON arrays in Redis. Use hash keys like 'cache:query:{id}' with fields: embedding, response, timestamp, model. Set EXPIRE on keys.",
+    "vectorSearch": "For production, consider Redis Stack with vector similarity search (VSS) for efficient similarity queries. For this lab, linear search is acceptable.",
+    "costCalculation": "Track API calls saved. OpenAI GPT-4 costs ~$0.03 per 1K tokens (input) and ~$0.06 per 1K tokens (output). Calculate savings based on average response length."
+  },
+  "deploymentRequirements": {
+    "environment": [
+      "UPSTASH_REDIS_REST_URL=<your-redis-url>",
+      "UPSTASH_REDIS_REST_TOKEN=<your-redis-token>",
+      "OPENAI_API_KEY=<your-openai-key>"
+    ],
+    "services": [
+      "Upstash Redis (recommend at least 256MB for caching)",
+      "OpenAI API access (for embeddings and completions)",
+      "Vercel deployment"
+    ],
+    "verification": [
+      "Send test queries and verify caching",
+      "Check Redis for cached entries",
+      "Monitor cache hit rate over time",
+      "Verify cost savings calculations"
+    ]
+  },
+  "estimatedCosts": {
+    "development": "$5-10 (OpenAI API testing, embeddings generation)",
+    "production": "$20-100/month (depends on query volume and cache hit rate)",
+    "notes": "Higher cache hit rates significantly reduce costs. Monitor and optimize similarity threshold."
+  },
+  "extensionIdeas": [
+    "Implement cache warming (pre-cache common queries)",
+    "Add cache priority levels (keep important responses longer)",
+    "Implement distributed cache invalidation across regions",
+    "Add cache analytics dashboard with visualizations",
+    "Support multiple cache tiers (L1 memory, L2 Redis)",
+    "Implement smart TTL based on query patterns",
+    "Add A/B testing for different similarity thresholds"
+  ],
+  "rubric": {
+    "excellent": [
+      "Semantic similarity matching works accurately (>95% threshold)",
+      "Cache hit rate >50% in realistic testing",
+      "Response time for cache hits <100ms consistently",
+      "Efficient vector similarity calculation",
+      "Comprehensive cache statistics and cost tracking",
+      "Proper error handling and fallbacks",
+      "Well-documented code with clear explanations"
+    ],
+    "good": [
+      "Similarity matching mostly works (may have edge cases)",
+      "Cache hit rate 30-50% in testing",
+      "Cache hits faster than API calls but not optimized",
+      "Basic similarity calculation that works",
+      "Cache statistics present but may be incomplete",
+      "Handles errors but may not have full fallbacks",
+      "Code is readable with some documentation"
+    ],
+    "needsImprovement": [
+      "Similarity matching unreliable or threshold too low/high",
+      "Cache hit rate <30% or caching not working",
+      "Cache performance not noticeably better than API",
+      "Similarity calculation incorrect or inefficient",
+      "Missing or inaccurate statistics",
+      "Poor error handling, crashes on failures",
+      "Code lacks documentation and clarity"
+    ]
+  }
+}

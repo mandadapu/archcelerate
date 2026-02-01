@@ -1,0 +1,215 @@
+{
+  "id": "lab-4-retry-logic",
+  "title": "Advanced Retry Logic with Circuit Breaker",
+  "description": "Implement production-grade retry logic with exponential backoff, circuit breaker pattern, and adaptive retry strategies for resilient AI applications",
+  "difficulty": "advanced",
+  "estimatedHours": 4,
+  "technologies": [
+    "Exponential Backoff",
+    "Circuit Breaker Pattern",
+    "TypeScript",
+    "Next.js",
+    "Error Classification"
+  ],
+  "learningObjectives": [
+    "Understand different retry strategies and when to use them",
+    "Implement exponential backoff with jitter for optimal retry timing",
+    "Build circuit breaker pattern to prevent cascading failures",
+    "Classify errors into retryable vs non-retryable categories",
+    "Implement adaptive retry logic based on error patterns",
+    "Monitor and optimize retry performance"
+  ],
+  "requirements": {
+    "functional": [
+      "Implement exponential backoff with configurable max retries (default: 3)",
+      "Add jitter to prevent thundering herd problem",
+      "Build circuit breaker with states: Closed, Open, Half-Open",
+      "Classify errors: retryable (503, 429, network), non-retryable (401, 400)",
+      "Implement adaptive retry (adjust strategy based on success rate)",
+      "Track retry metrics (attempts, success rate, latency)"
+    ],
+    "technical": [
+      "Use TypeScript for type-safe retry configuration",
+      "Handle timeouts and network errors appropriately",
+      "Implement proper error propagation and logging",
+      "Use Promise-based async retry handling",
+      "Add configurable retry policies per endpoint/operation",
+      "Implement graceful degradation when circuit is open"
+    ],
+    "ui": [
+      "Display retry status to users during retries (optional)",
+      "Show circuit breaker state in admin dashboard",
+      "Provide retry metrics visualization",
+      "Display error details with retry information (optional)"
+    ]
+  },
+  "successCriteria": [
+    {
+      "criterion": "Exponential backoff works correctly with proper delays",
+      "weight": 20,
+      "verification": "Test retry delays match exponential pattern (1s, 2s, 4s, etc.)"
+    },
+    {
+      "criterion": "Circuit breaker prevents excessive retries during outages",
+      "weight": 20,
+      "verification": "Simulate service failure and verify circuit opens after threshold"
+    },
+    {
+      "criterion": "Error classification correctly identifies retryable vs non-retryable",
+      "weight": 20,
+      "verification": "Test with different error types and verify retry behavior"
+    },
+    {
+      "criterion": "Jitter prevents synchronized retry storms",
+      "weight": 15,
+      "verification": "Multiple concurrent failures retry at different times"
+    },
+    {
+      "criterion": "Adaptive retry adjusts based on patterns",
+      "weight": 15,
+      "verification": "High failure rate reduces retry attempts, success increases them"
+    },
+    {
+      "criterion": "Retry metrics accurately track performance",
+      "weight": 10,
+      "verification": "Verify metrics match actual retry attempts and outcomes"
+    }
+  ],
+  "testScenarios": [
+    {
+      "scenario": "Transient error recovers with retry",
+      "steps": [
+        "Simulate API returning 503 on first call",
+        "Return 200 on second call",
+        "Verify retry happens with exponential backoff",
+        "Verify eventual success"
+      ],
+      "expectedResult": "Request succeeds after 1 retry with ~1-2s delay"
+    },
+    {
+      "scenario": "Exponential backoff timing is correct",
+      "steps": [
+        "Make API fail 3 times (503 errors)",
+        "Record timestamps of each retry attempt",
+        "Calculate delays between attempts",
+        "Verify delays follow exponential pattern"
+      ],
+      "expectedResult": "Delays are approximately: 1s, 2s, 4s (with jitter)"
+    },
+    {
+      "scenario": "Non-retryable error fails immediately",
+      "steps": [
+        "Trigger 401 Unauthorized error",
+        "Verify no retry attempts are made",
+        "Error is propagated immediately"
+      ],
+      "expectedResult": "No retries, error returned immediately"
+    },
+    {
+      "scenario": "Circuit breaker opens after failures",
+      "steps": [
+        "Configure circuit: 5 failures trigger open",
+        "Trigger 5 consecutive failures",
+        "Verify circuit opens",
+        "Make new request, verify immediate failure (no API call)",
+        "Wait for half-open timeout",
+        "Verify circuit attempts half-open state"
+      ],
+      "expectedResult": "Circuit opens after 5 failures, blocks requests, eventually tries half-open"
+    },
+    {
+      "scenario": "Jitter prevents thundering herd",
+      "steps": [
+        "Make 10 simultaneous requests that fail",
+        "Record retry timestamps for all requests",
+        "Verify retry times are spread out (not synchronized)"
+      ],
+      "expectedResult": "Retry times distributed over range, not all at same time"
+    },
+    {
+      "scenario": "Adaptive retry reduces attempts on high failure rate",
+      "steps": [
+        "Track success rate over time",
+        "When success rate drops below 50%, verify max retries reduced",
+        "When success rate improves, verify retries increase again"
+      ],
+      "expectedResult": "Max retries adapts: 3 → 1 (low success) → 3 (recovery)"
+    }
+  ],
+  "starterFiles": {
+    "lib/retry.ts": "// Advanced retry logic with exponential backoff and circuit breaker\n\nexport interface RetryConfig {\n  maxRetries: number\n  baseDelay: number // milliseconds\n  maxDelay: number // milliseconds\n  jitter: boolean\n  timeout: number // milliseconds\n}\n\nexport interface CircuitBreakerConfig {\n  failureThreshold: number\n  successThreshold: number\n  timeout: number // milliseconds before trying half-open\n}\n\nexport type CircuitState = 'CLOSED' | 'OPEN' | 'HALF_OPEN'\n\nexport interface RetryMetrics {\n  totalAttempts: number\n  successfulRetries: number\n  failedRetries: number\n  circuitState: CircuitState\n  lastError?: string\n}\n\n// Error classification\nexport function isRetryableError(error: any): boolean {\n  // TODO: Classify errors as retryable or not\n  // Retryable: 503, 429, 502, 504, network errors, timeouts\n  // Non-retryable: 400, 401, 403, 404, validation errors\n  \n  if (error.response) {\n    const status = error.response.status\n    // Check status code\n  }\n  \n  if (error.code) {\n    // Check error code (ECONNRESET, ETIMEDOUT, etc.)\n  }\n  \n  return false\n}\n\n// Calculate exponential backoff delay with jitter\nexport function calculateBackoff(\n  attempt: number,\n  config: RetryConfig\n): number {\n  // TODO: Implement exponential backoff\n  // Formula: min(baseDelay * 2^attempt, maxDelay)\n  // Add jitter if enabled: randomize delay by ±25%\n  \n  return 0\n}\n\n// Circuit Breaker class\nexport class CircuitBreaker {\n  private state: CircuitState = 'CLOSED'\n  private failureCount = 0\n  private successCount = 0\n  private lastFailureTime?: number\n  \n  constructor(private config: CircuitBreakerConfig) {}\n  \n  async execute<T>(operation: () => Promise<T>): Promise<T> {\n    // TODO: Implement circuit breaker logic\n    // 1. Check state\n    //    - OPEN: Reject immediately if timeout not elapsed\n    //    - HALF_OPEN: Allow limited requests\n    //    - CLOSED: Execute normally\n    // 2. Execute operation\n    // 3. Update state based on result\n    //    - Success: Reset failure count, close if half-open\n    //    - Failure: Increment failure count, open if threshold reached\n    \n    throw new Error('Not implemented')\n  }\n  \n  getState(): CircuitState {\n    // TODO: Return current state (handle OPEN → HALF_OPEN transition)\n    return this.state\n  }\n  \n  getMetrics(): { failureCount: number; successCount: number; state: CircuitState } {\n    return {\n      failureCount: this.failureCount,\n      successCount: this.successCount,\n      state: this.state,\n    }\n  }\n  \n  reset(): void {\n    this.state = 'CLOSED'\n    this.failureCount = 0\n    this.successCount = 0\n    this.lastFailureTime = undefined\n  }\n}\n\n// Retry with exponential backoff\nexport async function retryWithBackoff<T>(\n  operation: () => Promise<T>,\n  config: RetryConfig\n): Promise<T> {\n  let lastError: Error\n  \n  for (let attempt = 0; attempt <= config.maxRetries; attempt++) {\n    try {\n      // TODO: Execute operation with timeout\n      const result = await operation()\n      return result\n    } catch (error) {\n      lastError = error as Error\n      \n      // TODO: Check if error is retryable\n      if (!isRetryableError(error)) {\n        throw error\n      }\n      \n      // TODO: If not last attempt, wait with backoff\n      if (attempt < config.maxRetries) {\n        const delay = calculateBackoff(attempt, config)\n        // await sleep(delay)\n      }\n    }\n  }\n  \n  throw lastError!\n}\n\n// Adaptive retry manager\nexport class AdaptiveRetryManager {\n  private successRate = 1.0\n  private totalRequests = 0\n  private successfulRequests = 0\n  \n  getRetryConfig(): RetryConfig {\n    // TODO: Adjust retry config based on success rate\n    // High success rate (>80%): max 3 retries\n    // Medium success rate (50-80%): max 2 retries\n    // Low success rate (<50%): max 1 retry\n    \n    return {\n      maxRetries: 3,\n      baseDelay: 1000,\n      maxDelay: 10000,\n      jitter: true,\n      timeout: 30000,\n    }\n  }\n  \n  recordAttempt(success: boolean): void {\n    // TODO: Update success rate\n    this.totalRequests++\n    if (success) {\n      this.successfulRequests++\n    }\n    \n    // Calculate rolling success rate (last 100 requests)\n    if (this.totalRequests > 100) {\n      // Reset counters periodically\n    }\n    \n    this.successRate = this.successfulRequests / this.totalRequests\n  }\n  \n  getMetrics() {\n    return {\n      successRate: this.successRate,\n      totalRequests: this.totalRequests,\n      successfulRequests: this.successfulRequests,\n    }\n  }\n}\n",
+    "lib/resilient-api.ts": "// Resilient API client with retry and circuit breaker\nimport { CircuitBreaker, retryWithBackoff, AdaptiveRetryManager } from './retry'\nimport { OpenAI } from 'openai'\n\nconst circuitBreaker = new CircuitBreaker({\n  failureThreshold: 5,\n  successThreshold: 2,\n  timeout: 60000, // 1 minute\n})\n\nconst retryManager = new AdaptiveRetryManager()\n\nexport async function callOpenAIWithResilience(\n  messages: any[],\n  model: string = 'gpt-4'\n): Promise<string> {\n  const operation = async () => {\n    // TODO: Create OpenAI client and call API\n    // TODO: Wrap in timeout\n    // TODO: Extract response text\n    throw new Error('Not implemented')\n  }\n  \n  try {\n    // TODO: Execute with circuit breaker\n    const result = await circuitBreaker.execute(async () => {\n      // TODO: Execute with retry logic\n      const config = retryManager.getRetryConfig()\n      return await retryWithBackoff(operation, config)\n    })\n    \n    // TODO: Record success\n    retryManager.recordAttempt(true)\n    return result\n  } catch (error) {\n    // TODO: Record failure\n    retryManager.recordAttempt(false)\n    throw error\n  }\n}\n\nexport function getResilienceMetrics() {\n  return {\n    circuitBreaker: circuitBreaker.getMetrics(),\n    adaptive: retryManager.getMetrics(),\n  }\n}\n",
+    "app/api/ai/resilient/route.ts": "// AI endpoint with resilient retry logic\nimport { NextRequest, NextResponse } from 'next/server'\nimport { callOpenAIWithResilience } from '@/lib/resilient-api'\n\nexport async function POST(request: NextRequest) {\n  try {\n    const { message } = await request.json()\n    \n    // TODO: Call OpenAI with resilience (retry + circuit breaker)\n    const response = await callOpenAIWithResilience([\n      { role: 'user', content: message },\n    ])\n    \n    return NextResponse.json({ response })\n  } catch (error) {\n    console.error('Resilient API error:', error)\n    \n    // TODO: Return appropriate error based on circuit state\n    return NextResponse.json(\n      { error: 'Service temporarily unavailable' },\n      { status: 503 }\n    )\n  }\n}\n",
+    "app/api/resilience/metrics/route.ts": "// Resilience metrics endpoint\nimport { NextResponse } from 'next/server'\nimport { getResilienceMetrics } from '@/lib/resilient-api'\n\nexport async function GET() {\n  try {\n    const metrics = getResilienceMetrics()\n    return NextResponse.json(metrics)\n  } catch (error) {\n    console.error('Metrics error:', error)\n    return NextResponse.json(\n      { error: 'Failed to get metrics' },\n      { status: 500 }\n    )\n  }\n}\n"
+  },
+  "technicalGuidance": {
+    "exponentialBackoff": "Use formula: delay = min(baseDelay * 2^attempt, maxDelay). For attempt 0: 1s, attempt 1: 2s, attempt 2: 4s, attempt 3: 8s. Cap at maxDelay to prevent extremely long waits.",
+    "jitter": "Add randomness to prevent thundering herd: actualDelay = delay * (0.75 + Math.random() * 0.5). This randomizes delay by ±25%, spreading out retry attempts.",
+    "circuitBreaker": "States: CLOSED (normal), OPEN (failing), HALF_OPEN (testing recovery). Open after N failures, stay open for timeout, then try HALF_OPEN. If test succeeds, close. If fails, open again.",
+    "errorClassification": "Retryable: 429 (rate limit), 503 (unavailable), 502/504 (gateway errors), ECONNRESET, ETIMEDOUT. Non-retryable: 400 (bad request), 401 (auth), 403 (forbidden), 404 (not found).",
+    "adaptiveRetry": "Track rolling success rate (last 100 requests). Adjust maxRetries: >80% success = 3 retries, 50-80% = 2 retries, <50% = 1 retry. This reduces load during outages."
+  },
+  "deploymentRequirements": {
+    "environment": [
+      "OPENAI_API_KEY=<your-openai-key>",
+      "RETRY_MAX_ATTEMPTS=3",
+      "CIRCUIT_BREAKER_THRESHOLD=5"
+    ],
+    "services": [
+      "OpenAI API access",
+      "Next.js application deployed on Vercel"
+    ],
+    "verification": [
+      "Test retry logic with simulated failures",
+      "Verify circuit breaker opens and closes correctly",
+      "Monitor retry metrics in production",
+      "Test with actual OpenAI API rate limits"
+    ]
+  },
+  "estimatedCosts": {
+    "development": "$5-10 (OpenAI API testing with retries)",
+    "production": "$20-50/month (depends on retry overhead and API usage)",
+    "notes": "Retries add cost but improve reliability. Monitor retry rate to optimize."
+  },
+  "extensionIdeas": [
+    "Add retry budgets (max retries across all requests per time window)",
+    "Implement per-endpoint circuit breakers (separate circuits for different APIs)",
+    "Add dead letter queue for permanently failed requests",
+    "Implement sophisticated fallback strategies (cached responses, degraded mode)",
+    "Add distributed circuit breaker using Redis (shared state across instances)",
+    "Implement bulkhead pattern (isolate failures to prevent cascading)",
+    "Add ML-based adaptive retry (predict optimal retry strategy)"
+  ],
+  "rubric": {
+    "excellent": [
+      "Exponential backoff implemented correctly with proper timing",
+      "Circuit breaker works with all three states (closed, open, half-open)",
+      "Error classification accurately identifies retryable vs non-retryable",
+      "Jitter effectively prevents thundering herd problems",
+      "Adaptive retry successfully adjusts based on success rate",
+      "Comprehensive metrics track all retry activity",
+      "Clean, well-documented code with TypeScript types",
+      "Handles edge cases (timeouts, network errors, concurrent requests)"
+    ],
+    "good": [
+      "Exponential backoff works but timing may be slightly off",
+      "Circuit breaker functions but may have transition issues",
+      "Error classification mostly correct (may miss some edge cases)",
+      "Jitter present but may not prevent all synchronized retries",
+      "Adaptive retry works but adjustment logic could be refined",
+      "Metrics present but may be incomplete",
+      "Code is readable with some documentation",
+      "Handles common cases but may miss some edge cases"
+    ],
+    "needsImprovement": [
+      "Backoff timing incorrect or not exponential",
+      "Circuit breaker not working or missing states",
+      "Error classification unreliable or missing",
+      "No jitter, susceptible to thundering herd",
+      "Adaptive retry not implemented or not working",
+      "Metrics missing or inaccurate",
+      "Code hard to understand, lacks documentation",
+      "Poor error handling, crashes on edge cases"
+    ]
+  }
+}
