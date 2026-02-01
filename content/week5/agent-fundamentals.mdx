@@ -1,0 +1,580 @@
+# Agent Fundamentals
+
+Learn the core concepts of AI agents, the ReAct architecture, and when to use agents vs. simple LLM calls.
+
+## What Are AI Agents?
+
+An **AI agent** is an autonomous system that can:
+1. **Break down complex tasks** into smaller steps
+2. **Use tools** to gather information or take actions
+3. **Reason** about what to do next based on observations
+4. **Adapt** its approach when things don't go as planned
+
+Unlike a simple chatbot that responds to each message independently, an agent can pursue multi-step goals, use external tools, and make decisions based on intermediate results.
+
+### AI Agents vs. Simple LLM Calls
+
+| Simple LLM Call | AI Agent |
+|----------------|----------|
+| Single request → single response | Multi-step reasoning loop |
+| No external data access | Can call tools and APIs |
+| Stateless (forgets everything) | Maintains state across steps |
+| User drives the conversation | Agent drives task completion |
+| Fast and predictable | Slower but more capable |
+
+## When to Use Agents vs. Other Patterns
+
+**Use a simple LLM call when:**
+- The task can be completed in one response
+- No external data is needed
+- Speed and cost are priorities
+- The output format is predictable
+
+**Use an agent when:**
+- The task requires multiple steps or decisions
+- You need to access external data or APIs
+- The path to completion isn't known upfront
+- The task benefits from reasoning and adaptation
+
+**Example: Simple vs. Agent**
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY
+})
+
+// Simple LLM call - single response
+const simpleResponse = await client.messages.create({
+  model: 'claude-3-5-sonnet-20241022',
+  max_tokens: 1024,
+  messages: [{ role: 'user', content: 'What is 2+2?' }]
+})
+
+console.log(simpleResponse.content[0].text)
+// Output: "2+2 equals 4"
+
+// Agent with tools - iterative reasoning
+const agentResponse = await client.messages.create({
+  model: 'claude-3-5-sonnet-20241022',
+  max_tokens: 1024,
+  tools: [
+    {
+      name: 'calculator',
+      description: 'Perform mathematical calculations',
+      input_schema: {
+        type: 'object',
+        properties: {
+          expression: {
+            type: 'string',
+            description: 'Math expression to evaluate'
+          }
+        },
+        required: ['expression']
+      }
+    }
+  ],
+  messages: [{
+    role: 'user',
+    content: 'What is 127 * 89 + 456?'
+  }]
+})
+
+// Agent will:
+// 1. Recognize it needs the calculator tool
+// 2. Call calculator with "127 * 89 + 456"
+// 3. Receive result: 11759
+// 4. Format final answer: "127 * 89 + 456 = 11,759"
+```
+
+## The ReAct Architecture
+
+**ReAct** stands for **Reasoning + Acting**. It's the foundational pattern for building AI agents that can think through problems and take actions iteratively.
+
+### The ReAct Loop
+
+```
+User Query
+    ↓
+┌─────────────────────┐
+│  1. THOUGHT         │ ← Agent reasons about what to do
+│  (Reasoning)        │
+└─────────┬───────────┘
+          ↓
+┌─────────────────────┐
+│  2. ACTION          │ ← Agent decides to use a tool
+│  (Acting)           │
+└─────────┬───────────┘
+          ↓
+┌─────────────────────┐
+│  3. OBSERVATION     │ ← Agent sees the result
+│  (Learning)         │
+└─────────┬───────────┘
+          ↓
+    Need more info? ──Yes──→ Back to THOUGHT
+          ↓ No
+    Final Answer
+```
+
+### ReAct Components
+
+Every ReAct agent has three core components:
+
+1. **Thought**: The agent's internal reasoning
+   - "I need to find the current weather"
+   - "I should search for recent news articles"
+   - "I have enough information to answer"
+
+2. **Action**: The tool or function the agent calls
+   - `get_weather("San Francisco")`
+   - `search_web("latest AI developments")`
+   - `final_answer("Based on my research...")`
+
+3. **Observation**: The result of the action
+   - "Temperature: 65°F, Sunny"
+   - "Found 5 articles from this week"
+   - (Final answer is returned to user)
+
+### ReAct Example Trace
+
+**User Query**: "What's the weather like in the city where OpenAI is headquartered?"
+
+```
+THOUGHT 1: I need to find out where OpenAI is headquartered.
+ACTION 1: search_web("OpenAI headquarters location")
+OBSERVATION 1: "OpenAI is headquartered in San Francisco, California."
+
+THOUGHT 2: Now I need to get the current weather in San Francisco.
+ACTION 2: get_weather("San Francisco, CA")
+OBSERVATION 2: "Temperature: 62°F, Partly cloudy, Wind: 12 mph"
+
+THOUGHT 3: I have all the information needed to answer the question.
+ACTION 3: final_answer("OpenAI is headquartered in San Francisco, where it's currently 62°F and partly cloudy with 12 mph winds.")
+```
+
+## Building a Basic Agent
+
+Here's a minimal implementation of a ReAct agent using the Anthropic API:
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY
+})
+
+interface Tool {
+  name: string
+  description: string
+  input_schema: object
+  execute: (input: any) => Promise<string>
+}
+
+async function runAgent(userQuery: string, tools: Tool[], maxSteps = 10) {
+  const messages: any[] = [
+    { role: 'user', content: userQuery }
+  ]
+
+  for (let step = 0; step < maxSteps; step++) {
+    // Call Claude with available tools
+    const response = await client.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 1024,
+      tools: tools.map(t => ({
+        name: t.name,
+        description: t.description,
+        input_schema: t.input_schema
+      })),
+      messages
+    })
+
+    // Check if Claude wants to use a tool
+    const toolUseBlock = response.content.find(
+      (block: any) => block.type === 'tool_use'
+    )
+
+    if (!toolUseBlock) {
+      // No tool use - Claude provided final answer
+      const textBlock = response.content.find(
+        (block: any) => block.type === 'text'
+      )
+      return textBlock?.text || 'No response'
+    }
+
+    // Execute the tool
+    console.log(`[Step ${step + 1}] Using tool: ${toolUseBlock.name}`)
+
+    const tool = tools.find(t => t.name === toolUseBlock.name)
+    if (!tool) {
+      throw new Error(`Tool ${toolUseBlock.name} not found`)
+    }
+
+    const toolResult = await tool.execute(toolUseBlock.input)
+    console.log(`[Step ${step + 1}] Result: ${toolResult.substring(0, 100)}...`)
+
+    // Add assistant response and tool result to messages
+    messages.push({
+      role: 'assistant',
+      content: response.content
+    })
+
+    messages.push({
+      role: 'user',
+      content: [
+        {
+          type: 'tool_result',
+          tool_use_id: toolUseBlock.id,
+          content: toolResult
+        }
+      ]
+    })
+  }
+
+  throw new Error('Agent exceeded maximum steps')
+}
+
+// Example: Define tools
+const searchTool: Tool = {
+  name: 'search_web',
+  description: 'Search the web for current information',
+  input_schema: {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'Search query' }
+    },
+    required: ['query']
+  },
+  execute: async (input) => {
+    // In production, call a real search API
+    return `Search results for "${input.query}": [Mock results]`
+  }
+}
+
+const weatherTool: Tool = {
+  name: 'get_weather',
+  description: 'Get current weather for a location',
+  input_schema: {
+    type: 'object',
+    properties: {
+      location: { type: 'string', description: 'City name' }
+    },
+    required: ['location']
+  },
+  execute: async (input) => {
+    // In production, call a weather API
+    return `Weather in ${input.location}: 72°F, Sunny`
+  }
+}
+
+// Run the agent
+const answer = await runAgent(
+  "What's the weather in Paris?",
+  [searchTool, weatherTool]
+)
+
+console.log('Final Answer:', answer)
+```
+
+## Anthropic's Function Calling API
+
+Anthropic's Messages API has built-in support for function calling (tool use). Here's how it works:
+
+### 1. Define Tools
+
+Tools are defined with a JSON schema:
+
+```typescript
+const tools = [
+  {
+    name: 'get_stock_price',
+    description: 'Get the current stock price for a given ticker symbol',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ticker: {
+          type: 'string',
+          description: 'Stock ticker symbol (e.g., AAPL, GOOGL)'
+        }
+      },
+      required: ['ticker']
+    }
+  }
+]
+```
+
+### 2. Make API Call with Tools
+
+```typescript
+const response = await client.messages.create({
+  model: 'claude-3-5-sonnet-20241022',
+  max_tokens: 1024,
+  tools: tools,
+  messages: [
+    { role: 'user', content: 'What is Apple stock trading at?' }
+  ]
+})
+```
+
+### 3. Handle Tool Use Responses
+
+Claude's response will contain a `tool_use` block:
+
+```typescript
+// Response structure:
+{
+  id: 'msg_123',
+  content: [
+    {
+      type: 'text',
+      text: 'I'll check the current stock price for Apple.'
+    },
+    {
+      type: 'tool_use',
+      id: 'toolu_456',
+      name: 'get_stock_price',
+      input: { ticker: 'AAPL' }
+    }
+  ],
+  stop_reason: 'tool_use'
+}
+```
+
+### 4. Execute Tool and Return Result
+
+```typescript
+// Execute the tool
+const toolResult = await getStockPrice('AAPL') // Your implementation
+
+// Continue conversation with result
+const finalResponse = await client.messages.create({
+  model: 'claude-3-5-sonnet-20241022',
+  max_tokens: 1024,
+  tools: tools,
+  messages: [
+    { role: 'user', content: 'What is Apple stock trading at?' },
+    { role: 'assistant', content: response.content },
+    {
+      role: 'user',
+      content: [
+        {
+          type: 'tool_result',
+          tool_use_id: 'toolu_456',
+          content: '$182.45'
+        }
+      ]
+    }
+  ]
+})
+```
+
+## Agent System Prompts
+
+System prompts guide how your agent behaves. Here are patterns for different agent types:
+
+### Research Assistant
+
+```typescript
+const systemPrompt = `You are a research assistant. When given a question:
+1. Break it down into sub-questions
+2. Search for information to answer each sub-question
+3. Synthesize findings into a comprehensive answer
+4. Cite your sources
+
+Always verify information from multiple sources before presenting it as fact.`
+```
+
+### Task Automation Agent
+
+```typescript
+const systemPrompt = `You are a task automation agent. When given a task:
+1. Create a step-by-step plan
+2. Execute each step using the appropriate tool
+3. Verify each step succeeded before continuing
+4. Report progress and final results
+
+If a step fails, try an alternative approach or ask for help.`
+```
+
+### Data Analysis Agent
+
+```typescript
+const systemPrompt = `You are a data analysis agent. When analyzing data:
+1. First, explore the data structure and summary statistics
+2. Identify patterns, outliers, and interesting relationships
+3. Create visualizations to illustrate findings
+4. Provide actionable insights based on the analysis
+
+Always explain your methodology and assumptions.`
+```
+
+## Best Practices
+
+### 1. Limit Maximum Steps
+
+Always set a maximum number of steps to prevent infinite loops:
+
+```typescript
+const MAX_STEPS = 10
+
+for (let step = 0; step < MAX_STEPS; step++) {
+  // Agent logic
+}
+
+if (step >= MAX_STEPS) {
+  return "I couldn't complete this task in the allowed number of steps. Please try a simpler query."
+}
+```
+
+### 2. Log Agent Reasoning
+
+Logging helps debug and improve agents:
+
+```typescript
+interface AgentLog {
+  step: number
+  thought: string
+  action: string
+  observation: string
+  timestamp: Date
+}
+
+const logs: AgentLog[] = []
+
+// Log each step
+logs.push({
+  step: 1,
+  thought: "I need to search for current weather",
+  action: "get_weather('Paris')",
+  observation: "Temperature: 18°C, Cloudy",
+  timestamp: new Date()
+})
+```
+
+### 3. Handle Tool Failures Gracefully
+
+Tools can fail - handle errors and guide the agent to try alternatives:
+
+```typescript
+async function executeTool(tool: Tool, input: any): Promise<string> {
+  try {
+    return await tool.execute(input)
+  } catch (error) {
+    return `Error: ${tool.name} failed with message: ${error.message}. Try a different approach.`
+  }
+}
+```
+
+### 4. Provide Clear Tool Descriptions
+
+The quality of tool descriptions directly affects agent performance:
+
+```typescript
+// Good: Clear, specific, includes examples
+{
+  name: 'search_database',
+  description: 'Search the product database by name, category, or SKU. Returns up to 10 matching products with their prices and availability. Example: search_database("laptop") returns all laptop products.'
+}
+
+// Bad: Vague, no context
+{
+  name: 'search',
+  description: 'Searches stuff'
+}
+```
+
+### 5. Validate Tool Inputs
+
+Use JSON Schema to validate inputs before execution:
+
+```typescript
+import Ajv from 'ajv'
+
+const ajv = new Ajv()
+
+function validateToolInput(tool: Tool, input: any): boolean {
+  const validate = ajv.compile(tool.input_schema)
+  const valid = validate(input)
+
+  if (!valid) {
+    console.error('Validation errors:', validate.errors)
+    return false
+  }
+
+  return true
+}
+```
+
+## Common Use Cases
+
+### 1. Customer Support Agent
+
+```typescript
+const tools = [
+  lookupOrderTool,
+  checkInventoryTool,
+  createReturnTool,
+  sendEmailTool
+]
+
+const systemPrompt = `You are a customer support agent. Help users with:
+- Order tracking and status
+- Returns and refunds
+- Product availability
+- General inquiries
+
+Always be polite and verify information before taking actions.`
+```
+
+### 2. Code Assistant Agent
+
+```typescript
+const tools = [
+  searchCodebaseTool,
+  runTestsTool,
+  analyzeErrorLogsTool,
+  suggestFixTool
+]
+
+const systemPrompt = `You are a code assistant. When debugging:
+1. Search the codebase for relevant files
+2. Analyze error logs and stack traces
+3. Run tests to verify the issue
+4. Suggest fixes with explanations`
+```
+
+### 3. Content Research Agent
+
+```typescript
+const tools = [
+  searchWebTool,
+  scrapeArticleTool,
+  summarizeTool,
+  saveNotesTool
+]
+
+const systemPrompt = `You are a research agent. When researching a topic:
+1. Search for authoritative sources
+2. Extract key information from multiple articles
+3. Summarize findings objectively
+4. Organize information for easy reference`
+```
+
+## Summary
+
+In this lesson, you learned:
+
+- The difference between simple LLM calls and AI agents
+- The ReAct architecture (Reasoning + Acting loop)
+- Core agent components: thoughts, actions, observations
+- How to build a basic agent using Anthropic's API
+- When to use agents vs. other patterns
+- Best practices for agent design
+
+In the next lesson, you'll learn how to build robust tools that your agents can use effectively.
+
+## Further Reading
+
+- [Anthropic Tool Use Documentation](https://docs.anthropic.com/claude/docs/tool-use)
+- [ReAct: Synergizing Reasoning and Acting in Language Models](https://arxiv.org/abs/2210.03629)
+- [Function Calling Best Practices](https://docs.anthropic.com/claude/docs/tool-use-best-practices)
