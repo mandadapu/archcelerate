@@ -18,7 +18,7 @@ export function transformData(
 ): TransformationResult {
   try {
     // Create a safe function from the code
-    const transformFn = new Function('row', `'use strict'; ${transformCode}`)
+    const transformFn = new Function('row', `'use strict'; ${transformCode}`) as (row: any) => any
 
     const transformed = data.map(transformFn)
 
@@ -43,7 +43,7 @@ export function filterData(
   condition: string
 ): TransformationResult {
   try {
-    const conditionFn = new Function('row', `'use strict'; return ${condition}`)
+    const conditionFn = new Function('row', `'use strict'; return ${condition}`) as (row: any) => boolean
     const filtered = data.filter(conditionFn)
 
     return {
