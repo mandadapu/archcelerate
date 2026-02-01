@@ -29,13 +29,13 @@ export async function POST(request: NextRequest) {
     const { content: query } = validation.sanitized
 
     // Check rate limit (20 searches per minute)
-    const rateLimit = await checkRateLimit(user.id, 'rag_search', 20, 60)
+    const rateLimit = await checkRateLimit(user.id, 20, 60)
 
     if (!rateLimit.allowed) {
       return Response.json(
         {
           error: 'Rate limit exceeded',
-          retryAfter: rateLimit.retryAfter
+          retryAfter: Math.ceil((rateLimit.resetAt - Date.now()) / 1000)
         },
         { status: 429 }
       )

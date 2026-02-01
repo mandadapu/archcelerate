@@ -58,6 +58,10 @@ export default async function ProjectPage({ params }: Props) {
     }
   })
 
+  // Capture values for server action
+  const projectId = project.id
+  const weekId = project.weekId
+
   // Submit or update project
   async function submitProject(formData: FormData) {
     'use server'
@@ -80,12 +84,12 @@ export default async function ProjectPage({ params }: Props) {
       where: {
         userId_projectId: {
           userId: user.id,
-          projectId: project.id
+          projectId: projectId
         }
       },
       create: {
         userId: user.id,
-        projectId: project.id,
+        projectId: projectId,
         githubUrl,
         deployedUrl,
         writeupContent,
@@ -108,12 +112,12 @@ export default async function ProjectPage({ params }: Props) {
         where: {
           userId_weekId: {
             userId: user.id,
-            weekId: project.weekId
+            weekId: weekId
           }
         },
         create: {
           userId: user.id,
-          weekId: project.weekId,
+          weekId: weekId,
           conceptsTotal: 4,
           projectCompleted: true
         },
@@ -318,7 +322,7 @@ export default async function ProjectPage({ params }: Props) {
               Project Submitted!
             </CardTitle>
             <CardDescription>
-              Congratulations! You've completed Week 1. Continue to Week 2 to learn about RAG systems.
+              Congratulations! You&apos;ve completed Week 1. Continue to Week 2 to learn about RAG systems.
             </CardDescription>
           </CardHeader>
           <CardContent>

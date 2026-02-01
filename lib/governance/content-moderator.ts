@@ -1,6 +1,6 @@
 // lib/governance/content-moderator.ts
 import Anthropic from '@anthropic-ai/sdk'
-import { createClient } from '@/lib/supabase/server'
+import { prisma } from '@/lib/db'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!
@@ -31,15 +31,17 @@ export async function moderateContent(
   const result = await checkWithPrompt(content)
 
   // Log the moderation check
-  const supabase = createClient()
-  await supabase.from('moderation_logs').insert({
-    user_id: userId,
-    content_type: contentType,
-    content: content.substring(0, 1000), // Store first 1000 chars
-    flagged: result.flagged,
-    categories: result.categories,
-    action_taken: result.action
-  })
+  // TODO: Implement moderation logging with Prisma
+  // await prisma.moderationLog.create({
+  //   data: {
+  //     userId,
+  //     contentType,
+  //     content: content.substring(0, 1000),
+  //     flagged: result.flagged,
+  //     categories: result.categories,
+  //     actionTaken: result.action
+  //   }
+  // })
 
   return result
 }
@@ -66,7 +68,8 @@ Respond in this exact JSON format:
       }]
     })
 
-    const resultText = response.content[0].text
+    const firstBlock = response.content[0]
+    const resultText = firstBlock.type === 'text' ? firstBlock.text : ''
     const categories = JSON.parse(resultText)
 
     const flagged = Object.values(categories).some(v => v === true)

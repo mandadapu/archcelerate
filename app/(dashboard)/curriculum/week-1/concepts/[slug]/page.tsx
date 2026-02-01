@@ -60,6 +60,11 @@ export default async function ConceptPage({ params }: Props) {
   const previousConcept = currentIndex > 0 ? concepts[currentIndex - 1] : null
   const nextConcept = currentIndex < concepts.length - 1 ? concepts[currentIndex + 1] : null
 
+  // Capture values for server action
+  const weekId = concept.weekId
+  const conceptsCount = concepts.length
+  const nextSlug = nextConcept?.slug
+
   // Mark as completed action
   async function markComplete() {
     'use server'
@@ -77,7 +82,7 @@ export default async function ConceptPage({ params }: Props) {
       where: {
         userId_weekId: {
           userId: user.id,
-          weekId: concept.weekId
+          weekId: weekId
         }
       }
     })
@@ -91,16 +96,16 @@ export default async function ConceptPage({ params }: Props) {
       await prisma.userWeekProgress.create({
         data: {
           userId: user.id,
-          weekId: concept.weekId,
+          weekId: weekId,
           conceptsCompleted: 1,
-          conceptsTotal: concepts.length
+          conceptsTotal: conceptsCount
         }
       })
     }
 
     // Redirect to next concept or back to week overview
-    if (nextConcept) {
-      redirect(`/curriculum/week-1/concepts/${nextConcept.slug}`)
+    if (nextSlug) {
+      redirect(`/curriculum/week-1/concepts/${nextSlug}`)
     } else {
       redirect('/curriculum/week-1')
     }
