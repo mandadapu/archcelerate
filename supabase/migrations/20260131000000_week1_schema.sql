@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS public.concepts (
     content_path VARCHAR(500) NOT NULL, -- path to MDX file
     estimated_minutes INTEGER,
     created_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(week_id, order_index)
+    UNIQUE(week_id, order_index),
+    UNIQUE(week_id, slug)
 );
 
 -- Labs
@@ -30,7 +31,8 @@ CREATE TABLE IF NOT EXISTS public.labs (
     title VARCHAR(200) NOT NULL,
     description TEXT,
     exercises JSONB NOT NULL, -- array of exercise descriptions
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(week_id, slug)
 );
 
 -- Labs submissions
@@ -55,7 +57,8 @@ CREATE TABLE IF NOT EXISTS public.projects (
     requirements JSONB NOT NULL, -- array of requirements
     success_criteria JSONB NOT NULL,
     estimated_hours INTEGER,
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(week_id, slug)
 );
 
 -- Project submissions
