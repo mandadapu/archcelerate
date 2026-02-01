@@ -1,0 +1,1592 @@
+---
+id: evaluation-frameworks
+title: Evaluation Frameworks & Metrics
+description: Systematically measure and improve AI application quality
+difficulty: advanced
+estimatedMinutes: 80
+order: 3
+prerequisites:
+  - prompt-optimization
+  - testing-strategies
+tags:
+  - evaluation
+  - metrics
+  - testing
+  - frameworks
+  - quality
+  - braintrust
+---
+
+# Evaluation Frameworks & Metrics
+
+Production AI applications require rigorous evaluation frameworks to ensure quality, reliability, and continuous improvement. This lesson teaches you to build comprehensive evaluation systems, define meaningful metrics, implement automated testing pipelines, and use industry-standard frameworks like Braintrust for production-grade evaluation.
+
+## Learning Objectives
+
+By the end of this lesson, you'll understand:
+- How to design comprehensive evaluation frameworks for AI applications
+- Different evaluation types: unit testing, integration testing, end-to-end evaluation
+- Key metrics for measuring AI quality: accuracy, relevance, coherence, safety
+- LLM-as-judge patterns for automated quality assessment
+- How to build and manage evaluation datasets
+- Integration with Braintrust for production evaluation
+- Continuous evaluation pipelines for ongoing quality assurance
+- Regression testing to prevent quality degradation
+- ROI measurement and business impact analysis
+
+## Evaluation Types
+
+Different evaluation types serve different purposes in the AI development lifecycle.
+
+### 1. Unit Testing for Components
+
+Test individual components in isolation.
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+
+interface PromptComponent {
+  name: string
+  template: (vars: Record<string, any>) => string
+  expectedBehavior: {
+    minLength?: number
+    maxLength?: number
+    mustContain?: string[]
+    mustNotContain?: string[]
+    validator?: (output: string) => boolean
+  }
+}
+
+class ComponentTester {
+  private claude: Anthropic
+
+  constructor(apiKey: string) {
+    this.claude = new Anthropic({ apiKey })
+  }
+
+  async testComponent(
+    component: PromptComponent,
+    testCases: Array<{
+      input: Record<string, any>
+      description: string
+    }>
+  ): Promise<{
+    passed: number
+    failed: number
+    results: Array<{
+      case: string
+      passed: boolean
+      reason?: string
+    }>
+  }> {
+    const results: Array<{
+      case: string
+      passed: boolean
+      reason?: string
+    }> = []
+
+    for (const testCase of testCases) {
+      const prompt = component.template(testCase.input)
+
+      const response = await this.claude.messages.create({
+        model: 'claude-3-5-sonnet-20250129',
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: prompt }],
+      })
+
+      const output = response.content[0].text
+      const validation = this.validateOutput(output, component.expectedBehavior)
+
+      results.push({
+        case: testCase.description,
+        passed: validation.passed,
+        reason: validation.reason,
+      })
+    }
+
+    return {
+      passed: results.filter((r) => r.passed).length,
+      failed: results.filter((r) => !r.passed).length,
+      results,
+    }
+  }
+
+  private validateOutput(
+    output: string,
+    expected: PromptComponent['expectedBehavior']
+  ): { passed: boolean; reason?: string } {
+    // Length validation
+    const wordCount = output.split(/\s+/).length
+    if (expected.minLength && wordCount < expected.minLength) {
+      return {
+        passed: false,
+        reason: `Too short: ${wordCount} < ${expected.minLength} words`,
+      }
+    }
+    if (expected.maxLength && wordCount > expected.maxLength) {
+      return {
+        passed: false,
+        reason: `Too long: ${wordCount} > ${expected.maxLength} words`,
+      }
+    }
+
+    // Must contain
+    if (expected.mustContain) {
+      for (const phrase of expected.mustContain) {
+        if (!output.toLowerCase().includes(phrase.toLowerCase())) {
+          return {
+            passed: false,
+            reason: `Missing required phrase: "${phrase}"`,
+          }
+        }
+      }
+    }
+
+    // Must not contain
+    if (expected.mustNotContain) {
+      for (const phrase of expected.mustNotContain) {
+        if (output.toLowerCase().includes(phrase.toLowerCase())) {
+          return {
+            passed: false,
+            reason: `Contains forbidden phrase: "${phrase}"`,
+          }
+        }
+      }
+    }
+
+    // Custom validator
+    if (expected.validator && !expected.validator(output)) {
+      return { passed: false, reason: 'Failed custom validation' }
+    }
+
+    return { passed: true }
+  }
+}
+
+// Usage: Test email extraction component
+const tester = new ComponentTester(process.env.ANTHROPIC_API_KEY!)
+
+const emailExtractor: PromptComponent = {
+  name: 'email-extractor',
+  template: (vars) => `Extract all email addresses from this text:
+
+${vars.text}
+
+Return only the email addresses, one per line.`,
+  expectedBehavior: {
+    mustContain: ['@'],
+    validator: (output) => {
+      const lines = output.split('\n').filter((l) => l.trim())
+      return lines.every((line) =>
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(line.trim())
+      )
+    },
+  },
+}
+
+const testResults = await tester.testComponent(emailExtractor, [
+  {
+    input: {
+      text: 'Contact us at support@example.com or sales@example.com',
+    },
+    description: 'Extract multiple emails',
+  },
+  {
+    input: {
+      text: 'No emails here!',
+    },
+    description: 'Handle no emails gracefully',
+  },
+])
+
+console.log(`Unit tests: ${testResults.passed}/${testResults.passed + testResults.failed} passed`)
+```
+
+### 2. Integration Testing
+
+Test multiple components working together.
+
+```typescript
+interface IntegrationTest {
+  name: string
+  steps: Array<{
+    component: string
+    input: Record<string, any>
+    outputVar: string
+  }>
+  finalValidation: (outputs: Record<string, any>) => boolean
+}
+
+class IntegrationTester {
+  private claude: Anthropic
+  private components: Map<string, PromptComponent>
+
+  constructor(apiKey: string) {
+    this.claude = new Anthropic({ apiKey })
+    this.components = new Map()
+  }
+
+  registerComponent(component: PromptComponent): void {
+    this.components.set(component.name, component)
+  }
+
+  async runIntegrationTest(test: IntegrationTest): Promise<{
+    passed: boolean
+    outputs: Record<string, any>
+    error?: string
+  }> {
+    const outputs: Record<string, any> = {}
+
+    try {
+      for (const step of test.steps) {
+        const component = this.components.get(step.component)
+        if (!component) {
+          throw new Error(`Component not found: ${step.component}`)
+        }
+
+        // Interpolate previous outputs into input
+        const input = this.interpolateVars(step.input, outputs)
+        const prompt = component.template(input)
+
+        const response = await this.claude.messages.create({
+          model: 'claude-3-5-sonnet-20250129',
+          max_tokens: 1024,
+          messages: [{ role: 'user', content: prompt }],
+        })
+
+        outputs[step.outputVar] = response.content[0].text
+      }
+
+      const passed = test.finalValidation(outputs)
+      return { passed, outputs }
+    } catch (error) {
+      return {
+        passed: false,
+        outputs,
+        error: (error as Error).message,
+      }
+    }
+  }
+
+  private interpolateVars(
+    input: Record<string, any>,
+    vars: Record<string, any>
+  ): Record<string, any> {
+    const result: Record<string, any> = {}
+
+    for (const [key, value] of Object.entries(input)) {
+      if (typeof value === 'string' && value.startsWith('$')) {
+        const varName = value.slice(1)
+        result[key] = vars[varName]
+      } else {
+        result[key] = value
+      }
+    }
+
+    return result
+  }
+}
+
+// Example: Test email extraction → sentiment analysis pipeline
+const integrationTester = new IntegrationTester(process.env.ANTHROPIC_API_KEY!)
+
+integrationTester.registerComponent(emailExtractor)
+integrationTester.registerComponent({
+  name: 'sentiment-analyzer',
+  template: (vars) => `Analyze the sentiment of this text:
+
+${vars.text}
+
+Return: positive, negative, or neutral`,
+  expectedBehavior: {
+    mustContain: ['positive', 'negative', 'neutral'],
+  },
+})
+
+const pipelineTest: IntegrationTest = {
+  name: 'Email extraction + sentiment pipeline',
+  steps: [
+    {
+      component: 'email-extractor',
+      input: { text: 'Contact support@happy.com for great service!' },
+      outputVar: 'emails',
+    },
+    {
+      component: 'sentiment-analyzer',
+      input: { text: '$emails' }, // Use output from previous step
+      outputVar: 'sentiment',
+    },
+  ],
+  finalValidation: (outputs) => {
+    return outputs.emails.includes('@') && outputs.sentiment.length > 0
+  },
+}
+
+const pipelineResult = await integrationTester.runIntegrationTest(pipelineTest)
+console.log(`Integration test passed: ${pipelineResult.passed}`)
+```
+
+### 3. End-to-End Evaluation
+
+Test complete user workflows from start to finish.
+
+```typescript
+interface E2EScenario {
+  name: string
+  description: string
+  userActions: Array<{
+    action: string
+    input: Record<string, any>
+    expectedOutcome: {
+      type: 'success' | 'error'
+      contains?: string[]
+      metrics?: {
+        maxLatencyMs?: number
+        minQualityScore?: number
+      }
+    }
+  }>
+}
+
+class E2ETester {
+  private claude: Anthropic
+
+  constructor(apiKey: string) {
+    this.claude = new Anthropic({ apiKey })
+  }
+
+  async runScenario(scenario: E2EScenario): Promise<{
+    passed: boolean
+    steps: Array<{
+      action: string
+      success: boolean
+      latencyMs: number
+      reason?: string
+    }>
+  }> {
+    const steps: Array<{
+      action: string
+      success: boolean
+      latencyMs: number
+      reason?: string
+    }> = []
+
+    for (const userAction of scenario.userActions) {
+      const startTime = Date.now()
+
+      try {
+        // Execute action (simplified - replace with actual implementation)
+        const result = await this.executeAction(userAction.action, userAction.input)
+        const latencyMs = Date.now() - startTime
+
+        // Validate outcome
+        const validation = this.validateOutcome(result, userAction.expectedOutcome)
+
+        steps.push({
+          action: userAction.action,
+          success: validation.passed,
+          latencyMs,
+          reason: validation.reason,
+        })
+
+        if (!validation.passed) {
+          break // Stop on first failure
+        }
+      } catch (error) {
+        steps.push({
+          action: userAction.action,
+          success: false,
+          latencyMs: Date.now() - startTime,
+          reason: (error as Error).message,
+        })
+        break
+      }
+    }
+
+    return {
+      passed: steps.every((s) => s.success),
+      steps,
+    }
+  }
+
+  private async executeAction(
+    action: string,
+    input: Record<string, any>
+  ): Promise<string> {
+    // Simplified - implement actual action execution
+    const response = await this.claude.messages.create({
+      model: 'claude-3-5-sonnet-20250129',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: JSON.stringify(input) }],
+    })
+
+    return response.content[0].text
+  }
+
+  private validateOutcome(
+    result: string,
+    expected: E2EScenario['userActions'][0]['expectedOutcome']
+  ): { passed: boolean; reason?: string } {
+    // Check expected type
+    if (expected.type === 'error' && !result.toLowerCase().includes('error')) {
+      return { passed: false, reason: 'Expected error but got success' }
+    }
+
+    // Check contains
+    if (expected.contains) {
+      for (const phrase of expected.contains) {
+        if (!result.toLowerCase().includes(phrase.toLowerCase())) {
+          return {
+            passed: false,
+            reason: `Missing expected phrase: "${phrase}"`,
+          }
+        }
+      }
+    }
+
+    return { passed: true }
+  }
+}
+
+// Example: Customer support workflow
+const e2eTester = new E2ETester(process.env.ANTHROPIC_API_KEY!)
+
+const supportScenario: E2EScenario = {
+  name: 'Customer support inquiry',
+  description: 'User asks question, gets response, follows up',
+  userActions: [
+    {
+      action: 'Ask initial question',
+      input: { question: 'How do I reset my password?' },
+      expectedOutcome: {
+        type: 'success',
+        contains: ['password', 'reset', 'email'],
+      },
+    },
+    {
+      action: 'Follow-up question',
+      input: { question: "I didn't receive the email" },
+      expectedOutcome: {
+        type: 'success',
+        contains: ['check spam', 'resend'],
+      },
+    },
+  ],
+}
+
+const e2eResult = await e2eTester.runScenario(supportScenario)
+console.log(`E2E test passed: ${e2eResult.passed}`)
+```
+
+## Evaluation Datasets
+
+High-quality datasets are essential for reliable evaluation.
+
+### Building Evaluation Datasets
+
+```typescript
+interface EvaluationExample {
+  id: string
+  input: Record<string, any>
+  expectedOutput?: string
+  referenceOutputs?: string[] // Multiple valid outputs
+  metadata: {
+    category: string
+    difficulty: 'easy' | 'medium' | 'hard'
+    tags: string[]
+    createdAt: Date
+    source: 'manual' | 'production' | 'synthetic'
+  }
+}
+
+class DatasetBuilder {
+  private examples: EvaluationExample[] = []
+
+  // Add manual example
+  addManual(
+    input: Record<string, any>,
+    expectedOutput: string,
+    metadata: Partial<EvaluationExample['metadata']>
+  ): void {
+    this.examples.push({
+      id: this.generateId(),
+      input,
+      expectedOutput,
+      metadata: {
+        category: metadata.category || 'general',
+        difficulty: metadata.difficulty || 'medium',
+        tags: metadata.tags || [],
+        createdAt: new Date(),
+        source: 'manual',
+      },
+    })
+  }
+
+  // Sample from production logs
+  async sampleFromProduction(
+    logs: Array<{ input: any; output: string }>,
+    sampleSize: number
+  ): Promise<void> {
+    // Stratified sampling: ensure diverse examples
+    const categorized = this.categorizeExamples(logs)
+
+    for (const [category, examples] of Object.entries(categorized)) {
+      const sample = this.randomSample(
+        examples,
+        Math.ceil(sampleSize / Object.keys(categorized).length)
+      )
+
+      for (const example of sample) {
+        this.examples.push({
+          id: this.generateId(),
+          input: example.input,
+          expectedOutput: example.output,
+          metadata: {
+            category,
+            difficulty: 'medium',
+            tags: ['production'],
+            createdAt: new Date(),
+            source: 'production',
+          },
+        })
+      }
+    }
+  }
+
+  // Generate synthetic examples
+  async generateSynthetic(
+    template: string,
+    variations: number,
+    claude: Anthropic
+  ): Promise<void> {
+    const response = await claude.messages.create({
+      model: 'claude-3-5-sonnet-20250129',
+      max_tokens: 2048,
+      messages: [
+        {
+          role: 'user',
+          content: `Generate ${variations} diverse test cases for this template:
+
+${template}
+
+Return JSON array with format:
+[{ "input": {...}, "expectedOutput": "..." }]`,
+        },
+      ],
+    })
+
+    const synthetic = JSON.parse(response.content[0].text)
+
+    for (const example of synthetic) {
+      this.examples.push({
+        id: this.generateId(),
+        input: example.input,
+        expectedOutput: example.expectedOutput,
+        metadata: {
+          category: 'synthetic',
+          difficulty: 'medium',
+          tags: ['generated'],
+          createdAt: new Date(),
+          source: 'synthetic',
+        },
+      })
+    }
+  }
+
+  // Export dataset
+  export(): EvaluationExample[] {
+    return this.examples
+  }
+
+  // Dataset statistics
+  getStats(): {
+    total: number
+    bySource: Record<string, number>
+    byDifficulty: Record<string, number>
+    byCategory: Record<string, number>
+  } {
+    return {
+      total: this.examples.length,
+      bySource: this.countBy('source'),
+      byDifficulty: this.countBy('difficulty'),
+      byCategory: this.countBy('category'),
+    }
+  }
+
+  private categorizeExamples(
+    logs: Array<{ input: any; output: string }>
+  ): Record<string, typeof logs> {
+    // Simplified categorization logic
+    return {
+      short: logs.filter((l) => l.output.length < 100),
+      medium: logs.filter((l) => l.output.length >= 100 && l.output.length < 500),
+      long: logs.filter((l) => l.output.length >= 500),
+    }
+  }
+
+  private randomSample<T>(array: T[], size: number): T[] {
+    const shuffled = [...array].sort(() => Math.random() - 0.5)
+    return shuffled.slice(0, size)
+  }
+
+  private generateId(): string {
+    return `eval-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  }
+
+  private countBy(field: keyof EvaluationExample['metadata']): Record<string, number> {
+    const counts: Record<string, number> = {}
+    for (const example of this.examples) {
+      const value = String(example.metadata[field])
+      counts[value] = (counts[value] || 0) + 1
+    }
+    return counts
+  }
+}
+
+// Usage
+const builder = new DatasetBuilder()
+
+// Add manual examples
+builder.addManual(
+  { question: 'What is 2+2?' },
+  '4',
+  { category: 'math', difficulty: 'easy', tags: ['arithmetic'] }
+)
+
+// Sample from production (simulated)
+await builder.sampleFromProduction(
+  [
+    { input: { q: 'What is AI?' }, output: 'Artificial Intelligence...' },
+    { input: { q: 'Define ML' }, output: 'Machine Learning...' },
+  ],
+  10
+)
+
+// Generate synthetic examples
+await builder.generateSynthetic(
+  'Question answering for technical topics',
+  5,
+  new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+)
+
+console.log('Dataset stats:', builder.getStats())
+```
+
+## Key Metrics
+
+Define and measure quality across multiple dimensions.
+
+### Metric Framework
+
+```typescript
+interface EvaluationMetrics {
+  // Correctness
+  accuracy: number // 0-1: Correct outputs / total
+  precision: number // 0-1: Relevant results / returned results
+  recall: number // 0-1: Relevant results / total relevant
+
+  // Quality
+  coherence: number // 0-1: Logical flow and consistency
+  relevance: number // 0-1: On-topic and useful
+  completeness: number // 0-1: Includes all required elements
+
+  // Safety
+  toxicity: number // 0-1: Harmful content score
+  bias: number // 0-1: Unfair bias score
+
+  // Performance
+  latencyMs: number
+  tokenCount: number
+  costPerRequest: number
+}
+
+class MetricsCalculator {
+  // Calculate accuracy from test results
+  calculateAccuracy(
+    results: Array<{
+      expected: string
+      actual: string
+    }>
+  ): number {
+    let correct = 0
+
+    for (const result of results) {
+      if (this.isCorrect(result.expected, result.actual)) {
+        correct++
+      }
+    }
+
+    return correct / results.length
+  }
+
+  private isCorrect(expected: string, actual: string): boolean {
+    // Exact match
+    if (expected === actual) return true
+
+    // Normalized match (case-insensitive, whitespace-normalized)
+    const normalize = (s: string) =>
+      s.toLowerCase().replace(/\s+/g, ' ').trim()
+
+    return normalize(expected) === normalize(actual)
+  }
+
+  // Calculate precision and recall
+  calculatePrecisionRecall(
+    results: Array<{
+      expected: string[]
+      actual: string[]
+    }>
+  ): { precision: number; recall: number; f1: number } {
+    let totalPrecision = 0
+    let totalRecall = 0
+
+    for (const result of results) {
+      const expectedSet = new Set(result.expected.map((s) => s.toLowerCase()))
+      const actualSet = new Set(result.actual.map((s) => s.toLowerCase()))
+
+      const intersection = new Set(
+        [...actualSet].filter((x) => expectedSet.has(x))
+      )
+
+      const precision =
+        actualSet.size > 0 ? intersection.size / actualSet.size : 0
+      const recall =
+        expectedSet.size > 0 ? intersection.size / expectedSet.size : 0
+
+      totalPrecision += precision
+      totalRecall += recall
+    }
+
+    const avgPrecision = totalPrecision / results.length
+    const avgRecall = totalRecall / results.length
+
+    const f1 =
+      avgPrecision + avgRecall > 0
+        ? (2 * avgPrecision * avgRecall) / (avgPrecision + avgRecall)
+        : 0
+
+    return {
+      precision: avgPrecision,
+      recall: avgRecall,
+      f1,
+    }
+  }
+
+  // Calculate coherence (simplified - use LLM judge in production)
+  async calculateCoherence(
+    outputs: string[],
+    claude: Anthropic
+  ): Promise<number> {
+    let totalScore = 0
+
+    for (const output of outputs) {
+      const response = await claude.messages.create({
+        model: 'claude-3-5-haiku-20250129',
+        max_tokens: 50,
+        messages: [
+          {
+            role: 'user',
+            content: `Rate the coherence of this text from 0-10:
+
+"${output}"
+
+Respond with just a number.`,
+          },
+        ],
+      })
+
+      const score = parseFloat(response.content[0].text.trim())
+      totalScore += score / 10 // Normalize to 0-1
+    }
+
+    return totalScore / outputs.length
+  }
+
+  // Calculate relevance
+  async calculateRelevance(
+    queries: string[],
+    responses: string[],
+    claude: Anthropic
+  ): Promise<number> {
+    let totalScore = 0
+
+    for (let i = 0; i < queries.length; i++) {
+      const response = await claude.messages.create({
+        model: 'claude-3-5-haiku-20250129',
+        max_tokens: 50,
+        messages: [
+          {
+            role: 'user',
+            content: `Rate how relevant this response is to the query (0-10):
+
+Query: "${queries[i]}"
+Response: "${responses[i]}"
+
+Respond with just a number.`,
+          },
+        ],
+      })
+
+      const score = parseFloat(response.content[0].text.trim())
+      totalScore += score / 10
+    }
+
+    return totalScore / queries.length
+  }
+
+  // Aggregate all metrics
+  async calculateAllMetrics(
+    testResults: Array<{
+      query: string
+      expected: string
+      actual: string
+      latencyMs: number
+      tokens: number
+      cost: number
+    }>,
+    claude: Anthropic
+  ): Promise<EvaluationMetrics> {
+    const accuracy = this.calculateAccuracy(
+      testResults.map((r) => ({
+        expected: r.expected,
+        actual: r.actual,
+      }))
+    )
+
+    const coherence = await this.calculateCoherence(
+      testResults.map((r) => r.actual),
+      claude
+    )
+
+    const relevance = await this.calculateRelevance(
+      testResults.map((r) => r.query),
+      testResults.map((r) => r.actual),
+      claude
+    )
+
+    const avgLatency =
+      testResults.reduce((sum, r) => sum + r.latencyMs, 0) /
+      testResults.length
+    const avgTokens =
+      testResults.reduce((sum, r) => sum + r.tokens, 0) / testResults.length
+    const avgCost =
+      testResults.reduce((sum, r) => sum + r.cost, 0) / testResults.length
+
+    return {
+      accuracy,
+      precision: 0.85, // Implement separately
+      recall: 0.82, // Implement separately
+      coherence,
+      relevance,
+      completeness: 0.88, // Implement separately
+      toxicity: 0.02, // Implement with safety API
+      bias: 0.05, // Implement with fairness checks
+      latencyMs: avgLatency,
+      tokenCount: avgTokens,
+      costPerRequest: avgCost,
+    }
+  }
+}
+```
+
+## LLM-as-Judge Pattern
+
+Use AI to evaluate AI outputs systematically.
+
+```typescript
+interface JudgeCriteria {
+  name: string
+  description: string
+  scale: { min: number; max: number }
+  rubric: string
+}
+
+class LLMJudge {
+  private claude: Anthropic
+
+  constructor(apiKey: string) {
+    this.claude = new Anthropic({ apiKey })
+  }
+
+  async judge(
+    input: string,
+    output: string,
+    criteria: JudgeCriteria[]
+  ): Promise<{
+    overallScore: number
+    criteriaScores: Record<string, number>
+    reasoning: string
+  }> {
+    const criteriaPrompt = criteria
+      .map(
+        (c) => `${c.name} (${c.scale.min}-${c.scale.max}): ${c.description}
+Rubric: ${c.rubric}`
+      )
+      .join('\n\n')
+
+    const judgmentPrompt = `You are an expert evaluator assessing AI-generated content.
+
+INPUT:
+${input}
+
+OUTPUT TO EVALUATE:
+${output}
+
+CRITERIA:
+${criteriaPrompt}
+
+Provide your evaluation in JSON format:
+{
+  "scores": {
+    "${criteria[0].name}": <score>,
+    ...
+  },
+  "reasoning": "Brief explanation of your evaluation"
+}`
+
+    const response = await this.claude.messages.create({
+      model: 'claude-3-5-sonnet-20250129',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: judgmentPrompt }],
+    })
+
+    const result = JSON.parse(response.content[0].text)
+
+    // Calculate overall score (weighted average)
+    const scores = Object.values(result.scores) as number[]
+    const overallScore = scores.reduce((sum, s) => sum + s, 0) / scores.length
+
+    return {
+      overallScore,
+      criteriaScores: result.scores,
+      reasoning: result.reasoning,
+    }
+  }
+
+  // Pre-defined criteria for common use cases
+  static readonly QUALITY_CRITERIA: JudgeCriteria[] = [
+    {
+      name: 'accuracy',
+      description: 'Factual correctness and truthfulness',
+      scale: { min: 0, max: 10 },
+      rubric:
+        '0: Completely wrong, 5: Partially correct, 10: Fully accurate',
+    },
+    {
+      name: 'coherence',
+      description: 'Logical flow and internal consistency',
+      scale: { min: 0, max: 10 },
+      rubric: '0: Incoherent, 5: Somewhat logical, 10: Perfectly coherent',
+    },
+    {
+      name: 'completeness',
+      description: 'Includes all necessary information',
+      scale: { min: 0, max: 10 },
+      rubric: '0: Missing key info, 5: Mostly complete, 10: Fully complete',
+    },
+    {
+      name: 'relevance',
+      description: 'On-topic and addresses the input',
+      scale: { min: 0, max: 10 },
+      rubric: '0: Off-topic, 5: Partially relevant, 10: Highly relevant',
+    },
+  ]
+}
+
+// Usage
+const judge = new LLMJudge(process.env.ANTHROPIC_API_KEY!)
+
+const evaluation = await judge.judge(
+  'Explain quantum computing in simple terms',
+  'Quantum computing uses quantum mechanics principles like superposition and entanglement to perform calculations much faster than classical computers for certain problems.',
+  LLMJudge.QUALITY_CRITERIA
+)
+
+console.log('Overall score:', evaluation.overallScore.toFixed(1))
+console.log('Criteria scores:', evaluation.criteriaScores)
+console.log('Reasoning:', evaluation.reasoning)
+```
+
+## Evaluation Frameworks
+
+### Braintrust Integration
+
+```typescript
+import { Eval } from 'braintrust'
+
+interface BraintrustEvalConfig {
+  projectName: string
+  experimentName: string
+  dataset: () => Promise<any[]>
+  task: (input: any) => Promise<string>
+  scores: Array<(output: string, expected?: any) => any>
+  metadata?: Record<string, any>
+}
+
+class BraintrustEvaluator {
+  async runEvaluation(config: BraintrustEvalConfig): Promise<void> {
+    await Eval(config.experimentName, {
+      data: config.dataset,
+      task: config.task,
+      scores: config.scores,
+      metadata: {
+        ...config.metadata,
+        timestamp: new Date().toISOString(),
+      },
+    })
+
+    console.log(
+      `Evaluation complete! View results at https://braintrust.dev/app/${config.projectName}`
+    )
+  }
+
+  // Pre-built scorers
+  static createAccuracyScorer() {
+    return (output: string, expected: any) => {
+      const correct =
+        output.toLowerCase().trim() === expected.toLowerCase().trim()
+      return {
+        name: 'accuracy',
+        score: correct ? 1 : 0,
+      }
+    }
+  }
+
+  static createLengthScorer(targetLength: number, tolerance: number = 0.2) {
+    return (output: string) => {
+      const wordCount = output.split(/\s+/).length
+      const diff = Math.abs(wordCount - targetLength) / targetLength
+
+      return {
+        name: 'length_compliance',
+        score: diff <= tolerance ? 1 : Math.max(0, 1 - diff),
+      }
+    }
+  }
+
+  static createContainsScorer(requiredPhrases: string[]) {
+    return (output: string) => {
+      const lowerOutput = output.toLowerCase()
+      const matchCount = requiredPhrases.filter((phrase) =>
+        lowerOutput.includes(phrase.toLowerCase())
+      ).length
+
+      return {
+        name: 'contains_required',
+        score: matchCount / requiredPhrases.length,
+      }
+    }
+  }
+}
+
+// Example: Evaluate product description generator
+const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+
+const evaluator = new BraintrustEvaluator()
+
+await evaluator.runEvaluation({
+  projectName: 'product-descriptions',
+  experimentName: 'v2-optimized-prompt',
+  dataset: async () => [
+    {
+      input: { name: 'Wireless Headphones', features: ['30h battery', 'ANC'] },
+      expected: {
+        contains: ['battery', 'noise'],
+        wordCount: { min: 40, max: 60 },
+      },
+    },
+    {
+      input: { name: 'Smart Watch', features: ['heart rate', 'GPS'] },
+      expected: {
+        contains: ['heart', 'GPS'],
+        wordCount: { min: 40, max: 60 },
+      },
+    },
+  ],
+  task: async (input) => {
+    const response = await claude.messages.create({
+      model: 'claude-3-5-sonnet-20250129',
+      max_tokens: 200,
+      messages: [
+        {
+          role: 'user',
+          content: `Generate a professional product description:
+
+Product: ${input.name}
+Features: ${input.features.join(', ')}
+
+Requirements:
+- 2-3 sentences (40-60 words)
+- Professional tone
+- Highlight key benefits`,
+        },
+      ],
+    })
+
+    return response.content[0].text
+  },
+  scores: [
+    BraintrustEvaluator.createAccuracyScorer(),
+    BraintrustEvaluator.createLengthScorer(50, 0.2),
+    BraintrustEvaluator.createContainsScorer(['battery', 'noise']),
+  ],
+  metadata: {
+    model: 'claude-3-5-sonnet-20250129',
+    promptVersion: '2.0',
+  },
+})
+```
+
+## Continuous Evaluation
+
+Automate evaluation pipelines for ongoing quality assurance.
+
+```typescript
+interface ContinuousEvalConfig {
+  schedule: 'hourly' | 'daily' | 'weekly'
+  sampleSize: number
+  thresholds: {
+    accuracy: number
+    coherence: number
+    latency: number
+  }
+  alertWebhook?: string
+}
+
+class ContinuousEvaluationPipeline {
+  private config: ContinuousEvalConfig
+  private claude: Anthropic
+
+  constructor(config: ContinuousEvalConfig, apiKey: string) {
+    this.config = config
+    this.claude = new Anthropic({ apiKey })
+  }
+
+  async start(): void {
+    const intervalMs = this.getIntervalMs()
+
+    setInterval(async () => {
+      await this.runEvaluation()
+    }, intervalMs)
+
+    console.log(
+      `Continuous evaluation started (${this.config.schedule} schedule)`
+    )
+  }
+
+  private async runEvaluation(): Promise<void> {
+    console.log(`Running ${this.config.schedule} evaluation...`)
+
+    // Sample production data
+    const samples = await this.sampleProductionData(this.config.sampleSize)
+
+    // Run evaluation
+    const results = await this.evaluateSamples(samples)
+
+    // Check thresholds
+    const violations = this.checkThresholds(results)
+
+    if (violations.length > 0) {
+      await this.sendAlert(violations)
+    }
+
+    // Store results for trending
+    await this.storeResults(results)
+  }
+
+  private async sampleProductionData(size: number): Promise<any[]> {
+    // In production, sample from logs/database
+    return []
+  }
+
+  private async evaluateSamples(samples: any[]): Promise<{
+    accuracy: number
+    coherence: number
+    latency: number
+  }> {
+    // Run evaluation on samples
+    return {
+      accuracy: 0.92,
+      coherence: 0.88,
+      latency: 1200,
+    }
+  }
+
+  private checkThresholds(results: {
+    accuracy: number
+    coherence: number
+    latency: number
+  }): string[] {
+    const violations: string[] = []
+
+    if (results.accuracy < this.config.thresholds.accuracy) {
+      violations.push(
+        `Accuracy below threshold: ${results.accuracy} < ${this.config.thresholds.accuracy}`
+      )
+    }
+
+    if (results.coherence < this.config.thresholds.coherence) {
+      violations.push(
+        `Coherence below threshold: ${results.coherence} < ${this.config.thresholds.coherence}`
+      )
+    }
+
+    if (results.latency > this.config.thresholds.latency) {
+      violations.push(
+        `Latency above threshold: ${results.latency}ms > ${this.config.thresholds.latency}ms`
+      )
+    }
+
+    return violations
+  }
+
+  private async sendAlert(violations: string[]): Promise<void> {
+    console.error('Quality threshold violations detected:')
+    violations.forEach((v) => console.error(`  - ${v}`))
+
+    if (this.config.alertWebhook) {
+      // Send to webhook (Slack, PagerDuty, etc.)
+      await fetch(this.config.alertWebhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: `Quality Alert: ${violations.join(', ')}`,
+        }),
+      })
+    }
+  }
+
+  private async storeResults(results: any): Promise<void> {
+    // Store in database for trend analysis
+    console.log('Evaluation results stored:', results)
+  }
+
+  private getIntervalMs(): number {
+    switch (this.config.schedule) {
+      case 'hourly':
+        return 3600000
+      case 'daily':
+        return 86400000
+      case 'weekly':
+        return 604800000
+      default:
+        throw new Error(`Invalid schedule: ${this.config.schedule}`)
+    }
+  }
+}
+
+// Usage
+const pipeline = new ContinuousEvaluationPipeline(
+  {
+    schedule: 'daily',
+    sampleSize: 100,
+    thresholds: {
+      accuracy: 0.85,
+      coherence: 0.80,
+      latency: 2000,
+    },
+    alertWebhook: process.env.SLACK_WEBHOOK_URL,
+  },
+  process.env.ANTHROPIC_API_KEY!
+)
+
+await pipeline.start()
+```
+
+## Regression Testing
+
+Prevent quality degradation when making changes.
+
+```typescript
+interface RegressionTestSuite {
+  name: string
+  baselineVersion: string
+  currentVersion: string
+  testCases: Array<{
+    id: string
+    input: Record<string, any>
+    baselineOutput: string
+    baselineScore: number
+  }>
+}
+
+class RegressionTester {
+  private claude: Anthropic
+
+  constructor(apiKey: string) {
+    this.claude = new Anthropic({ apiKey })
+  }
+
+  async runRegressionTests(
+    suite: RegressionTestSuite
+  ): Promise<{
+    improved: number
+    regressed: number
+    unchanged: number
+    details: Array<{
+      testId: string
+      baseline: number
+      current: number
+      delta: number
+      status: 'improved' | 'regressed' | 'unchanged'
+    }>
+  }> {
+    const details: Array<{
+      testId: string
+      baseline: number
+      current: number
+      delta: number
+      status: 'improved' | 'regressed' | 'unchanged'
+    }> = []
+
+    for (const testCase of suite.testCases) {
+      // Generate current output
+      const currentOutput = await this.generateOutput(testCase.input)
+
+      // Score current output
+      const currentScore = await this.scoreOutput(currentOutput)
+
+      // Compare with baseline
+      const delta = currentScore - testCase.baselineScore
+      let status: 'improved' | 'regressed' | 'unchanged' = 'unchanged'
+
+      if (delta > 0.05) status = 'improved'
+      else if (delta < -0.05) status = 'regressed'
+
+      details.push({
+        testId: testCase.id,
+        baseline: testCase.baselineScore,
+        current: currentScore,
+        delta,
+        status,
+      })
+    }
+
+    return {
+      improved: details.filter((d) => d.status === 'improved').length,
+      regressed: details.filter((d) => d.status === 'regressed').length,
+      unchanged: details.filter((d) => d.status === 'unchanged').length,
+      details,
+    }
+  }
+
+  private async generateOutput(input: Record<string, any>): Promise<string> {
+    const response = await this.claude.messages.create({
+      model: 'claude-3-5-sonnet-20250129',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: JSON.stringify(input) }],
+    })
+
+    return response.content[0].text
+  }
+
+  private async scoreOutput(output: string): Promise<number> {
+    // Simplified scoring - use LLM judge in production
+    return Math.random() * 0.2 + 0.8 // 0.8-1.0
+  }
+
+  printReport(results: Awaited<ReturnType<typeof this.runRegressionTests>>): void {
+    console.log('\n' + '='.repeat(60))
+    console.log('REGRESSION TEST RESULTS')
+    console.log('='.repeat(60))
+    console.log(`\nImproved: ${results.improved}`)
+    console.log(`Regressed: ${results.regressed}`)
+    console.log(`Unchanged: ${results.unchanged}`)
+
+    if (results.regressed > 0) {
+      console.log('\nREGRESSED TESTS:')
+      results.details
+        .filter((d) => d.status === 'regressed')
+        .forEach((d) => {
+          console.log(
+            `  ${d.testId}: ${d.baseline.toFixed(2)} → ${d.current.toFixed(2)} (${d.delta.toFixed(2)})`
+          )
+        })
+    }
+
+    if (results.regressed === 0) {
+      console.log('\n✅ No regressions detected! Safe to deploy.')
+    } else {
+      console.log('\n⚠️ Regressions detected. Review before deploying.')
+    }
+  }
+}
+```
+
+## ROI Measurement
+
+Quantify the business impact of evaluation efforts.
+
+```typescript
+interface EvaluationROI {
+  evaluationCosts: {
+    apiCalls: number
+    costPerCall: number
+    engineeringHours: number
+    hourlyRate: number
+  }
+  benefits: {
+    issuesPrevented: number
+    costPerIssue: number
+    qualityImprovement: number
+    customerSatisfactionIncrease: number
+    revenueImpact: number
+  }
+}
+
+class ROICalculator {
+  static calculateEvaluationROI(metrics: EvaluationROI): {
+    totalCost: number
+    totalBenefit: number
+    netBenefit: number
+    roi: number
+  } {
+    // Calculate costs
+    const apiCost = metrics.evaluationCosts.apiCalls * metrics.evaluationCosts.costPerCall
+    const engineeringCost =
+      metrics.evaluationCosts.engineeringHours * metrics.evaluationCosts.hourlyRate
+    const totalCost = apiCost + engineeringCost
+
+    // Calculate benefits
+    const issuePreventionValue =
+      metrics.benefits.issuesPrevented * metrics.benefits.costPerIssue
+
+    const qualityValue = metrics.benefits.qualityImprovement * 10000 // $10k per 10% improvement
+
+    const customerValue =
+      metrics.benefits.customerSatisfactionIncrease * 5000 // $5k per 10% increase
+
+    const totalBenefit =
+      issuePreventionValue +
+      qualityValue +
+      customerValue +
+      metrics.benefits.revenueImpact
+
+    const netBenefit = totalBenefit - totalCost
+    const roi = (netBenefit / totalCost) * 100
+
+    return {
+      totalCost,
+      totalBenefit,
+      netBenefit,
+      roi,
+    }
+  }
+
+  static generateReport(metrics: EvaluationROI): string {
+    const result = this.calculateEvaluationROI(metrics)
+
+    return `
+Evaluation Framework ROI Analysis
+===================================
+
+Costs:
+- API calls: ${metrics.evaluationCosts.apiCalls} × $${metrics.evaluationCosts.costPerCall.toFixed(4)} = $${(metrics.evaluationCosts.apiCalls * metrics.evaluationCosts.costPerCall).toFixed(2)}
+- Engineering: ${metrics.evaluationCosts.engineeringHours}h × $${metrics.evaluationCosts.hourlyRate}/h = $${(metrics.evaluationCosts.engineeringHours * metrics.evaluationCosts.hourlyRate).toFixed(2)}
+- Total Cost: $${result.totalCost.toFixed(2)}
+
+Benefits:
+- Issues prevented: ${metrics.benefits.issuesPrevented} × $${metrics.benefits.costPerIssue} = $${(metrics.benefits.issuesPrevented * metrics.benefits.costPerIssue).toFixed(2)}
+- Quality improvement: ${(metrics.benefits.qualityImprovement * 100).toFixed(0)}%
+- Customer satisfaction: +${(metrics.benefits.customerSatisfactionIncrease * 100).toFixed(0)}%
+- Revenue impact: $${metrics.benefits.revenueImpact.toFixed(2)}
+- Total Benefit: $${result.totalBenefit.toFixed(2)}
+
+Net Benefit: $${result.netBenefit.toFixed(2)}
+ROI: ${result.roi.toFixed(0)}%
+
+${result.roi > 200 ? '✅ Excellent ROI - continue investment' : result.roi > 100 ? '✅ Good ROI - maintain current effort' : '⚠️ Review evaluation strategy'}
+    `.trim()
+  }
+}
+
+// Example
+console.log(
+  ROICalculator.generateReport({
+    evaluationCosts: {
+      apiCalls: 1000,
+      costPerCall: 0.01,
+      engineeringHours: 40,
+      hourlyRate: 100,
+    },
+    benefits: {
+      issuesPrevented: 5,
+      costPerIssue: 2000,
+      qualityImprovement: 0.15,
+      customerSatisfactionIncrease: 0.10,
+      revenueImpact: 5000,
+    },
+  })
+)
+```
+
+## Summary and Best Practices
+
+### Evaluation Framework Checklist
+
+```typescript
+const evaluationFrameworkChecklist = {
+  dataset: [
+    '✅ Build diverse evaluation dataset (100+ examples)',
+    '✅ Include edge cases and failure modes',
+    '✅ Mix manual, production, and synthetic data',
+    '✅ Stratify by difficulty and category',
+    '✅ Version and track dataset changes',
+  ],
+  metrics: [
+    '✅ Define clear success criteria',
+    '✅ Measure multiple dimensions (accuracy, quality, safety)',
+    '✅ Use LLM-as-judge for subjective metrics',
+    '✅ Track performance metrics (latency, cost)',
+    '✅ Establish baseline and thresholds',
+  ],
+  automation: [
+    '✅ Integrate with CI/CD pipeline',
+    '✅ Run regression tests before deployment',
+    '✅ Set up continuous evaluation',
+    '✅ Automate alerting for threshold violations',
+    '✅ Track metrics over time',
+  ],
+  tooling: [
+    '✅ Use Braintrust or similar framework',
+    '✅ Build evaluation dashboard',
+    '✅ Version prompts and models',
+    '✅ Store evaluation results',
+    '✅ Generate comparison reports',
+  ],
+}
+```
+
+### Common Pitfalls
+
+- **Insufficient dataset size** - Use 100+ examples minimum for reliable evaluation
+- **Narrow metrics** - Measure multiple dimensions, not just accuracy
+- **Manual-only evaluation** - Automate with LLM judges and frameworks
+- **No baseline** - Always establish baseline before optimization
+- **Ignoring edge cases** - Test failure modes and unusual inputs
+- **One-time evaluation** - Set up continuous evaluation pipelines
+
+### Next Steps
+
+You've mastered evaluation frameworks. Next, explore:
+1. **Architecture Tradeoffs** - Compare different AI approaches
+2. **Production Deployment** - Scale evaluation to production
+3. **Advanced Metrics** - Custom metrics for domain-specific needs
+
+Remember: **Evaluation is continuous**. Build systems that evolve with your application.
+
+## Practice Exercises
+
+1. **Build Evaluation Dataset**: Create 50+ test cases for a specific use case with diversity across categories and difficulty levels
+
+2. **Implement LLM Judge**: Build an automated quality scorer using Claude with custom criteria for your domain
+
+3. **Braintrust Integration**: Set up Braintrust evaluation for your application with custom scorers
+
+4. **Regression Test Suite**: Create comprehensive regression tests that prevent quality degradation
+
+5. **Continuous Evaluation**: Build a pipeline that runs daily evaluation and alerts on threshold violations
+
+6. **ROI Analysis**: Calculate the business value of your evaluation framework
+
+Start with a small evaluation dataset and expand systematically. Quality measurement is the foundation of quality improvement.
