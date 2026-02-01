@@ -1,5 +1,4 @@
 // lib/rag/document-processor.ts
-import pdf from 'pdf-parse'
 import mammoth from 'mammoth'
 import { createClient } from '@/lib/supabase/server'
 import { FixedSizeChunking, SentenceChunking, SemanticChunking } from './chunking'
@@ -70,8 +69,11 @@ export async function processDocument(
 
 async function extractText(filePath: string, fileType: string): Promise<string> {
   if (fileType === 'application/pdf') {
+    // Dynamic import to avoid Next.js build issues with pdf-parse
+    const pdfParseModule = await import('pdf-parse')
+    const pdfParse = (pdfParseModule as any).default || pdfParseModule
     const buffer = await fetch(filePath).then(r => r.arrayBuffer())
-    const data = await pdf(Buffer.from(buffer))
+    const data = await pdfParse(Buffer.from(buffer))
     return data.text
   }
 
