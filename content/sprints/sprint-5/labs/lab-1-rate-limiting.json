@@ -1,0 +1,193 @@
+{
+  "id": "lab-1-rate-limiting",
+  "title": "Build Redis-Based Rate Limiter",
+  "description": "Implement a production-ready rate limiter using Redis and sliding window algorithm to protect AI API endpoints from abuse and manage API costs",
+  "difficulty": "intermediate",
+  "estimatedHours": 3,
+  "technologies": [
+    "Upstash Redis",
+    "Next.js API Routes",
+    "Sliding Window Algorithm",
+    "TypeScript",
+    "Vercel"
+  ],
+  "learningObjectives": [
+    "Understand rate limiting fundamentals and algorithms",
+    "Implement sliding window counter algorithm with Redis",
+    "Configure multiple rate limit tiers (free, pro, enterprise)",
+    "Integrate rate limiting with AI API endpoints",
+    "Handle rate limit exceeded scenarios gracefully",
+    "Monitor and debug rate limiter performance"
+  ],
+  "requirements": {
+    "functional": [
+      "Implement sliding window rate limiter using Redis",
+      "Support multiple rate limit tiers (10/min free, 100/min pro, 1000/min enterprise)",
+      "Track requests per user/API key with accurate counting",
+      "Return rate limit headers (X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset)",
+      "Handle rate limit exceeded with 429 status and retry-after header",
+      "Protect AI API endpoints from excessive usage"
+    ],
+    "technical": [
+      "Use Upstash Redis for distributed rate limiting",
+      "Implement atomic Redis operations for accuracy",
+      "Use TypeScript for type safety",
+      "Handle concurrent requests correctly",
+      "Implement efficient cleanup of expired keys",
+      "Add comprehensive error handling for Redis failures"
+    ],
+    "ui": [
+      "Display rate limit status in API responses",
+      "Show clear error messages when rate limit exceeded",
+      "Provide countdown timer for rate limit reset (optional)",
+      "Include rate limit info in user dashboard (optional)"
+    ]
+  },
+  "successCriteria": [
+    {
+      "criterion": "Rate limiter accurately counts requests within time window",
+      "weight": 25,
+      "verification": "Test with concurrent requests and verify count accuracy"
+    },
+    {
+      "criterion": "Multiple tiers work correctly with different limits",
+      "weight": 20,
+      "verification": "Test free, pro, and enterprise tiers with appropriate limits"
+    },
+    {
+      "criterion": "Proper HTTP headers returned in all responses",
+      "weight": 15,
+      "verification": "Verify X-RateLimit-* headers present and accurate"
+    },
+    {
+      "criterion": "429 responses with retry-after when limit exceeded",
+      "weight": 15,
+      "verification": "Exceed limit and verify response code and headers"
+    },
+    {
+      "criterion": "Integration with AI API endpoints works seamlessly",
+      "weight": 15,
+      "verification": "Test rate limiting on actual AI API calls"
+    },
+    {
+      "criterion": "Redis operations are atomic and handle concurrency",
+      "weight": 10,
+      "verification": "Stress test with concurrent requests from multiple users"
+    }
+  ],
+  "testScenarios": [
+    {
+      "scenario": "User stays within rate limit",
+      "steps": [
+        "Make 5 requests as free tier user (limit: 10/min)",
+        "Verify all requests succeed with 200 status",
+        "Check X-RateLimit-Remaining decreases correctly"
+      ],
+      "expectedResult": "All requests succeed, headers show 5 remaining requests"
+    },
+    {
+      "scenario": "User exceeds rate limit",
+      "steps": [
+        "Make 11 requests as free tier user (limit: 10/min)",
+        "Verify first 10 succeed, 11th fails with 429",
+        "Check retry-after header is present"
+      ],
+      "expectedResult": "Request 11 returns 429 with retry-after header"
+    },
+    {
+      "scenario": "Different tiers have different limits",
+      "steps": [
+        "Make 50 requests as free tier (should fail at 11)",
+        "Make 50 requests as pro tier (should all succeed)",
+        "Verify limits are tier-specific"
+      ],
+      "expectedResult": "Free tier blocked at 11, pro tier all succeed"
+    },
+    {
+      "scenario": "Rate limit resets after time window",
+      "steps": [
+        "Exhaust rate limit (10 requests for free tier)",
+        "Wait 60 seconds for window to slide",
+        "Make another request",
+        "Verify request succeeds"
+      ],
+      "expectedResult": "Request succeeds after window resets"
+    },
+    {
+      "scenario": "Concurrent requests counted accurately",
+      "steps": [
+        "Send 10 simultaneous requests from same user",
+        "Verify all are counted (no race conditions)",
+        "Check counter shows 10, not less"
+      ],
+      "expectedResult": "Counter accurately reflects all concurrent requests"
+    }
+  ],
+  "starterFiles": {
+    "lib/rate-limiter.ts": "// Rate limiter implementation\nimport { Redis } from '@upstash/redis'\n\nconst redis = new Redis({\n  url: process.env.UPSTASH_REDIS_REST_URL!,\n  token: process.env.UPSTASH_REDIS_REST_TOKEN!,\n})\n\nexport type RateLimitTier = 'free' | 'pro' | 'enterprise'\n\nexport interface RateLimitConfig {\n  requests: number\n  window: number // in seconds\n}\n\nconst RATE_LIMITS: Record<RateLimitTier, RateLimitConfig> = {\n  free: { requests: 10, window: 60 },\n  pro: { requests: 100, window: 60 },\n  enterprise: { requests: 1000, window: 60 },\n}\n\nexport interface RateLimitResult {\n  success: boolean\n  limit: number\n  remaining: number\n  reset: number\n}\n\nexport async function checkRateLimit(\n  identifier: string,\n  tier: RateLimitTier = 'free'\n): Promise<RateLimitResult> {\n  // TODO: Implement sliding window rate limiter\n  // 1. Get current timestamp\n  // 2. Create Redis key: `ratelimit:${identifier}`\n  // 3. Use sorted set to track requests in window\n  // 4. Remove old requests outside window\n  // 5. Count requests in current window\n  // 6. Add current request if under limit\n  // 7. Return result with limit info\n  \n  return {\n    success: true,\n    limit: 0,\n    remaining: 0,\n    reset: 0,\n  }\n}\n",
+    "app/api/ai/chat/route.ts": "// AI chat endpoint with rate limiting\nimport { NextRequest, NextResponse } from 'next/server'\nimport { checkRateLimit } from '@/lib/rate-limiter'\nimport { getAuth } from '@clerk/nextjs/server'\n\nexport async function POST(request: NextRequest) {\n  // TODO: Get user identifier (user ID or IP address)\n  // TODO: Determine user's tier from database/session\n  // TODO: Check rate limit\n  // TODO: If exceeded, return 429 with headers\n  // TODO: If allowed, process AI request\n  // TODO: Add rate limit headers to response\n  \n  return NextResponse.json({ message: 'Not implemented' })\n}\n",
+    "middleware.ts": "// Global rate limiting middleware\nimport { NextResponse } from 'next/server'\nimport type { NextRequest } from 'next/server'\n\nexport function middleware(request: NextRequest) {\n  // TODO: Apply rate limiting to API routes\n  // TODO: Extract user identifier\n  // TODO: Check rate limit\n  // TODO: Return response with rate limit headers\n  \n  return NextResponse.next()\n}\n\nexport const config = {\n  matcher: '/api/:path*',\n}\n"
+  },
+  "technicalGuidance": {
+    "slidingWindow": "Use Redis sorted sets (ZSET) to implement sliding window. Store timestamps as scores, remove entries older than window using ZREMRANGEBYSCORE, count with ZCARD, add new request with ZADD.",
+    "atomicity": "Use Redis transactions (MULTI/EXEC) or Lua scripts to ensure atomic operations and prevent race conditions in concurrent scenarios.",
+    "cleanup": "Set TTL on Redis keys using EXPIRE to automatically clean up old data. Set TTL to 2x window duration for safety.",
+    "testing": "Use tools like Apache Bench (ab) or k6 for load testing. Test with concurrent requests to verify accuracy.",
+    "monitoring": "Log rate limit hits, track rejection rates, monitor Redis performance and memory usage."
+  },
+  "deploymentRequirements": {
+    "environment": [
+      "UPSTASH_REDIS_REST_URL=<your-redis-url>",
+      "UPSTASH_REDIS_REST_TOKEN=<your-redis-token>"
+    ],
+    "services": [
+      "Upstash Redis database (free tier sufficient for testing)",
+      "Vercel deployment (supports edge middleware)"
+    ],
+    "verification": [
+      "Test rate limiter with curl or Postman",
+      "Verify Redis keys are created correctly",
+      "Check rate limit headers in responses",
+      "Test with multiple users/API keys"
+    ]
+  },
+  "estimatedCosts": {
+    "development": "$0 (Upstash free tier: 10K requests/day)",
+    "production": "$10-50/month (Upstash paid tier for higher limits)",
+    "notes": "Costs scale with request volume. Monitor Redis usage and upgrade tier as needed."
+  },
+  "extensionIdeas": [
+    "Add burst allowance (allow short bursts above limit)",
+    "Implement per-endpoint rate limits (different limits for different APIs)",
+    "Add admin dashboard to view rate limit metrics",
+    "Create allowlist/blocklist for specific users or IPs",
+    "Implement dynamic rate limiting based on system load",
+    "Add WebSocket support for real-time rate limit updates"
+  ],
+  "rubric": {
+    "excellent": [
+      "Sliding window algorithm implemented correctly with atomic operations",
+      "All three tiers work with accurate counting",
+      "Proper headers in all responses (limit, remaining, reset)",
+      "Graceful handling of Redis failures with fallback",
+      "Comprehensive tests including concurrency scenarios",
+      "Clean, documented code with TypeScript types"
+    ],
+    "good": [
+      "Rate limiter works but may have minor accuracy issues",
+      "All tiers implemented and functional",
+      "Headers present but may be missing some fields",
+      "Basic error handling for Redis failures",
+      "Tests cover main scenarios but not edge cases",
+      "Code is readable with some documentation"
+    ],
+    "needsImprovement": [
+      "Rate limiter has accuracy issues or race conditions",
+      "Only one or two tiers implemented",
+      "Headers missing or incorrect",
+      "Poor error handling, crashes on Redis failure",
+      "Minimal or no tests",
+      "Code lacks documentation and type safety"
+    ]
+  }
+}
