@@ -98,7 +98,6 @@ export class AgentMemory {
       await supabase
         .from('agent_long_term_memory')
         .update({
-          access_count: supabase.sql`access_count + 1`,
           last_accessed_at: new Date().toISOString()
         })
         .in('id', memoryIds)
