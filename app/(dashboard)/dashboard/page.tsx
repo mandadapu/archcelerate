@@ -28,6 +28,7 @@ export default async function DashboardPage() {
   const sprint2Progress = user ? await getSprintProgress(user.id, 'sprint-2') : null
   const sprint3Progress = user ? await getSprintProgress(user.id, 'sprint-3') : null
   const sprint4Progress = user ? await getSprintProgress(user.id, 'sprint-4') : null
+  const sprint5Progress = user ? await getSprintProgress(user.id, 'sprint-5') : null
 
   return (
     <div className="space-y-6">
@@ -268,6 +269,53 @@ export default async function DashboardPage() {
               </div>
             ) : (
               <Link href="/learn/sprint-4">
+                <Button size="sm" variant="outline">
+                  Start Sprint
+                </Button>
+              </Link>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Sprint 5</CardTitle>
+            <CardDescription>Production Deployment</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-slate-600 mb-4">
+              Deploy and scale AI applications with monitoring, caching, and reliability
+            </p>
+            {sprint5Progress && sprint5Progress.totalCount > 0 ? (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-slate-600">
+                    <span>
+                      {sprint5Progress.completedCount} of {sprint5Progress.totalCount} concepts
+                    </span>
+                    <span className="font-medium">
+                      {Math.round(sprint5Progress.percentComplete)}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-200 rounded-full h-1.5">
+                    <div
+                      className="bg-blue-600 h-1.5 rounded-full transition-all"
+                      style={{ width: `${sprint5Progress.percentComplete}%` }}
+                    />
+                  </div>
+                </div>
+                <Link href="/learn/sprint-5">
+                  <Button size="sm" variant="outline" className="w-full">
+                    {sprint5Progress.completedCount === 0
+                      ? 'Start Sprint'
+                      : sprint5Progress.completedCount === sprint5Progress.totalCount
+                      ? 'Review Sprint'
+                      : 'Continue Sprint'}
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              <Link href="/learn/sprint-5">
                 <Button size="sm" variant="outline">
                   Start Sprint
                 </Button>
