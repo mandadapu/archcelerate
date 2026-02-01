@@ -11,6 +11,10 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     model: 'voyage-large-2' // 1536 dimensions, optimized for retrieval
   })
 
+  if (!response.data || !response.data[0].embedding) {
+    throw new Error('Failed to generate embedding')
+  }
+
   return response.data[0].embedding
 }
 
@@ -27,7 +31,14 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
       model: 'voyage-large-2'
     })
 
-    allEmbeddings.push(...response.data.map(d => d.embedding))
+    if (!response.data) {
+      throw new Error('Failed to generate embeddings')
+    }
+
+    allEmbeddings.push(...response.data.map(d => {
+      if (!d.embedding) throw new Error('Missing embedding in response')
+      return d.embedding
+    }))
   }
 
   return allEmbeddings
