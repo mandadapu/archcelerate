@@ -23,12 +23,12 @@ export function validateFile(file: File): { valid: boolean; error?: string } {
 
   // Check file extension
   const extension = '.' + file.name.split('.').pop()?.toLowerCase()
-  if (!RAG_CONFIG.upload.allowedExtensions.includes(extension)) {
+  if (!RAG_CONFIG.upload.allowedExtensions.includes(extension as any)) {
     return { valid: false, error: ERROR_MESSAGES.INVALID_FILE_TYPE }
   }
 
   // Check MIME type
-  if (!RAG_CONFIG.upload.allowedMimeTypes.includes(file.type)) {
+  if (!RAG_CONFIG.upload.allowedMimeTypes.includes(file.type as any)) {
     return { valid: false, error: ERROR_MESSAGES.INVALID_FILE_TYPE }
   }
 

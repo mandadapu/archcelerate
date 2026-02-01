@@ -90,7 +90,7 @@ export async function getCitationsForQuery(queryId: string): Promise<Citation[]>
 
   if (!data) return []
 
-  return data.map((c) => ({
+  return data.map((c: any) => ({
     chunkId: c.chunk_id,
     documentId: c.document_id,
     documentName: Array.isArray(c.documents) ? c.documents[0]?.filename : c.documents?.filename,

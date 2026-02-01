@@ -86,14 +86,14 @@ export function aggregateData(
       const aggregated: any = { [groupBy]: key }
 
       for (const [name, config] of Object.entries(aggregations)) {
-        const values = rows.map(r => r[config.field])
+        const values = rows.map((r: any) => r[config.field])
 
         switch (config.fn) {
           case 'sum':
-            aggregated[name] = values.reduce((a, b) => a + b, 0)
+            aggregated[name] = values.reduce((a: number, b: any) => a + b, 0)
             break
           case 'avg':
-            aggregated[name] = values.reduce((a, b) => a + b, 0) / values.length
+            aggregated[name] = values.reduce((a: number, b: any) => a + b, 0) / values.length
             break
           case 'count':
             aggregated[name] = values.length
