@@ -154,7 +154,7 @@ export default async function Week2ProjectPage() {
           <CardHeader>
             <CardTitle>Success Criteria</CardTitle>
             <CardDescription>
-              How we'll evaluate your project
+              How we&apos;ll evaluate your project
             </CardDescription>
           </CardHeader>
           <CardContent>

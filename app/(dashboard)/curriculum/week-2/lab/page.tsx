@@ -279,7 +279,7 @@ export default async function Week2LabPage() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground mb-4">
-                Excellent work! You've implemented all governance pillars. Your production AI system now has:
+                Excellent work! You&apos;ve implemented all governance pillars. Your production AI system now has:
               </p>
               <ul className="space-y-2">
                 <li className="flex items-center gap-2">

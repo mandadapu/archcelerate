@@ -106,7 +106,7 @@ export default async function GovernancePage() {
             </div>
             {budgetUsed > 80 && (
               <p className="mt-4 text-sm text-orange-600">
-                ⚠️ You've used {budgetUsed.toFixed(0)}% of your monthly budget
+                ⚠️ You&apos;ve used {budgetUsed.toFixed(0)}% of your monthly budget
               </p>
             )}
           </CardContent>
