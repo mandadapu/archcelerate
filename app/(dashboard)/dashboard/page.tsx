@@ -41,23 +41,33 @@ export default async function DashboardPage() {
     }
   }
 
-  // Fetch Week 5 progress
-  let week5Progress = null
-  if (user) {
-    const week5 = await prisma.curriculumWeek.findUnique({
-      where: { weekNumber: 5 }
+  // Fetch Week 2-8 progress
+  const weeks = await Promise.all([2, 3, 4, 5, 6, 7, 8].map(async (weekNum) => {
+    if (!user) return null
+    const week = await prisma.curriculumWeek.findUnique({
+      where: { weekNumber: weekNum }
     })
-    if (week5) {
-      week5Progress = await prisma.userWeekProgress.findUnique({
-        where: {
-          userId_weekId: {
-            userId: user.id,
-            weekId: week5.id
-          }
+    if (!week) return null
+
+    const progress = await prisma.userWeekProgress.findUnique({
+      where: {
+        userId_weekId: {
+          userId: user.id,
+          weekId: week.id
         }
-      })
-    }
-  }
+      }
+    })
+
+    return { weekNumber: weekNum, week, progress }
+  }))
+
+  const week2Data = weeks.find(w => w?.weekNumber === 2)
+  const week3Data = weeks.find(w => w?.weekNumber === 3)
+  const week4Data = weeks.find(w => w?.weekNumber === 4)
+  const week5Data = weeks.find(w => w?.weekNumber === 5)
+  const week6Data = weeks.find(w => w?.weekNumber === 6)
+  const week7Data = weeks.find(w => w?.weekNumber === 7)
+  const week8Data = weeks.find(w => w?.weekNumber === 8)
 
   // Fetch Sprint progress
   const sprint1Progress = user ? await getSprintProgress(user.id, 'sprint-1') : null
@@ -180,56 +190,172 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-2 border-indigo-200 bg-gradient-to-br from-indigo-50 to-blue-50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              Week 5
-              <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
-                NEW
-              </span>
-            </CardTitle>
-            <CardDescription>AI Agents + Agent Pattern Library (Part 1)</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-slate-600 mb-4">
-              Master agent architectures, tool calling, and build 3 agent patterns
-            </p>
-            {week5Progress ? (
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <div className="text-xs text-slate-600 mb-1">
-                    Progress: {week5Progress.conceptsCompleted}/{week5Progress.conceptsTotal} concepts
-                    {week5Progress.labCompleted && ', Lab ✓'}
-                    {week5Progress.projectCompleted && ', Project ✓'}
-                  </div>
-                  <div className="w-full bg-slate-200 rounded-full h-1.5">
-                    <div
-                      className="bg-indigo-600 h-1.5 rounded-full transition-all"
-                      style={{
-                        width: `${Math.round(
-                          ((week5Progress.conceptsCompleted / week5Progress.conceptsTotal) * 0.6 +
-                           (week5Progress.labCompleted ? 0.2 : 0) +
-                           (week5Progress.projectCompleted ? 0.2 : 0)) * 100
-                        )}%`
-                      }}
-                    />
-                  </div>
-                </div>
-                <Link href="/curriculum/week-5">
-                  <Button size="sm" variant="outline" className="w-full border-indigo-300 text-indigo-700 hover:bg-indigo-50">
-                    Continue Week 5
-                  </Button>
-                </Link>
-              </div>
-            ) : (
-              <Link href="/curriculum/week-5">
-                <Button size="sm" variant="outline" className="border-indigo-300 text-indigo-700 hover:bg-indigo-50">
-                  Start Week 5
+        {week2Data?.week && (
+          <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50">
+            <CardHeader>
+              <CardTitle>Week 2</CardTitle>
+              <CardDescription>{week2Data.week.title}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-slate-600 mb-4">
+                {week2Data.week.description}
+              </p>
+              <Link href="/curriculum/week-2">
+                <Button size="sm" variant="outline" className="border-green-300 text-green-700 hover:bg-green-50">
+                  {week2Data.progress ? 'Continue' : 'Start'} Week 2
                 </Button>
               </Link>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
+
+        {week3Data?.week && (
+          <Card className="border-2 border-teal-200 bg-gradient-to-br from-teal-50 to-cyan-50">
+            <CardHeader>
+              <CardTitle>Week 3</CardTitle>
+              <CardDescription>{week3Data.week.title}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-slate-600 mb-4">
+                {week3Data.week.description}
+              </p>
+              <Link href="/curriculum/week-3">
+                <Button size="sm" variant="outline" className="border-teal-300 text-teal-700 hover:bg-teal-50">
+                  {week3Data.progress ? 'Continue' : 'Start'} Week 3
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
+        {week4Data?.week && (
+          <Card className="border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50">
+            <CardHeader>
+              <CardTitle>Week 4</CardTitle>
+              <CardDescription>{week4Data.week.title}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-slate-600 mb-4">
+                {week4Data.week.description}
+              </p>
+              <Link href="/curriculum/week-4">
+                <Button size="sm" variant="outline" className="border-orange-300 text-orange-700 hover:bg-orange-50">
+                  {week4Data.progress ? 'Continue' : 'Start'} Week 4
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
+        {week5Data?.week && (
+          <Card className="border-2 border-indigo-200 bg-gradient-to-br from-indigo-50 to-blue-50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                Week 5
+                <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+                  NEW
+                </span>
+              </CardTitle>
+              <CardDescription>{week5Data.week.title}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-slate-600 mb-4">
+                {week5Data.week.description}
+              </p>
+              {week5Data.progress ? (
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <div className="text-xs text-slate-600 mb-1">
+                      Progress: {week5Data.progress.conceptsCompleted}/{week5Data.progress.conceptsTotal} concepts
+                      {week5Data.progress.labCompleted && ', Lab ✓'}
+                      {week5Data.progress.projectCompleted && ', Project ✓'}
+                    </div>
+                    <div className="w-full bg-slate-200 rounded-full h-1.5">
+                      <div
+                        className="bg-indigo-600 h-1.5 rounded-full transition-all"
+                        style={{
+                          width: `${Math.round(
+                            ((week5Data.progress.conceptsCompleted / week5Data.progress.conceptsTotal) * 0.6 +
+                             (week5Data.progress.labCompleted ? 0.2 : 0) +
+                             (week5Data.progress.projectCompleted ? 0.2 : 0)) * 100
+                          )}%`
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <Link href="/curriculum/week-5">
+                    <Button size="sm" variant="outline" className="w-full border-indigo-300 text-indigo-700 hover:bg-indigo-50">
+                      Continue Week 5
+                    </Button>
+                  </Link>
+                </div>
+              ) : (
+                <Link href="/curriculum/week-5">
+                  <Button size="sm" variant="outline" className="border-indigo-300 text-indigo-700 hover:bg-indigo-50">
+                    Start Week 5
+                  </Button>
+                </Link>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {week6Data?.week && (
+          <Card className="border-2 border-red-200 bg-gradient-to-br from-red-50 to-rose-50">
+            <CardHeader>
+              <CardTitle>Week 6</CardTitle>
+              <CardDescription>{week6Data.week.title}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-slate-600 mb-4">
+                {week6Data.week.description}
+              </p>
+              <Link href="/curriculum/week-6">
+                <Button size="sm" variant="outline" className="border-red-300 text-red-700 hover:bg-red-50">
+                  {week6Data.progress ? 'Continue' : 'Start'} Week 6
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
+        {week7Data?.week && (
+          <Card className="border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-yellow-50">
+            <CardHeader>
+              <CardTitle>Week 7</CardTitle>
+              <CardDescription>{week7Data.week.title}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-slate-600 mb-4">
+                {week7Data.week.description}
+              </p>
+              <Link href="/curriculum/week-7">
+                <Button size="sm" variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-50">
+                  {week7Data.progress ? 'Continue' : 'Start'} Week 7
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
+        {week8Data?.week && (
+          <Card className="border-2 border-cyan-200 bg-gradient-to-br from-cyan-50 to-sky-50">
+            <CardHeader>
+              <CardTitle>Week 8</CardTitle>
+              <CardDescription>{week8Data.week.title}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-slate-600 mb-4">
+                {week8Data.week.description}
+              </p>
+              <Link href="/curriculum/week-8">
+                <Button size="sm" variant="outline" className="border-cyan-300 text-cyan-700 hover:bg-cyan-50">
+                  {week8Data.progress ? 'Continue' : 'Start'} Week 8
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
