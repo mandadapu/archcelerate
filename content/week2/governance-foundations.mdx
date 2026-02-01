@@ -1,0 +1,556 @@
+# Governance Foundations
+
+Build production AI systems with proper guardrails, observability, and cost control from day one.
+
+## Why Governance Matters
+
+**Without governance**:
+- 💸 Unexpected $10K API bills
+- 🚨 Content policy violations in production
+- 🤷 No idea why the AI misbehaved
+- ⚖️ Compliance violations, legal risks
+- 📉 Poor user experience from abuse
+
+**With governance**:
+- ✅ Predictable, controlled costs
+- ✅ Safe, compliant outputs
+- ✅ Full audit trail for debugging
+- ✅ Protection from abuse
+- ✅ Observable system behavior
+
+## The Five Pillars of AI Governance
+
+1. **Input Validation**: Ensure requests are safe and well-formed
+2. **Content Moderation**: Filter harmful inputs and outputs
+3. **Rate Limiting**: Prevent abuse and ensure fair usage
+4. **Cost Tracking**: Monitor and control spending
+5. **Observability**: Log, monitor, and audit everything
+
+## Pillar 1: Input Validation
+
+Validate and sanitize all user inputs before processing.
+
+### Validation Strategy
+
+```typescript
+import { z } from 'zod'
+
+// Define schema
+const ChatMessageSchema = z.object({
+  content: z.string()
+    .min(1, 'Message cannot be empty')
+    .max(4000, 'Message too long'),
+  conversationId: z.string().uuid().optional()
+})
+
+// Validate input
+export async function validateInput(input: unknown) {
+  try {
+    const validated = ChatMessageSchema.parse(input)
+
+    // Sanitize content
+    const sanitized = {
+      ...validated,
+      content: sanitizeContent(validated.content)
+    }
+
+    return { valid: true, sanitized }
+
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return {
+        valid: false,
+        errors: error.errors.map(e => e.message)
+      }
+    }
+    return { valid: false, errors: ['Invalid input'] }
+  }
+}
+```
+
+### Sanitization
+
+```typescript
+function sanitizeContent(content: string): string {
+  // Remove null bytes
+  let sanitized = content.replace(/\0/g, '')
+
+  // Trim whitespace
+  sanitized = sanitized.trim()
+
+  // Basic XSS prevention
+  sanitized = sanitized
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
+  return sanitized
+}
+```
+
+**Key validation rules**:
+- **Length limits**: Prevent token limit exhaustion
+- **Type checking**: Ensure correct data types
+- **Sanitization**: Remove malicious content
+- **Fail fast**: Reject invalid requests immediately
+
+## Pillar 2: Content Moderation
+
+Filter harmful content before and after LLM processing.
+
+### Input Moderation
+
+```typescript
+export async function moderateContent(
+  userId: string,
+  content: string,
+  contentType: 'input' | 'output'
+) {
+  // Use LLM for content classification
+  const response = await anthropic.messages.create({
+    model: 'claude-3-haiku-20240307', // Fast, cheap
+    max_tokens: 100,
+    messages: [{
+      role: 'user',
+      content: `Analyze for policy violations. JSON only:
+
+Content: "${content}"
+
+{
+  "hate": boolean,
+  "sexual": boolean,
+  "violence": boolean,
+  "self_harm": boolean,
+  "harassment": boolean
+}`
+    }]
+  })
+
+  const categories = JSON.parse(response.content[0].text)
+  const flagged = Object.values(categories).some(v => v === true)
+
+  // Log the moderation check
+  await logModeration(userId, content, flagged, categories)
+
+  return {
+    flagged,
+    categories,
+    action: flagged ? 'blocked' : 'allowed'
+  }
+}
+```
+
+### Moderation Strategy
+
+```typescript
+// In API endpoint
+export async function POST(request: Request) {
+  const { content } = await request.json()
+
+  // 1. Moderate user input
+  const inputMod = await moderateContent(userId, content, 'input')
+
+  if (inputMod.flagged) {
+    return Response.json({
+      error: 'Content policy violation',
+      categories: inputMod.categories
+    }, { status: 400 })
+  }
+
+  // 2. Call LLM
+  const response = await callLLM(content)
+
+  // 3. Moderate LLM output
+  const outputMod = await moderateContent(userId, response, 'output')
+
+  if (outputMod.flagged) {
+    return Response.json({
+      error: 'Generated content violates policy'
+    }, { status: 500 })
+  }
+
+  return Response.json({ message: response })
+}
+```
+
+**Best practices**:
+- **Moderate both input and output**: Don't trust either
+- **Use fast models**: Haiku is perfect for moderation
+- **Log everything**: Track all moderation decisions
+- **Fail gracefully**: If moderation fails, default to allow
+
+## Pillar 3: Rate Limiting
+
+Prevent abuse and ensure fair resource allocation.
+
+### Sliding Window Rate Limiting
+
+```typescript
+import { Redis } from '@upstash/redis'
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!
+})
+
+export async function checkRateLimit(
+  userId: string,
+  limit: number = 10,
+  windowSeconds: number = 60
+) {
+  const key = `rate_limit:${userId}`
+  const now = Date.now()
+  const windowStart = now - windowSeconds * 1000
+
+  // Remove old entries
+  await redis.zremrangebyscore(key, 0, windowStart)
+
+  // Count requests in window
+  const count = await redis.zcard(key)
+
+  if (count >= limit) {
+    const oldest = await redis.zrange(key, 0, 0, { withScores: true })
+    const resetAt = Number(oldest[1]) + windowSeconds * 1000
+
+    return { allowed: false, remaining: 0, resetAt }
+  }
+
+  // Add current request
+  await redis.zadd(key, { score: now, member: `${now}-${Math.random()}` })
+  await redis.expire(key, windowSeconds)
+
+  return {
+    allowed: true,
+    remaining: limit - count - 1,
+    resetAt: now + windowSeconds * 1000
+  }
+}
+```
+
+### Rate Limit Response
+
+```typescript
+// In API endpoint
+const rateLimit = await checkRateLimit(userId, 10, 60)
+
+if (!rateLimit.allowed) {
+  return Response.json(
+    { error: 'Rate limit exceeded', resetAt: rateLimit.resetAt },
+    {
+      status: 429,
+      headers: {
+        'X-RateLimit-Limit': '10',
+        'X-RateLimit-Remaining': '0',
+        'X-RateLimit-Reset': rateLimit.resetAt.toString()
+      }
+    }
+  )
+}
+```
+
+**Rate limiting strategies**:
+- **Per-user limits**: 10 requests/minute
+- **Per-IP limits**: 100 requests/hour
+- **Tier-based limits**: Free vs. paid users
+- **Endpoint-specific**: Chat vs. code review vs. labs
+
+## Pillar 4: Cost Tracking
+
+Monitor and control AI spending with budget management.
+
+### Cost Calculation
+
+```typescript
+export function calculateCost(
+  model: string,
+  inputTokens: number,
+  outputTokens: number
+): number {
+  const pricing = {
+    'claude-3-5-sonnet-20241022': { input: 0.003, output: 0.015 },
+    'claude-3-haiku-20240307': { input: 0.00025, output: 0.00125 }
+  }
+
+  const { input, output } = pricing[model]
+  return (inputTokens / 1000) * input + (outputTokens / 1000) * output
+}
+```
+
+### Budget Enforcement
+
+```typescript
+export async function checkBudget(userId: string) {
+  const supabase = createClient()
+
+  let { data: budget } = await supabase
+    .from('user_budgets')
+    .select('*')
+    .eq('user_id', userId)
+    .single()
+
+  if (!budget) {
+    // Create default budget
+    budget = await createDefaultBudget(userId)
+  }
+
+  // Check if budget period needs reset
+  const daysSinceStart =
+    (Date.now() - new Date(budget.budget_period_start).getTime())
+    / (1000 * 60 * 60 * 24)
+
+  if (daysSinceStart >= 30) {
+    await resetBudget(userId)
+    budget.current_spend = 0
+    budget.budget_exceeded = false
+  }
+
+  const remaining = budget.monthly_budget - budget.current_spend
+
+  return {
+    withinBudget: !budget.budget_exceeded && remaining > 0,
+    currentSpend: budget.current_spend,
+    monthlyBudget: budget.monthly_budget,
+    remaining: Math.max(0, remaining)
+  }
+}
+```
+
+### Cost Tracking
+
+```typescript
+// After successful LLM call
+const cost = calculateCost(model, inputTokens, outputTokens)
+
+await trackCost(userId, cost)
+
+// Track cost function
+async function trackCost(userId: string, cost: number) {
+  const { data: budget } = await supabase
+    .from('user_budgets')
+    .select('*')
+    .eq('user_id', userId)
+    .single()
+
+  if (budget) {
+    const newSpend = budget.current_spend + cost
+    const exceeded = newSpend >= budget.monthly_budget
+
+    await supabase
+      .from('user_budgets')
+      .update({
+        current_spend: newSpend,
+        budget_exceeded: exceeded
+      })
+      .eq('user_id', userId)
+  }
+}
+```
+
+**Budget best practices**:
+- **Set default limits**: $10/month for free tier
+- **Monthly resets**: Automatic budget refresh
+- **Warnings**: Alert at 80% usage
+- **Soft vs. hard limits**: Warning vs. blocking
+
+## Pillar 5: Observability
+
+Log everything for debugging, compliance, and optimization.
+
+### Request Logging
+
+```typescript
+export async function logLLMRequest(request: {
+  userId: string
+  endpoint: string
+  model: string
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  cost: number
+  latencyMs: number
+  status: 'success' | 'error' | 'rate_limited'
+  errorMessage?: string
+}) {
+  await supabase.from('llm_requests').insert({
+    user_id: request.userId,
+    endpoint: request.endpoint,
+    model: request.model,
+    prompt_tokens: request.promptTokens,
+    completion_tokens: request.completionTokens,
+    total_tokens: request.totalTokens,
+    cost: request.cost,
+    latency_ms: request.latencyMs,
+    status: request.status,
+    error_message: request.errorMessage
+  })
+}
+```
+
+### Audit Logging
+
+```typescript
+export async function logAuditEvent(
+  userId: string,
+  action: string,
+  resourceType: string,
+  resourceId?: string,
+  metadata?: Record<string, any>
+) {
+  await supabase.from('audit_logs').insert({
+    user_id: userId,
+    action,
+    resource_type: resourceType,
+    resource_id: resourceId,
+    metadata,
+    ip_address: getClientIP(),
+    user_agent: getUserAgent()
+  })
+}
+```
+
+### Usage Analytics
+
+```typescript
+export async function getUsageStats(userId: string, days: number = 30) {
+  const since = new Date()
+  since.setDate(since.getDate() - days)
+
+  const { data: requests } = await supabase
+    .from('llm_requests')
+    .select('*')
+    .eq('user_id', userId)
+    .gte('created_at', since.toISOString())
+
+  const totalCost = requests.reduce((sum, r) => sum + r.cost, 0)
+  const totalTokens = requests.reduce((sum, r) => sum + r.total_tokens, 0)
+  const avgLatency = requests.reduce((sum, r) => sum + r.latency_ms, 0) / requests.length
+
+  // Group by day
+  const dailyStats = requests.reduce((acc, r) => {
+    const day = r.created_at.split('T')[0]
+    if (!acc[day]) {
+      acc[day] = { requests: 0, cost: 0, tokens: 0 }
+    }
+    acc[day].requests++
+    acc[day].cost += r.cost
+    acc[day].tokens += r.total_tokens
+    return acc
+  }, {})
+
+  return { totalRequests: requests.length, totalCost, totalTokens, avgLatency, dailyStats }
+}
+```
+
+## Putting It All Together
+
+### Complete Governed API Endpoint
+
+```typescript
+export async function POST(request: Request) {
+  const startTime = Date.now()
+  const supabase = createClient()
+
+  try {
+    // 1. Authentication
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+    // 2. Validation
+    const body = await request.json()
+    const validation = await validateInput(body)
+    if (!validation.valid) {
+      await logAuditEvent(user.id, 'validation_failed', 'message')
+      return Response.json({ error: 'Invalid input', details: validation.errors }, { status: 400 })
+    }
+
+    // 3. Rate limiting
+    const rateLimit = await checkRateLimit(user.id, 10, 60)
+    if (!rateLimit.allowed) {
+      await logLLMRequest({ userId: user.id, status: 'rate_limited', ...})
+      return Response.json({ error: 'Rate limit exceeded' }, { status: 429 })
+    }
+
+    // 4. Budget check
+    const budget = await checkBudget(user.id)
+    if (!budget.withinBudget) {
+      return Response.json({ error: 'Budget exceeded' }, { status: 402 })
+    }
+
+    // 5. Input moderation
+    const inputMod = await moderateContent(user.id, content, 'input')
+    if (inputMod.flagged) {
+      return Response.json({ error: 'Content policy violation' }, { status: 400 })
+    }
+
+    // 6. LLM call
+    const response = await callLLM(content)
+    const latencyMs = Date.now() - startTime
+
+    // 7. Output moderation
+    const outputMod = await moderateContent(user.id, response, 'output')
+    if (outputMod.flagged) {
+      return Response.json({ error: 'Generated content violates policy' }, { status: 500 })
+    }
+
+    // 8. Logging & cost tracking
+    const cost = calculateCost(model, inputTokens, outputTokens)
+    await logLLMRequest({ userId: user.id, status: 'success', cost, latencyMs, ...})
+    await trackCost(user.id, cost)
+    await logAuditEvent(user.id, 'chat_message_sent', 'conversation')
+
+    // 9. Return response
+    return Response.json({ message: response, usage: { cost }, budget, rateLimit })
+
+  } catch (error) {
+    await logLLMRequest({ userId: user.id, status: 'error', errorMessage: error.message, ...})
+    return Response.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+```
+
+## Governance Dashboard
+
+Build visibility into your AI system:
+
+```typescript
+// Dashboard showing:
+- Total spend (last 30 days)
+- API request count
+- Average latency
+- Flagged content count
+- Budget usage (% of monthly limit)
+- Recent audit logs
+- Daily usage trends
+```
+
+## Key Takeaways
+
+1. **Governance is not optional**: Required for production AI
+2. **Implement early**: Easier to add from the start
+3. **Five pillars**: Validation, moderation, rate limiting, cost tracking, observability
+4. **Log everything**: You'll need it for debugging
+5. **Fail gracefully**: Errors will happen, handle them well
+6. **Monitor continuously**: Dashboards and alerts are essential
+
+## Compliance Considerations
+
+**GDPR/Privacy**:
+- Don't log sensitive user data
+- Allow users to export/delete their data
+- Anonymize logs when possible
+
+**Terms of Service**:
+- Clearly communicate rate limits
+- Explain budget policies
+- Define acceptable use
+
+**Audit Trail**:
+- Immutable logs for compliance
+- Retention policies (e.g., 90 days)
+- Export capabilities for audits
+
+## Next Steps
+
+- Build your governance dashboard
+- Implement all five pillars
+- Test governance under load
+- Monitor and iterate based on usage patterns
