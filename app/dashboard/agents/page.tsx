@@ -1,8 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 import { AgentMetricsCard } from '@/components/dashboard/agent-metrics'
+import { PlayCircle } from 'lucide-react'
 
 export default async function AgentsDashboardPage() {
   const supabase = createClient()
@@ -57,11 +59,19 @@ export default async function AgentsDashboardPage() {
 
   return (
     <div className="container mx-auto py-8 space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold">Agent Dashboard</h1>
-        <p className="text-muted-foreground">
-          Monitor and manage your AI agent executions
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Agent Dashboard</h1>
+          <p className="text-muted-foreground">
+            Monitor and manage your AI agent executions
+          </p>
+        </div>
+        <Link href="/dashboard/agents/playground">
+          <Button size="lg" className="gap-2">
+            <PlayCircle className="h-5 w-5" />
+            Agent Playground
+          </Button>
+        </Link>
       </div>
 
       <AgentMetricsCard metrics={metrics} />
