@@ -1,0 +1,419 @@
+# API Integration Patterns
+
+Learn how to integrate LLM APIs into production applications with proper error handling, streaming, and cost controls.
+
+## REST API Basics
+
+All major LLM providers expose REST APIs for text generation.
+
+### Basic Request Structure
+
+```typescript
+// Anthropic Claude API example
+import Anthropic from '@anthropic-ai/sdk'
+
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY
+})
+
+async function generateText(prompt: string) {
+  const response = await client.messages.create({
+    model: 'claude-3-5-sonnet-20241022',
+    max_tokens: 1024,
+    messages: [
+      { role: 'user', content: prompt }
+    ]
+  })
+
+  return response.content[0].text
+}
+```
+
+### Request Parameters
+
+| Parameter | Purpose | Typical Values |
+|-----------|---------|----------------|
+| `model` | Which model to use | 'claude-3-5-sonnet-20241022' |
+| `max_tokens` | Maximum response length | 1024-4096 for most tasks |
+| `temperature` | Randomness (0-1) | 0.7 for creative, 0.2 for factual |
+| `messages` | Conversation history | Array of {role, content} |
+| `system` | System prompt | Role and behavior instructions |
+
+## Streaming Responses
+
+For better UX, stream responses token-by-token instead of waiting for the full response.
+
+### Server-Sent Events (SSE)
+
+```typescript
+// Backend: Stream from Claude API
+async function* streamChatResponse(messages: Message[]) {
+  const stream = await client.messages.create({
+    model: 'claude-3-5-sonnet-20241022',
+    max_tokens: 1024,
+    messages,
+    stream: true
+  })
+
+  for await (const chunk of stream) {
+    if (chunk.type === 'content_block_delta' &&
+        chunk.delta.type === 'text_delta') {
+      yield chunk.delta.text
+    }
+  }
+}
+
+// API Route (Next.js)
+export async function POST(req: Request) {
+  const { messages } = await req.json()
+
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream({
+    async start(controller) {
+      for await (const text of streamChatResponse(messages)) {
+        controller.enqueue(encoder.encode(text))
+      }
+      controller.close()
+    }
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Transfer-Encoding': 'chunked'
+    }
+  })
+}
+```
+
+### Frontend: Consuming SSE
+
+```typescript
+// React component
+async function sendMessage(message: string) {
+  setLoading(true)
+  setResponse('')
+
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: [...history, { role: 'user', content: message }] })
+  })
+
+  const reader = res.body?.getReader()
+  const decoder = new TextDecoder()
+
+  while (true) {
+    const { done, value } = await reader!.read()
+    if (done) break
+
+    const text = decoder.decode(value)
+    setResponse(prev => prev + text)
+  }
+
+  setLoading(false)
+}
+```
+
+## Error Handling and Retries
+
+LLM APIs can fail for various reasons. Implement robust error handling.
+
+### Common Error Types
+
+1. **Rate Limiting (429)**: Too many requests
+2. **Context Length Exceeded (400)**: Input too long
+3. **Authentication (401)**: Invalid API key
+4. **Service Unavailable (503)**: API temporarily down
+5. **Timeout**: Request took too long
+
+### Retry Logic with Exponential Backoff
+
+```typescript
+async function callWithRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  baseDelay = 1000
+): Promise<T> {
+  let lastError: Error
+
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn()
+    } catch (error: any) {
+      lastError = error
+
+      // Don't retry on client errors (400, 401, 403)
+      if (error.status >= 400 && error.status < 500 && error.status !== 429) {
+        throw error
+      }
+
+      // Calculate delay with exponential backoff + jitter
+      const delay = baseDelay * Math.pow(2, i) + Math.random() * 1000
+      console.log(`Retry ${i + 1}/${maxRetries} after ${delay}ms`)
+
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
+  }
+
+  throw lastError!
+}
+
+// Usage
+const response = await callWithRetry(() =>
+  client.messages.create({
+    model: 'claude-3-5-sonnet-20241022',
+    max_tokens: 1024,
+    messages: [{ role: 'user', content: prompt }]
+  })
+)
+```
+
+### Graceful Degradation
+
+```typescript
+async function generateWithFallback(prompt: string): Promise<string> {
+  try {
+    // Try primary model (GPT-4)
+    return await callGPT4(prompt)
+  } catch (error) {
+    console.error('GPT-4 failed, falling back to Claude', error)
+    try {
+      // Fallback to Claude
+      return await callClaude(prompt)
+    } catch (error2) {
+      console.error('Claude failed, falling back to GPT-3.5', error2)
+      // Final fallback to cheaper model
+      return await callGPT35(prompt)
+    }
+  }
+}
+```
+
+## Rate Limiting
+
+Prevent API abuse and control costs with rate limiting.
+
+### Redis-Based Rate Limiter
+
+```typescript
+// lib/rate-limit.ts
+import { Redis } from '@upstash/redis'
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!
+})
+
+export async function checkRateLimit(
+  userId: string,
+  limit: number = 10,
+  windowSeconds: number = 60
+): Promise<{ allowed: boolean; remaining: number }> {
+  const key = `rate_limit:${userId}`
+  const now = Date.now()
+  const windowStart = now - windowSeconds * 1000
+
+  // Remove old entries
+  await redis.zremrangebyscore(key, 0, windowStart)
+
+  // Count requests in current window
+  const count = await redis.zcard(key)
+
+  if (count >= limit) {
+    return { allowed: false, remaining: 0 }
+  }
+
+  // Add current request
+  await redis.zadd(key, { score: now, member: `${now}` })
+  await redis.expire(key, windowSeconds)
+
+  return { allowed: true, remaining: limit - count - 1 }
+}
+
+// API route usage
+export async function POST(req: Request) {
+  const session = await getSession()
+  const { allowed, remaining } = await checkRateLimit(session.user.id)
+
+  if (!allowed) {
+    return new Response('Rate limit exceeded', {
+      status: 429,
+      headers: { 'X-RateLimit-Remaining': '0' }
+    })
+  }
+
+  // Process request...
+  return new Response(result, {
+    headers: { 'X-RateLimit-Remaining': remaining.toString() }
+  })
+}
+```
+
+## Cost Controls
+
+### Budget Tracking
+
+```typescript
+// Track costs per user
+async function trackCost(userId: string, tokens: number, model: string) {
+  const cost = calculateCost(tokens, model)
+
+  await db.aiUsage.create({
+    data: {
+      userId,
+      tokens,
+      cost,
+      model,
+      timestamp: new Date()
+    }
+  })
+
+  // Check if user exceeded budget
+  const monthlyUsage = await db.aiUsage.aggregate({
+    where: {
+      userId,
+      timestamp: { gte: startOfMonth(new Date()) }
+    },
+    _sum: { cost: true }
+  })
+
+  if (monthlyUsage._sum.cost! > USER_BUDGET_LIMIT) {
+    throw new Error('Monthly budget exceeded')
+  }
+}
+
+function calculateCost(tokens: number, model: string): number {
+  const pricing: Record<string, { input: number; output: number }> = {
+    'claude-3-5-sonnet': { input: 0.003, output: 0.015 }, // per 1K tokens
+    'gpt-4-turbo': { input: 0.01, output: 0.03 },
+    'gpt-3.5-turbo': { input: 0.0005, output: 0.0015 }
+  }
+
+  const { input, output } = pricing[model] || pricing['gpt-3.5-turbo']
+  // Simplified: assume 50/50 input/output split
+  return (tokens / 1000) * ((input + output) / 2)
+}
+```
+
+## API Key Management
+
+### Environment-Based Configuration
+
+```typescript
+// lib/ai-client.ts
+import Anthropic from '@anthropic-ai/sdk'
+
+export function getAIClient() {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY not configured')
+  }
+
+  return new Anthropic({ apiKey })
+}
+
+// Usage
+const client = getAIClient()
+```
+
+### Security Best Practices
+
+1. **Never expose API keys in client-side code**
+   - Always call LLM APIs from server-side routes
+
+2. **Use environment variables**
+   ```bash
+   # .env.local
+   ANTHROPIC_API_KEY=sk-ant-...
+   OPENAI_API_KEY=sk-...
+   ```
+
+3. **Rotate keys regularly**
+   - Set reminders to rotate API keys every 90 days
+
+4. **Monitor for leaked keys**
+   - Use tools like `git-secrets` to prevent commits with keys
+   - Enable GitHub secret scanning
+
+## Practical Exercises
+
+1. **Build a streaming chat**: Implement SSE streaming in a Next.js API route
+2. **Add retry logic**: Wrap API calls with exponential backoff
+3. **Implement rate limiting**: Use Redis to limit requests per user
+4. **Cost dashboard**: Track and display API costs per user
+
+## Code Example: Complete Integration
+
+```typescript
+// lib/ai-service.ts
+import Anthropic from '@anthropic-ai/sdk'
+import { checkRateLimit } from './rate-limit'
+import { trackCost } from './cost-tracking'
+import { callWithRetry } from './retry'
+
+export class AIService {
+  private client: Anthropic
+
+  constructor() {
+    this.client = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY!
+    })
+  }
+
+  async chat(userId: string, messages: Message[]): Promise<string> {
+    // Check rate limit
+    const { allowed } = await checkRateLimit(userId, 10, 60)
+    if (!allowed) throw new Error('Rate limit exceeded')
+
+    // Call API with retry
+    const response = await callWithRetry(() =>
+      this.client.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 1024,
+        messages
+      })
+    )
+
+    // Track cost
+    await trackCost(
+      userId,
+      response.usage.input_tokens + response.usage.output_tokens,
+      'claude-3-5-sonnet'
+    )
+
+    return response.content[0].text
+  }
+
+  async *streamChat(userId: string, messages: Message[]) {
+    const { allowed } = await checkRateLimit(userId, 10, 60)
+    if (!allowed) throw new Error('Rate limit exceeded')
+
+    const stream = await this.client.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 1024,
+      messages,
+      stream: true
+    })
+
+    let totalTokens = 0
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta') {
+        yield chunk.delta.text
+      }
+      if (chunk.type === 'message_delta') {
+        totalTokens = chunk.usage.output_tokens
+      }
+    }
+
+    await trackCost(userId, totalTokens, 'claude-3-5-sonnet')
+  }
+}
+```
+
+## Further Reading
+
+- [Anthropic API Documentation](https://docs.anthropic.com/claude/reference)
+- [OpenAI API Reference](https://platform.openai.com/docs/api-reference)
+- [Server-Sent Events Specification](https://html.spec.whatwg.org/multipage/server-sent-events.html)
