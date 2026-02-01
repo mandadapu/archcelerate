@@ -64,6 +64,11 @@ export default async function LabPage({ params }: Props) {
     submissions.map(s => [s.exerciseNumber, s])
   )
 
+  // Capture values for server action
+  const labId = lab.id
+  const weekId = lab.weekId
+  const totalExercises = exercises.length
+
   // Submit exercise action
   async function submitExercise(formData: FormData) {
     'use server'
@@ -83,13 +88,13 @@ export default async function LabPage({ params }: Props) {
       where: {
         userId_labId_exerciseNumber: {
           userId: user.id,
-          labId: lab.id,
+          labId: labId,
           exerciseNumber
         }
       },
       create: {
         userId: user.id,
-        labId: lab.id,
+        labId: labId,
         exerciseNumber,
         submissionData: { text: submissionText },
         completed: true
@@ -105,23 +110,23 @@ export default async function LabPage({ params }: Props) {
     const allSubmissions = await prisma.labSubmission.findMany({
       where: {
         userId: user.id,
-        labId: lab.id,
+        labId: labId,
         completed: true
       }
     })
 
     // If all exercises completed, update week progress
-    if (allSubmissions.length === exercises.length) {
+    if (allSubmissions.length === totalExercises) {
       await prisma.userWeekProgress.upsert({
         where: {
           userId_weekId: {
             userId: user.id,
-            weekId: lab.weekId
+            weekId: weekId
           }
         },
         create: {
           userId: user.id,
-          weekId: lab.weekId,
+          weekId: weekId,
           conceptsTotal: 4, // Week 1 has 4 concepts
           labCompleted: true
         },
@@ -261,7 +266,7 @@ export default async function LabPage({ params }: Props) {
               Lab Completed!
             </CardTitle>
             <CardDescription>
-              Great work! You've completed all exercises. Head back to Week 1 to continue with the project.
+              Great work! You&apos;ve completed all exercises. Head back to Week 1 to continue with the project.
             </CardDescription>
           </CardHeader>
           <CardContent>
