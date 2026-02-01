@@ -1,3 +1,5 @@
+const { withContentlayer } = require('next-contentlayer')
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Image optimization
@@ -74,6 +76,9 @@ const nextConfig = {
   swcMinify: true,
   reactStrictMode: true,
   poweredByHeader: false,
+
+  // Standalone output for Docker
+  output: 'standalone',
 }
 
-module.exports = nextConfig
+module.exports = withContentlayer(nextConfig)
