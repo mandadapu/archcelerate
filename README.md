@@ -2,10 +2,26 @@
 
 Transform from Software Engineer to AI Product Builder in 12 weeks through hands-on project-based learning.
 
+## Important: Understanding the Structure
+
+This repository contains **two parallel timelines**:
+
+1. **Platform Implementation (Platform Weeks 1-12)**: The development timeline for building the learning platform itself
+   - Week 1-9: ✅ Complete (auth, RAG, agents, testing, monitoring)
+   - Week 10-12: 🚧 In progress (deployment, content, polish)
+
+2. **Student Curriculum (Learning Modules 1-8)**: The educational content students follow
+   - Module 1: AI Engineering Foundations
+   - Module 2: RAG Systems
+   - Module 3: AI Agents
+   - Module 4-8: Advanced topics and capstone
+
+**The platform (Weeks) builds the infrastructure to deliver the curriculum (Modules).**
+
 ## Platform Features
 
 ### Core Learning Platform
-- **12-Week Curriculum**: Structured sprints from AI fundamentals to production deployment
+- **8 Learning Modules**: Structured curriculum from AI fundamentals to production deployment
 - **Document Q&A System**: RAG-powered document analysis with citations
 - **AI Agents Framework**: Build and deploy autonomous AI agents with tool use
 - **Memory Architecture**: Episodic, semantic, and procedural memory systems
@@ -291,23 +307,23 @@ aicelerate/
 └── lighthouserc.json             # Lighthouse CI config
 ```
 
-## Features Implementation Status
+## Platform Implementation Status
 
-### ✅ Week 1: Auth + Database Foundation
+### ✅ Platform Week 1: Auth + Database Foundation
 - Supabase authentication (email, OAuth)
 - PostgreSQL database with migrations
 - User management and sessions
 - Protected routes middleware
 - Database schema for core entities
 
-### ✅ Week 2: Document Q&A System
+### ✅ Platform Week 2: Document Q&A System
 - Document upload (PDF, TXT, MD, DOCX)
 - Text extraction and preprocessing
 - Conversation interface
 - Basic Q&A with Claude
 - Document management UI
 
-### ✅ Week 3: RAG System + Memory Architecture
+### ✅ Platform Week 3: RAG System + Memory Architecture
 - pgvector integration for similarity search
 - Document chunking (fixed-size, sentence, semantic)
 - OpenAI embeddings generation
@@ -315,7 +331,7 @@ aicelerate/
 - Memory systems (episodic, semantic, procedural)
 - Hybrid search (vector + keyword)
 
-### ✅ Week 4: Advanced RAG + Memory
+### ✅ Platform Week 4: Advanced RAG + Memory
 - Citation tracking with page numbers
 - Multi-document synthesis
 - RAG evaluation framework (faithfulness, relevance, coverage)
@@ -323,7 +339,7 @@ aicelerate/
 - Automatic fact extraction
 - Document Q&A UI with citations
 
-### ✅ Week 5: AI Agents + Pattern Library Part 1
+### ✅ Platform Week 5: AI Agents + Pattern Library Part 1
 - ReAct architecture implementation
 - Tool system (9 tools: web search, file read, AST parse, etc.)
 - Agent executor with thought-action-observation loop
@@ -331,7 +347,7 @@ aicelerate/
 - Code Review Agent pattern
 - Customer Support Agent pattern
 
-### ✅ Week 6: Advanced Agents + Pattern Library Completion
+### ✅ Platform Week 6: Advanced Agents + Pattern Library Completion
 - Agent memory system (short-term, long-term, working)
 - Data Pipeline Agent (ETL from CSV/JSON/XML)
 - Meeting Assistant Agent (scheduling, notes, action items)
@@ -339,7 +355,7 @@ aicelerate/
 - Agent execution traces
 - Performance metrics tracking
 
-### ✅ Week 7: Frontend Architecture + Component Library
+### ✅ Platform Week 7: Frontend Architecture + Component Library
 - Design system with design tokens
 - Core UI components (Button, Input, Card, Badge, Avatar)
 - Advanced patterns (Dialog, Toast, DataTable)
@@ -347,7 +363,7 @@ aicelerate/
 - Dark mode support
 - Type-safe variants with CVA
 
-### ✅ Week 8: Testing Strategy + Quality Assurance
+### ✅ Platform Week 8: Testing Strategy + Quality Assurance
 - Jest + React Testing Library setup
 - MSW for API mocking
 - Unit tests (utilities, services, components)
@@ -355,7 +371,7 @@ aicelerate/
 - E2E tests with Playwright (auth, Q&A, agents)
 - 70%+ code coverage
 
-### ✅ Week 9: Performance Optimization + Monitoring
+### ✅ Platform Week 9: Performance Optimization + Monitoring
 - Web Vitals tracking (CLS, FID, FCP, LCP, TTFB, INP)
 - Redis caching layer
 - Database query optimization with indexes
@@ -365,10 +381,10 @@ aicelerate/
 - Sentry error tracking
 - Lighthouse CI integration
 
-### 🚧 Week 10-12: To Be Implemented
-- Week 10: Deployment + DevOps
-- Week 11: Content Creation + Labs
-- Week 12: Polish + Launch Preparation
+### 🚧 Platform Weeks 10-12: To Be Implemented
+- Platform Week 10: Deployment + DevOps
+- Platform Week 11: Content Creation + Labs
+- Platform Week 12: Polish + Launch Preparation
 
 ## Database Schema
 
@@ -404,6 +420,40 @@ agent_steps (id, execution_id, step_number, thought, action, action_input, obser
 agent_short_term_memory (id, execution_id, key, value)
 agent_long_term_memory (id, user_id, agent_id, summary, embedding, importance_score)
 ```
+
+## Platform vs Curriculum Reference
+
+### Platform Implementation Timeline (What We Build)
+
+| Platform Week | Focus | Status |
+|---------------|-------|--------|
+| Week 1 | Auth + Database Foundation | ✅ Complete |
+| Week 2 | Document Q&A System | ✅ Complete |
+| Week 3 | RAG System + Memory | ✅ Complete |
+| Week 4 | Advanced RAG + Memory | ✅ Complete |
+| Week 5 | AI Agents (Part 1) | ✅ Complete |
+| Week 6 | AI Agents (Part 2) | ✅ Complete |
+| Week 7 | Frontend + Components | ✅ Complete |
+| Week 8 | Testing + QA | ✅ Complete |
+| Week 9 | Performance + Monitoring | ✅ Complete |
+| Week 10 | Deployment + DevOps | 🚧 Planned |
+| Week 11 | Content Creation | 🚧 Planned |
+| Week 12 | Polish + Launch | 🚧 Planned |
+
+### Student Curriculum (What Students Learn)
+
+| Learning Module | Topic | Built With |
+|-----------------|-------|------------|
+| Module 0 | Skill Diagnosis | Platform Week 1-2 |
+| Module 1 | AI Engineering Foundations | Platform Week 2 |
+| Module 2 | RAG Systems | Platform Week 3-4 |
+| Module 3 | AI Agents | Platform Week 5-6 |
+| Module 4 | Multimodal AI | Platform Week 11 |
+| Module 5 | Production Deployment | Platform Week 9-10 |
+| Module 6 | AI Optimization | Platform Week 8-9 |
+| Module 7 | Capstone Project | All Platform Weeks |
+
+**Key Distinction:** Platform Weeks build the infrastructure. Learning Modules use that infrastructure to teach students.
 
 ## Testing
 
