@@ -1,7 +1,7 @@
 -- Evaluation datasets (ground truth Q&A pairs)
 CREATE TABLE IF NOT EXISTS public.rag_eval_datasets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES public.users(id),
+    user_id UUID NOT NULL REFERENCES auth.users(id),
     name VARCHAR(200) NOT NULL,
     description TEXT,
     created_at TIMESTAMP DEFAULT NOW()

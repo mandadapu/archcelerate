@@ -1,10 +1,21 @@
 -- Agent System Tables (Foundation for Week 6+)
 
--- Agent Definitions: Update existing table with new columns
-ALTER TABLE public.agent_definitions
-  ADD COLUMN IF NOT EXISTS slug VARCHAR(100),
-  ADD COLUMN IF NOT EXISTS category VARCHAR(50),
-  ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT false;
+-- Agent Definitions: Reusable agent templates
+CREATE TABLE IF NOT EXISTS public.agent_definitions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    system_prompt TEXT NOT NULL,
+    tools JSONB NOT NULL DEFAULT '[]'::jsonb,
+    max_iterations INTEGER DEFAULT 10,
+    config JSONB,
+    slug VARCHAR(100) UNIQUE,
+    category VARCHAR(50),
+    is_public BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Note: Columns already defined in CREATE TABLE above
 
 -- Rename available_tools to tools for consistency (if not already renamed)
 DO $$
@@ -20,12 +31,23 @@ UPDATE public.agent_definitions
 SET slug = LOWER(REGEXP_REPLACE(name, '[^a-zA-Z0-9]+', '-', 'g'))
 WHERE slug IS NULL;
 
--- Make slug unique (if constraint doesn't exist)
+-- Ensure slug is unique
+-- Note: constraint already in CREATE TABLE, this is safety check
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'agent_definitions_slug_key') THEN
-    ALTER TABLE public.agent_definitions ADD CONSTRAINT agent_definitions_slug_key UNIQUE (slug);
+  -- Check if unique constraint exists
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'agent_definitions_slug_key'
+    AND contype = 'u'
+  ) THEN
+    -- If not, add it
+    ALTER TABLE public.agent_definitions
+    ADD CONSTRAINT agent_definitions_slug_key UNIQUE (slug);
   END IF;
+EXCEPTION
+  WHEN duplicate_object THEN
+    NULL; -- Constraint already exists, ignore
 END $$;
 
 CREATE INDEX IF NOT EXISTS idx_agent_definitions_slug ON public.agent_definitions(slug);
