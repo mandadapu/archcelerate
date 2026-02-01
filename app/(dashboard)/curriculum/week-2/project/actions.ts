@@ -1,0 +1,64 @@
+'use server'
+
+import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
+
+export async function submitProject(data: {
+  projectId: string
+  weekId: string
+  githubUrl: string
+  deployedUrl: string
+  writeupContent: string
+  action: 'draft' | 'submit'
+}) {
+  const supabase = createClient()
+
+  // Get authenticated user
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+  if (authError || !user) {
+    throw new Error('Unauthorized')
+  }
+
+  const status = data.action === 'submit' ? 'submitted' : 'draft'
+  const now = new Date().toISOString()
+
+  // Upsert project submission
+  const { error } = await supabase
+    .from('project_submissions')
+    .upsert({
+      user_id: user.id,
+      project_id: data.projectId,
+      github_url: data.githubUrl,
+      deployed_url: data.deployedUrl,
+      writeup_content: data.writeupContent,
+      status,
+      submitted_at: status === 'submitted' ? now : null,
+      updated_at: now
+    }, {
+      onConflict: 'user_id,project_id'
+    })
+
+  if (error) {
+    console.error('Project submission error:', error)
+    throw new Error('Failed to submit project')
+  }
+
+  // If submitted, update week progress
+  if (status === 'submitted') {
+    await supabase
+      .from('user_week_progress')
+      .upsert({
+        user_id: user.id,
+        week_id: data.weekId,
+        project_completed: true,
+        concepts_total: 3, // Week 2 has 3 concepts
+        completed_at: now
+      }, {
+        onConflict: 'user_id,week_id'
+      })
+  }
+
+  revalidatePath('/curriculum/week-2/project')
+  revalidatePath('/curriculum/week-2')
+}
