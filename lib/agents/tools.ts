@@ -212,14 +212,14 @@ const astParseTool: Tool = {
       const functionMatches = code.match(/function\s+\w+|const\s+\w+\s*=\s*\([^)]*\)\s*=>|def\s+\w+/g)
       if (functionMatches) {
         analysis.push(`Functions found: ${functionMatches.length}`)
-        analysis.push(`Function names: ${functionMatches.map(m => m.split(/\s+/)[1]).join(', ')}`)
+        analysis.push(`Function names: ${functionMatches.map((m: string) => m.split(/\s+/)[1]).join(', ')}`)
       }
 
       // Count classes
       const classMatches = code.match(/class\s+\w+/g)
       if (classMatches) {
         analysis.push(`Classes found: ${classMatches.length}`)
-        analysis.push(`Class names: ${classMatches.map(m => m.split(/\s+/)[1]).join(', ')}`)
+        analysis.push(`Class names: ${classMatches.map((m: string) => m.split(/\s+/)[1]).join(', ')}`)
       }
 
       // Count imports
