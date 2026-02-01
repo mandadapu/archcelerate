@@ -23,13 +23,14 @@ export default async function DashboardPage() {
 
   const diagnosisCompleted = !!user?.skillDiagnosis
 
-  // Fetch Sprint 1 and Sprint 2 progress
+  // Fetch Sprint progress
   const sprint1Progress = user ? await getSprintProgress(user.id, 'sprint-1') : null
   const sprint2Progress = user ? await getSprintProgress(user.id, 'sprint-2') : null
   const sprint3Progress = user ? await getSprintProgress(user.id, 'sprint-3') : null
   const sprint4Progress = user ? await getSprintProgress(user.id, 'sprint-4') : null
   const sprint5Progress = user ? await getSprintProgress(user.id, 'sprint-5') : null
   const sprint6Progress = user ? await getSprintProgress(user.id, 'sprint-6') : null
+  const sprint7Progress = user ? await getSprintProgress(user.id, 'sprint-7') : null
 
   return (
     <div className="space-y-6">
@@ -366,6 +367,53 @@ export default async function DashboardPage() {
               <Link href="/learn/sprint-6">
                 <Button size="sm" variant="outline">
                   Start Sprint
+                </Button>
+              </Link>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-blue-50">
+          <CardHeader>
+            <CardTitle>Sprint 7</CardTitle>
+            <CardDescription>Capstone: Ship Your AI Product</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-slate-600 mb-4">
+              Design, build, deploy, and launch your own AI product from scratch
+            </p>
+            {sprint7Progress && sprint7Progress.totalCount > 0 ? (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-slate-600">
+                    <span>
+                      {sprint7Progress.completedCount} of {sprint7Progress.totalCount} concepts
+                    </span>
+                    <span className="font-medium">
+                      {Math.round(sprint7Progress.percentComplete)}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-200 rounded-full h-1.5">
+                    <div
+                      className="bg-purple-600 h-1.5 rounded-full transition-all"
+                      style={{ width: `${sprint7Progress.percentComplete}%` }}
+                    />
+                  </div>
+                </div>
+                <Link href="/learn/sprint-7">
+                  <Button size="sm" variant="outline" className="w-full border-purple-300 text-purple-700 hover:bg-purple-50">
+                    {sprint7Progress.completedCount === 0
+                      ? 'Start Capstone'
+                      : sprint7Progress.completedCount === sprint7Progress.totalCount
+                      ? 'Review Capstone'
+                      : 'Continue Capstone'}
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              <Link href="/learn/sprint-7">
+                <Button size="sm" variant="outline" className="border-purple-300 text-purple-700 hover:bg-purple-50">
+                  Start Capstone
                 </Button>
               </Link>
             )}
