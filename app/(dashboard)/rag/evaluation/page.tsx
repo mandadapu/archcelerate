@@ -25,7 +25,7 @@ export default async function EvaluationPage() {
         <div>
           <h1 className="text-4xl font-bold">RAG System Evaluation</h1>
           <p className="text-muted-foreground mt-2">
-            Test your RAG system's performance with automated evaluation metrics
+            Test your RAG system&apos;s performance with automated evaluation metrics
           </p>
         </div>
 

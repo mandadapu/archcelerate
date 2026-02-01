@@ -81,10 +81,10 @@ export async function summarizeMeeting(
   const instructions = {
     brief: 'Create a 2-3 sentence summary highlighting the main points',
     detailed: 'Create a comprehensive summary with key points, decisions, and action items',
-    executive: 'Create an executive summary with:
+    executive: `Create an executive summary with:
 1. Key decisions made
 2. Action items with owners
-3. Next steps and timeline'
+3. Next steps and timeline`
   }
 
   const response = await client.messages.create({
