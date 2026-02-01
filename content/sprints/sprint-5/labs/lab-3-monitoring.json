@@ -3,203 +3,96 @@
   "title": "Production Monitoring with Sentry",
   "description": "Implement comprehensive monitoring and error tracking for AI applications using Sentry, custom metrics, and alerting",
   "difficulty": "intermediate",
-  "estimatedHours": 3,
-  "technologies": [
-    "Sentry",
-    "Next.js",
-    "Custom Metrics",
-    "Error Tracking",
-    "Performance Monitoring"
-  ],
-  "learningObjectives": [
-    "Set up Sentry for error tracking in Next.js applications",
-    "Implement custom metrics for AI-specific monitoring",
-    "Configure alerts for critical errors and performance issues",
-    "Create dashboards for monitoring AI application health",
-    "Track AI API performance (latency, token usage, costs)",
-    "Implement proper error context and breadcrumbs"
-  ],
-  "requirements": {
-    "functional": [
-      "Integrate Sentry SDK in Next.js application (client + server)",
-      "Track all errors with full stack traces and context",
-      "Monitor AI API performance (response time, token usage, costs)",
-      "Create custom metrics for: AI requests/min, average latency, error rate, cost/hour",
-      "Set up alerts for: high error rate (>5%), slow responses (>10s), cost spikes (>$10/hour)",
-      "Implement user feedback mechanism for errors"
-    ],
-    "technical": [
-      "Configure Sentry with source maps for debugging",
-      "Use Sentry transactions for performance monitoring",
-      "Implement custom contexts (user tier, model used, prompt length)",
-      "Add breadcrumbs for tracing user actions before errors",
-      "Set up proper error filtering (ignore 404s, filter sensitive data)",
-      "Configure sampling rates for production efficiency"
-    ],
-    "ui": [
-      "Create admin dashboard showing monitoring metrics",
-      "Display real-time error count and health status",
-      "Show AI performance charts (latency, token usage over time)",
-      "Include cost tracking visualization",
-      "Provide error details with user-friendly messages (optional)"
-    ]
-  },
-  "successCriteria": [
+  "estimatedMinutes": 180,
+  "language": "typescript",
+  "starterCode": "// Custom monitoring utilities\nimport * as Sentry from '@sentry/nextjs'\n\ninterface AIMetrics {\n  requestCount: number\n  totalLatency: number\n  totalTokens: number\n  totalCost: number\n  errorCount: number\n}\n\nexport class AIMonitor {\n  // TODO: Track AI request metrics\n  static async trackAIRequest(\n    operation: string,\n    callback: () => Promise<any>\n  ) {\n    // 1. Start Sentry transaction\n    // 2. Record start time\n    // 3. Execute callback\n    // 4. Record end time and metrics\n    // 5. Add custom tags and measurements\n    // 6. Finish transaction\n  }\n  \n  // TODO: Record custom metric\n  static recordMetric(name: string, value: number, unit: string) {\n    // Send custom metric to Sentry\n  }\n  \n  // TODO: Track AI cost\n  static trackCost(model: string, inputTokens: number, outputTokens: number) {\n    // Calculate cost based on model pricing\n    // Record as custom metric\n  }\n  \n  // TODO: Set user context\n  static setUserContext(userId: string, tier: string, email?: string) {\n    Sentry.setUser({\n      id: userId,\n      // Add additional context\n    })\n  }\n  \n  // TODO: Add breadcrumb for user action\n  static addBreadcrumb(message: string, category: string, data?: any) {\n    Sentry.addBreadcrumb({\n      message,\n      category,\n      data,\n      level: 'info',\n    })\n  }\n  \n  // TODO: Capture exception with context\n  static captureException(error: Error, context?: Record<string, any>) {\n    if (context) {\n      Sentry.setContext('error_context', context)\n    }\n    Sentry.captureException(error)\n  }\n}",
+  "instructions": "Implement comprehensive monitoring and error tracking for AI applications using Sentry.\n\n**Objectives:**\n- Integrate Sentry SDK in Next.js application (client + server)\n- Track all errors with full stack traces and context\n- Monitor AI API performance (response time, token usage, costs)\n- Create custom metrics for AI-specific monitoring\n- Set up alerts for critical errors and performance issues\n- Implement user feedback mechanism for errors\n\n**Implementation Steps:**\n\n1. **Set up Sentry:**\n   - Install @sentry/nextjs package\n   - Run: npx @sentry/wizard@latest -i nextjs\n   - Configure sentry.client.config.ts and sentry.server.config.ts\n   - Set environment variables (NEXT_PUBLIC_SENTRY_DSN)\n   - Enable source maps in next.config.js\n\n2. **Configure Sentry client (sentry.client.config.ts):**\n   - Set appropriate sample rate (tracesSampleRate: 1.0 for dev, 0.1 for prod)\n   - Enable debug mode in development\n   - Set environment (development, staging, production)\n   - Add beforeSend hook to filter sensitive data\n\n3. **Configure Sentry server (sentry.server.config.ts):**\n   - Same configuration as client\n   - Add server-specific integrations\n\n4. **Implement AIMonitor.trackAIRequest:**\n   - Start Sentry transaction with Sentry.startTransaction()\n   - Record start time with Date.now()\n   - Execute callback and catch errors\n   - Record end time and calculate latency\n   - Add custom measurements (latency, tokens, cost)\n   - Add tags (operation, model, user_tier)\n   - Finish transaction\n\n5. **Implement AIMonitor.trackCost:**\n   - Calculate cost based on model pricing:\n     - GPT-4: $0.03/1K input tokens, $0.06/1K output tokens\n     - GPT-3.5-turbo: $0.0015/1K input, $0.002/1K output\n   - Record as custom metric with Sentry\n\n6. **Implement AIMonitor.setUserContext:**\n   - Use Sentry.setUser() with user ID, tier, email\n   - Add custom context with Sentry.setContext()\n\n7. **Implement AIMonitor.addBreadcrumb:**\n   - Use Sentry.addBreadcrumb() to track user actions\n   - Include message, category, data, timestamp\n\n8. **Implement AIMonitor.captureException:**\n   - Set error context with Sentry.setContext()\n   - Capture exception with Sentry.captureException()\n\n9. **Create monitored AI endpoint:**\n   - Set user context at request start\n   - Add breadcrumb for request received\n   - Track AI request with AIMonitor.trackAIRequest\n   - Track costs with AIMonitor.trackCost\n   - Capture exceptions with context\n\n10. **Set up alerts in Sentry:**\n    - Configure alert for high error rate (>5%)\n    - Configure alert for slow responses (>10s)\n    - Configure alert for cost spikes (>$10/hour)\n    - Set up Slack/email notifications\n\n**Custom Metrics to Track:**\n- AI requests per minute\n- Average latency\n- Error rate\n- Cost per hour\n- Token usage\n\n**Testing:**\n- Trigger test errors and verify they appear in Sentry\n- Verify stack traces show original TypeScript code (source maps)\n- Check performance transactions are recorded\n- Simulate error spike and verify alert fires\n- Verify user context helps debugging",
+  "testCases": [
     {
-      "criterion": "Sentry captures all errors with full context",
-      "weight": 20,
-      "verification": "Trigger test errors and verify they appear in Sentry with stack traces"
+      "name": "Unhandled error captured by Sentry",
+      "input": {
+        "triggerError": "throw new Error('Test error')"
+      },
+      "expected": {
+        "errorInSentry": true,
+        "hasStackTrace": true,
+        "hasBreadcrumbs": true,
+        "appearsWithinMinutes": 1
+      }
     },
     {
-      "criterion": "Custom metrics track AI performance accurately",
-      "weight": 20,
-      "verification": "Verify metrics match actual API usage from logs"
+      "name": "AI API performance tracked",
+      "input": {
+        "apiRequest": true
+      },
+      "expected": {
+        "transactionRecorded": true,
+        "hasLatency": true,
+        "hasTokenUsage": true,
+        "customMetricsUpdated": true
+      }
     },
     {
-      "criterion": "Alerts trigger correctly for configured conditions",
-      "weight": 20,
-      "verification": "Simulate error spike and verify alert fires"
+      "name": "Alert fires on high error rate",
+      "input": {
+        "errorCount": 6,
+        "timeWindowMinutes": 1
+      },
+      "expected": {
+        "alertFires": true,
+        "notificationReceived": true,
+        "alertDetailsAccurate": true
+      }
     },
     {
-      "criterion": "Performance monitoring provides actionable insights",
-      "weight": 15,
-      "verification": "Identify slow endpoints using Sentry performance data"
+      "name": "Cost tracking accurate",
+      "input": {
+        "model": "gpt-4",
+        "inputTokens": 1000,
+        "outputTokens": 500
+      },
+      "expected": {
+        "calculatedCost": 0.06,
+        "costMetricRecorded": true
+      }
     },
     {
-      "criterion": "Dashboard displays key metrics clearly",
-      "weight": 15,
-      "verification": "Review dashboard and verify all metrics present and accurate"
+      "name": "User context helps debugging",
+      "input": {
+        "userId": "user123",
+        "tier": "pro",
+        "triggerError": true
+      },
+      "expected": {
+        "eventHasUserId": true,
+        "eventHasTier": true,
+        "contextRelevant": true
+      }
     },
     {
-      "criterion": "Source maps enable easy debugging",
-      "weight": 10,
-      "verification": "Verify error stack traces show original TypeScript code, not compiled JS"
+      "name": "Source maps work correctly",
+      "input": {
+        "triggerError": true
+      },
+      "expected": {
+        "stackTraceShowsTypeScript": true,
+        "notCompiledJS": true,
+        "lineNumbersAccurate": true
+      }
     }
   ],
-  "testScenarios": [
-    {
-      "scenario": "Unhandled error is captured by Sentry",
-      "steps": [
-        "Trigger an unhandled exception in API route",
-        "Check Sentry dashboard for error event",
-        "Verify stack trace, context, and breadcrumbs present"
-      ],
-      "expectedResult": "Error appears in Sentry within 1 minute with full details"
-    },
-    {
-      "scenario": "AI API performance is tracked",
-      "steps": [
-        "Make AI API request",
-        "Record response time and token usage",
-        "Check Sentry transaction for performance data",
-        "Verify custom metrics updated"
-      ],
-      "expectedResult": "Transaction shows API latency, custom metrics reflect token usage"
-    },
-    {
-      "scenario": "Alert fires on high error rate",
-      "steps": [
-        "Configure alert: >5 errors in 1 minute",
-        "Trigger 6 errors in quick succession",
-        "Check for alert notification (email/Slack)",
-        "Verify alert details are accurate"
-      ],
-      "expectedResult": "Alert notification received within 2 minutes"
-    },
-    {
-      "scenario": "Cost spike alert triggers",
-      "steps": [
-        "Set cost alert threshold: $10/hour",
-        "Simulate high API usage (track costs)",
-        "When costs exceed $10/hour, verify alert",
-        "Check alert includes cost details"
-      ],
-      "expectedResult": "Alert fires when threshold exceeded with cost breakdown"
-    },
-    {
-      "scenario": "User context helps debugging",
-      "steps": [
-        "Make request as authenticated user with specific tier",
-        "Trigger error in request",
-        "Check Sentry event for user context (ID, tier, etc.)",
-        "Verify context helps identify issue"
-      ],
-      "expectedResult": "Sentry event shows user ID, tier, and relevant context"
-    }
-  ],
-  "starterFiles": {
-    "sentry.client.config.ts": "// Sentry client-side configuration\nimport * as Sentry from '@sentry/nextjs'\n\nSentry.init({\n  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,\n  \n  // TODO: Configure appropriate sample rate for production\n  tracesSampleRate: 1.0,\n  \n  // TODO: Enable debug mode in development\n  debug: false,\n  \n  // TODO: Set environment (development, staging, production)\n  environment: process.env.NODE_ENV,\n  \n  // TODO: Configure release tracking with version\n  // release: process.env.NEXT_PUBLIC_RELEASE_VERSION,\n  \n  // TODO: Add beforeSend to filter sensitive data\n  beforeSend(event, hint) {\n    // Filter out sensitive information\n    return event\n  },\n})\n",
-    "sentry.server.config.ts": "// Sentry server-side configuration\nimport * as Sentry from '@sentry/nextjs'\n\nSentry.init({\n  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,\n  \n  tracesSampleRate: 1.0,\n  debug: false,\n  environment: process.env.NODE_ENV,\n  \n  // TODO: Configure integrations for better error tracking\n  integrations: [\n    // Add relevant integrations\n  ],\n})\n",
-    "lib/monitoring.ts": "// Custom monitoring utilities\nimport * as Sentry from '@sentry/nextjs'\n\ninterface AIMetrics {\n  requestCount: number\n  totalLatency: number\n  totalTokens: number\n  totalCost: number\n  errorCount: number\n}\n\nexport class AIMonitor {\n  // TODO: Track AI request metrics\n  static async trackAIRequest(\n    operation: string,\n    callback: () => Promise<any>\n  ) {\n    // 1. Start Sentry transaction\n    // 2. Record start time\n    // 3. Execute callback\n    // 4. Record end time and metrics\n    // 5. Add custom tags and measurements\n    // 6. Finish transaction\n  }\n  \n  // TODO: Record custom metric\n  static recordMetric(name: string, value: number, unit: string) {\n    // Send custom metric to Sentry\n  }\n  \n  // TODO: Track AI cost\n  static trackCost(model: string, inputTokens: number, outputTokens: number) {\n    // Calculate cost based on model pricing\n    // Record as custom metric\n  }\n  \n  // TODO: Set user context\n  static setUserContext(userId: string, tier: string, email?: string) {\n    Sentry.setUser({\n      id: userId,\n      // Add additional context\n    })\n    \n    Sentry.setContext('user_tier', {\n      tier,\n    })\n  }\n  \n  // TODO: Add breadcrumb for user action\n  static addBreadcrumb(message: string, category: string, data?: any) {\n    Sentry.addBreadcrumb({\n      message,\n      category,\n      data,\n      level: 'info',\n    })\n  }\n  \n  // TODO: Capture exception with context\n  static captureException(error: Error, context?: Record<string, any>) {\n    if (context) {\n      Sentry.setContext('error_context', context)\n    }\n    Sentry.captureException(error)\n  }\n}\n",
-    "app/api/ai/monitored/route.ts": "// AI endpoint with comprehensive monitoring\nimport { NextRequest, NextResponse } from 'next/server'\nimport { AIMonitor } from '@/lib/monitoring'\nimport { OpenAI } from 'openai'\nimport * as Sentry from '@sentry/nextjs'\n\nconst openai = new OpenAI({\n  apiKey: process.env.OPENAI_API_KEY,\n})\n\nexport async function POST(request: NextRequest) {\n  try {\n    const { message, userId, tier } = await request.json()\n    \n    // TODO: Set user context for monitoring\n    // AIMonitor.setUserContext(userId, tier)\n    \n    // TODO: Add breadcrumb for request\n    // AIMonitor.addBreadcrumb('AI request received', 'ai', { message })\n    \n    // TODO: Track AI request with monitoring\n    const response = await AIMonitor.trackAIRequest('openai.chat', async () => {\n      const completion = await openai.chat.completions.create({\n        model: 'gpt-4',\n        messages: [{ role: 'user', content: message }],\n      })\n      \n      // TODO: Track costs\n      const usage = completion.usage\n      if (usage) {\n        // AIMonitor.trackCost('gpt-4', usage.prompt_tokens, usage.completion_tokens)\n      }\n      \n      return completion.choices[0].message.content\n    })\n    \n    return NextResponse.json({ response })\n  } catch (error) {\n    // TODO: Capture exception with context\n    // AIMonitor.captureException(error as Error, { endpoint: '/api/ai/monitored' })\n    \n    console.error('AI request error:', error)\n    return NextResponse.json(\n      { error: 'Internal server error' },\n      { status: 500 }\n    )\n  }\n}\n",
-    "app/admin/monitoring/page.tsx": "// Monitoring dashboard\n'use client'\n\nimport { useEffect, useState } from 'react'\n\ninterface MonitoringStats {\n  requestsPerMinute: number\n  averageLatency: number\n  errorRate: number\n  costPerHour: number\n  totalRequests: number\n}\n\nexport default function MonitoringDashboard() {\n  const [stats, setStats] = useState<MonitoringStats | null>(null)\n  \n  useEffect(() => {\n    // TODO: Fetch monitoring stats from API\n    // TODO: Set up auto-refresh every 30 seconds\n  }, [])\n  \n  return (\n    <div className=\"p-8\">\n      <h1 className=\"text-2xl font-bold mb-6\">AI Monitoring Dashboard</h1>\n      \n      {/* TODO: Display key metrics in cards */}\n      <div className=\"grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4\">\n        {/* Requests/min */}\n        {/* Average Latency */}\n        {/* Error Rate */}\n        {/* Cost/hour */}\n      </div>\n      \n      {/* TODO: Add charts for trends over time */}\n      {/* TODO: Display recent errors */}\n      {/* TODO: Show performance metrics */}\n    </div>\n  )\n}\n"
-  },
-  "technicalGuidance": {
-    "sentrySetup": "Install @sentry/nextjs, run npx @sentry/wizard@latest -i nextjs to auto-configure. Enable source maps in next.config.js for production debugging.",
-    "transactions": "Use Sentry.startTransaction() for tracking operations. Add spans for sub-operations (DB queries, API calls). Set custom measurements for token usage, costs.",
-    "sampling": "In production, use tracesSampleRate: 0.1 (10%) to reduce overhead. Use tracesSampler function for dynamic sampling based on transaction type.",
-    "costTracking": "Calculate costs using model pricing: GPT-4: $0.03/1K input tokens, $0.06/1K output tokens. GPT-3.5-turbo: $0.0015/1K input, $0.002/1K output tokens.",
-    "alerts": "Configure in Sentry web UI: Issue Alerts (error spikes) and Metric Alerts (performance degradation, cost thresholds). Set up Slack/email notifications."
-  },
-  "deploymentRequirements": {
-    "environment": [
-      "NEXT_PUBLIC_SENTRY_DSN=<your-sentry-dsn>",
-      "SENTRY_AUTH_TOKEN=<token-for-source-maps>",
-      "SENTRY_ORG=<your-org>",
-      "SENTRY_PROJECT=<your-project>"
-    ],
-    "services": [
-      "Sentry account (free tier supports 5K errors/month)",
-      "Vercel deployment with source maps enabled"
-    ],
-    "verification": [
-      "Trigger test error and verify it appears in Sentry",
-      "Check source maps are uploaded and working",
-      "Verify performance transactions are recorded",
-      "Test alert notifications"
-    ]
-  },
-  "estimatedCosts": {
-    "development": "$0 (Sentry free tier sufficient)",
-    "production": "$26/month (Sentry Team plan for higher limits and better features)",
-    "notes": "Free tier is good for small projects. Upgrade for more events, longer retention, better alerts."
-  },
-  "extensionIdeas": [
-    "Add custom dashboards in Sentry for AI-specific metrics",
-    "Integrate with PagerDuty for on-call alerts",
-    "Implement anomaly detection for unusual patterns",
-    "Add user satisfaction tracking (thumbs up/down on responses)",
-    "Create custom Sentry integration for AI model versions",
-    "Implement distributed tracing across microservices",
-    "Add cost forecasting based on usage trends"
-  ],
-  "rubric": {
-    "excellent": [
-      "Sentry fully integrated with all errors captured",
-      "Custom metrics accurately track AI performance and costs",
-      "Alerts configured and tested for all critical scenarios",
-      "Performance monitoring provides detailed transaction data",
-      "Dashboard displays all key metrics with clear visualizations",
-      "Source maps work correctly for easy debugging",
-      "Proper error filtering and sensitive data handling"
-    ],
-    "good": [
-      "Sentry captures most errors (may miss some edge cases)",
-      "Custom metrics present but may be incomplete",
-      "Alerts configured but may need tuning",
-      "Performance monitoring works but limited detail",
-      "Dashboard shows metrics but visualization could improve",
-      "Source maps mostly working",
-      "Basic error filtering in place"
-    ],
-    "needsImprovement": [
-      "Sentry integration incomplete or errors not captured",
-      "Custom metrics missing or inaccurate",
-      "Alerts not configured or not working",
-      "No performance monitoring or minimal data",
-      "Dashboard missing or shows limited information",
-      "Source maps not working, hard to debug",
-      "No error filtering, sensitive data exposed"
-    ]
-  }
+  "hints": [
+    "Run npx @sentry/wizard@latest -i nextjs to auto-configure Sentry",
+    "Enable source maps in next.config.js for debugging production errors",
+    "Use Sentry.startTransaction() for performance monitoring",
+    "Add spans for sub-operations (DB queries, API calls)",
+    "Set custom measurements for token usage and costs",
+    "In production, use tracesSampleRate: 0.1 to reduce overhead",
+    "Use tracesSampler function for dynamic sampling by transaction type",
+    "Calculate costs: GPT-4 = $0.03/1K input + $0.06/1K output tokens",
+    "Configure alerts in Sentry web UI for error spikes and performance issues",
+    "Set up Slack or email notifications for critical alerts",
+    "Use Sentry.setUser() and Sentry.setContext() for debugging context",
+    "Filter sensitive data in beforeSend hook"
+  ]
 }
