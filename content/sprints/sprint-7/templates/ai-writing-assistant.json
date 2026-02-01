@@ -1,0 +1,221 @@
+{
+  "id": "ai-writing-assistant",
+  "name": "AI Writing Assistant",
+  "tagline": "Help users write better content faster with AI",
+  "overview": "Build an AI-powered writing tool that helps users create professional content. This could be email writing, blog post generation, social media content, product descriptions, or general writing assistance. The core value: turn rough ideas into polished writing in seconds.",
+  "difficulty": "medium",
+  "estimatedHours": 30,
+  "problemSpace": {
+    "commonProblems": [
+      "Professionals spend 2+ hours daily writing emails",
+      "Writers face blank page syndrome when starting blog posts",
+      "Non-native speakers struggle with professional English",
+      "Marketers need product descriptions at scale",
+      "Teams lack consistent brand voice across content"
+    ],
+    "validationQuestions": [
+      "How much time do you spend writing [emails/content] weekly?",
+      "What's the hardest part about writing [type of content]?",
+      "What tools do you currently use for writing?",
+      "Would you pay to write 50% faster with better quality?"
+    ]
+  },
+  "suggestedTechniques": [
+    {
+      "technique": "Prompt Engineering",
+      "use": "Core feature - transform user input into polished content",
+      "complexity": "Medium",
+      "example": "System: You are a professional email writer. User: Turn these bullets into a professional email..."
+    },
+    {
+      "technique": "Few-Shot Learning",
+      "use": "Maintain consistent tone/style",
+      "complexity": "Low",
+      "example": "Include 2-3 examples of desired output style in prompt"
+    },
+    {
+      "technique": "Streaming",
+      "use": "Show AI writing in real-time for better UX",
+      "complexity": "Low",
+      "example": "Use Anthropic's streaming API to display words as generated"
+    },
+    {
+      "technique": "Template System",
+      "use": "Pre-built prompts for common use cases",
+      "complexity": "Low",
+      "example": "Templates: Professional Email, Casual Email, Sales Pitch, etc."
+    }
+  ],
+  "coreFeatures": [
+    {
+      "feature": "Content Generation",
+      "description": "User inputs topic/bullets, AI generates polished content",
+      "priority": "must-have",
+      "implementation": "Single API endpoint: input → prompt → Claude → stream output"
+    },
+    {
+      "feature": "Tone Selection",
+      "description": "Choose tone: professional, casual, friendly, persuasive",
+      "priority": "must-have",
+      "implementation": "Dropdown → modify system prompt with tone instruction"
+    },
+    {
+      "feature": "Editing & Refinement",
+      "description": "Edit AI output, regenerate parts, adjust length",
+      "priority": "must-have",
+      "implementation": "Rich text editor with 'regenerate' button per paragraph"
+    },
+    {
+      "feature": "Templates",
+      "description": "Pre-built templates: email, blog post, social media, etc.",
+      "priority": "important",
+      "implementation": "JSON config file with prompt templates"
+    },
+    {
+      "feature": "History",
+      "description": "Save and revisit previous generations",
+      "priority": "important",
+      "implementation": "Store in database with user_id, timestamp"
+    },
+    {
+      "feature": "Export",
+      "description": "Copy to clipboard, download as .txt/.md",
+      "priority": "nice-to-have",
+      "implementation": "Copy button, file download API"
+    }
+  ],
+  "userStories": [
+    "As a sales rep, I want to turn meeting notes into follow-up emails so I can save 30 minutes per email",
+    "As a content marketer, I want to generate blog post outlines from topics so I can beat writer's block",
+    "As a non-native speaker, I want to improve my English emails so they sound professional",
+    "As a product manager, I want to generate product descriptions at scale so I can launch faster"
+  ],
+  "mvpScope": {
+    "mustHave": [
+      "Input field for user content/bullets",
+      "Tone selector (3-5 options)",
+      "Generate button → AI writes content",
+      "Editable output with regenerate",
+      "Copy to clipboard"
+    ],
+    "v2Features": [
+      "User accounts and history",
+      "Custom templates",
+      "Team collaboration",
+      "Brand voice training",
+      "Multi-language support"
+    ]
+  },
+  "architectureGuidance": {
+    "frontend": [
+      "Next.js App Router",
+      "Rich text editor component (Tiptap or similar)",
+      "Streaming display of AI output",
+      "Tone selector UI"
+    ],
+    "backend": [
+      "API route: /api/generate",
+      "Prompt builder service (builds prompts from templates + user input)",
+      "Claude client with streaming",
+      "Optional: Database for saving history"
+    ],
+    "database": [
+      "User table (if auth)",
+      "Generation table: id, user_id, input, output, tone, timestamp",
+      "Optional: Template table for custom templates"
+    ]
+  },
+  "promptExamples": {
+    "emailGeneration": {
+      "system": "You are a professional email writer. Write clear, concise, professional emails based on user's key points.",
+      "user": "Write a {{tone}} email about:\n\n{{userInput}}\n\nFormat:\n- Subject line\n- Body (2-4 paragraphs)\n- Professional closing",
+      "variables": {
+        "tone": "professional | casual | friendly",
+        "userInput": "User's bullets or rough draft"
+      }
+    },
+    "blogPostGeneration": {
+      "system": "You are a skilled content writer. Create engaging, well-structured blog posts.",
+      "user": "Topic: {{topic}}\n\nTone: {{tone}}\n\nGenerate:\n1. Catchy headline\n2. Introduction (hook the reader)\n3. 3-5 main points with subheadings\n4. Conclusion with call-to-action\n\nLength: {{length}} words",
+      "variables": {
+        "topic": "Blog topic",
+        "tone": "professional | conversational",
+        "length": "500 | 1000 | 1500"
+      }
+    }
+  },
+  "integrationExamples": {
+    "claudeStreaming": "const stream = await anthropic.messages.stream({\n  model: 'claude-3-5-sonnet',\n  messages: [{ role: 'user', content: prompt }],\n  max_tokens: 1024\n})\n\nfor await (const chunk of stream) {\n  if (chunk.type === 'content_block_delta') {\n    yield chunk.delta.text\n  }\n}",
+    "promptBuilder": "function buildPrompt(template: string, variables: Record<string, string>): string {\n  return template.replace(/{{(\\w+)}}/g, (_, key) => variables[key] || '')\n}",
+    "caching": "const cacheKey = `generation:${hash(input + tone)}`\nconst cached = await redis.get(cacheKey)\nif (cached) return cached\n\nconst result = await generateContent(input, tone)\nawait redis.setex(cacheKey, 3600, result)\nreturn result"
+  },
+  "successMetrics": [
+    {
+      "metric": "Time Saved",
+      "description": "Minutes saved per writing task vs manual",
+      "target": "5+ minutes saved per task",
+      "measurement": "User survey or before/after timing"
+    },
+    {
+      "metric": "Quality Score",
+      "description": "User rating of AI-generated content (1-5)",
+      "target": "4.0+ average",
+      "measurement": "In-app rating after each generation"
+    },
+    {
+      "metric": "Adoption Rate",
+      "description": "% of users who use AI for >50% of writing tasks",
+      "target": "70%+",
+      "measurement": "Track AI usage vs manual writing"
+    },
+    {
+      "metric": "Cost per Generation",
+      "description": "Average LLM API cost per content generation",
+      "target": "<$0.02 per generation",
+      "measurement": "Track tokens used, calculate cost"
+    }
+  ],
+  "costEstimate": {
+    "development": {
+      "hours": 30,
+      "description": "20 hours core features + 10 hours polish/deploy"
+    },
+    "api": {
+      "perGeneration": "$0.01-0.03",
+      "monthly": "$10-50 for 1000 generations",
+      "optimization": "Cache common requests, use Claude Haiku for simple tasks"
+    },
+    "hosting": {
+      "platform": "Vercel Free or Pro ($20/mo)",
+      "database": "Vercel Postgres Free tier or Supabase",
+      "total": "$0-20/month initially"
+    }
+  },
+  "differentiationIdeas": [
+    "Focus on specific niche (e.g., only sales emails, not general writing)",
+    "Train on user's past writing to match their voice",
+    "Add grammar/clarity scoring before/after",
+    "Integrate with Gmail/Outlook for one-click email generation",
+    "Multi-step: outline → draft → polish workflow"
+  ],
+  "technicalChallenges": [
+    {
+      "challenge": "Maintaining consistent tone across generations",
+      "solution": "Use few-shot examples in prompt, or fine-tune model on examples"
+    },
+    {
+      "challenge": "Managing costs at scale",
+      "solution": "Aggressive caching, use cheaper models for simple tasks, rate limiting"
+    },
+    {
+      "challenge": "Handling long-form content (>1000 words)",
+      "solution": "Generate in sections, or use streaming with progress indicator"
+    }
+  ],
+  "inspirationProjects": [
+    "Jasper AI (content generation)",
+    "Copy.ai (marketing copy)",
+    "Lavender (email writing)",
+    "Notion AI (writing assistant in context)"
+  ]
+}
