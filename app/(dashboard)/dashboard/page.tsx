@@ -23,6 +23,24 @@ export default async function DashboardPage() {
 
   const diagnosisCompleted = !!user?.skillDiagnosis
 
+  // Fetch Week 1 progress
+  let week1Progress = null
+  if (user) {
+    const week1 = await prisma.curriculumWeek.findUnique({
+      where: { weekNumber: 1 }
+    })
+    if (week1) {
+      week1Progress = await prisma.userWeekProgress.findUnique({
+        where: {
+          userId_weekId: {
+            userId: user.id,
+            weekId: week1.id
+          }
+        }
+      })
+    }
+  }
+
   // Fetch Sprint progress
   const sprint1Progress = user ? await getSprintProgress(user.id, 'sprint-1') : null
   const sprint2Progress = user ? await getSprintProgress(user.id, 'sprint-2') : null
@@ -87,6 +105,57 @@ export default async function DashboardPage() {
               <Link href="/diagnosis">
                 <Button size="sm" variant="outline">
                   Start
+                </Button>
+              </Link>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              Week 1
+              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                NEW
+              </span>
+            </CardTitle>
+            <CardDescription>Foundations + Visual Builder</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-slate-600 mb-4">
+              Learn LLM fundamentals, prompt engineering, and build your first AI product
+            </p>
+            {week1Progress ? (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <div className="text-xs text-slate-600 mb-1">
+                    Progress: {week1Progress.conceptsCompleted}/{week1Progress.conceptsTotal} concepts
+                    {week1Progress.labCompleted && ', Lab ✓'}
+                    {week1Progress.projectCompleted && ', Project ✓'}
+                  </div>
+                  <div className="w-full bg-slate-200 rounded-full h-1.5">
+                    <div
+                      className="bg-purple-600 h-1.5 rounded-full transition-all"
+                      style={{
+                        width: `${Math.round(
+                          ((week1Progress.conceptsCompleted / week1Progress.conceptsTotal) * 0.6 +
+                           (week1Progress.labCompleted ? 0.2 : 0) +
+                           (week1Progress.projectCompleted ? 0.2 : 0)) * 100
+                        )}%`
+                      }}
+                    />
+                  </div>
+                </div>
+                <Link href="/curriculum/week-1">
+                  <Button size="sm" variant="outline" className="w-full border-purple-300 text-purple-700 hover:bg-purple-50">
+                    Continue Week 1
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              <Link href="/curriculum/week-1">
+                <Button size="sm" variant="outline" className="border-purple-300 text-purple-700 hover:bg-purple-50">
+                  Start Week 1
                 </Button>
               </Link>
             )}
