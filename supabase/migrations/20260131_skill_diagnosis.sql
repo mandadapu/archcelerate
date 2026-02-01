@@ -1,6 +1,6 @@
 -- Skill Diagnosis Results
 CREATE TABLE public.skill_diagnosis (
-    user_id UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+    user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     quiz_answers JSONB NOT NULL,
     skill_scores JSONB NOT NULL,
     recommended_path VARCHAR(50) NOT NULL,
@@ -23,7 +23,3 @@ CREATE POLICY "Users can update own diagnosis"
 ON public.skill_diagnosis
 FOR UPDATE
 USING (auth.uid() = user_id);
-
--- Add onboarded flag to users table
-ALTER TABLE public.users
-ADD COLUMN IF NOT EXISTS diagnosis_completed BOOLEAN DEFAULT FALSE;
