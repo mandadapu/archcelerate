@@ -26,7 +26,7 @@ export function recommendPath(answers: AssessmentAnswers): LearningPath {
   }
 
   // Rapid builder path - for experienced devs who want to build quickly
-  if (goal === 'build' && experience === 'advanced' && ai_exposure !== 'none') {
+  if (goal === 'build' && experience === 'advanced') {
     return {
       id: 'rapid',
       name: 'Rapid Builder',
