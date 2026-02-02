@@ -43,12 +43,7 @@ export async function POST(request: NextRequest) {
     await prisma.user.update({
       where: { id: user.id },
       data: {
-        metadata: {
-          learningPathId: selectedPath,
-          recommendedPace: path.recommendedPace,
-          assessmentAnswers: answers,
-          onboardingCompletedAt: new Date().toISOString(),
-        },
+        onboardedAt: new Date(),
       },
     })
 
