@@ -16,20 +16,20 @@ export async function getDashboardMetrics() {
       // Total users
       prisma.user.count(),
 
-      // This week's users (logged in)
+      // This week's signups
       prisma.user.count({
         where: {
-          updatedAt: {
+          createdAt: {
             gte: weekStart,
             lte: weekEnd,
           },
         },
       }),
 
-      // Last week's users
+      // Last week's signups
       prisma.user.count({
         where: {
-          updatedAt: {
+          createdAt: {
             gte: lastWeekStart,
             lte: weekStart,
           },
@@ -73,19 +73,19 @@ export async function getUserActivity(days: number = 30) {
   try {
     const users = await prisma.user.findMany({
       where: {
-        updatedAt: {
+        createdAt: {
           gte: subWeeks(new Date(), Math.ceil(days / 7)),
         },
       },
       orderBy: {
-        updatedAt: 'desc',
+        createdAt: 'desc',
       },
       take: 10,
       select: {
         id: true,
         email: true,
         name: true,
-        updatedAt: true,
+        createdAt: true,
       },
     })
 
@@ -109,14 +109,13 @@ export async function getRecentUsers(limit: number = 20) {
         name: true,
         image: true,
         createdAt: true,
-        updatedAt: true,
       },
     })
 
     return users.map((user) => ({
       ...user,
       status: 'active' as const,
-      lastLoginAt: user.updatedAt,
+      lastLoginAt: user.createdAt,
     }))
   } catch (error) {
     console.error('Error fetching recent users:', error)
