@@ -79,29 +79,19 @@ export default function Home() {
       {/* Tech Stack Carousel - 80px spacing */}
       <TechStack />
 
-      {/* Project Showcase - 80px spacing */}
-      <section id="projects" className="py-20">
-        <ProjectShowcase />
-      </section>
-
-      {/* Testimonials - 80px spacing */}
-      <section id="testimonials" className="py-20">
-        <Testimonials />
-      </section>
-
-      {/* How It Works - Enhanced Features - 80px spacing */}
+      {/* What You Get - Core Features - 80px spacing */}
       <section id="features" className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-              How It Works
+              What You Get
             </h2>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Learn by building real AI products with guidance every step
+              Everything you need to build and ship production AI systems
             </p>
           </div>
 
-          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-8 md:grid-cols-3">
             {/* Feature 1 - Projects */}
             <div className="group relative bg-white p-8 rounded-2xl border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent hover:bg-gradient-to-br hover:from-purple-50 hover:to-cyan-50">
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
@@ -191,68 +181,13 @@ export default function Home() {
                 </button>
               </div>
             </div>
-
-            {/* Feature 4 - AI Workflows */}
-            <div className="group relative bg-white p-8 rounded-2xl border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent hover:bg-gradient-to-br hover:from-blue-50 hover:to-purple-50">
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-500 to-purple-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
-              <div className="relative">
-                <div className="aspect-video rounded-lg mb-6 overflow-hidden">
-                  <img
-                    src="/images/cards/workflows.svg"
-                    alt="AI Workflows"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-
-                <div className="text-4xl font-bold bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent mb-2">
-                  Auto
-                </div>
-                <h3 className="font-display text-xl font-semibold text-gray-900 mb-3">
-                  AI Workflows
-                </h3>
-                <p className="text-gray-600 leading-relaxed mb-4">
-                  Build, run, and scale AI-powered workflows. Connect data, APIs, and models in a visual builder—no complex coding needed.
-                </p>
-                <button className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center">
-                  Explore workflows
-                  <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            {/* Feature 5 - AI Security */}
-            <div className="group relative bg-white p-8 rounded-2xl border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent hover:bg-gradient-to-br hover:from-green-50 hover:to-emerald-50">
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-green-600 to-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
-              <div className="relative">
-                <div className="aspect-video rounded-lg mb-6 overflow-hidden">
-                  <img
-                    src="/images/cards/security.svg"
-                    alt="AI Security"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-
-                <div className="text-4xl font-bold bg-gradient-to-r from-green-600 to-emerald-500 bg-clip-text text-transparent mb-2">
-                  Secure
-                </div>
-                <h3 className="font-display text-xl font-semibold text-gray-900 mb-3">
-                  AI Security
-                </h3>
-                <p className="text-gray-600 leading-relaxed mb-4">
-                  Enterprise-grade security framework. Protect data, models, and usage with built-in governance, compliance, and threat detection.
-                </p>
-                <button className="text-sm font-medium text-green-600 hover:text-green-700 flex items-center">
-                  Learn about security
-                  <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
-            </div>
           </div>
         </div>
+      </section>
+
+      {/* Project Showcase - 80px spacing */}
+      <section id="projects" className="py-20">
+        <ProjectShowcase />
       </section>
 
       {/* Final CTA Section - 80px spacing */}
@@ -294,6 +229,11 @@ export default function Home() {
             </div>
           </div>
         </div>
+      </section>
+
+      {/* Testimonials - 80px spacing */}
+      <section id="testimonials" className="py-20">
+        <Testimonials />
       </section>
 
       {/* Social Proof Strip - 80px spacing */}
