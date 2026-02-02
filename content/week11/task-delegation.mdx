@@ -6,61 +6,616 @@ estimatedMinutes: 40
 
 # Task Delegation & Orchestration
 
-## Intelligent Router
+## Why Task Delegation Matters
+
+**Simple Explanation**: Imagine you're organizing a conference. You wouldn't do everything yourself - you'd delegate registration to one person, catering to another, and AV setup to a third. AI agent delegation works the same way: split complex work among specialized agents.
+
+**The Challenge**: How do you know which agent should handle which task? What if a task needs multiple agents? What if they need to work in a specific order?
+
+**The Solution**: Intelligent routing and orchestration systems that automatically assign tasks based on agent capabilities and manage execution flow.
+
+## Core Concepts
+
+### Task Analysis
+
+**Simple Explanation**: Before delegating, you need to understand what the task requires. It's like reading a job description before hiring someone.
 
 ```typescript
+interface TaskRequirements {
+  type: string              // 'research', 'coding', 'writing', etc.
+  complexity: 'low' | 'medium' | 'high'
+  requiredCapabilities: string[]  // ['web_search', 'code_generation']
+  estimatedTime: number     // seconds
+  dependencies: string[]    // Other tasks that must complete first
+  priority: number          // 1-10, higher = more urgent
+}
+
+async function analyzeTask(description: string): Promise<TaskRequirements> {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20241022',
+    max_tokens: 500,
+    messages: [{
+      role: 'user',
+      content: `Analyze this task and extract requirements:
+
+Task: "${description}"
+
+Return JSON with:
+{
+  "type": "research|coding|writing|analysis|creative",
+  "complexity": "low|medium|high",
+  "requiredCapabilities": ["capability1", "capability2"],
+  "estimatedTime": <seconds>,
+  "dependencies": [],
+  "priority": <1-10>
+}`
+    }]
+  })
+
+  return JSON.parse(response.content[0].text)
+}
+
+// Example usage
+const requirements = await analyzeTask(
+  "Write a technical blog post about RAG systems with code examples"
+)
+
+console.log(requirements)
+// {
+//   type: "writing",
+//   complexity: "high",
+//   requiredCapabilities: ["research", "writing", "code_generation"],
+//   estimatedTime: 300,
+//   dependencies: [],
+//   priority: 5
+// }
+```
+
+**Technical Details**:
+- **LLM-Based Analysis**: Use an LLM to understand task requirements
+- **Capability Matching**: Compare task needs with agent capabilities
+- **Complexity Scoring**: Determines if task needs decomposition
+- **Cost**: ~$0.001 per task analysis (very cheap!)
+
+## Intelligent Router
+
+**Simple Explanation**: A router decides which agent is best suited for a task, like a dispatcher assigning emergency calls to the right responders.
+
+```typescript
+interface Agent {
+  id: string
+  role: string
+  capabilities: Set<string>
+  currentLoad: number      // 0-100, how busy they are
+  successRate: number      // 0-1, historical performance
+  avgResponseTime: number  // milliseconds
+}
+
 class AgentRouter {
-  async route(task: Task): Promise<Agent> {
-    const analysis = await this.analyzeTask(task)
-    
-    // Match task to agent capabilities
-    const agent = this.selectBestAgent(analysis.requirements)
-    
-    return agent
+  private agents: Map<string, Agent>
+
+  constructor(agents: Agent[]) {
+    this.agents = new Map(agents.map(a => [a.id, a]))
   }
-  
-  private async analyzeTask(task: Task) {
-    const response = await claude.messages.create({
-      model: 'claude-3-sonnet',
+
+  async route(task: Task): Promise<Agent> {
+    // Step 1: Analyze task requirements
+    const requirements = await this.analyzeTask(task)
+    console.log('Task requires:', requirements.requiredCapabilities)
+
+    // Step 2: Filter agents by capability
+    const capableAgents = this.filterByCapabilities(
+      requirements.requiredCapabilities
+    )
+    console.log(`${capableAgents.length} capable agents found`)
+
+    if (capableAgents.length === 0) {
+      throw new Error(`No agent can handle: ${requirements.requiredCapabilities}`)
+    }
+
+    // Step 3: Score each agent
+    const scoredAgents = capableAgents.map(agent => ({
+      agent,
+      score: this.scoreAgent(agent, requirements)
+    }))
+
+    // Step 4: Select best agent
+    const best = scoredAgents.sort((a, b) => b.score - a.score)[0]
+    console.log(`Selected: ${best.agent.role} (score: ${best.score})`)
+
+    return best.agent
+  }
+
+  private filterByCapabilities(required: string[]): Agent[] {
+    return Array.from(this.agents.values()).filter(agent =>
+      required.every(cap => agent.capabilities.has(cap))
+    )
+  }
+
+  private scoreAgent(agent: Agent, requirements: TaskRequirements): number {
+    // Multi-factor scoring
+    const capabilityScore = this.getCapabilityScore(agent, requirements)
+    const loadScore = 1 - (agent.currentLoad / 100)  // Lower load = higher score
+    const performanceScore = agent.successRate
+    const speedScore = 1 / (agent.avgResponseTime / 1000)  // Faster = higher score
+
+    // Weighted combination
+    const weights = {
+      capability: 0.4,
+      load: 0.2,
+      performance: 0.3,
+      speed: 0.1
+    }
+
+    return (
+      capabilityScore * weights.capability +
+      loadScore * weights.load +
+      performanceScore * weights.performance +
+      speedScore * weights.speed
+    )
+  }
+
+  private getCapabilityScore(agent: Agent, requirements: TaskRequirements): number {
+    const required = new Set(requirements.requiredCapabilities)
+    const matched = new Set(
+      [...required].filter(cap => agent.capabilities.has(cap))
+    )
+
+    // Bonus for extra capabilities
+    const extraCapabilities = agent.capabilities.size - matched.size
+    const bonusScore = Math.min(extraCapabilities * 0.1, 0.3)
+
+    return (matched.size / required.size) + bonusScore
+  }
+
+  private async analyzeTask(task: Task): Promise<TaskRequirements> {
+    // Use LLM to understand requirements
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 500,
       messages: [{
         role: 'user',
-        content: `Analyze this task and determine required capabilities:
+        content: `Analyze task requirements:
 
 Task: ${task.description}
 
-Return JSON: { requirements: string[], complexity: 'low' | 'medium' | 'high' }`
+Return JSON: {
+  requiredCapabilities: string[],
+  complexity: 'low' | 'medium' | 'high',
+  estimatedTime: number
+}`
       }]
     })
-    
+
     return JSON.parse(response.content[0].text)
   }
 }
+
+// Example usage
+const router = new AgentRouter([
+  {
+    id: 'researcher-1',
+    role: 'researcher',
+    capabilities: new Set(['web_search', 'document_analysis', 'summarization']),
+    currentLoad: 30,
+    successRate: 0.92,
+    avgResponseTime: 15000
+  },
+  {
+    id: 'coder-1',
+    role: 'coder',
+    capabilities: new Set(['code_generation', 'debugging', 'testing']),
+    currentLoad: 70,
+    successRate: 0.88,
+    avgResponseTime: 25000
+  },
+  {
+    id: 'researcher-2',
+    role: 'researcher',
+    capabilities: new Set(['web_search', 'document_analysis']),
+    currentLoad: 10,
+    successRate: 0.95,
+    avgResponseTime: 12000
+  }
+])
+
+const task = {
+  description: 'Find recent papers about transformer architecture improvements'
+}
+
+const selectedAgent = await router.route(task)
+// Likely selects researcher-2 (low load, high success rate, fast)
 ```
 
-## Hierarchical Delegation
+**Why Multi-Factor Scoring?**:
+- **Capability Match**: Can they actually do the task?
+- **Current Load**: Don't overwhelm busy agents
+- **Success Rate**: Favor agents with good track record
+- **Speed**: Faster agents provide better UX
+
+## Task Decomposition
+
+**Simple Explanation**: Breaking a big task into smaller subtasks that can be assigned to different agents. Like breaking "build a house" into "foundation", "framing", "electrical", etc.
+
+```typescript
+class TaskDecomposer {
+  async decompose(complexTask: ComplexTask): Promise<Subtask[]> {
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 2000,
+      messages: [{
+        role: 'user',
+        content: `Decompose this complex task into subtasks:
+
+Task: ${complexTask.description}
+Requirements: ${JSON.stringify(complexTask.requirements)}
+Available agents: ${this.getAgentRoles().join(', ')}
+
+Return JSON array of subtasks:
+[
+  {
+    "description": "Clear description of subtask",
+    "assignTo": "agent_role",
+    "requiredCapabilities": ["capability1", "capability2"],
+    "dependencies": [0, 1],  // Indices of subtasks that must complete first
+    "estimatedTime": <seconds>,
+    "priority": <1-10>
+  }
+]
+
+Rules:
+1. Each subtask should be independently completable
+2. Minimize dependencies to enable parallelization
+3. Assign to most appropriate agent type
+4. Order by logical flow`
+      }]
+    })
+
+    const subtasks = JSON.parse(response.content[0].text)
+
+    // Validate dependencies
+    this.validateDependencies(subtasks)
+
+    return subtasks
+  }
+
+  private validateDependencies(subtasks: Subtask[]): void {
+    subtasks.forEach((task, index) => {
+      task.dependencies.forEach(depIndex => {
+        if (depIndex >= index) {
+          throw new Error(
+            `Invalid dependency: Task ${index} depends on later task ${depIndex}`
+          )
+        }
+        if (depIndex < 0 || depIndex >= subtasks.length) {
+          throw new Error(`Invalid dependency index: ${depIndex}`)
+        }
+      })
+    })
+
+    // Check for circular dependencies
+    const visited = new Set<number>()
+    const checkCircular = (taskIndex: number, path: Set<number>) => {
+      if (path.has(taskIndex)) {
+        throw new Error('Circular dependency detected')
+      }
+      if (visited.has(taskIndex)) return
+
+      visited.add(taskIndex)
+      path.add(taskIndex)
+
+      subtasks[taskIndex].dependencies.forEach(depIndex => {
+        checkCircular(depIndex, new Set(path))
+      })
+
+      path.delete(taskIndex)
+    }
+
+    subtasks.forEach((_, index) => checkCircular(index, new Set()))
+  }
+}
+
+// Example
+const decomposer = new TaskDecomposer()
+
+const complexTask = {
+  description: 'Create a comprehensive technical blog post about RAG systems',
+  requirements: [
+    'research current RAG implementations',
+    'provide code examples',
+    'explain tradeoffs',
+    'include performance metrics'
+  ]
+}
+
+const subtasks = await decomposer.decompose(complexTask)
+
+console.log(subtasks)
+// [
+//   {
+//     description: "Research RAG architecture patterns and implementations",
+//     assignTo: "researcher",
+//     requiredCapabilities: ["web_search", "document_analysis"],
+//     dependencies: [],
+//     estimatedTime: 60,
+//     priority: 10
+//   },
+//   {
+//     description: "Write code examples for RAG pipeline",
+//     assignTo: "coder",
+//     requiredCapabilities: ["code_generation"],
+//     dependencies: [0],  // Needs research first
+//     estimatedTime: 120,
+//     priority: 8
+//   },
+//   {
+//     description: "Gather performance benchmarks",
+//     assignTo: "researcher",
+//     requiredCapabilities: ["data_analysis"],
+//     dependencies: [0],  // Needs research first (can run parallel with task 1)
+//     estimatedTime: 45,
+//     priority: 7
+//   },
+//   {
+//     description: "Write blog post draft",
+//     assignTo: "writer",
+//     requiredCapabilities: ["writing", "technical_communication"],
+//     dependencies: [0, 1, 2],  // Needs all research and code
+//     estimatedTime: 90,
+//     priority: 9
+//   },
+//   {
+//     description: "Review and edit",
+//     assignTo: "editor",
+//     requiredCapabilities: ["editing", "quality_assurance"],
+//     dependencies: [3],  // Needs draft
+//     estimatedTime: 30,
+//     priority: 6
+//   }
+// ]
+```
+
+**Execution Strategy**:
+```typescript
+// Task 0 → runs immediately (no dependencies)
+// Tasks 1, 2 → run in parallel after task 0 completes
+// Task 3 → runs after tasks 0, 1, 2 complete
+// Task 4 → runs after task 3 completes
+
+// Total time: 60 + max(120, 45) + 90 + 30 = 300 seconds
+// Sequential time: 60 + 120 + 45 + 90 + 30 = 345 seconds
+// Speedup: 15% faster through parallelization
+```
+
+## Hierarchical Delegation (Manager-Worker Pattern)
+
+**Simple Explanation**: One manager agent coordinates multiple worker agents. The manager makes decisions, workers execute tasks.
 
 ```typescript
 class ManagerAgent {
-  async delegateTask(task: ComplexTask) {
-    // Break down task
-    const subtasks = await this.decompose(task)
-    
-    // Assign to specialists
-    const assignments = subtasks.map(subtask => ({
-      subtask,
-      agent: this.selectAgent(subtask)
-    }))
-    
-    // Execute in parallel
-    const results = await Promise.all(
-      assignments.map(a => a.agent.execute(a.subtask))
-    )
-    
-    // Synthesize
-    return await this.synthesize(results)
+  private workers: Map<string, Agent>
+  private router: AgentRouter
+  private decomposer: TaskDecomposer
+
+  constructor(workers: Agent[]) {
+    this.workers = new Map(workers.map(w => [w.id, w]))
+    this.router = new AgentRouter(workers)
+    this.decomposer = new TaskDecomposer()
+  }
+
+  async execute(task: ComplexTask): Promise<Result> {
+    console.log(`Manager: Received task "${task.description}"`)
+
+    // Step 1: Decompose into subtasks
+    console.log('Manager: Decomposing task...')
+    const subtasks = await this.decomposer.decompose(task)
+    console.log(`Manager: Created ${subtasks.length} subtasks`)
+
+    // Step 2: Create execution plan
+    const plan = this.createExecutionPlan(subtasks)
+    console.log('Manager: Execution plan ready')
+    console.log('  - Parallel batches:', plan.batches.length)
+    console.log('  - Total estimated time:', plan.estimatedTime, 'seconds')
+
+    // Step 3: Execute plan
+    const results = await this.executePlan(plan)
+
+    // Step 4: Synthesize results
+    console.log('Manager: Synthesizing results...')
+    const final = await this.synthesizeResults(results, task)
+
+    // Step 5: Validate
+    console.log('Manager: Validating output...')
+    const validated = await this.validate(final, task.requirements)
+
+    if (!validated.isValid) {
+      console.log('Manager: Validation failed, retrying...')
+      // Could implement retry logic here
+      throw new Error(`Validation failed: ${validated.errors.join(', ')}`)
+    }
+
+    console.log('Manager: Task completed successfully')
+    return final
+  }
+
+  private createExecutionPlan(subtasks: Subtask[]): ExecutionPlan {
+    // Group subtasks into batches that can run in parallel
+    const batches: Subtask[][] = []
+    const completed = new Set<number>()
+
+    while (completed.size < subtasks.length) {
+      const batch = subtasks.filter((task, index) =>
+        !completed.has(index) &&
+        task.dependencies.every(dep => completed.has(dep))
+      )
+
+      if (batch.length === 0) {
+        throw new Error('Circular dependencies detected')
+      }
+
+      batches.push(batch)
+      batch.forEach((_, index) => {
+        const originalIndex = subtasks.indexOf(batch[index])
+        completed.add(originalIndex)
+      })
+    }
+
+    // Estimate total time (sum of batch times, since batches run sequentially)
+    const estimatedTime = batches.reduce((total, batch) => {
+      const batchTime = Math.max(...batch.map(t => t.estimatedTime))
+      return total + batchTime
+    }, 0)
+
+    return { batches, estimatedTime }
+  }
+
+  private async executePlan(plan: ExecutionPlan): Promise<Result[]> {
+    const results: Result[] = []
+
+    for (let i = 0; i < plan.batches.length; i++) {
+      const batch = plan.batches[i]
+      console.log(`Manager: Executing batch ${i + 1}/${plan.batches.length}`)
+      console.log(`  - ${batch.length} tasks in parallel`)
+
+      // Execute batch in parallel
+      const batchResults = await Promise.all(
+        batch.map(async (subtask) => {
+          // Route to appropriate agent
+          const agent = await this.router.route(subtask)
+          console.log(`  - Assigned "${subtask.description}" to ${agent.role}`)
+
+          // Execute
+          const startTime = Date.now()
+          const result = await agent.execute(subtask)
+          const duration = Date.now() - startTime
+
+          console.log(`  ✓ Completed in ${duration}ms`)
+
+          return result
+        })
+      )
+
+      results.push(...batchResults)
+    }
+
+    return results
+  }
+
+  private async synthesizeResults(results: Result[], task: ComplexTask): Promise<Result> {
+    // Combine all subtask results into final output
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 3000,
+      messages: [{
+        role: 'user',
+        content: `Synthesize these results into a coherent final output:
+
+Original task: ${task.description}
+Requirements: ${JSON.stringify(task.requirements)}
+
+Results from agents:
+${results.map((r, i) => `
+Result ${i + 1}:
+${JSON.stringify(r, null, 2)}
+`).join('\n')}
+
+Create a final output that integrates all results.`
+      }]
+    })
+
+    return {
+      content: response.content[0].text,
+      metadata: {
+        subtasksCompleted: results.length,
+        timestamp: new Date().toISOString()
+      }
+    }
+  }
+
+  private async validate(result: Result, requirements: string[]): Promise<ValidationResult> {
+    // Check if result meets all requirements
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 500,
+      messages: [{
+        role: 'user',
+        content: `Validate this result against requirements:
+
+Requirements:
+${requirements.map((r, i) => `${i + 1}. ${r}`).join('\n')}
+
+Result:
+${JSON.stringify(result)}
+
+Return JSON:
+{
+  "isValid": boolean,
+  "errors": string[],  // Empty if valid
+  "score": 0-100       // Overall quality score
+}`
+      }]
+    })
+
+    return JSON.parse(response.content[0].text)
   }
 }
+
+// Example usage
+const manager = new ManagerAgent([
+  { id: 'r1', role: 'researcher', capabilities: new Set(['web_search']), currentLoad: 20, successRate: 0.9, avgResponseTime: 15000 },
+  { id: 'c1', role: 'coder', capabilities: new Set(['code_generation']), currentLoad: 40, successRate: 0.85, avgResponseTime: 30000 },
+  { id: 'w1', role: 'writer', capabilities: new Set(['writing']), currentLoad: 10, successRate: 0.95, avgResponseTime: 20000 },
+])
+
+const result = await manager.execute({
+  description: 'Create technical documentation for our API',
+  requirements: [
+    'Include code examples',
+    'Explain all endpoints',
+    'Provide authentication guide',
+    'Add troubleshooting section'
+  ]
+})
+
+// Manager automatically:
+// 1. Decomposes into subtasks
+// 2. Routes each subtask to best agent
+// 3. Executes in optimal order (parallel where possible)
+// 4. Synthesizes results
+// 5. Validates output
 ```
+
+**Performance Benefits**:
+- **Automatic Parallelization**: Manager identifies tasks that can run simultaneously
+- **Optimal Routing**: Each subtask goes to the most appropriate agent
+- **Quality Control**: Built-in validation ensures requirements are met
+- **Failure Recovery**: Can retry failed subtasks without restarting entire workflow
+
+## Best Practices
+
+1. **Start Simple**: Don't over-engineer delegation for simple tasks
+2. **Monitor Agent Load**: Distribute work evenly to prevent bottlenecks
+3. **Cache Task Analysis**: Don't re-analyze the same task types
+4. **Set Timeouts**: Prevent one slow agent from blocking everything
+5. **Log Everything**: Track which agent handled which task for debugging
+6. **Graceful Degradation**: Have fallback agents if primary is unavailable
+
+## Common Pitfalls
+
+1. **Over-Decomposition**: Breaking tasks too small increases coordination overhead
+   - **Bad**: 50 tiny subtasks with 100ms each + coordination = slower than 1 task
+   - **Good**: 3-7 meaningful subtasks with clear boundaries
+
+2. **Ignoring Agent Capacity**: Assigning all tasks to the "best" agent overloads it
+   - **Fix**: Factor in current load when routing
+
+3. **Synchronous Execution**: Not utilizing parallel execution opportunities
+   - **Fix**: Identify independent subtasks and execute simultaneously
+
+4. **No Validation**: Assuming subtask results are always correct
+   - **Fix**: Validate results before synthesis
 
 ## Resources
 - [AutoGPT Architecture](https://github.com/Significant-Gravitas/AutoGPT)
+- [Task Decomposition Strategies](https://arxiv.org/abs/2305.14930)
+- [LangChain AgentExecutor](https://python.langchain.com/docs/modules/agents/)

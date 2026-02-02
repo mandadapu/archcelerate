@@ -6,73 +6,518 @@ estimatedMinutes: 45
 
 # Multi-Agent Coordination Patterns
 
-Multiple agents working together can solve complex tasks.
+## Why Multi-Agent Systems?
 
-## Agent Roles
+**Simple Explanation**: Just like a company needs different specialists (marketing, engineering, sales), complex AI tasks often need different "specialist" agents working together. A single AI agent trying to do everything is like asking one person to run an entire company.
+
+**When You Need Multiple Agents**:
+1. **Task Complexity**: The task requires multiple distinct skills (research + writing + coding)
+2. **Parallel Processing**: Different parts can be done simultaneously to save time
+3. **Specialization**: Each agent optimized for specific capabilities
+4. **Reliability**: If one agent fails, others can continue or compensate
+
+**Real Example**: Building a blog post about a technical topic
+- **Researcher Agent**: Finds latest information and sources
+- **Writer Agent**: Creates engaging content from research
+- **Fact Checker Agent**: Verifies claims and statistics
+- **SEO Agent**: Optimizes for search engines
+
+## Core Concepts
+
+### Agent Roles & Capabilities
+
+**Simple Explanation**: Think of agents as specialists with specific skills. A researcher agent knows how to search and analyze, while a writer agent knows how to create compelling content.
 
 ```typescript
 interface Agent {
-  role: string
-  capabilities: string[]
+  role: string          // What the agent does
+  capabilities: string[] // Skills/tools it can use
   execute: (task: Task) => Promise<Result>
 }
 
-const agents = {
-  researcher: {
-    role: 'researcher',
-    capabilities: ['web_search', 'document_analysis'],
-    execute: async (task) => await research(task)
-  },
-  writer: {
-    role: 'writer',
-    capabilities: ['content_generation', 'summarization'],
-    execute: async (task) => await write(task)
-  },
-  coder: {
-    role: 'coder',
-    capabilities: ['code_generation', 'debugging'],
-    execute: async (task) => await code(task)
+// Example: Research specialist
+const researcher: Agent = {
+  role: 'researcher',
+  capabilities: ['web_search', 'document_analysis', 'data_extraction'],
+  execute: async (task) => {
+    // Specialized research logic
+    const sources = await webSearch(task.query)
+    const analysis = await analyzeDocuments(sources)
+    return {
+      findings: analysis,
+      sources: sources,
+      confidence: 0.85
+    }
+  }
+}
+
+// Example: Writer specialist
+const writer: Agent = {
+  role: 'writer',
+  capabilities: ['content_generation', 'summarization', 'editing'],
+  execute: async (task) => {
+    const prompt = `Write a ${task.style} article about:
+    ${task.topic}
+
+    Using this research:
+    ${task.context}
+
+    Target audience: ${task.audience}`
+
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: prompt }]
+    })
+
+    return {
+      content: response.content[0].text,
+      wordCount: response.content[0].text.split(' ').length
+    }
+  }
+}
+
+// Example: Coder specialist
+const coder: Agent = {
+  role: 'coder',
+  capabilities: ['code_generation', 'debugging', 'testing'],
+  execute: async (task) => {
+    const code = await generateCode(task.requirements)
+    const tests = await generateTests(code)
+    const bugs = await analyzeCode(code)
+
+    return {
+      code,
+      tests,
+      issues: bugs,
+      tested: bugs.length === 0
+    }
   }
 }
 ```
 
+**Technical Details**:
+- **Role Definition**: Clear responsibilities prevent overlap
+- **Capability Registry**: Allows dynamic agent selection based on task requirements
+- **Stateless vs Stateful**: Stateless agents are easier to scale, stateful remember context
+- **Cost**: Each agent call costs separately - plan carefully!
+
 ## Orchestration Patterns
 
-### Sequential
+### Pattern 1: Sequential Workflow (Pipeline)
+
+**Simple Explanation**: Agents work one after another, like an assembly line. The output of one agent becomes the input for the next.
+
+**When to Use**:
+- Output of one agent is needed as input for the next
+- Tasks have dependencies (can't write before researching)
+- Need to maintain quality through staged review
 
 ```typescript
-async function sequentialWorkflow(task: string) {
-  // Agent 1: Research
-  const research = await agents.researcher.execute({ type: 'research', query: task })
-  
-  // Agent 2: Write (uses research)
-  const draft = await agents.writer.execute({ type: 'write', context: research })
-  
-  // Agent 3: Review
-  const final = await agents.reviewer.execute({ type: 'review', content: draft })
-  
-  return final
+async function sequentialWorkflow(topic: string) {
+  console.log('Starting sequential workflow for:', topic)
+
+  // Stage 1: Research (0-30 seconds)
+  console.log('Stage 1: Research...')
+  const research = await agents.researcher.execute({
+    type: 'research',
+    query: topic,
+    depth: 'comprehensive'
+  })
+  console.log(`✓ Found ${research.sources.length} sources`)
+
+  // Stage 2: Outline (5-10 seconds)
+  console.log('Stage 2: Outline...')
+  const outline = await agents.writer.execute({
+    type: 'outline',
+    context: research.findings,
+    format: 'blog_post'
+  })
+  console.log(`✓ Created ${outline.sections.length} sections`)
+
+  // Stage 3: Write (20-40 seconds)
+  console.log('Stage 3: Writing...')
+  const draft = await agents.writer.execute({
+    type: 'write',
+    outline: outline,
+    context: research.findings,
+    style: 'professional'
+  })
+  console.log(`✓ Wrote ${draft.wordCount} words`)
+
+  // Stage 4: Review (10-15 seconds)
+  console.log('Stage 4: Review...')
+  const review = await agents.reviewer.execute({
+    type: 'review',
+    content: draft.content,
+    criteria: ['accuracy', 'clarity', 'engagement']
+  })
+
+  // Stage 5: Revise if needed (15-30 seconds)
+  if (review.needsRevision) {
+    console.log('Stage 5: Revising...')
+    const final = await agents.writer.execute({
+      type: 'revise',
+      content: draft.content,
+      feedback: review.suggestions
+    })
+    return final
+  }
+
+  return draft
 }
+
+// Usage
+const blogPost = await sequentialWorkflow('AI Agent Coordination Patterns')
+// Total time: 50-125 seconds
+// Total cost: ~$0.15-0.30 (depending on content length)
 ```
 
-### Parallel
+**Performance Metrics**:
+- **Total Time**: 50-125 seconds (sum of all stages)
+- **Parallelization**: None (must be sequential)
+- **Cost**: 5 agent calls × $0.03-0.06 = $0.15-0.30 per workflow
+- **Quality**: Highest (each stage reviews previous)
+
+### Pattern 2: Parallel Workflow (Fan-Out/Fan-In)
+
+**Simple Explanation**: Multiple agents work at the same time on different parts, then combine results. Like having multiple researchers each investigating different aspects simultaneously.
+
+**When to Use**:
+- Tasks can be split into independent parts
+- Speed is critical (want to minimize total time)
+- Different perspectives improve quality
 
 ```typescript
 async function parallelWorkflow(task: string) {
-  // Multiple agents work simultaneously
-  const [research, examples, references] = await Promise.all([
-    agents.researcher.execute({ type: 'research', query: task }),
-    agents.coder.execute({ type: 'examples', query: task }),
-    agents.librarian.execute({ type: 'references', query: task })
+  console.log('Starting parallel workflow for:', task)
+
+  // Fan-Out: Multiple agents work simultaneously
+  const startTime = Date.now()
+
+  const [research, examples, references, competitors] = await Promise.all([
+    // Agent 1: General research (30s)
+    agents.researcher.execute({
+      type: 'research',
+      query: task,
+      focus: 'general_overview'
+    }),
+
+    // Agent 2: Code examples (25s)
+    agents.coder.execute({
+      type: 'examples',
+      query: task,
+      language: 'typescript'
+    }),
+
+    // Agent 3: Academic references (35s)
+    agents.librarian.execute({
+      type: 'references',
+      query: task,
+      sources: ['arxiv', 'papers_with_code']
+    }),
+
+    // Agent 4: Competitor analysis (40s)
+    agents.analyst.execute({
+      type: 'competitor_analysis',
+      topic: task
+    })
   ])
-  
-  // Coordinator synthesizes results
-  return await agents.coordinator.execute({
+
+  const fanOutTime = Date.now() - startTime
+  console.log(`✓ Parallel execution completed in ${fanOutTime}ms`)
+
+  // Fan-In: Coordinator synthesizes all results
+  const synthesis = await agents.coordinator.execute({
     type: 'synthesize',
-    inputs: { research, examples, references }
+    inputs: {
+      research: research.findings,
+      codeExamples: examples.code,
+      academicSources: references.papers,
+      marketAnalysis: competitors.insights
+    }
   })
+
+  const totalTime = Date.now() - startTime
+  console.log(`✓ Total workflow: ${totalTime}ms`)
+
+  return {
+    content: synthesis,
+    metadata: {
+      parallelTime: fanOutTime,
+      totalTime: totalTime,
+      speedup: '3.5x compared to sequential'
+    }
+  }
 }
+
+// Performance comparison
+// Sequential: 30 + 25 + 35 + 40 = 130 seconds
+// Parallel: max(30, 25, 35, 40) = 40 seconds + 5s synthesis = 45 seconds
+// Speedup: 2.9x faster!
+```
+
+**Performance Metrics**:
+- **Total Time**: 45 seconds (longest agent + synthesis)
+- **Speedup**: 2-4x compared to sequential
+- **Cost**: Same as sequential (same number of calls)
+- **Tradeoff**: Less quality control between stages
+
+### Pattern 3: Hierarchical Coordination (Manager-Worker)
+
+**Simple Explanation**: One "manager" agent breaks down complex tasks and delegates to "worker" agents, then combines their results. Like a project manager coordinating a team.
+
+```typescript
+class ManagerAgent {
+  private workers: Map<string, Agent>
+
+  constructor(workers: Agent[]) {
+    this.workers = new Map(workers.map(w => [w.role, w]))
+  }
+
+  async delegateTask(complexTask: ComplexTask) {
+    // Step 1: Analyze and decompose the task
+    const decomposition = await this.decomposeTask(complexTask)
+    console.log(`Decomposed into ${decomposition.subtasks.length} subtasks`)
+
+    // Step 2: Create execution plan
+    const plan = this.createExecutionPlan(decomposition)
+    console.log(`Execution plan:`, plan)
+
+    // Step 3: Assign subtasks to appropriate workers
+    const assignments = plan.subtasks.map(subtask => ({
+      subtask,
+      agent: this.selectBestAgent(subtask.requirements)
+    }))
+
+    // Step 4: Execute with proper coordination
+    const results = []
+    for (const assignment of assignments) {
+      if (assignment.subtask.dependencies.length === 0) {
+        // No dependencies, can run immediately
+        results.push(assignment.agent.execute(assignment.subtask))
+      } else {
+        // Has dependencies, wait for them
+        const dependencyResults = results.filter((_, i) =>
+          assignment.subtask.dependencies.includes(i)
+        )
+        await Promise.all(dependencyResults)
+        results.push(assignment.agent.execute(assignment.subtask))
+      }
+    }
+
+    const completedResults = await Promise.all(results)
+
+    // Step 5: Synthesize and validate
+    const synthesized = await this.synthesize(completedResults)
+    const validated = await this.validate(synthesized, complexTask.requirements)
+
+    return validated
+  }
+
+  private async decomposeTask(task: ComplexTask) {
+    // Use LLM to intelligently break down the task
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 1500,
+      messages: [{
+        role: 'user',
+        content: `Decompose this complex task into subtasks:
+
+Task: ${task.description}
+Requirements: ${JSON.stringify(task.requirements)}
+Available agents: ${Array.from(this.workers.keys()).join(', ')}
+
+Return JSON array of subtasks with:
+- description: what needs to be done
+- assignTo: which agent should do it
+- dependencies: array of subtask indices this depends on
+- estimatedTime: seconds`
+      }]
+    })
+
+    return JSON.parse(response.content[0].text)
+  }
+
+  private selectBestAgent(requirements: string[]): Agent {
+    // Score each agent based on capability match
+    const scores = Array.from(this.workers.entries()).map(([role, agent]) => {
+      const matchScore = requirements.filter(req =>
+        agent.capabilities.includes(req)
+      ).length
+      return { agent, score: matchScore }
+    })
+
+    // Return agent with highest score
+    return scores.sort((a, b) => b.score - a.score)[0].agent
+  }
+
+  private async synthesize(results: Result[]) {
+    // Combine all results into coherent output
+    const combined = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 2000,
+      messages: [{
+        role: 'user',
+        content: `Synthesize these agent results into a coherent output:
+
+${results.map((r, i) => `Result ${i + 1}: ${JSON.stringify(r)}`).join('\n\n')}`
+      }]
+    })
+
+    return combined.content[0].text
+  }
+}
+
+// Example usage
+const manager = new ManagerAgent([
+  researcher,
+  writer,
+  coder,
+  reviewer,
+  analyst
+])
+
+const result = await manager.delegateTask({
+  description: 'Create a comprehensive guide on building AI agents with code examples',
+  requirements: [
+    'research current best practices',
+    'provide working code examples',
+    'explain tradeoffs',
+    'include performance metrics'
+  ]
+})
+```
+
+**Why This Works**:
+- **Intelligent Decomposition**: LLM breaks down complex tasks appropriately
+- **Dynamic Assignment**: Best agent chosen based on capabilities
+- **Dependency Management**: Ensures proper execution order
+- **Quality Control**: Manager validates final output
+
+## Communication Patterns
+
+### Shared Memory
+
+```typescript
+class SharedMemory {
+  private store = new Map<string, any>()
+
+  async write(key: string, value: any, metadata?: any) {
+    this.store.set(key, {
+      value,
+      metadata,
+      timestamp: Date.now(),
+      version: (this.store.get(key)?.version || 0) + 1
+    })
+  }
+
+  async read(key: string) {
+    return this.store.get(key)?.value
+  }
+
+  async subscribe(key: string, callback: (value: any) => void) {
+    // Notify callback when key changes
+    // Implementation depends on your event system
+  }
+}
+
+// Agents share findings through memory
+const memory = new SharedMemory()
+
+// Agent 1 writes findings
+await memory.write('research_findings', researchResults)
+
+// Agent 2 reads and builds on it
+const findings = await memory.read('research_findings')
+const article = await writeArticle(findings)
+```
+
+### Message Passing
+
+```typescript
+class MessageBus {
+  private subscribers = new Map<string, Function[]>()
+
+  subscribe(topic: string, handler: Function) {
+    if (!this.subscribers.has(topic)) {
+      this.subscribers.set(topic, [])
+    }
+    this.subscribers.get(topic)!.push(handler)
+  }
+
+  async publish(topic: string, message: any) {
+    const handlers = this.subscribers.get(topic) || []
+    await Promise.all(handlers.map(h => h(message)))
+  }
+}
+
+// Usage
+const bus = new MessageBus()
+
+// Agent subscribes to events
+bus.subscribe('research_complete', async (data) => {
+  console.log('Starting writing based on research...')
+  await writer.execute({ type: 'write', context: data })
+})
+
+// Another agent publishes event
+await bus.publish('research_complete', researchResults)
+```
+
+## Best Practices
+
+1. **Clear Role Definition**: Each agent should have a specific, well-defined purpose
+2. **Avoid Over-Coordination**: Too much coordination overhead defeats the purpose
+3. **Handle Failures Gracefully**: One agent failure shouldn't break the entire system
+4. **Monitor Costs**: Multi-agent systems can get expensive quickly
+5. **Use Caching**: Many agents may need the same information
+6. **Set Timeouts**: Prevent one slow agent from blocking everything
+
+## Common Pitfalls
+
+1. **Too Many Agents**: More agents ≠ better results. Start simple.
+   - **Bad**: 10 agents for a simple task → $5 in API calls
+   - **Good**: 2-3 agents for complex task → $0.30 in API calls
+
+2. **Circular Dependencies**: Agent A waits for B, B waits for A
+   - **Fix**: Use dependency graphs, validate before execution
+
+3. **No Conflict Resolution**: What happens when agents disagree?
+   - **Fix**: Implement arbitration (see Week 11, Conflict Resolution)
+
+4. **Ignoring Latency**: Sequential can be too slow for users
+   - **Fix**: Use parallel where possible, show progress indicators
+
+## Real-World Example
+
+**Task**: Generate a technical blog post with code examples
+
+```typescript
+async function createTechnicalBlogPost(topic: string) {
+  const manager = new ManagerAgent([researcher, coder, writer, reviewer])
+
+  // Manager automatically:
+  // 1. Has researcher find information (30s)
+  // 2. Has coder create examples (parallel, 25s)
+  // 3. Has writer create draft with research + code (20s)
+  // 4. Has reviewer check quality (15s)
+  // 5. Has writer revise if needed (15s)
+
+  const post = await manager.delegateTask({
+    description: `Technical blog post about ${topic}`,
+    requirements: ['accurate', 'code examples', 'beginner friendly']
+  })
+
+  return post
+}
+
+// Total time: ~90 seconds (with parallelization)
+// Total cost: ~$0.40
+// Quality: High (multiple review stages)
 ```
 
 ## Resources
 - [Multi-Agent Systems](https://lilianweng.github.io/posts/2023-06-23-agent/)
+- [AutoGPT Architecture](https://github.com/Significant-Gravitas/AutoGPT)
+- [LangChain Multi-Agent](https://python.langchain.com/docs/modules/agents/multi_agent)

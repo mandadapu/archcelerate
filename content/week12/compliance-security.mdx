@@ -6,73 +6,692 @@ estimatedMinutes: 50
 
 # AI Compliance, Security & Governance
 
+## Why Compliance Matters for AI
+
+**Simple Explanation**: AI systems handle sensitive data (customer conversations, personal info, proprietary documents). If you don't protect this data properly, you face legal penalties, loss of customer trust, and potential data breaches.
+
+**Real Consequences**:
+- **GDPR Violations**: Up to €20 million or 4% of annual revenue (whichever is higher)
+- **Data Breach**: Average cost $4.45 million (IBM 2023)
+- **Lost Trust**: 81% of customers stop using a service after a breach
+- **Legal Liability**: Class action lawsuits, regulatory investigations
+
+**Key Regulations**:
+1. **GDPR** (Europe): User data rights, right to be forgotten
+2. **CCPA** (California): Similar to GDPR, privacy rights
+3. **HIPAA** (Healthcare): Protect patient health information
+4. **SOC 2**: Security controls for service providers
+5. **PCI DSS**: Payment card data security
+
 ## Data Privacy (GDPR/CCPA)
+
+**Simple Explanation**: Users have rights over their data - they can request it, delete it, or opt out of collection. You need to honor these requests.
+
+### Right to Access (GDPR Article 15)
 
 ```typescript
 class PrivacyCompliance {
-  async handleDataRequest(userId: string, type: 'access' | 'delete') {
-    switch (type) {
+  async handleDataRequest(
+    userId: string,
+    requestType: 'access' | 'delete' | 'portability'
+  ): Promise<DataRequestResponse> {
+    console.log(`Processing ${requestType} request for user ${userId}`)
+
+    switch (requestType) {
       case 'access':
-        // Export all user data
+        // User wants to see all their data
         return await this.exportUserData(userId)
-      
+
       case 'delete':
-        // Delete all user data
-        await this.deleteUserData(userId)
-        await this.deleteFromVectorDB(userId)
-        await this.deleteFromLogs(userId)
-        break
+        // Right to be forgotten
+        return await this.deleteUserData(userId)
+
+      case 'portability':
+        // User wants data in machine-readable format
+        return await this.exportPortableData(userId)
     }
   }
-  
-  async anonymizePII(text: string): Promise<string> {
-    // Remove personally identifiable information
-    return text
-      .replace(/\b[\w\.-]+@[\w\.-]+\.\w+\b/g, '[EMAIL]')
-      .replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[SSN]')
-      .replace(/\b\d{3}-\d{3}-\d{4}\b/g, '[PHONE]')
+
+  private async exportUserData(userId: string): Promise<DataRequestResponse> {
+    // Gather all user data from all systems
+    const [profile, conversations, analytics, vectorData] = await Promise.all([
+      // 1. User profile
+      prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          sessions: true,
+          apiKeys: true,
+          billingInfo: true
+        }
+      }),
+
+      // 2. AI conversation history
+      prisma.conversation.findMany({
+        where: { userId },
+        include: {
+          messages: true
+        }
+      }),
+
+      // 3. Analytics data
+      prisma.analytics.findMany({
+        where: { userId }
+      }),
+
+      // 4. Vector database embeddings
+      vectorDB.query({
+        filter: { userId: { $eq: userId } }
+      })
+    ])
+
+    // Compile into downloadable format
+    const exportData = {
+      profile: this.sanitizeForExport(profile),
+      conversations: conversations.map(c => ({
+        id: c.id,
+        createdAt: c.createdAt,
+        messages: c.messages.map(m => ({
+          role: m.role,
+          content: m.content,
+          timestamp: m.timestamp
+        }))
+      })),
+      analytics: analytics,
+      embeddingsCount: vectorData.length,
+      exportedAt: new Date().toISOString(),
+      retentionPolicy: '90 days after account deletion'
+    }
+
+    // Log the export for audit trail
+    await this.auditLog({
+      userId,
+      action: 'data_export',
+      result: 'success',
+      dataTypes: ['profile', 'conversations', 'analytics', 'embeddings']
+    })
+
+    return {
+      data: exportData,
+      format: 'json',
+      size: JSON.stringify(exportData).length
+    }
+  }
+
+  private async deleteUserData(userId: string): Promise<DataRequestResponse> {
+    console.log(`Deleting all data for user ${userId}`)
+
+    // Track what gets deleted
+    const deletionReport = {
+      deletedAt: new Date().toISOString(),
+      deleted: [] as string[]
+    }
+
+    // 1. Delete from PostgreSQL
+    await prisma.$transaction(async (tx) => {
+      await tx.message.deleteMany({ where: { userId } })
+      await tx.conversation.deleteMany({ where: { userId } })
+      await tx.session.deleteMany({ where: { userId } })
+      await tx.analytics.deleteMany({ where: { userId } })
+      await tx.user.delete({ where: { id: userId } })
+    })
+    deletionReport.deleted.push('database_records')
+
+    // 2. Delete from vector database
+    await vectorDB.delete({
+      filter: { userId: { $eq: userId } }
+    })
+    deletionReport.deleted.push('vector_embeddings')
+
+    // 3. Delete from cache
+    const userCacheKeys = await redis.keys(`user:${userId}:*`)
+    if (userCacheKeys.length > 0) {
+      await redis.del(...userCacheKeys)
+    }
+    deletionReport.deleted.push('cache_entries')
+
+    // 4. Delete from logs (anonymize, don't fully delete for security)
+    await this.anonymizeLogs(userId)
+    deletionReport.deleted.push('anonymized_logs')
+
+    // 5. Delete from S3 (uploaded files, exports, etc.)
+    await this.deleteUserFiles(userId)
+    deletionReport.deleted.push('stored_files')
+
+    // Audit log (keep for compliance)
+    await this.auditLog({
+      userId: 'DELETED',
+      originalUserId: userId,
+      action: 'account_deletion',
+      result: 'success',
+      deletionReport
+    })
+
+    console.log('User data deletion complete')
+
+    return {
+      success: true,
+      deletionReport,
+      message: 'All user data has been permanently deleted'
+    }
+  }
+
+  private async anonymizeLogs(userId: string) {
+    // Replace userId with anonymous ID in logs
+    // Keep logs for security audit trail but remove PII
+    await prisma.auditLog.updateMany({
+      where: { userId },
+      data: {
+        userId: 'ANONYMIZED',
+        ipAddress: 'REDACTED',
+        userAgent: 'REDACTED'
+      }
+    })
+  }
+
+  private sanitizeForExport(data: any): any {
+    // Remove sensitive fields that shouldn't be exported
+    const { password, apiSecret, ...safeData } = data
+    return safeData
   }
 }
+```
+
+### PII Detection and Anonymization
+
+**Simple Explanation**: Automatically detect and remove personally identifiable information (names, emails, phone numbers, SSNs) before storing or processing data.
+
+```typescript
+class PIIProtection {
+  private patterns = {
+    email: /\b[\w\.-]+@[\w\.-]+\.\w+\b/g,
+    ssn: /\b\d{3}-\d{2}-\d{4}\b/g,
+    phone: /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g,
+    creditCard: /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g,
+    ipAddress: /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g
+  }
+
+  async anonymizePII(text: string): Promise<AnonymizedResult> {
+    let anonymized = text
+    const detected: PIIDetection[] = []
+
+    // Detect and replace each PII type
+    for (const [type, pattern] of Object.entries(this.patterns)) {
+      const matches = text.match(pattern)
+      if (matches) {
+        matches.forEach(match => {
+          detected.push({ type, value: match, replaced: true })
+          anonymized = anonymized.replace(match, `[${type.toUpperCase()}]`)
+        })
+      }
+    }
+
+    // Also use LLM for advanced PII detection
+    if (detected.length === 0) {
+      const llmDetection = await this.detectPIIWithLLM(text)
+      if (llmDetection.hasPII) {
+        anonymized = llmDetection.anonymizedText
+        detected.push(...llmDetection.detected)
+      }
+    }
+
+    return {
+      original: text,
+      anonymized,
+      detected,
+      containsPII: detected.length > 0
+    }
+  }
+
+  private async detectPIIWithLLM(text: string): Promise<LLMPIIDetection> {
+    // Use LLM to detect context-based PII (names, addresses, etc.)
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 1000,
+      messages: [{
+        role: 'user',
+        content: `Analyze this text for personally identifiable information (PII).
+Replace any PII with [TYPE] placeholders (e.g., [NAME], [ADDRESS], [DATE_OF_BIRTH]).
+
+Text: "${text}"
+
+Return JSON:
+{
+  "hasPII": boolean,
+  "anonymizedText": "text with PII replaced",
+  "detected": [
+    { "type": "name|address|dob|etc", "value": "original", "replaced": true }
+  ]
+}`
+      }]
+    })
+
+    return JSON.parse(response.content[0].text)
+  }
+
+  // Use before storing in database or sending to LLM
+  async sanitizeBeforeStorage(userInput: string): Promise<string> {
+    const result = await this.anonymizePII(userInput)
+
+    if (result.containsPII) {
+      console.warn('PII detected and removed:', result.detected)
+
+      // Log for security audit
+      await auditLog({
+        action: 'pii_detected',
+        piiTypes: result.detected.map(d => d.type),
+        wasAnonymized: true
+      })
+    }
+
+    return result.anonymized
+  }
+}
+
+// Usage
+const piiProtection = new PIIProtection()
+
+// Before sending to LLM
+const userMessage = "My email is john@example.com and my SSN is 123-45-6789"
+const safe = await piiProtection.sanitizeBeforeStorage(userMessage)
+// Result: "My email is [EMAIL] and my SSN is [SSN]"
+
+// Now safe to send to LLM
+const llmResponse = await llm.complete(safe)
 ```
 
 ## Audit Logging
 
+**Simple Explanation**: Keep a detailed record of who accessed what data, when, and why. Essential for security investigations and compliance audits.
+
 ```typescript
-async function auditLog(event: AuditEvent) {
-  await prisma.auditLog.create({
+interface AuditEvent {
+  userId: string
+  action: string        // 'data_access', 'data_export', 'data_delete', etc.
+  resource: string      // What was accessed
+  result: 'success' | 'failure'
+  ipAddress: string
+  userAgent: string
+  timestamp: Date
+  metadata?: any        // Additional context
+}
+
+class AuditLogger {
+  async log(event: AuditEvent): Promise<void> {
+    // Store in database (immutable, append-only)
+    await prisma.auditLog.create({
+      data: {
+        userId: event.userId,
+        action: event.action,
+        resource: event.resource,
+        result: event.result,
+        ipAddress: event.ipAddress,
+        userAgent: event.userAgent,
+        timestamp: event.timestamp,
+        metadata: JSON.stringify(event.metadata)
+      }
+    })
+
+    // Also send to security monitoring system
+    if (this.isSensitiveAction(event.action)) {
+      await this.alertSecurityTeam(event)
+    }
+
+    // Real-time anomaly detection
+    await this.checkForAnomalies(event)
+  }
+
+  private isSensitiveAction(action: string): boolean {
+    const sensitive = [
+      'data_export',
+      'data_delete',
+      'admin_access',
+      'permission_change',
+      'api_key_created'
+    ]
+    return sensitive.includes(action)
+  }
+
+  private async checkForAnomalies(event: AuditEvent): Promise<void> {
+    // Check for suspicious patterns
+    const recentActions = await prisma.auditLog.findMany({
+      where: {
+        userId: event.userId,
+        timestamp: {
+          gte: new Date(Date.now() - 3600000) // Last hour
+        }
+      }
+    })
+
+    // Anomaly 1: Too many failed attempts
+    const failures = recentActions.filter(a => a.result === 'failure')
+    if (failures.length >= 5) {
+      await this.alertSecurityTeam({
+        alert: 'multiple_failures',
+        userId: event.userId,
+        count: failures.length
+      })
+    }
+
+    // Anomaly 2: Access from unusual location
+    const ipAddresses = new Set(recentActions.map(a => a.ipAddress))
+    if (ipAddresses.size > 3) {
+      await this.alertSecurityTeam({
+        alert: 'multiple_ip_addresses',
+        userId: event.userId,
+        ips: Array.from(ipAddresses)
+      })
+    }
+
+    // Anomaly 3: Bulk data export
+    const exports = recentActions.filter(a => a.action === 'data_export')
+    if (exports.length >= 3) {
+      await this.alertSecurityTeam({
+        alert: 'bulk_export',
+        userId: event.userId,
+        count: exports.length
+      })
+    }
+  }
+
+  async generateComplianceReport(startDate: Date, endDate: Date): Promise<ComplianceReport> {
+    const logs = await prisma.auditLog.findMany({
+      where: {
+        timestamp: {
+          gte: startDate,
+          lte: endDate
+        }
+      }
+    })
+
+    return {
+      period: { start: startDate, end: endDate },
+      totalEvents: logs.length,
+      byAction: this.groupBy(logs, 'action'),
+      byResult: this.groupBy(logs, 'result'),
+      sensitiveActions: logs.filter(l => this.isSensitiveAction(l.action)),
+      failures: logs.filter(l => l.result === 'failure'),
+      uniqueUsers: new Set(logs.map(l => l.userId)).size
+    }
+  }
+
+  private groupBy(items: any[], key: string): Record<string, number> {
+    return items.reduce((acc, item) => {
+      const value = item[key]
+      acc[value] = (acc[value] || 0) + 1
+      return acc
+    }, {})
+  }
+
+  private async alertSecurityTeam(alert: any): Promise<void> {
+    // Send to monitoring system (e.g., DataDog, Sentry)
+    console.error('SECURITY ALERT:', alert)
+
+    // Could also send email, Slack notification, etc.
+  }
+}
+
+// Usage in API routes
+export async function POST(req: Request) {
+  const session = await getSession(req)
+
+  // Log the access attempt
+  await auditLogger.log({
+    userId: session.userId,
+    action: 'api_access',
+    resource: '/api/sensitive-data',
+    result: 'success',
+    ipAddress: req.headers.get('x-forwarded-for') || 'unknown',
+    userAgent: req.headers.get('user-agent') || 'unknown',
+    timestamp: new Date()
+  })
+
+  // ... rest of handler
+}
+```
+
+## Encryption
+
+**Simple Explanation**: Encrypt sensitive data so even if someone gains access to your database, they can't read the data.
+
+```typescript
+import crypto from 'crypto'
+
+class EncryptionService {
+  private algorithm = 'aes-256-gcm'
+  private key: Buffer
+
+  constructor() {
+    // Key should be stored in environment variable or key management service
+    const keyString = process.env.ENCRYPTION_KEY
+    if (!keyString || keyString.length !== 64) {
+      throw new Error('ENCRYPTION_KEY must be 64 hex characters (32 bytes)')
+    }
+    this.key = Buffer.from(keyString, 'hex')
+  }
+
+  encrypt(text: string): EncryptedData {
+    // Generate random IV (initialization vector)
+    const iv = crypto.randomBytes(16)
+
+    // Create cipher
+    const cipher = crypto.createCipheriv(this.algorithm, this.key, iv)
+
+    // Encrypt
+    let encrypted = cipher.update(text, 'utf8', 'hex')
+    encrypted += cipher.final('hex')
+
+    // Get auth tag (for GCM mode)
+    const authTag = cipher.getAuthTag()
+
+    return {
+      encrypted,
+      iv: iv.toString('hex'),
+      authTag: authTag.toString('hex')
+    }
+  }
+
+  decrypt(data: EncryptedData): string {
+    // Create decipher
+    const decipher = crypto.createDecipheriv(
+      this.algorithm,
+      this.key,
+      Buffer.from(data.iv, 'hex')
+    )
+
+    // Set auth tag
+    decipher.setAuthTag(Buffer.from(data.authTag, 'hex'))
+
+    // Decrypt
+    let decrypted = decipher.update(data.encrypted, 'hex', 'utf8')
+    decrypted += decipher.final('utf8')
+
+    return decrypted
+  }
+}
+
+// Store encrypted API keys
+const encryption = new EncryptionService()
+
+async function storeAPIKey(userId: string, apiKey: string) {
+  const encrypted = encryption.encrypt(apiKey)
+
+  await prisma.apiKey.create({
     data: {
-      timestamp: new Date(),
-      userId: event.userId,
-      action: event.action,
-      resource: event.resource,
-      ipAddress: event.ip,
-      userAgent: event.userAgent,
-      result: event.success ? 'success' : 'failure',
-      metadata: event.metadata
+      userId,
+      encryptedKey: encrypted.encrypted,
+      iv: encrypted.iv,
+      authTag: encrypted.authTag
     }
   })
 }
 
-// Log all sensitive operations
-await auditLog({
-  userId: user.id,
-  action: 'data_access',
-  resource: '/api/sensitive-data',
-  ip: req.ip,
-  userAgent: req.headers['user-agent'],
-  success: true
-})
+async function getAPIKey(userId: string): Promise<string> {
+  const record = await prisma.apiKey.findFirst({
+    where: { userId }
+  })
+
+  if (!record) throw new Error('API key not found')
+
+  return encryption.decrypt({
+    encrypted: record.encryptedKey,
+    iv: record.iv,
+    authTag: record.authTag
+  })
+}
 ```
 
 ## SOC 2 Compliance
 
-**Required Controls:**
-1. Access Control (who can access what)
-2. Encryption (data at rest and in transit)
-3. Monitoring (detect anomalies)
-4. Incident Response (handle breaches)
-5. Vendor Management (third-party risk)
+**Simple Explanation**: SOC 2 is a framework proving you handle customer data securely. Required for selling to enterprises.
+
+**5 Trust Service Criteria**:
+
+### 1. Security
+- Encryption at rest and in transit
+- Access controls (who can access what)
+- Multi-factor authentication
+- Regular security audits
+
+### 2. Availability
+- 99.9% uptime SLA
+- Redundant systems
+- Disaster recovery plan
+- Monitoring and alerting
+
+### 3. Processing Integrity
+- Data validation
+- Error handling
+- Transaction logging
+- Quality assurance
+
+### 4. Confidentiality
+- Data classification (public, internal, confidential, restricted)
+- Encryption
+- Access controls
+- NDAs with employees
+
+### 5. Privacy
+- GDPR/CCPA compliance
+- Privacy policy
+- Data retention policies
+- User consent management
+
+```typescript
+// SOC 2 Checklist Implementation
+class SOC2Controls {
+  // Security Control: Access logging
+  async trackAccess(userId: string, resource: string) {
+    await auditLogger.log({
+      userId,
+      action: 'resource_access',
+      resource,
+      result: 'success',
+      timestamp: new Date(),
+      ipAddress: '...',
+      userAgent: '...'
+    })
+  }
+
+  // Availability Control: Health checks
+  async healthCheck(): Promise<HealthStatus> {
+    const checks = await Promise.all([
+      this.checkDatabase(),
+      this.checkRedis(),
+      this.checkLLMAPI(),
+      this.checkVectorDB()
+    ])
+
+    const allHealthy = checks.every(c => c.healthy)
+
+    if (!allHealthy) {
+      await this.alertOnCall(checks.filter(c => !c.healthy))
+    }
+
+    return {
+      status: allHealthy ? 'healthy' : 'degraded',
+      checks,
+      timestamp: new Date()
+    }
+  }
+
+  // Processing Integrity: Input validation
+  validateInput(data: any, schema: ValidationSchema): ValidationResult {
+    // Validate all inputs before processing
+    const errors = []
+
+    for (const [field, rules] of Object.entries(schema)) {
+      if (rules.required && !data[field]) {
+        errors.push(`${field} is required`)
+      }
+
+      if (rules.maxLength && data[field]?.length > rules.maxLength) {
+        errors.push(`${field} exceeds max length of ${rules.maxLength}`)
+      }
+
+      if (rules.pattern && !rules.pattern.test(data[field])) {
+        errors.push(`${field} has invalid format`)
+      }
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors
+    }
+  }
+
+  // Confidentiality: Data classification
+  classifyData(data: any): DataClassification {
+    // Automatically classify data sensitivity
+    const hasPII = this.containsPII(data)
+    const hasFinancial = this.containsFinancialData(data)
+    const hasHealthInfo = this.containsHealthInfo(data)
+
+    if (hasHealthInfo) return 'restricted' // HIPAA data
+    if (hasFinancial || hasPII) return 'confidential'
+    return 'internal'
+  }
+
+  // Privacy: Consent management
+  async checkConsent(userId: string, purpose: string): Promise<boolean> {
+    const consent = await prisma.userConsent.findFirst({
+      where: { userId, purpose }
+    })
+
+    return consent?.granted === true
+  }
+}
+```
+
+## Best Practices
+
+1. **Encrypt Everything**: At rest and in transit
+2. **Principle of Least Privilege**: Only grant necessary permissions
+3. **Regular Audits**: Review access logs monthly
+4. **Incident Response Plan**: Know what to do if breached
+5. **Employee Training**: Security awareness for all staff
+6. **Vendor Management**: Audit third-party providers (LLM APIs, databases)
+7. **Data Retention**: Delete old data per policy (e.g., 90 days)
+8. **Backup & Recovery**: Test restores regularly
+
+## Common Pitfalls
+
+1. **Logging Sensitive Data**: Don't log PII, passwords, or API keys
+   - **Fix**: Sanitize logs before writing
+
+2. **Storing Passwords in Plain Text**: Always hash with bcrypt/argon2
+   - **Fix**: Use bcrypt with salt rounds >= 12
+
+3. **No Rate Limiting**: Allows brute force attacks
+   - **Fix**: Implement rate limiting (see Week 12, Scaling)
+
+4. **Hardcoded Secrets**: API keys in source code
+   - **Fix**: Use environment variables or secret managers
+
+5. **No MFA**: Single factor authentication too weak
+   - **Fix**: Require 2FA for all users
 
 ## Resources
 - [GDPR Compliance Guide](https://gdpr.eu/)
 - [SOC 2 Checklist](https://www.vanta.com/resources/soc-2-compliance-checklist)
+- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
+- [NIST Cybersecurity Framework](https://www.nist.gov/cyberframework)
