@@ -26,7 +26,7 @@ const VIDEO_CONFIG = {
   source: 'local' as 'local' | 'youtube',
 
   // For local video: path to video file in public folder
-  localVideo: '/videos/demo.mp4',
+  localVideo: '/videos/demo.webm',
 
   // For YouTube: video ID (the part after watch?v= in YouTube URL)
   youtubeVideoId: '', // e.g., 'dQw4w9WgXcQ'

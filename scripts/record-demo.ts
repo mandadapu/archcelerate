@@ -70,33 +70,35 @@ async function setupBrowser(): Promise<{ browser: Browser; context: BrowserConte
 }
 
 async function smoothScroll(page: Page, targetY: number, duration: number = 2000) {
-  await page.evaluate(({ target, time }) => {
-    return new Promise((resolve) => {
-      const start = window.scrollY
-      const distance = target - start
-      const startTime = performance.now()
+  // Use Function constructor to avoid tsx transpilation issues
+  await page.evaluate(`
+    (function(target, time) {
+      return new Promise(function(resolve) {
+        var start = window.scrollY;
+        var distance = target - start;
+        var startTime = performance.now();
 
-      function animation(currentTime: number) {
-        const elapsed = currentTime - startTime
-        const progress = Math.min(elapsed / time, 1)
+        function animation(currentTime) {
+          var elapsed = currentTime - startTime;
+          var progress = Math.min(elapsed / time, 1);
 
-        // Easing function (ease-in-out)
-        const easing = progress < 0.5
-          ? 2 * progress * progress
-          : 1 - Math.pow(-2 * progress + 2, 2) / 2
+          var easing = progress < 0.5
+            ? 2 * progress * progress
+            : 1 - Math.pow(-2 * progress + 2, 2) / 2;
 
-        window.scrollTo(0, start + distance * easing)
+          window.scrollTo(0, start + distance * easing);
 
-        if (progress < 1) {
-          requestAnimationFrame(animation)
-        } else {
-          resolve(true)
+          if (progress < 1) {
+            requestAnimationFrame(animation);
+          } else {
+            resolve(true);
+          }
         }
-      }
 
-      requestAnimationFrame(animation)
-    })
-  }, { target: targetY, time: duration })
+        requestAnimationFrame(animation);
+      });
+    })(${targetY}, ${duration})
+  `)
 }
 
 async function recordScene1_Homepage(page: Page) {
@@ -214,8 +216,9 @@ async function recordDemo() {
     await recordScene1_Homepage(page)
     await recordScene2_Curriculum(page)
     await recordScene3_Week1Content(page)
-    await recordScene4_Domains(page)
-    await recordScene5_InterviewPrep(page)
+    // Skip domain/interview scenes for now - can add once fully integrated
+    // await recordScene4_Domains(page)
+    // await recordScene5_InterviewPrep(page)
 
     console.log('✅ Recording complete!')
     console.log('⏳ Saving video...')
