@@ -288,6 +288,13 @@ Every concept must include:
 4. Build project templates for common patterns
 5. Add video walkthroughs for complex topics
 
+**Domain-Specific Use Cases** (Advanced/Elective Content):
+- HR Agents - Wisq Harper model (employee support, compliance)
+- Healthcare Agents - Clinical documentation, HIPAA compliance
+- Legal Agents - Harvey AI model (contract review, research)
+- Finance Agents - Financial analysis, fraud detection
+- Additional domains planned (sales, support, real estate)
+
 ## Competitive Advantages
 
 1. **Open Source**: Free to use, modify, and contribute
