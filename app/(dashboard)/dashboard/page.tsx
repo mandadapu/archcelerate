@@ -420,6 +420,104 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Advanced Features Section */}
+      <div className="mt-8">
+        <h3 className="text-2xl font-bold text-slate-900 mb-4">Advanced Features</h3>
+        <p className="text-slate-600 mb-6">
+          Enterprise-grade capabilities for production AI systems
+        </p>
+
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* AI Workflows */}
+          <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-purple-50">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <span className="text-2xl">🔄</span>
+                  AI Workflows
+                </CardTitle>
+                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                  ADVANCED
+                </span>
+              </div>
+              <CardDescription>Automate anything with visual builder</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="aspect-video rounded-lg mb-4 overflow-hidden">
+                <img
+                  src="/images/cards/workflows.svg"
+                  alt="AI Workflows"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <p className="text-sm text-slate-600 mb-4">
+                Build, run, and scale AI-powered workflows. Connect data, APIs, and models
+                in a visual builder—no complex coding needed. From simple automations to
+                enterprise-grade pipelines.
+              </p>
+              <Button size="sm" variant="outline" className="w-full border-blue-300 text-blue-700 hover:bg-blue-50">
+                Coming Soon
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* AI Security */}
+          <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <span className="text-2xl">🔒</span>
+                  AI Security
+                </CardTitle>
+                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                  ADVANCED
+                </span>
+              </div>
+              <CardDescription>Enterprise-grade protection framework</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="aspect-video rounded-lg mb-4 overflow-hidden">
+                <img
+                  src="/images/cards/security.svg"
+                  alt="AI Security Framework"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+
+              {/* Security Framework Overview */}
+              <div className="space-y-3 mb-4">
+                <div className="text-xs font-semibold text-green-700 uppercase tracking-wide">
+                  Complete Security Framework
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div className="bg-green-100 rounded p-2 text-center">
+                    <div className="font-semibold">DATA</div>
+                    <div className="text-green-700">Protect</div>
+                  </div>
+                  <div className="bg-green-100 rounded p-2 text-center">
+                    <div className="font-semibold">MODEL</div>
+                    <div className="text-green-700">Secure</div>
+                  </div>
+                  <div className="bg-green-100 rounded p-2 text-center">
+                    <div className="font-semibold">USAGE</div>
+                    <div className="text-green-700">Monitor</div>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-sm text-slate-600 mb-4">
+                Protect data, models, and usage with built-in governance, compliance,
+                and threat detection. Guards against prompt injection, DoS, model theft,
+                and data poisoning.
+              </p>
+              <Button size="sm" variant="outline" className="w-full border-green-300 text-green-700 hover:bg-green-50">
+                Coming Soon
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   )
 }
