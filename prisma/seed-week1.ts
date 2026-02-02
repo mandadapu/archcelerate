@@ -291,6 +291,138 @@ async function main() {
 
   console.log('Created lab:', lab)
 
+  // Create or Update Second Lab - Cost & Performance Analysis
+  const lab2 = await prisma.lab.upsert({
+    where: { slug: 'cost-performance-lab' },
+    update: {
+      weekId: week1.id,
+      title: 'Cost & Performance Analysis',
+      description: 'Master token counting, cost estimation, and model comparison through hands-on exercises',
+      exercises: [
+        {
+          number: 1,
+          title: 'Token Counting Exercise',
+          type: 'coding',
+          guidance: 'Use the Anthropic API tokenizer to count tokens in different text types. Compare: short chat messages (10-50 tokens), technical documentation (500-1000 tokens), and long-form content (2000+ tokens). Learn how different content types affect token counts.',
+          steps: [
+            'Install the Anthropic SDK: npm install @anthropic-ai/sdk',
+            'Use the count_tokens API to analyze sample texts',
+            'Create a comparison table: text type, character count, token count, ratio',
+            'Test edge cases: code snippets, markdown, special characters',
+            'Document patterns: which content is most token-efficient?'
+          ]
+        },
+        {
+          number: 2,
+          title: 'Cost Calculation Exercise',
+          type: 'analysis',
+          guidance: 'Estimate real-world costs for a customer support chatbot handling 10,000 conversations/month. Use Claude Sonnet pricing: $3/million input tokens, $15/million output tokens.',
+          steps: [
+            'Define conversation profile: average 5 turns, 100 tokens input/turn, 150 tokens output/turn',
+            'Calculate monthly tokens: 10k conversations × 5 turns × 250 tokens = 12.5M tokens',
+            'Split input/output: 5M input ($15), 7.5M output ($112.50) = $127.50/month',
+            'Add 20% buffer for system prompts and context = ~$150/month',
+            'Create cost breakdown spreadsheet with different volume scenarios',
+            'Identify cost optimization opportunities (caching, prompt compression)'
+          ]
+        },
+        {
+          number: 3,
+          title: 'Model Comparison Exercise',
+          type: 'coding',
+          guidance: 'Send the same prompt to Claude Haiku, Sonnet, and Opus. Measure quality, speed, and cost trade-offs to make informed model selection decisions.',
+          steps: [
+            'Create test prompt: "Explain quantum computing to a 10-year-old in 3 paragraphs"',
+            'Build comparison script that calls all 3 models with same prompt',
+            'Measure: response time (latency), token count, cost per request',
+            'Evaluate quality: accuracy, clarity, completeness (subjective 1-10 rating)',
+            'Create comparison matrix: Model | Speed | Cost | Quality | Use Case',
+            'Document decision framework: when to use each model tier'
+          ]
+        },
+        {
+          number: 4,
+          title: 'Prompt Optimization for Cost',
+          type: 'coding',
+          guidance: 'Take a verbose prompt and optimize it to reduce tokens by 30% without sacrificing output quality.',
+          steps: [
+            'Start with verbose prompt (200+ tokens)',
+            'Apply optimization techniques: remove redundancy, use abbreviations, compress instructions',
+            'Test both versions with same inputs, compare outputs',
+            'Measure token savings and quality delta',
+            'Calculate monthly cost savings at scale (10k requests/month)',
+            'Document optimization patterns that maintain quality'
+          ]
+        }
+      ]
+    },
+    create: {
+      weekId: week1.id,
+      slug: 'cost-performance-lab',
+      title: 'Cost & Performance Analysis',
+      description: 'Master token counting, cost estimation, and model comparison through hands-on exercises',
+      exercises: [
+        {
+          number: 1,
+          title: 'Token Counting Exercise',
+          type: 'coding',
+          guidance: 'Use the Anthropic API tokenizer to count tokens in different text types. Compare: short chat messages (10-50 tokens), technical documentation (500-1000 tokens), and long-form content (2000+ tokens). Learn how different content types affect token counts.',
+          steps: [
+            'Install the Anthropic SDK: npm install @anthropic-ai/sdk',
+            'Use the count_tokens API to analyze sample texts',
+            'Create a comparison table: text type, character count, token count, ratio',
+            'Test edge cases: code snippets, markdown, special characters',
+            'Document patterns: which content is most token-efficient?'
+          ]
+        },
+        {
+          number: 2,
+          title: 'Cost Calculation Exercise',
+          type: 'analysis',
+          guidance: 'Estimate real-world costs for a customer support chatbot handling 10,000 conversations/month. Use Claude Sonnet pricing: $3/million input tokens, $15/million output tokens.',
+          steps: [
+            'Define conversation profile: average 5 turns, 100 tokens input/turn, 150 tokens output/turn',
+            'Calculate monthly tokens: 10k conversations × 5 turns × 250 tokens = 12.5M tokens',
+            'Split input/output: 5M input ($15), 7.5M output ($112.50) = $127.50/month',
+            'Add 20% buffer for system prompts and context = ~$150/month',
+            'Create cost breakdown spreadsheet with different volume scenarios',
+            'Identify cost optimization opportunities (caching, prompt compression)'
+          ]
+        },
+        {
+          number: 3,
+          title: 'Model Comparison Exercise',
+          type: 'coding',
+          guidance: 'Send the same prompt to Claude Haiku, Sonnet, and Opus. Measure quality, speed, and cost trade-offs to make informed model selection decisions.',
+          steps: [
+            'Create test prompt: "Explain quantum computing to a 10-year-old in 3 paragraphs"',
+            'Build comparison script that calls all 3 models with same prompt',
+            'Measure: response time (latency), token count, cost per request',
+            'Evaluate quality: accuracy, clarity, completeness (subjective 1-10 rating)',
+            'Create comparison matrix: Model | Speed | Cost | Quality | Use Case',
+            'Document decision framework: when to use each model tier'
+          ]
+        },
+        {
+          number: 4,
+          title: 'Prompt Optimization for Cost',
+          type: 'coding',
+          guidance: 'Take a verbose prompt and optimize it to reduce tokens by 30% without sacrificing output quality.',
+          steps: [
+            'Start with verbose prompt (200+ tokens)',
+            'Apply optimization techniques: remove redundancy, use abbreviations, compress instructions',
+            'Test both versions with same inputs, compare outputs',
+            'Measure token savings and quality delta',
+            'Calculate monthly cost savings at scale (10k requests/month)',
+            'Document optimization patterns that maintain quality'
+          ]
+        }
+      ]
+    }
+  })
+
+  console.log('Created second lab:', lab2)
+
   // Create or Update Project
   const project = await prisma.weekProject.upsert({
     where: { slug: 'chat-assistant-dual' },
