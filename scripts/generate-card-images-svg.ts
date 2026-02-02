@@ -40,6 +40,14 @@ const CARDS = [
     description: 'Automate anything',
     gradient: ['#3b82f6', '#8b5cf6'],
     icon: '🔄',
+  },
+  {
+    name: 'security',
+    title: 'Secure',
+    subtitle: 'AI Security',
+    description: 'Enterprise-grade protection',
+    gradient: ['#059669', '#10b981'],
+    icon: '🔒',
   }
 ]
 

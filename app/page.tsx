@@ -101,7 +101,7 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
             {/* Feature 1 - Projects */}
             <div className="group relative bg-white p-8 rounded-2xl border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent hover:bg-gradient-to-br hover:from-purple-50 hover:to-cyan-50">
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
@@ -215,6 +215,36 @@ export default function Home() {
                 </p>
                 <button className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center">
                   Explore workflows
+                  <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Feature 5 - AI Security */}
+            <div className="group relative bg-white p-8 rounded-2xl border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent hover:bg-gradient-to-br hover:from-green-50 hover:to-emerald-50">
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-green-600 to-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
+              <div className="relative">
+                <div className="aspect-video rounded-lg mb-6 overflow-hidden">
+                  <img
+                    src="/images/cards/security.svg"
+                    alt="AI Security"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+
+                <div className="text-4xl font-bold bg-gradient-to-r from-green-600 to-emerald-500 bg-clip-text text-transparent mb-2">
+                  Secure
+                </div>
+                <h3 className="font-display text-xl font-semibold text-gray-900 mb-3">
+                  AI Security
+                </h3>
+                <p className="text-gray-600 leading-relaxed mb-4">
+                  Enterprise-grade security framework. Protect data, models, and usage with built-in governance, compliance, and threat detection.
+                </p>
+                <button className="text-sm font-medium text-green-600 hover:text-green-700 flex items-center">
+                  Learn about security
                   <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
