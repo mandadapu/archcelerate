@@ -71,12 +71,12 @@ export function VideoDemo() {
             <video
               ref={videoRef}
               className="absolute inset-0 w-full h-full object-cover"
-              poster={VIDEO_CONFIG.thumbnail}
+              {...(VIDEO_CONFIG.thumbnail && { poster: VIDEO_CONFIG.thumbnail })}
               onEnded={handleVideoEnded}
               controls={isPlaying}
               playsInline
             >
-              <source src={VIDEO_CONFIG.localVideo} type="video/mp4" />
+              <source src={VIDEO_CONFIG.localVideo} type="video/webm" />
               Your browser does not support the video tag.
             </video>
 
