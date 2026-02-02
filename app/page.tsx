@@ -63,11 +63,13 @@ export default function Home() {
             <div className="group relative bg-white p-8 rounded-2xl border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent hover:bg-gradient-to-br hover:from-purple-50 hover:to-cyan-50">
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
               <div className="relative">
-                {/* Screenshot placeholder */}
-                <div className="aspect-video bg-gradient-to-br from-purple-100 to-cyan-100 rounded-lg mb-6 flex items-center justify-center">
-                  <svg className="w-12 h-12 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
+                {/* Card image */}
+                <div className="aspect-video rounded-lg mb-6 overflow-hidden">
+                  <img
+                    src="/images/cards/projects.svg"
+                    alt="7 Hands-on Projects"
+                    className="w-full h-full object-cover"
+                  />
                 </div>
 
                 <div className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent mb-2">
@@ -92,10 +94,12 @@ export default function Home() {
             <div className="group relative bg-white p-8 rounded-2xl border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent hover:bg-gradient-to-br hover:from-purple-50 hover:to-cyan-50">
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
               <div className="relative">
-                <div className="aspect-video bg-gradient-to-br from-purple-100 to-cyan-100 rounded-lg mb-6 flex items-center justify-center">
-                  <svg className="w-12 h-12 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                  </svg>
+                <div className="aspect-video rounded-lg mb-6 overflow-hidden">
+                  <img
+                    src="/images/cards/mentor.svg"
+                    alt="24/7 AI Mentor"
+                    className="w-full h-full object-cover"
+                  />
                 </div>
 
                 <div className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent mb-2">
@@ -120,10 +124,12 @@ export default function Home() {
             <div className="group relative bg-white p-8 rounded-2xl border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent hover:bg-gradient-to-br hover:from-purple-50 hover:to-cyan-50">
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
               <div className="relative">
-                <div className="aspect-video bg-gradient-to-br from-purple-100 to-cyan-100 rounded-lg mb-6 flex items-center justify-center">
-                  <svg className="w-12 h-12 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
+                <div className="aspect-video rounded-lg mb-6 overflow-hidden">
+                  <img
+                    src="/images/cards/deploy.svg"
+                    alt="Deploy to Production"
+                    className="w-full h-full object-cover"
+                  />
                 </div>
 
                 <div className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent mb-2">
