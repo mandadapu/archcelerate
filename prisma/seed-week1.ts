@@ -109,10 +109,18 @@ async function main() {
 
   console.log('Created Week 1:', week1)
 
-  // Create Concepts
+  // Create or Update Concepts
   const concepts = await Promise.all([
-    prisma.concept.create({
-      data: {
+    prisma.concept.upsert({
+      where: { slug: 'llm-fundamentals' },
+      update: {
+        weekId: week1.id,
+        orderIndex: 1,
+        title: 'LLM Fundamentals',
+        contentPath: 'content/week1/llm-fundamentals.mdx',
+        estimatedMinutes: 45,
+      },
+      create: {
         weekId: week1.id,
         orderIndex: 1,
         slug: 'llm-fundamentals',
@@ -121,8 +129,16 @@ async function main() {
         estimatedMinutes: 45,
       }
     }),
-    prisma.concept.create({
-      data: {
+    prisma.concept.upsert({
+      where: { slug: 'prompt-engineering' },
+      update: {
+        weekId: week1.id,
+        orderIndex: 2,
+        title: 'Prompt Engineering Mastery',
+        contentPath: 'content/week1/prompt-engineering.mdx',
+        estimatedMinutes: 60,
+      },
+      create: {
         weekId: week1.id,
         orderIndex: 2,
         slug: 'prompt-engineering',
@@ -131,8 +147,16 @@ async function main() {
         estimatedMinutes: 60,
       }
     }),
-    prisma.concept.create({
-      data: {
+    prisma.concept.upsert({
+      where: { slug: 'api-integration' },
+      update: {
+        weekId: week1.id,
+        orderIndex: 3,
+        title: 'API Integration Patterns',
+        contentPath: 'content/week1/api-integration.mdx',
+        estimatedMinutes: 45,
+      },
+      create: {
         weekId: week1.id,
         orderIndex: 3,
         slug: 'api-integration',
@@ -141,8 +165,16 @@ async function main() {
         estimatedMinutes: 45,
       }
     }),
-    prisma.concept.create({
-      data: {
+    prisma.concept.upsert({
+      where: { slug: 'visual-builders' },
+      update: {
+        weekId: week1.id,
+        orderIndex: 4,
+        title: 'Visual Agent Builders',
+        contentPath: 'content/week1/visual-builders.mdx',
+        estimatedMinutes: 30,
+      },
+      create: {
         weekId: week1.id,
         orderIndex: 4,
         slug: 'visual-builders',
@@ -151,13 +183,98 @@ async function main() {
         estimatedMinutes: 30,
       }
     }),
+    prisma.concept.upsert({
+      where: { slug: 'architecture-decisions' },
+      update: {
+        weekId: week1.id,
+        orderIndex: 5,
+        title: 'AI Architecture & Design Patterns',
+        contentPath: 'content/week1/architecture-decisions.mdx',
+        estimatedMinutes: 50,
+      },
+      create: {
+        weekId: week1.id,
+        orderIndex: 5,
+        slug: 'architecture-decisions',
+        title: 'AI Architecture & Design Patterns',
+        contentPath: 'content/week1/architecture-decisions.mdx',
+        estimatedMinutes: 50,
+      }
+    }),
+    prisma.concept.upsert({
+      where: { slug: 'security-safety' },
+      update: {
+        weekId: week1.id,
+        orderIndex: 6,
+        title: 'Security & Safety in AI Systems',
+        contentPath: 'content/week1/security-safety.mdx',
+        estimatedMinutes: 40,
+      },
+      create: {
+        weekId: week1.id,
+        orderIndex: 6,
+        slug: 'security-safety',
+        title: 'Security & Safety in AI Systems',
+        contentPath: 'content/week1/security-safety.mdx',
+        estimatedMinutes: 40,
+      }
+    }),
+    prisma.concept.upsert({
+      where: { slug: 'production-deployment' },
+      update: {
+        weekId: week1.id,
+        orderIndex: 7,
+        title: 'Production Deployment & Operations',
+        contentPath: 'content/week1/production-deployment.mdx',
+        estimatedMinutes: 55,
+      },
+      create: {
+        weekId: week1.id,
+        orderIndex: 7,
+        slug: 'production-deployment',
+        title: 'Production Deployment & Operations',
+        contentPath: 'content/week1/production-deployment.mdx',
+        estimatedMinutes: 55,
+      }
+    }),
+    prisma.concept.upsert({
+      where: { slug: 'cost-performance' },
+      update: {
+        weekId: week1.id,
+        orderIndex: 8,
+        title: 'Cost Optimization & Performance',
+        contentPath: 'content/week1/cost-performance.mdx',
+        estimatedMinutes: 45,
+      },
+      create: {
+        weekId: week1.id,
+        orderIndex: 8,
+        slug: 'cost-performance',
+        title: 'Cost Optimization & Performance',
+        contentPath: 'content/week1/cost-performance.mdx',
+        estimatedMinutes: 45,
+      }
+    }),
   ])
 
   console.log('Created concepts:', concepts.length)
 
-  // Create Lab
-  const lab = await prisma.lab.create({
-    data: {
+  // Create or Update Lab
+  const lab = await prisma.lab.upsert({
+    where: { slug: 'visual-to-code' },
+    update: {
+      weekId: week1.id,
+      title: 'Visual Builder → Code Translation',
+      description: 'Build a Q&A chatbot visually, then rebuild in code to understand abstraction layers',
+      exercises: [
+        { number: 1, title: 'Build Q&A chatbot in Flowise', type: 'visual' },
+        { number: 2, title: 'Understand the flow', type: 'analysis' },
+        { number: 3, title: 'Export to code', type: 'export' },
+        { number: 4, title: 'Rebuild from scratch in code', type: 'coding' },
+        { number: 5, title: 'Compare approaches', type: 'reflection' },
+      ]
+    },
+    create: {
       weekId: week1.id,
       slug: 'visual-to-code',
       title: 'Visual Builder → Code Translation',
@@ -174,9 +291,32 @@ async function main() {
 
   console.log('Created lab:', lab)
 
-  // Create Project
-  const project = await prisma.weekProject.create({
-    data: {
+  // Create or Update Project
+  const project = await prisma.weekProject.upsert({
+    where: { slug: 'chat-assistant-dual' },
+    update: {
+      weekId: week1.id,
+      title: 'Chat Assistant (Dual Implementation)',
+      description: 'Build a conversational chat assistant with both visual and code implementations',
+      requirements: [
+        'Build visual prototype in Flowise/LangFlow',
+        'Build production code version in TypeScript/Python',
+        'Implement conversation history management',
+        'Add basic guardrails (input validation, content filtering)',
+        'Basic logging of all LLM calls',
+        'Write comparison writeup',
+        'Deploy application with UI',
+      ],
+      successCriteria: [
+        'Multi-turn conversations work',
+        'Context window managed properly',
+        'Basic guardrails prevent misuse',
+        'Both versions functionally equivalent',
+        'Deployed and accessible',
+      ],
+      estimatedHours: 5,
+    },
+    create: {
       weekId: week1.id,
       slug: 'chat-assistant-dual',
       title: 'Chat Assistant (Dual Implementation)',
