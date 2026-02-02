@@ -1,9 +1,11 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 
 const projects = [
   {
+    id: 'rag-qa-system',
     title: 'RAG Q&A System',
     description: 'Build document search with Claude and vector databases',
     tags: ['Anthropic', 'Pinecone', 'LangChain'],
@@ -40,6 +42,7 @@ const stream = await anthropic.messages.create({
 });`
   },
   {
+    id: 'chatbot-platform',
     title: 'AI Chatbot with Tools',
     description: 'Function calling, API integrations, and real-time responses',
     tags: ['Claude', 'Function Calling', 'Next.js'],
@@ -75,6 +78,7 @@ const response = await anthropic.messages.create({
 });`
   },
   {
+    id: 'agent-workflow',
     title: 'Agent Workflow System',
     description: 'Multi-step autonomous agents that reason and act',
     tags: ['Agents', 'LangGraph', 'TypeScript'],
@@ -110,6 +114,7 @@ graph.addConditionalEdges("planner", shouldContinue);
 const workflow = graph.compile();`
   },
   {
+    id: 'ai-code-reviewer',
     title: 'Fine-tuned Model',
     description: 'Custom AI trained for your specific domain and use case',
     tags: ['Fine-tuning', 'Anthropic', 'Datasets'],
@@ -148,6 +153,7 @@ const response = await anthropic.messages.create({
 });`
   },
   {
+    id: 'content-generator',
     title: 'AI API Product',
     description: 'Ship production API with auth, rate limiting, and monitoring',
     tags: ['API', 'Auth', 'Monitoring'],
@@ -185,6 +191,7 @@ export async function POST(req: Request) {
 }`
   },
   {
+    id: 'data-analyst',
     title: 'Multi-Agent Collaboration',
     description: 'Coordinated AI workflows with specialized agents',
     tags: ['Multi-Agent', 'Orchestration', 'Python'],
@@ -223,6 +230,7 @@ const result = await coordinator.run({
 });`
   },
   {
+    id: 'portfolio-deployment',
     title: 'Portfolio Deployment',
     description: 'Ship all 7 projects to production with CI/CD',
     tags: ['Vercel', 'GitHub Actions', 'Docker'],
@@ -319,9 +327,15 @@ function ProjectCard({ project, isExpanded, onToggle }: ProjectCardProps) {
     <div className="group relative bg-white rounded-2xl border border-gray-200 overflow-hidden transition-all duration-300 hover:shadow-xl hover:border-transparent">
       <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
 
-      {/* Screenshot placeholder */}
-      <div className="aspect-video bg-gradient-to-br from-purple-100 to-cyan-100 flex items-center justify-center">
-        <div className="text-4xl">🚀</div>
+      {/* Project Card Image */}
+      <div className="aspect-video relative overflow-hidden">
+        <Image
+          src={`/project-cards/${project.id}.png`}
+          alt={project.title}
+          fill
+          className="object-cover"
+          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+        />
       </div>
 
       {/* Content */}
