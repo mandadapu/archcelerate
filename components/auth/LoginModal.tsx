@@ -46,8 +46,10 @@ export function LoginModal({ open, onOpenChange }: LoginModalProps) {
             />
             <AuthButton
               provider="facebook"
-              onClick={() => alert('Facebook login coming soon! Please use Google for now.')}
-              disabled
+              onClick={() => {
+                onOpenChange(false)
+                signIn('facebook', { callbackUrl: '/dashboard' })
+              }}
               className="w-full"
             />
             <AuthButton
