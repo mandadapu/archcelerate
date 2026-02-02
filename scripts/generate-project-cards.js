@@ -48,6 +48,20 @@ const projectConfigs = {
     gradientStart: '#E5F0FF',
     gradientEnd: '#FFE5F0',
   },
+  'agent-workflow': {
+    title: 'Agent Workflow System',
+    description: ['Multi-step autonomous agents that', 'reason and act'],
+    emoji: '🤖',
+    gradientStart: '#E0FFE5',
+    gradientEnd: '#E5E0FF',
+  },
+  'portfolio-deployment': {
+    title: 'Portfolio Deployment',
+    description: ['Ship all projects to production', 'with CI/CD pipelines'],
+    emoji: '🚀',
+    gradientStart: '#FFE0F5',
+    gradientEnd: '#E0F0FF',
+  },
 }
 
 /**
