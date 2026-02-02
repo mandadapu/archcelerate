@@ -61,11 +61,12 @@ Start learning today at [http://localhost:3000](http://localhost:3000)
 - Scaling strategies (caching, load balancing, auto-scaling)
 - **600+ lines** of production architecture patterns
 
-**Week 8: Product Launch**
+**Week 8: Product Launch & Interview Prep**
 - Portfolio building and presentation
+- **AI engineering interview preparation**
+- **System design interview framework**
 - Product Hunt and launch strategies
 - Marketing fundamentals
-- Getting first 100 users
 
 ### 🎯 Specialization Phase (Weeks 9-10)
 

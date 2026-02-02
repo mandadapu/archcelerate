@@ -1,0 +1,1177 @@
+---
+title: "AI Engineering Interview Preparation"
+description: "Master AI system design interviews and technical communication"
+estimatedMinutes: 90
+---
+
+# AI Engineering Interview Preparation
+
+## Why This Matters
+
+AI engineering interviews are different from traditional software engineering interviews. You'll be asked to design AI systems at scale, discuss cost/latency tradeoffs, and demonstrate production AI knowledge.
+
+**What you'll learn:**
+- AI system design framework
+- Common interview problems and solutions
+- Communication strategies for technical interviews
+- Company-specific preparation approaches
+
+---
+
+## AI System Design Framework
+
+### How AI System Design Differs
+
+**Traditional System Design:**
+- Focus: Scale, availability, consistency
+- Key metrics: Throughput, latency, uptime
+- Components: Load balancers, databases, caches
+
+**AI System Design:**
+- Focus: Cost, quality, latency, scale
+- Key metrics: Accuracy, cost per request, p95 latency
+- Components: LLM gateway, vector DB, embeddings, agents
+
+### The Interview Format
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                   Typical 45-Minute Interview            │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  5 min:  Introduction and problem statement            │
+│  5 min:  Requirements gathering (YOU ask questions)     │
+│  20 min: Architecture design and discussion            │
+│  10 min: Deep dive on specific components              │
+│  5 min:  Wrap up and your questions                    │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Framework: Requirements → Components → Data → Scale
+
+#### 1. Requirements Gathering (5 minutes)
+
+**Functional Requirements:**
+- What is the core functionality?
+- Who are the users?
+- What's the expected user experience?
+- What accuracy/quality is required?
+
+**Non-Functional Requirements:**
+- What scale? (users, requests/second)
+- What latency targets? (<100ms, <1s, <5s)
+- What cost constraints? ($/request, $/month)
+- What reliability requirements? (uptime, error rate)
+
+**Example Questions to Ask:**
+
+```typescript
+// For: "Design an AI customer support system"
+
+const requirementsQuestions = [
+  // Functional
+  "What types of queries will it handle? (FAQ, billing, technical support)",
+  "Should it handle multiple languages?",
+  "When should it escalate to humans?",
+  "What integrations are needed? (CRM, ticket system, knowledge base)",
+
+  // Non-functional
+  "How many concurrent users?",
+  "What's the acceptable response time?",
+  "What's the budget for AI API costs?",
+  "What's the expected accuracy/success rate?",
+
+  // Constraints
+  "Any compliance requirements? (GDPR, HIPAA, SOC 2)",
+  "What data can we use for context?",
+  "Are there any existing systems to integrate with?"
+]
+```
+
+#### 2. High-Level Architecture (10 minutes)
+
+Start with the big picture, then drill down.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│              AI Customer Support System                  │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│   User Query                                            │
+│       │                                                 │
+│       ▼                                                 │
+│   ┌─────────┐         ┌──────────────┐                │
+│   │ Router  │────────▶│ Knowledge    │                │
+│   │ & Intent│         │ Base (RAG)   │                │
+│   │ Classify│         └──────────────┘                │
+│   └────┬────┘                │                         │
+│        │                     │                         │
+│        ▼                     ▼                         │
+│   ┌─────────┐         ┌──────────────┐                │
+│   │ Simple  │         │ Complex      │                │
+│   │ FAQ Bot │         │ Agent        │                │
+│   └─────────┘         └──────┬───────┘                │
+│        │                     │                         │
+│        │                     ▼                         │
+│        │              ┌──────────────┐                │
+│        │              │ Human        │                │
+│        │              │ Escalation   │                │
+│        │              └──────────────┘                │
+│        │                                               │
+│        └──────────┬─────────────────────────          │
+│                   ▼                                    │
+│              ┌─────────┐                               │
+│              │Response │                               │
+│              │to User  │                               │
+│              └─────────┘                               │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Explain Your Reasoning:**
+
+```typescript
+// Example architecture discussion
+
+"I'm proposing a tiered architecture with three paths:
+
+1. **Intent Classification Layer**:
+   - Uses a small, fast model (< 100ms)
+   - Routes to appropriate handler
+   - Cost: ~$0.0001 per request
+
+2. **Simple FAQ Bot**:
+   - For common questions (60% of queries)
+   - Template-based responses
+   - Cost: ~$0.001 per query
+
+3. **RAG-Powered System**:
+   - For moderate complexity (30% of queries)
+   - Vector search + context retrieval
+   - Cost: ~$0.01 per query
+
+4. **Complex Agent**:
+   - For difficult issues (10% of queries)
+   - Multi-step reasoning, tool use
+   - Cost: ~$0.05-0.20 per query
+
+This tiered approach optimizes for both cost and latency
+by handling simple cases quickly and cheaply."
+```
+
+#### 3. Component Deep Dive (15 minutes)
+
+Be ready to discuss any component in depth.
+
+**Example: RAG Component**
+
+```typescript
+interface RAGPipeline {
+  // 1. Document ingestion
+  ingestion: {
+    sources: ['Zendesk', 'Confluence', 'Slack'],
+    chunking: {
+      strategy: 'semantic', // vs fixed-size
+      chunkSize: 512,
+      overlap: 50
+    },
+    embedding: {
+      model: 'text-embedding-3-large',
+      dimensions: 1536,
+      cost: '$0.13 per 1M tokens'
+    }
+  },
+
+  // 2. Query processing
+  retrieval: {
+    vectorDB: 'Pinecone', // alternatives: Weaviate, Chroma
+    topK: 10,
+    reranking: {
+      enabled: true,
+      model: 'cohere-rerank-v3',
+      finalK: 3
+    },
+    hybridSearch: {
+      semanticWeight: 0.7,
+      keywordWeight: 0.3
+    }
+  },
+
+  // 3. Generation
+  generation: {
+    model: 'claude-3-5-sonnet',
+    maxTokens: 1000,
+    temperature: 0.3, // More deterministic for support
+    systemPrompt: `You are a helpful customer support agent...`,
+    citationRequired: true
+  }
+}
+
+// Performance characteristics:
+const metrics = {
+  latency: {
+    p50: '800ms',
+    p95: '1.2s',
+    p99: '2.5s'
+  },
+  cost: {
+    perQuery: '$0.015',
+    monthly: '$4,500 @ 10k queries/day'
+  },
+  quality: {
+    accuracy: '85%',
+    citationAccuracy: '92%'
+  }
+}
+```
+
+#### 4. Scale Considerations (10 minutes)
+
+Discuss how your design handles scale.
+
+**Scaling Dimensions:**
+
+```typescript
+const scalingStrategy = {
+  // Horizontal scaling
+  requestVolume: {
+    current: '100 req/min',
+    target: '1000 req/min',
+    approach: [
+      'Load balancer across multiple LLM endpoints',
+      'Request queuing with Redis',
+      'Auto-scaling based on queue depth'
+    ]
+  },
+
+  // Data scaling
+  knowledgeBase: {
+    current: '10k documents',
+    target: '1M documents',
+    approach: [
+      'Namespace isolation in vector DB',
+      'Incremental indexing',
+      'Query caching (semantic similarity)',
+      'Approximate nearest neighbor search'
+    ]
+  },
+
+  // Cost optimization
+  costControl: {
+    current: '$5k/month',
+    target: 'Keep under $20k at 10x volume',
+    approach: [
+      'Tiered routing (cheap models for simple queries)',
+      'Aggressive caching (75% hit rate target)',
+      'Prompt optimization (reduce input tokens by 30%)',
+      'Model fallbacks (GPT-4 → GPT-3.5 for retries)'
+    ]
+  }
+}
+```
+
+---
+
+## Common AI Interview Problems
+
+### Tier 1: Foundation Problems
+
+#### Problem 1: Design a Chatbot Platform
+
+**Scenario:**
+"Design a platform that allows companies to build and deploy AI chatbots for their websites."
+
+**Key Areas to Cover:**
+
+```typescript
+// 1. Multi-tenant architecture
+interface ChatbotPlatform {
+  tenants: {
+    isolation: 'Database per tenant vs Schema per tenant',
+    customization: ['branding', 'personality', 'knowledge base'],
+    billing: 'Usage-based tracking'
+  },
+
+  // 2. Conversation management
+  conversations: {
+    storage: 'PostgreSQL with conversation_id clustering',
+    context: {
+      windowSize: 10, // Last 10 messages
+      maxTokens: 4000,
+      summarization: 'Summarize after 20 messages'
+    }
+  },
+
+  // 3. Knowledge integration
+  knowledge: {
+    perTenant: true,
+    sources: ['uploaded docs', 'website crawl', 'API'],
+    updateFrequency: 'Real-time vs batch'
+  },
+
+  // 4. Analytics
+  analytics: {
+    metrics: ['conversations', 'resolution rate', 'escalations', 'cost'],
+    dashboard: 'Real-time analytics per tenant'
+  }
+}
+
+// Cost model
+const costProjection = {
+  freeTeir: {
+    conversations: 100,
+    messages: 1000,
+    cost: '$0'
+  },
+  starter: {
+    conversations: 1000,
+    messages: 10000,
+    cost: '$49/month',
+    margin: '$35/month' // After LLM costs
+  }
+}
+```
+
+**Discussion Points:**
+- How to handle peak loads (Black Friday for e-commerce client)
+- Data privacy (each tenant's conversations isolated)
+- Prompt injection protection
+- Fallback strategies when LLM API is down
+
+---
+
+#### Problem 2: Design a Document Q&A System
+
+**Scenario:**
+"Design a system where users can upload PDFs and ask questions about them, getting answers with citations."
+
+**Architecture:**
+
+```
+Upload Flow:
+User uploads PDF → OCR/Parse → Chunk → Embed → Store in Vector DB
+
+Query Flow:
+User question → Embed query → Vector search → Rerank → LLM with context → Cite sources
+```
+
+**Key Components:**
+
+```typescript
+interface DocumentQA {
+  // 1. Document processing
+  processing: {
+    formats: ['PDF', 'DOCX', 'TXT', 'Markdown'],
+    ocr: {
+      tool: 'AWS Textract or Claude Vision',
+      cost: '$1.50 per 1000 pages'
+    },
+    chunking: {
+      strategy: 'Semantic with overlap',
+      metadata: ['page_number', 'section', 'document_id']
+    }
+  },
+
+  // 2. Embedding
+  embedding: {
+    model: 'text-embedding-3-large',
+    batchSize: 100, // Batch for efficiency
+    caching: 'Cache embeddings, only re-embed on document update'
+  },
+
+  // 3. Retrieval
+  retrieval: {
+    hybridSearch: {
+      semantic: 0.7, // Vector similarity
+      keyword: 0.3   // BM25 for exact matches
+    },
+    reranking: true,
+    topK: 5
+  },
+
+  // 4. Citation tracking
+  citations: {
+    chunkTracking: true,
+    responseFormat: `
+      Answer: [generated text]
+
+      Sources:
+      - Page 5, Section 2.3: "exact quote"
+      - Page 12, Section 4.1: "exact quote"
+    `
+  }
+}
+
+// Performance targets
+const targets = {
+  uploadTime: 'p95 < 30s for 100-page PDF',
+  queryLatency: 'p95 < 2s',
+  accuracy: '> 85% based on human eval',
+  citationAccuracy: '> 95% (cited text exists in source)'
+}
+```
+
+**Advanced Considerations:**
+- Multi-document synthesis (answering across multiple PDFs)
+- Contradiction detection ("Document A says X, but Document B says Y")
+- Update handling (re-indexing when documents change)
+- Scale: 100k documents, 1M queries/day
+
+---
+
+### Tier 2: Intermediate Problems
+
+#### Problem 3: Design an AI Customer Support Platform
+
+**Scenario:**
+"Design a customer support system that uses AI to handle tier-1 support, escalating complex issues to humans."
+
+**Full Architecture:**
+
+```typescript
+interface CustomerSupportPlatform {
+  // 1. Intake and routing
+  intake: {
+    channels: ['chat', 'email', 'API'],
+    intentClassification: {
+      model: 'fast classifier (< 100ms)',
+      intents: [
+        'billing_question',    // High confidence → FAQ
+        'technical_issue',     // Medium confidence → Agent
+        'account_access',      // Security → Human
+        'complaint'            // Sentiment → Human
+      ]
+    }
+  },
+
+  // 2. AI agent layer
+  agent: {
+    architecture: 'ReAct with tool use',
+    tools: [
+      'search_knowledge_base',
+      'query_user_account',
+      'create_ticket',
+      'send_password_reset'
+    ],
+    memory: {
+      conversationHistory: true,
+      userContext: 'Pull from CRM',
+      previousTickets: 'Show last 3 interactions'
+    }
+  },
+
+  // 3. Escalation logic
+  escalation: {
+    triggers: [
+      'User explicitly asks for human',
+      'Agent confidence < 0.7',
+      'Conversation length > 10 turns',
+      'Negative sentiment detected',
+      'Security/account access requests'
+    ],
+    handoff: {
+      context: 'Full conversation + agent reasoning',
+      priority: 'Based on sentiment + issue type',
+      routing: 'Skill-based routing to specialists'
+    }
+  },
+
+  // 4. Human-in-the-loop
+  humanAgent: {
+    interface: 'Take over conversation seamlessly',
+    aiAssist: 'AI suggests responses, human approves',
+    feedback: 'Human corrections feed back to improve AI'
+  },
+
+  // 5. Learning loop
+  continuousImprovement: {
+    metrics: [
+      'Resolution rate (% solved without human)',
+      'Customer satisfaction (CSAT)',
+      'Average handling time',
+      'Escalation rate'
+    ],
+    feedback: {
+      explicit: 'Thumbs up/down on AI responses',
+      implicit: 'Did customer escalate? Did issue recur?'
+    }
+  }
+}
+
+// Success metrics
+const kpis = {
+  automationRate: {
+    current: '40%',
+    target: '70%',
+    impact: '$500k/year saved in support costs'
+  },
+  csat: {
+    human: '4.2/5',
+    ai: '3.8/5',
+    target: '> 3.9/5'
+  },
+  latency: {
+    firstResponse: '< 30s',
+    resolution: '< 5 min for automated cases'
+  }
+}
+```
+
+**Discussion Points:**
+- How to measure and improve resolution rate
+- Handling angry customers (sentiment detection)
+- Data privacy (PII, GDPR compliance)
+- Agent failure modes and recovery
+
+---
+
+#### Problem 4: Design a Semantic Search Engine
+
+**Scenario:**
+"Design a search engine for an e-commerce site that understands natural language queries like 'summer dress for beach wedding under $100'."
+
+**Architecture:**
+
+```typescript
+interface SemanticSearch {
+  // 1. Indexing pipeline
+  indexing: {
+    products: {
+      frequency: 'Real-time for new products, batch for updates',
+      fields: ['title', 'description', 'category', 'attributes', 'reviews'],
+      enrichment: {
+        llmGenerated: [
+          'Style description',
+          'Use cases',
+          'Season/occasion tags'
+        ]
+      }
+    },
+    embedding: {
+      model: 'multi-qa-mpnet-base-v2', // Open-source, 768-dim
+      textPrep: 'Concatenate: title + description + attributes',
+      storage: 'Pinecone with metadata filters'
+    }
+  },
+
+  // 2. Query processing
+  queryPipeline: {
+    parsing: {
+      llm: 'Extract structured filters from natural language',
+      example: `
+        "summer dress for beach wedding under $100"
+
+        Extracted:
+        - category: dresses
+        - occasion: wedding, beach
+        - season: summer
+        - priceMax: 100
+        - style: casual, elegant
+      `
+    },
+    hybridSearch: {
+      semantic: {
+        weight: 0.6,
+        vectorSearch: 'Top 100 candidates'
+      },
+      filters: {
+        weight: 0.4,
+        hardFilters: ['price <= $100', 'inStock = true'],
+        softFilters: ['category ~= dresses', 'occasion ~= wedding']
+      }
+    },
+    reranking: {
+      stage1: 'Cohere rerank (100 → 20)',
+      stage2: 'Business rules (popularity, margin)',
+      final: 'Top 20 to user'
+    }
+  },
+
+  // 3. Personalization
+  personalization: {
+    userHistory: 'Vector of past purchases/clicks',
+    blending: 'Semantic score * 0.7 + personalization * 0.3',
+    abTesting: 'Test personalization weight'
+  },
+
+  // 4. Performance
+  optimization: {
+    caching: {
+      queryCache: 'Cache popular queries (24h TTL)',
+      embeddingCache: 'Cache query embeddings',
+      hitRate: 'Target 60% cache hit'
+    },
+    latency: {
+      target: 'p95 < 200ms',
+      breakdown: {
+        embed: '50ms',
+        vectorSearch: '80ms',
+        rerank: '50ms',
+        overhead: '20ms'
+      }
+    }
+  }
+}
+
+// Scale considerations
+const scale = {
+  catalog: '1M products',
+  queries: '10k QPS peak (Black Friday)',
+  indexing: 'Update 100k products/day',
+  cost: {
+    embedding: '$50/day for new products',
+    vectorDB: '$500/month for 1M vectors',
+    reranking: '$200/day at peak'
+  }
+}
+```
+
+**Key Discussion Points:**
+- How to handle misspellings and synonyms
+- Balancing relevance vs business objectives (e.g., promoting new items)
+- Cold start problem (new products with no reviews)
+- A/B testing search algorithms
+
+---
+
+### Tier 3: Advanced Problems
+
+#### Problem 5: Design an AI Code Review System
+
+**Scenario:**
+"Design a system that automatically reviews pull requests, identifies bugs, suggests improvements, and integrates with GitHub."
+
+**Full System Architecture:**
+
+```typescript
+interface AICodeReviewSystem {
+  // 1. Trigger and intake
+  trigger: {
+    webhooks: 'GitHub webhook on PR opened/updated',
+    queue: 'SQS queue for async processing',
+    priority: {
+      critical: 'main branch PRs',
+      normal: 'feature branch PRs',
+      low: 'draft PRs'
+    }
+  },
+
+  // 2. Code analysis pipeline
+  analysis: {
+    // Stage 1: Static analysis
+    staticAnalysis: {
+      tools: ['ESLint', 'TypeScript compiler', 'SonarQube'],
+      output: 'Known issues flagged (syntax, types, security)'
+    },
+
+    // Stage 2: Context gathering
+    contextGathering: {
+      prDiff: 'Git diff of changed files',
+      relatedFiles: 'Find files that import changed files',
+      recentCommits: 'Last 10 commits to understand history',
+      tests: 'Related test files and coverage'
+    },
+
+    // Stage 3: AI analysis
+    aiReview: {
+      chunking: 'Split large PRs into logical chunks (max 4k tokens)',
+      multiPass: [
+        {
+          pass: 'Security scan',
+          model: 'claude-3-5-sonnet',
+          prompt: 'Identify: SQL injection, XSS, auth issues, secrets'
+        },
+        {
+          pass: 'Logic errors',
+          model: 'claude-3-5-sonnet',
+          prompt: 'Find: off-by-one, null pointers, race conditions'
+        },
+        {
+          pass: 'Code quality',
+          model: 'gpt-4o',
+          prompt: 'Suggest: better names, DRY violations, complexity'
+        }
+      ]
+    },
+
+    // Stage 4: Aggregation
+    aggregation: {
+      deduplication: 'Remove duplicate findings across passes',
+      prioritization: 'Critical → High → Medium → Low',
+      falsePositiveFilter: 'ML model trained on dismissed comments'
+    }
+  },
+
+  // 3. Feedback integration
+  integration: {
+    github: {
+      comments: 'Post inline comments at specific lines',
+      checkStatus: 'Set status check (pass/fail/warning)',
+      summary: 'Post summary comment with overall assessment'
+    },
+    cicd: {
+      block: 'Block merge if critical issues found',
+      require: 'Require AI review approval for main branch'
+    }
+  },
+
+  // 4. Learning loop
+  learning: {
+    feedback: {
+      explicit: 'Developers can dismiss/approve comments',
+      implicit: 'Track: Did bug reach production? Did suggestion get applied?'
+    },
+    improvement: {
+      promptTuning: 'Adjust prompts based on false positives',
+      modelSelection: 'A/B test different models',
+      customRules: 'Team-specific rules added over time'
+    }
+  }
+}
+
+// Performance and cost
+const performance = {
+  latency: {
+    small: '< 1 min (< 500 LOC)',
+    medium: '< 5 min (500-2000 LOC)',
+    large: '< 15 min (> 2000 LOC)'
+  },
+  cost: {
+    perPR: {
+      small: '$0.05',
+      medium: '$0.20',
+      large: '$1.00'
+    },
+    monthly: '$500 for 50 PRs/day'
+  },
+  quality: {
+    precision: '70% (30% false positives)',
+    recall: '60% (catch 60% of real bugs)',
+    developerSatisfaction: '4.1/5'
+  }
+}
+
+// Scaling challenges
+const challenges = {
+  contextWindowLimits: {
+    problem: 'Large PRs exceed 200k token context',
+    solution: [
+      'Chunk by file and review independently',
+      'Summarize unchanged files',
+      'Focus on changed functions only'
+    ]
+  },
+
+  costAtScale: {
+    problem: '1000 PRs/day * $0.20 = $6k/month',
+    solution: [
+      'Tiered review: Quick scan for all, deep review for critical',
+      'Cache similar code patterns',
+      'Use smaller models for simple checks'
+    ]
+  },
+
+  falsePositives: {
+    problem: 'Developers ignore AI if too many false positives',
+    solution: [
+      'Learn from dismissals',
+      'Confidence scoring',
+      'Only show high-confidence findings'
+    ]
+  }
+}
+```
+
+**Deep Dive Topics:**
+- How to handle monorepo vs multi-repo
+- Integration with existing code review process
+- Handling different languages (TypeScript, Python, Go)
+- Security: How to prevent prompt injection via malicious code
+
+---
+
+## Interview Communication Strategies
+
+### How to Structure Your Thinking Out Loud
+
+```typescript
+// Example of good verbal structure
+
+"Let me think about this systematically.
+
+[1. Clarify Requirements]
+First, let me make sure I understand the problem correctly.
+You mentioned 'AI customer support' - are we handling chat only,
+or also email and phone transcripts?
+
+[2. State Assumptions]
+I'm going to assume:
+- 10,000 queries per day
+- 60% can be handled by AI, 40% need humans
+- Target latency: under 2 seconds for AI responses
+
+Let me know if any of these assumptions are off.
+
+[3. High-Level Approach]
+I'd break this into three main components:
+1. An intent classifier to route queries
+2. A RAG system for knowledge-base questions
+3. An agent system for complex multi-step issues
+
+[4. Discuss Tradeoffs]
+For the intent classifier, I'm choosing a small, fast model
+over a more accurate but slower one because latency matters
+more than perfect routing - we can always escalate to humans.
+
+[5. Dive Deep on Request]
+Would you like me to go deeper on any of these components,
+or should I continue with the overall architecture?"
+```
+
+### Handling "Go Deeper" Questions
+
+**Interviewer:** "How would you handle the vector database at scale?"
+
+**Good Response:**
+
+```typescript
+"Great question. Let me break down vector DB scaling:
+
+[1. Index Size Growth]
+Problem: 1M documents → 10M documents
+- Each document: ~10 chunks
+- Each chunk: 1536-dim embedding
+- Total: 100M vectors * 1536 * 4 bytes = 600 GB
+
+Solution:
+- Use hierarchical navigable small world (HNSW) indexing
+- Shard across multiple namespaces (e.g., by product category)
+- Approximate nearest neighbor (ANN) instead of exact
+
+[2. Query Performance]
+Target: p95 < 100ms for vector search
+
+Optimization:
+- Reduce dimensions: 1536 → 768 (minimal quality loss)
+- Pre-filtering: Apply metadata filters before vector search
+- Caching: Cache embeddings for frequent queries
+
+[3. Cost Optimization]
+Pinecone cost: ~$1,000/month for 100M vectors
+
+Alternatives:
+- Self-hosted Qdrant on AWS: ~$300/month
+- Hybrid: Hot data in Pinecone, cold in S3
+- Quantization: Reduce precision (32-bit → 8-bit)
+
+I'd start with Pinecone for simplicity, then optimize
+cost if we see high volume."
+```
+
+### Common Pitfalls to Avoid
+
+❌ **Don't:**
+- Jump into implementation details without clarifying requirements
+- Design for maximum scale on day 1 (over-engineering)
+- Ignore cost considerations
+- Forget to discuss monitoring and debugging
+- Use buzzwords without explaining them
+- Design a system you've never built
+
+✅ **Do:**
+- Ask clarifying questions upfront
+- Start simple, then scale
+- Mention cost at every decision point
+- Include observability in your design
+- Use concrete numbers (tokens, latency, cost)
+- Be honest about what you know and don't know
+
+---
+
+## Company-Specific Preparation
+
+### Google: Scale and ML Infrastructure
+
+**Focus Areas:**
+- Extremely large scale (billions of users)
+- Distributed systems
+- ML infrastructure and tooling
+- Efficiency and optimization
+
+**Example Question:**
+"Design YouTube's AI-powered video recommendation system that serves 1 billion users."
+
+**What They Look For:**
+- Handling massive data (petabytes of video metadata)
+- Real-time vs batch processing tradeoffs
+- A/B testing at scale
+- Infrastructure efficiency
+
+**Preparation:**
+- Study Google's papers: BigTable, MapReduce, Spanner
+- Understand sharding and distributed systems
+- Practice scaling from 1M to 1B users
+
+---
+
+### Amazon: Leadership Principles + Operational Excellence
+
+**Focus Areas:**
+- Customer obsession (what does the customer need?)
+- Bias for action (start simple, iterate)
+- Frugality (cost optimization)
+- Operational excellence (monitoring, alerts)
+
+**Example Question:**
+"Design an AI chatbot for Amazon customer service."
+
+**What They Look For:**
+- Customer impact discussion
+- Cost-conscious decisions
+- Operational metrics (uptime, error rate)
+- Backwards from the customer
+
+**Preparation:**
+- Frame answers with leadership principles
+- Discuss cost at every decision
+- Include operational runbooks
+- Start with MVP, then scale
+
+---
+
+### Meta: Move Fast, Billions of Users
+
+**Focus Areas:**
+- Rapid iteration and experimentation
+- A/B testing everything
+- Massive scale from day 1
+- Engagement and retention
+
+**Example Question:**
+"Design AI-powered content moderation for Instagram."
+
+**What They Look For:**
+- Real-time processing (can't wait for batch jobs)
+- Accuracy vs speed tradeoffs
+- A/B testing framework
+- User experience impact
+
+**Preparation:**
+- Study Meta's scale (3B+ users)
+- Understand real-time ML systems
+- Practice A/B testing design
+
+---
+
+### Startups: End-to-End Ownership, Pragmatism
+
+**Focus Areas:**
+- Shipping quickly with limited resources
+- Wearing multiple hats
+- Pragmatic technology choices
+- Business impact
+
+**Example Question:**
+"We're a 10-person startup. Design our first AI feature."
+
+**What They Look For:**
+- Can you ship v1 in 2 weeks?
+- Use managed services vs build from scratch
+- Business value over technical perfection
+- Scrappy problem-solving
+
+**Preparation:**
+- Focus on speed to market
+- Prefer Vercel/Supabase/Pinecone over self-hosting
+- Discuss MVPs and iteration
+- Show you can do backend + frontend + AI
+
+---
+
+## Practice Question Bank
+
+### Quick Reference
+
+| Problem | Difficulty | Time | Key Topics |
+|---------|-----------|------|------------|
+| Design a chatbot platform | Easy | 30 min | Multi-tenant, conversation mgmt |
+| Design document Q&A system | Easy | 30 min | RAG, chunking, citations |
+| Design AI customer support | Medium | 45 min | Agents, escalation, tools |
+| Design semantic search | Medium | 45 min | Embeddings, hybrid search, ranking |
+| Design code review system | Hard | 60 min | Multi-pass analysis, integration |
+| Design multi-agent research | Hard | 60 min | Orchestration, tool use, synthesis |
+| Design enterprise AI gateway | Hard | 60 min | Multi-tenant, rate limiting, cost |
+
+---
+
+## Mock Interview Self-Assessment
+
+### After Each Practice Interview
+
+**Rate Yourself (1-5):**
+
+```typescript
+const assessment = {
+  requirementsGathering: {
+    score: 0, // Did I ask clarifying questions?
+    notes: ''
+  },
+
+  architecture: {
+    score: 0, // Was my design sound and scalable?
+    notes: ''
+  },
+
+  communication: {
+    score: 0, // Did I explain clearly?
+    notes: ''
+  },
+
+  tradeoffs: {
+    score: 0, // Did I discuss pros/cons?
+    notes: ''
+  },
+
+  depth: {
+    score: 0, // Could I dive deep on components?
+    notes: ''
+  },
+
+  cost: {
+    score: 0, // Did I mention cost implications?
+    notes: ''
+  },
+
+  monitoring: {
+    score: 0, // Did I include observability?
+    notes: ''
+  }
+}
+```
+
+**Improvement Actions:**
+1. Identify lowest-scoring area
+2. Study that topic specifically
+3. Practice with that focus
+4. Re-assess on next interview
+
+---
+
+## Behavioral Questions for AI Roles
+
+### Common Questions
+
+**1. "Tell me about a time you had to optimize AI system costs."**
+
+**STAR Format:**
+```
+Situation: Our RAG system was costing $10k/month
+Task: Reduce costs by 50% without hurting quality
+Action:
+  - Implemented semantic caching (50% hit rate)
+  - Switched to tiered models (GPT-3.5 for simple queries)
+  - Optimized prompts (reduced input tokens 30%)
+Result: Costs down to $4k/month, quality maintained at 85%
+```
+
+**2. "Describe a production AI issue you debugged."**
+
+**STAR Format:**
+```
+Situation: AI responses became slow (5s → 20s) on Tuesday morning
+Task: Find and fix the root cause quickly
+Action:
+  - Checked logs: No errors, just slow response times
+  - Monitored LLM API: Normal latency
+  - Found the issue: Vector DB query timeout
+  - Root cause: Index rebuild from nightly batch
+Result: Added read replica, separated batch from queries
+```
+
+**3. "How do you handle LLM hallucinations in production?"**
+
+**Good Answer:**
+```
+My approach is layered:
+
+1. Prevention:
+   - Strong system prompts
+   - RAG to ground responses in facts
+   - Temperature = 0.3 for factual tasks
+
+2. Detection:
+   - Citation requirement (must reference source)
+   - Confidence scoring
+   - Automated hallucination detection
+
+3. Mitigation:
+   - Human review for low-confidence responses
+   - Fallback to "I don't know" vs making up answers
+   - User feedback loop
+
+4. Monitoring:
+   - Track hallucination rate via user reports
+   - A/B test different prompting strategies
+```
+
+---
+
+## Final Preparation Checklist
+
+### 1 Week Before
+
+- [ ] Practice 5+ system design problems
+- [ ] Review your projects for behavioral questions
+- [ ] Prepare questions to ask interviewers
+- [ ] Research the company's AI products
+- [ ] Set up mock interview with peer
+
+### 1 Day Before
+
+- [ ] Review framework (Requirements → Components → Data → Scale)
+- [ ] Review common architectures (RAG, agents, multi-tenant)
+- [ ] Prepare your "Tell me about yourself" pitch
+- [ ] Get good sleep (seriously)
+
+### Day Of
+
+- [ ] Test your setup (video, audio, screen share)
+- [ ] Have pen and paper ready for diagramming
+- [ ] Arrive 5 minutes early
+- [ ] Take a deep breath
+
+---
+
+## Resources
+
+### System Design Practice
+
+- [System Design Primer](https://github.com/donnemartin/system-design-primer)
+- [ByteByteGo](https://bytebytego.com/) - Visual system design explanations
+- [Grokking the System Design Interview](https://www.educative.io/courses/grokking-the-system-design-interview)
+
+### AI-Specific Resources
+
+- [LLM System Design Patterns](https://github.com/eugeneyan/open-llms)
+- [Anthropic: Building with Claude](https://docs.anthropic.com/en/docs)
+- [OpenAI: Production Best Practices](https://platform.openai.com/docs/guides/production-best-practices)
+
+### Company Prep
+
+- [Levels.fyi](https://www.levels.fyi/) - Interview process by company
+- [Glassdoor](https://www.glassdoor.com/) - Interview questions
+- [Blind](https://www.teamblind.com/) - Company culture and interview tips
+
+---
+
+## Next Steps
+
+1. **Pick 1 problem from each tier** and practice designing it
+2. **Record yourself** explaining your design (Loom)
+3. **Get feedback** from a peer or mentor
+4. **Iterate** on weak areas
+
+You've built production AI systems in this course. Now communicate that knowledge effectively in interviews.
+
+Good luck! 🚀

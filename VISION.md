@@ -103,11 +103,12 @@ Choose runnable code over academic papers. Choose cost analysis over algorithm c
 - Scaling strategies (caching, load balancing)
 - Implementation planning
 
-**Week 8: Product Launch**
+**Week 8: Product Launch & Interview Prep**
 - Portfolio building and presentation
+- AI engineering interview preparation
 - Product Hunt and launch strategies
 - Marketing fundamentals
-- Getting first 100 users
+- System design interview framework
 
 ### Specialization Phase (Weeks 9-10)
 **Goal**: Advanced techniques for production systems
