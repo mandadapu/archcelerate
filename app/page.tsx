@@ -1,6 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Header } from '@/components/landing/Header'
 import { VideoDemo } from '@/components/landing/VideoDemo'
@@ -12,6 +14,15 @@ import { LoginModal } from '@/components/auth/LoginModal'
 
 export default function Home() {
   const [showLoginModal, setShowLoginModal] = useState(false)
+  const { data: session, status } = useSession()
+  const router = useRouter()
+
+  useEffect(() => {
+    // Redirect authenticated users to dashboard
+    if (status === 'authenticated' && session?.user) {
+      router.push('/dashboard')
+    }
+  }, [status, session, router])
 
   return (
     <div className="min-h-screen bg-white">

@@ -29,6 +29,14 @@ export const authOptions: NextAuthOptions = {
       }
       return session
     },
+    async redirect({ url, baseUrl }) {
+      // If callback URL is provided, use it
+      if (url.startsWith('/')) return `${baseUrl}${url}`
+      // If the URL is on the same origin, use it
+      if (new URL(url).origin === baseUrl) return url
+      // Default to dashboard after sign in
+      return `${baseUrl}/dashboard`
+    },
   },
   pages: {
     signIn: '/',
