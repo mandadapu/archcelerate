@@ -4,7 +4,13 @@
  * Generate project card images dynamically
  * Usage: node scripts/generate-project-cards.js [project-id]
  *
- * Requires: npm install canvas
+ * Pre-requisite: npm install canvas --legacy-peer-deps --save-dev
+ *
+ * Note: Canvas is NOT in production dependencies to avoid Docker build issues.
+ * Images are pre-generated and committed to git. Only run this script when:
+ * - Adding new project cards
+ * - Updating existing card designs
+ * - Changing gradients or emojis
  */
 
 const { createCanvas } = require('canvas')

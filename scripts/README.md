@@ -2,13 +2,17 @@
 
 Scripts for generating project card images dynamically.
 
-## Installation
+**Note:** Pre-generated images are already committed to `public/project-cards/`. You only need to install dependencies if you want to regenerate images or add new project cards.
 
-Install the required dependency:
+## Installation (Optional)
+
+Only needed if regenerating images:
 
 ```bash
-npm install canvas --legacy-peer-deps
+npm install canvas --legacy-peer-deps --save-dev
 ```
+
+**Important:** Canvas is NOT included in production dependencies to avoid Docker build issues. Images are pre-generated and committed to git.
 
 ## Usage
 
