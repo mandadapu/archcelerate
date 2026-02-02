@@ -40,6 +40,7 @@ export const designTokens = {
   typography: {
     fontFamily: {
       sans: 'var(--font-inter)',
+      display: 'var(--font-display)',
       mono: 'var(--font-mono)'
     },
     fontSize: {

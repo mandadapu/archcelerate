@@ -2,7 +2,9 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { Header } from '@/components/landing/Header'
 import { VideoDemo } from '@/components/landing/VideoDemo'
+import { TechStack } from '@/components/landing/TechStack'
 import { SocialProof } from '@/components/landing/SocialProof'
 import { ProjectShowcase } from '@/components/landing/ProjectShowcase'
 import { Testimonials } from '@/components/landing/Testimonials'
@@ -10,47 +12,88 @@ import { LoginModal } from '@/components/auth/LoginModal'
 
 export default function Home() {
   const [showLoginModal, setShowLoginModal] = useState(false)
+
   return (
     <div className="min-h-screen bg-white">
+      {/* Fixed Navigation Header */}
+      <Header onLoginClick={() => setShowLoginModal(true)} />
+
       {/* Hero Section */}
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col items-center justify-center min-h-screen py-12 pb-16">
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-16">
+        <div className="flex flex-col items-center justify-center min-h-screen py-20">
+          {/* Metrics Badge */}
+          <div className="mb-8 inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-50 to-cyan-50 border border-purple-100 rounded-full">
+            <span className="text-sm font-semibold text-gray-900">
+              Join 500+ engineers building AI products
+            </span>
+          </div>
+
           {/* Headline - Action focused */}
           <div className="text-center mb-8 max-w-4xl">
-            <h1 className="text-6xl md:text-7xl font-bold text-gray-900 mb-6 tracking-tight leading-tight">
+            <h1 className="font-display text-6xl md:text-7xl font-bold text-gray-900 mb-6 tracking-tight leading-tight">
               Build AI products.
               <br />
               Ship faster.
             </h1>
             <p className="text-xl md:text-2xl text-gray-600 leading-relaxed">
-              Transform from software engineer to AI product builder. 7 hands-on projects with Claude Code.
+              Transform from software engineer to AI product builder in <span className="font-semibold text-gray-900">12 weeks</span>.
+              {' '}<span className="font-semibold text-gray-900">38+ hands-on lessons</span> with Claude Code.
             </p>
           </div>
 
           {/* Video Demo */}
           <VideoDemo />
 
-          {/* Log In Button */}
+          {/* CTA Button */}
           <button
             onClick={() => setShowLoginModal(true)}
             className="px-12 py-4 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-lg font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
           >
-            Get Started
+            Start Building Now
           </button>
+
+          {/* Quick Stats */}
+          <div className="mt-12 grid grid-cols-3 gap-8 text-center">
+            <div>
+              <div className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent">
+                12
+              </div>
+              <div className="text-sm text-gray-600 mt-1">Weeks</div>
+            </div>
+            <div>
+              <div className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent">
+                38+
+              </div>
+              <div className="text-sm text-gray-600 mt-1">Lessons</div>
+            </div>
+            <div>
+              <div className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent">
+                7
+              </div>
+              <div className="text-sm text-gray-600 mt-1">Projects</div>
+            </div>
+          </div>
         </div>
       </main>
 
-      {/* Project Showcase */}
-      <ProjectShowcase />
+      {/* Tech Stack Carousel - 80px spacing */}
+      <TechStack />
 
-      {/* Testimonials */}
-      <Testimonials />
+      {/* Project Showcase - 80px spacing */}
+      <section id="projects" className="py-20">
+        <ProjectShowcase />
+      </section>
 
-      {/* How It Works - Enhanced Features */}
-      <section className="py-24 bg-white">
+      {/* Testimonials - 80px spacing */}
+      <section id="testimonials" className="py-20">
+        <Testimonials />
+      </section>
+
+      {/* How It Works - Enhanced Features - 80px spacing */}
+      <section id="features" className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+            <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4">
               How It Works
             </h2>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
@@ -75,7 +118,7 @@ export default function Home() {
                 <div className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent mb-2">
                   7
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                <h3 className="font-display text-xl font-semibold text-gray-900 mb-3">
                   Hands-On Projects
                 </h3>
                 <p className="text-gray-600 leading-relaxed mb-4">
@@ -105,7 +148,7 @@ export default function Home() {
                 <div className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent mb-2">
                   24/7
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                <h3 className="font-display text-xl font-semibold text-gray-900 mb-3">
                   AI Mentor
                 </h3>
                 <p className="text-gray-600 leading-relaxed mb-4">
@@ -135,7 +178,7 @@ export default function Home() {
                 <div className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent mb-2">
                   Deploy
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                <h3 className="font-display text-xl font-semibold text-gray-900 mb-3">
                   Ship to Production
                 </h3>
                 <p className="text-gray-600 leading-relaxed mb-4">
@@ -153,10 +196,10 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Final CTA Section */}
-      <section className="py-24 bg-gradient-to-br from-purple-50 to-cyan-50">
+      {/* Final CTA Section - 80px spacing */}
+      <section className="py-20 bg-gradient-to-br from-purple-50 to-cyan-50">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6 tracking-tight">
+          <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-6 tracking-tight">
             Ready to Build AI Products?
           </h2>
           <p className="text-xl text-gray-600 mb-12 leading-relaxed">
@@ -167,13 +210,37 @@ export default function Home() {
             onClick={() => setShowLoginModal(true)}
             className="px-12 py-4 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-lg font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
           >
-            Get Started
+            Start Building Now
           </button>
+
+          {/* Additional trust signals */}
+          <div className="mt-8 flex items-center justify-center gap-6 text-sm text-gray-600">
+            <div className="flex items-center gap-2">
+              <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              <span>Free forever</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              <span>Open source</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              <span>Self-paced</span>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* Social Proof Strip */}
-      <SocialProof />
+      {/* Social Proof Strip - 80px spacing */}
+      <div className="py-20">
+        <SocialProof />
+      </div>
 
       {/* Footer */}
       <footer className="border-t border-gray-200 py-8 bg-white">
