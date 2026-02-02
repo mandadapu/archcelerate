@@ -62,8 +62,8 @@ export function VideoDemo() {
   }
 
   return (
-    <div className="relative w-full max-w-3xl mx-auto mb-8">
-      <div className="relative aspect-video rounded-2xl overflow-hidden shadow-2xl bg-gradient-to-br from-purple-100 to-cyan-100">
+    <div className="relative w-full max-w-4xl mx-auto mb-12">
+      <div className="relative aspect-video rounded-2xl overflow-hidden shadow-2xl bg-gradient-to-br from-purple-100 to-cyan-100 border border-gray-200/50">
 
         {/* Local MP4 Video */}
         {VIDEO_CONFIG.source === 'local' && (
@@ -82,26 +82,29 @@ export function VideoDemo() {
 
             {/* Play Button Overlay (hidden when video is playing) */}
             {!isPlaying && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-purple-500/20 to-cyan-500/20 backdrop-blur-sm">
+              <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-purple-500/10 to-cyan-500/10 backdrop-blur-[2px]">
                 <button
                   onClick={handlePlay}
                   className="group relative"
                   aria-label="Play demo video"
                 >
-                  {/* Play button */}
-                  <div className="w-20 h-20 rounded-full bg-white shadow-2xl flex items-center justify-center transition-all duration-300 group-hover:scale-110 group-hover:shadow-purple-500/50">
-                    <svg
-                      className="w-10 h-10 text-gray-900 ml-1"
-                      fill="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
+                  {/* Play button with glow */}
+                  <div className="relative">
+                    <div className="absolute inset-0 w-24 h-24 rounded-full bg-gradient-to-r from-purple-600 to-cyan-500 opacity-20 blur-xl group-hover:opacity-30 transition-opacity" />
+                    <div className="relative w-24 h-24 rounded-full bg-white shadow-2xl flex items-center justify-center transition-all duration-300 group-hover:scale-110">
+                      <svg
+                        className="w-12 h-12 text-gray-900 ml-1"
+                        fill="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    </div>
                   </div>
                   {/* Text below button */}
-                  <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 whitespace-nowrap">
-                    <p className="text-sm font-medium text-gray-700">
-                      Watch Demo ({VIDEO_CONFIG.duration})
+                  <div className="absolute -bottom-16 left-1/2 -translate-x-1/2 whitespace-nowrap">
+                    <p className="text-base font-semibold text-gray-900 bg-white/80 backdrop-blur-sm px-4 py-2 rounded-full">
+                      Watch Demo · {VIDEO_CONFIG.duration}
                     </p>
                   </div>
                 </button>
