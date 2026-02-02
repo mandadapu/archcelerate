@@ -5,17 +5,103 @@ const prisma = new PrismaClient()
 async function main() {
   console.log('Seeding Week 1 curriculum data...')
 
-  // Create Week 1
-  const week1 = await prisma.curriculumWeek.create({
-    data: {
+  // Create or Update Week 1
+  const week1 = await prisma.curriculumWeek.upsert({
+    where: { weekNumber: 1 },
+    update: {
+      title: 'Foundations + Visual Builder Introduction',
+      description: 'Understand LLM fundamentals, master API integration, experience visual agent building, and build production-ready chat assistant',
+      objectives: [
+        // Core Technical Understanding
+        'Understand LLM fundamentals: tokenization, context windows, and model capabilities',
+        'Master prompt engineering patterns: zero-shot, few-shot, chain-of-thought reasoning',
+        'Learn API integration patterns: streaming responses, error handling, retry logic',
+        'Experience visual agent building before coding to understand abstraction layers',
+
+        // Architectural Decisions
+        'Evaluate architecture choices: serverless vs long-running, synchronous vs streaming',
+        'Design conversation state management: in-memory, database, or distributed cache',
+        'Choose appropriate model tiers based on latency, cost, and quality trade-offs',
+        'Implement rate limiting strategies to prevent abuse and control costs',
+
+        // Security & Safety
+        'Implement input validation and sanitization to prevent prompt injection attacks',
+        'Add content filtering and guardrails to detect harmful or inappropriate outputs',
+        'Secure API keys using environment variables and secret management',
+        'Implement proper authentication and authorization for production deployments',
+
+        // Production Considerations
+        'Handle token limits and implement context window management strategies',
+        'Implement error handling for API failures, rate limits, and timeouts',
+        'Add comprehensive logging and monitoring for debugging and analytics',
+        'Design graceful degradation when AI services are unavailable',
+
+        // Cost & Performance
+        'Understand pricing models: per-token costs, caching strategies, batch processing',
+        'Optimize prompt design to reduce token usage without sacrificing quality',
+        'Implement response caching for frequently asked questions',
+        'Monitor and set budget alerts to prevent unexpected costs',
+
+        // Domain-Specific Use Cases
+        'Customer Support: Context-aware responses with conversation history',
+        'Technical Documentation: Code generation and explanation capabilities',
+        'Content Creation: SEO-friendly copy with brand voice consistency',
+        'Data Analysis: Natural language queries to structured data insights',
+
+        // Implementation Implications
+        'Understand latency implications: real-time chat vs batch processing',
+        'Consider compliance requirements: data retention, GDPR, user privacy',
+        'Plan for scaling: connection pooling, load balancing, distributed systems',
+        'Build production-ready chat assistant with all best practices integrated'
+      ],
+      active: true,
+    },
+    create: {
       weekNumber: 1,
       title: 'Foundations + Visual Builder Introduction',
       description: 'Understand LLM fundamentals, master API integration, experience visual agent building, and build production-ready chat assistant',
       objectives: [
-        'Understand LLM fundamentals and prompt engineering',
-        'Master API integration patterns',
-        'Experience visual agent building before coding',
-        'Build production-ready chat assistant'
+        // Core Technical Understanding
+        'Understand LLM fundamentals: tokenization, context windows, and model capabilities',
+        'Master prompt engineering patterns: zero-shot, few-shot, chain-of-thought reasoning',
+        'Learn API integration patterns: streaming responses, error handling, retry logic',
+        'Experience visual agent building before coding to understand abstraction layers',
+
+        // Architectural Decisions
+        'Evaluate architecture choices: serverless vs long-running, synchronous vs streaming',
+        'Design conversation state management: in-memory, database, or distributed cache',
+        'Choose appropriate model tiers based on latency, cost, and quality trade-offs',
+        'Implement rate limiting strategies to prevent abuse and control costs',
+
+        // Security & Safety
+        'Implement input validation and sanitization to prevent prompt injection attacks',
+        'Add content filtering and guardrails to detect harmful or inappropriate outputs',
+        'Secure API keys using environment variables and secret management',
+        'Implement proper authentication and authorization for production deployments',
+
+        // Production Considerations
+        'Handle token limits and implement context window management strategies',
+        'Implement error handling for API failures, rate limits, and timeouts',
+        'Add comprehensive logging and monitoring for debugging and analytics',
+        'Design graceful degradation when AI services are unavailable',
+
+        // Cost & Performance
+        'Understand pricing models: per-token costs, caching strategies, batch processing',
+        'Optimize prompt design to reduce token usage without sacrificing quality',
+        'Implement response caching for frequently asked questions',
+        'Monitor and set budget alerts to prevent unexpected costs',
+
+        // Domain-Specific Use Cases
+        'Customer Support: Context-aware responses with conversation history',
+        'Technical Documentation: Code generation and explanation capabilities',
+        'Content Creation: SEO-friendly copy with brand voice consistency',
+        'Data Analysis: Natural language queries to structured data insights',
+
+        // Implementation Implications
+        'Understand latency implications: real-time chat vs batch processing',
+        'Consider compliance requirements: data retention, GDPR, user privacy',
+        'Plan for scaling: connection pooling, load balancing, distributed systems',
+        'Build production-ready chat assistant with all best practices integrated'
       ],
       active: true,
     }
