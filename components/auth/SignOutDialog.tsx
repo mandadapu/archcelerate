@@ -33,7 +33,7 @@ export function SignOutDialog({ open, onOpenChange }: SignOutDialogProps) {
           <button
             onClick={handleSignOut}
             disabled={isSigningOut}
-            className="w-full h-12 px-6 bg-white border-[1.5px] border-black rounded-full text-base font-medium text-gray-900 shadow-sm transition-all duration-200 hover:bg-gray-50 hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full h-10 px-4 bg-white border-[1.5px] border-black rounded-full text-sm font-medium text-gray-900 shadow-sm transition-all duration-200 hover:bg-gray-50 hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSigningOut ? 'Signing out...' : 'Yes, sign me out'}
           </button>
@@ -41,7 +41,7 @@ export function SignOutDialog({ open, onOpenChange }: SignOutDialogProps) {
           <button
             onClick={() => onOpenChange(false)}
             disabled={isSigningOut}
-            className="w-full h-12 px-6 bg-gray-900 text-white rounded-full text-base font-medium shadow-sm transition-all duration-200 hover:bg-gray-800 hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full h-10 px-4 bg-gray-900 text-white rounded-full text-sm font-medium shadow-sm transition-all duration-200 hover:bg-gray-800 hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Cancel
           </button>
