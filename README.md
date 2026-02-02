@@ -98,6 +98,39 @@ Start learning today at [http://localhost:3000](http://localhost:3000)
 
 **Total Content**: 38 MDX files · 60+ code examples · 4,000+ lines of enhanced content
 
+---
+
+## 🎓 Domain-Specific Use Cases (Advanced/Elective)
+
+Beyond the core 12-week curriculum, we offer specialized guides for building industry-specific AI agents:
+
+### 📋 HR Agents (Wisq Harper Model)
+- Employee support and benefits assistance
+- Policy compliance and FMLA guidance
+- Integration with HCM systems (Workday, BambooHR)
+- **Performance**: 94% accuracy on SHRM-CP exam, 80% automation rate
+
+### 🏥 Healthcare Agents (Coming Soon)
+- Clinical documentation assistance
+- HIPAA compliance and PHI handling
+- EHR integration and prior authorizations
+
+### ⚖️ Legal Agents (Harvey AI Model - Coming Soon)
+- Contract review and risk assessment
+- Legal research and case law analysis
+- Regulatory compliance checking
+
+### 💰 Finance Agents (Coming Soon)
+- Financial statement analysis
+- Fraud detection and AML compliance
+- SEC filing automation
+
+**Location**: `content/domains/`
+
+These advanced guides show how to apply core agent concepts to real-world industry problems with domain-specific expertise, compliance requirements, and integration patterns.
+
+---
+
 ## Tech Stack
 
 ### Frontend
