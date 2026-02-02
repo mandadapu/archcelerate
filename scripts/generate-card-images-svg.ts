@@ -32,6 +32,14 @@ const CARDS = [
     description: 'Build a portfolio',
     gradient: ['#9333ea', '#c026d3'],
     icon: '⚡',
+  },
+  {
+    name: 'workflows',
+    title: 'Auto',
+    subtitle: 'AI Workflows',
+    description: 'Automate anything',
+    gradient: ['#3b82f6', '#8b5cf6'],
+    icon: '🔄',
   }
 ]
 

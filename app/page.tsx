@@ -112,12 +112,11 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid gap-8 md:grid-cols-3">
-            {/* Feature 1 - Enhanced */}
+          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
+            {/* Feature 1 - Projects */}
             <div className="group relative bg-white p-8 rounded-2xl border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent hover:bg-gradient-to-br hover:from-purple-50 hover:to-cyan-50">
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
               <div className="relative">
-                {/* Card image */}
                 <div className="aspect-video rounded-lg mb-6 overflow-hidden">
                   <img
                     src="/images/cards/projects.svg"
@@ -144,7 +143,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Feature 2 - Enhanced */}
+            {/* Feature 2 - AI Mentor */}
             <div className="group relative bg-white p-8 rounded-2xl border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent hover:bg-gradient-to-br hover:from-purple-50 hover:to-cyan-50">
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
               <div className="relative">
@@ -174,7 +173,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Feature 3 - Enhanced */}
+            {/* Feature 3 - Deploy */}
             <div className="group relative bg-white p-8 rounded-2xl border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent hover:bg-gradient-to-br hover:from-purple-50 hover:to-cyan-50">
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
               <div className="relative">
@@ -197,6 +196,36 @@ export default function Home() {
                 </p>
                 <button className="text-sm font-medium text-purple-600 hover:text-purple-700 flex items-center">
                   See example portfolios
+                  <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Feature 4 - AI Workflows */}
+            <div className="group relative bg-white p-8 rounded-2xl border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent hover:bg-gradient-to-br hover:from-blue-50 hover:to-purple-50">
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-500 to-purple-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
+              <div className="relative">
+                <div className="aspect-video rounded-lg mb-6 overflow-hidden">
+                  <img
+                    src="/images/cards/workflows.svg"
+                    alt="AI Workflows"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+
+                <div className="text-4xl font-bold bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent mb-2">
+                  Auto
+                </div>
+                <h3 className="font-display text-xl font-semibold text-gray-900 mb-3">
+                  AI Workflows
+                </h3>
+                <p className="text-gray-600 leading-relaxed mb-4">
+                  Build, run, and scale AI-powered workflows. Connect data, APIs, and models in a visual builder—no complex coding needed.
+                </p>
+                <button className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center">
+                  Explore workflows
                   <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
