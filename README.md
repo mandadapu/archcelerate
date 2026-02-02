@@ -2,41 +2,100 @@
 
 Transform from Software Engineer to AI Product Builder in 12 weeks through hands-on project-based learning.
 
-## Important: Understanding the Structure
+## 🎓 Curriculum Status: ✅ Complete
 
-This repository contains **two parallel timelines**:
+**All 12 weeks of production-ready curriculum are now available!**
 
-1. **Platform Implementation (Platform Weeks 1-12)**: The development timeline for building the learning platform itself
-   - Week 1-9: ✅ Complete (auth, RAG, agents, testing, monitoring)
-   - Week 10-12: 🚧 In progress (deployment, content, polish)
+- **38 MDX content files** covering fundamentals to enterprise production
+- **60+ code examples** with complete TypeScript implementations
+- **Real cost/performance metrics** throughout all lessons
+- **4 enhanced weeks** with comprehensive technical depth
+- **Hands-on exercises** with runnable code
 
-2. **Student Curriculum (Learning Modules 1-8)**: The educational content students follow
-   - Module 1: AI Engineering Foundations
-   - Module 2: RAG Systems
-   - Module 3: AI Agents
-   - Module 4-8: Advanced topics and capstone
+Start learning today at [http://localhost:3000](http://localhost:3000)
 
-**The platform (Weeks) builds the infrastructure to deliver the curriculum (Modules).**
+## 12-Week Curriculum
 
-## Platform Features
+### 📚 Foundation Phase (Weeks 1-4)
 
-### Core Learning Platform
-- **8 Learning Modules**: Structured curriculum from AI fundamentals to production deployment
-- **Document Q&A System**: RAG-powered document analysis with citations
-- **AI Agents Framework**: Build and deploy autonomous AI agents with tool use
-- **Memory Architecture**: Episodic, semantic, and procedural memory systems
-- **Interactive Labs**: Hands-on coding exercises with real-time feedback
-- **AI Mentor**: 24/7 context-aware assistance powered by Claude
-- **Code Review AI**: Automated code analysis and feedback
-- **Portfolio Builder**: Showcase your deployed AI projects
+**Week 1: LLM Fundamentals** ⭐ Enhanced
+- Understanding tokens, context windows, and pricing
+- Working with Claude and GPT APIs
+- Cost calculation and model selection
+- **3 Hands-on Exercises**: Token counting, cost estimation, model comparison
 
-### Advanced Capabilities
-- **Vector Search**: pgvector-powered similarity search for RAG
-- **Multi-Document Synthesis**: Intelligent information aggregation with contradiction detection
-- **Agent Patterns**: Research, Code Review, Customer Support, Data Pipeline, Meeting Assistant
-- **Performance Monitoring**: Web Vitals, custom metrics, and analytics
-- **Comprehensive Testing**: Unit, integration, and E2E tests with 70%+ coverage
-- **Production Ready**: Monitoring, logging, error tracking, and performance optimization
+**Week 2: Advanced Chat Applications**
+- Production chat architecture
+- Conversation management and state
+- System prompts and few-shot learning
+
+**Week 3: RAG Systems**
+- Vector embeddings and similarity search
+- Document chunking strategies
+- RAG pipeline implementation
+- Memory systems (episodic, semantic, procedural)
+
+**Week 4: Code Review AI**
+- LLM-powered code analysis
+- Multi-file context management
+- Automated review workflows
+- CI/CD integration
+
+### 🚀 Advanced Systems Phase (Weeks 5-8)
+
+**Week 5: AI Agents**
+- ReAct architecture and reasoning loops
+- Tool use and function calling
+- Agent debugging and observability
+- Building custom tools
+
+**Week 6: Production Monitoring**
+- Observability for AI systems
+- Performance optimization
+- Cost tracking and alerts
+- Production deployment strategies
+
+**Week 7: Architecture Design** ⭐ Enhanced
+- AI application patterns (chatbot, RAG, agents)
+- Component architecture with real metrics
+- Scaling strategies (caching, load balancing, auto-scaling)
+- **600+ lines** of production architecture patterns
+
+**Week 8: Product Launch**
+- Portfolio building and presentation
+- Product Hunt and launch strategies
+- Marketing fundamentals
+- Getting first 100 users
+
+### 🎯 Specialization Phase (Weeks 9-10)
+
+**Week 9: Advanced RAG**
+- Hybrid search (dense + sparse)
+- Query optimization and rewriting
+- Reranking strategies
+- Cross-encoder models
+
+**Week 10: Fine-tuning**
+- When to fine-tune vs prompt engineering
+- Dataset preparation and curation
+- Model evaluation frameworks
+- Cost/benefit analysis
+
+### 🏢 Enterprise Phase (Weeks 11-12)
+
+**Week 11: Multi-Agent Systems** ⭐ Enhanced
+- Agent coordination patterns (sequential, parallel, hierarchical)
+- Task delegation and orchestration
+- Conflict resolution strategies
+- **1,800+ lines** of production multi-agent code
+
+**Week 12: Enterprise Production** ⭐ Enhanced
+- Multi-tenant architecture patterns
+- GDPR/SOC 2 compliance implementation
+- Disaster recovery and high availability
+- **2,100+ lines** of enterprise patterns
+
+**Total Content**: 38 MDX files · 60+ code examples · 4,000+ lines of enhanced content
 
 ## Tech Stack
 
@@ -307,84 +366,49 @@ aicelerate/
 └── lighthouserc.json             # Lighthouse CI config
 ```
 
-## Platform Implementation Status
+## Curriculum Content Status
 
-### ✅ Platform Week 1: Auth + Database Foundation
-- Supabase authentication (email, OAuth)
-- PostgreSQL database with migrations
-- User management and sessions
-- Protected routes middleware
-- Database schema for core entities
+### ✅ Enhanced Weeks (Production-Grade Detail)
 
-### ✅ Platform Week 2: Document Q&A System
-- Document upload (PDF, TXT, MD, DOCX)
-- Text extraction and preprocessing
-- Conversation interface
-- Basic Q&A with Claude
-- Document management UI
+**Week 1: LLM Fundamentals**
+- 3 guided practical exercises with runnable code
+- Token counting with multiple text types
+- Cost calculation for real scenarios
+- Model comparison across 4 models
+- **400+ lines** of enhanced content
 
-### ✅ Platform Week 3: RAG System + Memory Architecture
-- pgvector integration for similarity search
-- Document chunking (fixed-size, sentence, semantic)
-- OpenAI embeddings generation
-- Vector search with cosine similarity
-- Memory systems (episodic, semantic, procedural)
-- Hybrid search (vector + keyword)
+**Week 7: Architecture Design**
+- Complete architecture patterns with metrics
+- 3 patterns: Simple Chatbot, RAG, Agent System
+- 4 scaling strategies with cost analysis
+- Real performance numbers (latency, cost, cache hit rates)
+- **600+ lines** of production patterns
 
-### ✅ Platform Week 4: Advanced RAG + Memory
-- Citation tracking with page numbers
-- Multi-document synthesis
-- RAG evaluation framework (faithfulness, relevance, coverage)
-- Cross-session memory integration
-- Automatic fact extraction
-- Document Q&A UI with citations
+**Week 11: Multi-Agent Systems**
+- 3 orchestration patterns (sequential, parallel, hierarchical)
+- Intelligent routing and task decomposition
+- 4 conflict resolution strategies
+- **1,800+ lines** of multi-agent implementations
 
-### ✅ Platform Week 5: AI Agents + Pattern Library Part 1
-- ReAct architecture implementation
-- Tool system (9 tools: web search, file read, AST parse, etc.)
-- Agent executor with thought-action-observation loop
-- Research Agent pattern
-- Code Review Agent pattern
-- Customer Support Agent pattern
+**Week 12: Enterprise Production**
+- Multi-tenant isolation strategies
+- GDPR/SOC 2 compliance with code
+- Load balancing, auto-scaling, disaster recovery
+- **2,100+ lines** of enterprise patterns
 
-### ✅ Platform Week 6: Advanced Agents + Pattern Library Completion
-- Agent memory system (short-term, long-term, working)
-- Data Pipeline Agent (ETL from CSV/JSON/XML)
-- Meeting Assistant Agent (scheduling, notes, action items)
-- Production agent dashboard
-- Agent execution traces
-- Performance metrics tracking
+### ✅ Complete Weeks (Good Quality, Ready to Use)
 
-### ✅ Platform Week 7: Frontend Architecture + Component Library
-- Design system with design tokens
-- Core UI components (Button, Input, Card, Badge, Avatar)
-- Advanced patterns (Dialog, Toast, DataTable)
-- Storybook documentation
-- Dark mode support
-- Type-safe variants with CVA
+**Weeks 2-6, 8-10**: All have 3-4 concept MDX files with:
+- Clear explanations and code examples
+- Production-ready TypeScript implementations
+- Best practices and common pitfalls
+- Resource links for deeper learning
 
-### ✅ Platform Week 8: Testing Strategy + Quality Assurance
-- Jest + React Testing Library setup
-- MSW for API mocking
-- Unit tests (utilities, services, components)
-- Integration tests (document upload, RAG query, agents)
-- E2E tests with Playwright (auth, Q&A, agents)
-- 70%+ code coverage
-
-### ✅ Platform Week 9: Performance Optimization + Monitoring
-- Web Vitals tracking (CLS, FID, FCP, LCP, TTFB, INP)
-- Redis caching layer
-- Database query optimization with indexes
-- Frontend code splitting and lazy loading
-- Bundle size optimization (200KB budget)
-- Structured logging with Pino
-- Sentry error tracking
-- Lighthouse CI integration
-
-### 🚧 Platform Weeks 10-12: To Be Implemented
-- Platform Week 10: Deployment + DevOps
-- Platform Week 11: Content Creation + Labs
-- Platform Week 12: Polish + Launch Preparation
+**Total Statistics**:
+- 38 MDX content files
+- 60+ complete code examples
+- 4,000+ lines of enhanced content
+- All 12 weeks production-ready
 
 ## Database Schema
 
@@ -421,39 +445,24 @@ agent_short_term_memory (id, execution_id, key, value)
 agent_long_term_memory (id, user_id, agent_id, summary, embedding, importance_score)
 ```
 
-## Platform vs Curriculum Reference
+## Curriculum Overview
 
-### Platform Implementation Timeline (What We Build)
+| Week | Topic | Content Files | Enhancement | Key Features |
+|------|-------|---------------|-------------|--------------|
+| 1 | LLM Fundamentals | 4 files | ⭐ Enhanced | 3 hands-on exercises, runnable code |
+| 2 | Advanced Chat | 3 files | ✅ Complete | Chat architecture, state management |
+| 3 | RAG Systems | 3 files | ✅ Complete | Vector search, chunking, memory |
+| 4 | Code Review AI | 3 files | ✅ Complete | Automated reviews, CI/CD |
+| 5 | AI Agents | 3 files | ✅ Complete | ReAct architecture, tool use |
+| 6 | Production Monitoring | 4 files | ✅ Complete | Observability, optimization |
+| 7 | Architecture Design | 3 files | ⭐ Enhanced | 600+ lines of production patterns |
+| 8 | Product Launch | 3 files | ✅ Complete | Portfolio, marketing, launch |
+| 9 | Advanced RAG | 3 files | ✅ Complete | Hybrid search, reranking |
+| 10 | Fine-tuning | 3 files | ✅ Complete | Dataset prep, evaluation |
+| 11 | Multi-Agent Systems | 3 files | ⭐ Enhanced | 1,800+ lines of coordination code |
+| 12 | Enterprise Production | 3 files | ⭐ Enhanced | 2,100+ lines of enterprise patterns |
 
-| Platform Week | Focus | Status |
-|---------------|-------|--------|
-| Week 1 | Auth + Database Foundation | ✅ Complete |
-| Week 2 | Document Q&A System | ✅ Complete |
-| Week 3 | RAG System + Memory | ✅ Complete |
-| Week 4 | Advanced RAG + Memory | ✅ Complete |
-| Week 5 | AI Agents (Part 1) | ✅ Complete |
-| Week 6 | AI Agents (Part 2) | ✅ Complete |
-| Week 7 | Frontend + Components | ✅ Complete |
-| Week 8 | Testing + QA | ✅ Complete |
-| Week 9 | Performance + Monitoring | ✅ Complete |
-| Week 10 | Deployment + DevOps | 🚧 Planned |
-| Week 11 | Content Creation | 🚧 Planned |
-| Week 12 | Polish + Launch | 🚧 Planned |
-
-### Student Curriculum (What Students Learn)
-
-| Learning Module | Topic | Built With |
-|-----------------|-------|------------|
-| Module 0 | Skill Diagnosis | Platform Week 1-2 |
-| Module 1 | AI Engineering Foundations | Platform Week 2 |
-| Module 2 | RAG Systems | Platform Week 3-4 |
-| Module 3 | AI Agents | Platform Week 5-6 |
-| Module 4 | Multimodal AI | Platform Week 11 |
-| Module 5 | Production Deployment | Platform Week 9-10 |
-| Module 6 | AI Optimization | Platform Week 8-9 |
-| Module 7 | Capstone Project | All Platform Weeks |
-
-**Key Distinction:** Platform Weeks build the infrastructure. Learning Modules use that infrastructure to teach students.
+**Total**: 38 MDX files · 4 enhanced weeks · 4,000+ lines of detailed content
 
 ## Testing
 
