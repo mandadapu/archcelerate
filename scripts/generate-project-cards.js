@@ -102,24 +102,7 @@ function generateProjectCard(projectId) {
   // Fill entire canvas with gradient
   roundRect(ctx, 0, 0, width, height, 24, gradient)
 
-  // Draw emoji (centered in the gradient area)
-  ctx.font = '200px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-
-  // Add shadow for depth
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.1)'
-  ctx.shadowBlur = 20
-  ctx.shadowOffsetX = 0
-  ctx.shadowOffsetY = 10
-
-  ctx.fillText(config.emoji, width / 2, height / 2)
-
-  // Reset shadow
-  ctx.shadowColor = 'transparent'
-  ctx.shadowBlur = 0
-  ctx.shadowOffsetX = 0
-  ctx.shadowOffsetY = 0
+  // Clean gradient only - emojis will be added via HTML/CSS for proper color rendering
 
   // Add subtle border to gradient section only
   ctx.strokeStyle = '#E5E7EB'
