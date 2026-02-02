@@ -11,10 +11,12 @@ export const authOptions: NextAuthOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      allowDangerousEmailAccountLinking: true,
     }),
     FacebookProvider({
       clientId: process.env.FACEBOOK_CLIENT_ID!,
       clientSecret: process.env.FACEBOOK_CLIENT_SECRET!,
+      allowDangerousEmailAccountLinking: true,
     }),
     // Uncomment when you have credentials:
     // LinkedInProvider({
@@ -23,6 +25,44 @@ export const authOptions: NextAuthOptions = {
     // }),
   ],
   callbacks: {
+    async signIn({ user, account, profile, email }) {
+      if (!account || !email?.verificationRequest) {
+        // Check if user with this email already exists
+        if (user.email) {
+          const existingUser = await prisma.user.findUnique({
+            where: { email: user.email },
+            include: { accounts: true },
+          })
+
+          if (existingUser && account) {
+            // Check if this provider is already linked
+            const accountExists = existingUser.accounts.find(
+              (acc) => acc.provider === account.provider && acc.providerAccountId === account.providerAccountId
+            )
+
+            if (!accountExists) {
+              // Link the new provider account to existing user
+              await prisma.account.create({
+                data: {
+                  userId: existingUser.id,
+                  type: account.type,
+                  provider: account.provider,
+                  providerAccountId: account.providerAccountId,
+                  refresh_token: account.refresh_token,
+                  access_token: account.access_token,
+                  expires_at: account.expires_at,
+                  token_type: account.token_type,
+                  scope: account.scope,
+                  id_token: account.id_token,
+                  session_state: account.session_state,
+                },
+              })
+            }
+          }
+        }
+      }
+      return true
+    },
     async session({ session, user }) {
       if (session?.user) {
         session.user.id = user.id
@@ -32,10 +72,17 @@ export const authOptions: NextAuthOptions = {
   },
   pages: {
     signIn: '/',
+    error: '/', // Redirect errors back to landing page instead of showing error
   },
   session: {
     strategy: 'database',
   },
   secret: process.env.NEXTAUTH_SECRET,
   debug: process.env.NODE_ENV === 'development',
+  // Allow linking accounts with same email from different providers
+  events: {
+    async linkAccount({ user, account, profile }) {
+      console.log('Account linked:', { user, account: account.provider })
+    },
+  },
 }
