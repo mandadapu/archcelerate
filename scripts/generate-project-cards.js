@@ -88,38 +88,21 @@ function generateProjectCard(projectId) {
   ctx.antialias = 'subpixel'
   ctx.patternQuality = 'best'
 
-  // Draw gradient background
-  const gradient = ctx.createLinearGradient(0, 0, width, 380)
+  // Draw gradient background (full canvas)
+  const gradient = ctx.createLinearGradient(0, 0, width, height)
   gradient.addColorStop(0, config.gradientStart)
   gradient.addColorStop(1, config.gradientEnd)
 
-  // Rounded rectangle for gradient section
-  roundRect(ctx, 0, 0, width, 380, 24, gradient)
+  // Fill entire canvas with gradient
+  roundRect(ctx, 0, 0, width, height, 24, gradient)
 
-  // White bottom section
-  ctx.fillStyle = '#FFFFFF'
-  ctx.fillRect(0, 380, width, 220)
-
-  // Draw emoji
+  // Draw emoji (centered in the gradient area)
   ctx.font = '120px "Apple Color Emoji", "Segoe UI Emoji", sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.fillText(config.emoji, width / 2, 200)
+  ctx.fillText(config.emoji, width / 2, height / 2)
 
-  // Title
-  ctx.font = 'bold 48px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
-  ctx.fillStyle = '#111827'
-  ctx.textAlign = 'left'
-  ctx.fillText(config.title, 130, 460)
-
-  // Description lines
-  ctx.font = '20px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
-  ctx.fillStyle = '#6B7280'
-  config.description.forEach((line, index) => {
-    ctx.fillText(line, 130, 510 + (index * 30))
-  })
-
-  // Add subtle border
+  // Add subtle border to gradient section only
   ctx.strokeStyle = '#E5E7EB'
   ctx.lineWidth = 1
   roundRect(ctx, 0.5, 0.5, width - 1, height - 1, 24, null, true)
