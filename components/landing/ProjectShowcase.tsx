@@ -271,6 +271,19 @@ jobs:
   }
 ]
 
+function getEmojiForProject(projectId: string): string {
+  const emojiMap: Record<string, string> = {
+    'rag-qa-system': '🚀',
+    'chatbot-platform': '💬',
+    'agent-workflow': '🤖',
+    'ai-code-reviewer': '🔍',
+    'content-generator': '✨',
+    'data-analyst': '📊',
+    'portfolio-deployment': '🚀',
+  }
+  return emojiMap[projectId] || '🎯'
+}
+
 export function ProjectShowcase() {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null)
 
@@ -327,7 +340,7 @@ function ProjectCard({ project, isExpanded, onToggle }: ProjectCardProps) {
     <div className="group relative bg-white rounded-2xl border border-gray-200 overflow-hidden transition-all duration-300 hover:shadow-xl hover:border-transparent">
       <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
 
-      {/* Project Card Image */}
+      {/* Project Card Image with Emoji Overlay */}
       <div className="aspect-video relative overflow-hidden">
         <Image
           src={`/project-cards/${project.id}.png`}
@@ -336,6 +349,10 @@ function ProjectCard({ project, isExpanded, onToggle }: ProjectCardProps) {
           className="object-cover"
           sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
         />
+        {/* Emoji overlay */}
+        <div className="absolute inset-0 flex items-center justify-center text-8xl">
+          {getEmojiForProject(project.id)}
+        </div>
       </div>
 
       {/* Content */}
