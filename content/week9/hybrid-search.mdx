@@ -1,0 +1,151 @@
+---
+title: "Hybrid Search: Dense + Sparse Retrieval"
+description: "Combine vector and keyword search for better retrieval"
+estimatedMinutes: 40
+---
+
+# Hybrid Search: Dense + Sparse Retrieval
+
+##Why Hybrid Search?
+
+**Vector (Dense) Search:**
+- Good: Semantic understanding
+- Bad: Misses exact matches, acronyms
+
+**Keyword (Sparse) Search:**
+- Good: Exact matches, proper nouns
+- Bad: No semantic understanding
+
+**Hybrid = Best of Both**
+
+##BM25 Sparse Retrieval
+
+```typescript
+import { BM25 } from 'bm25-ts'
+
+class SparseRetriever {
+  private bm25: BM25
+
+  constructor(documents: string[]) {
+    this.bm25 = new BM25(documents)
+  }
+
+  search(query: string, k: number = 10): SearchResult[] {
+    const scores = this.bm25.search(query)
+    
+    return scores
+      .sort((a, b) => b.score - a.score)
+      .slice(0, k)
+      .map(result => ({
+        id: result.id,
+        score: result.score,
+        text: this.documents[result.id]
+      }))
+  }
+}
+```
+
+##Hybrid Retrieval
+
+```typescript
+async function hybridSearch(
+  query: string,
+  { dense, sparse }: { dense: number, sparse: number }
+): Promise<Document[]> {
+  // 1. Dense (vector) search
+  const embedding = await embed(query)
+  const denseResults = await vectorDB.query({
+    vector: embedding,
+    topK: dense
+  })
+
+  // 2. Sparse (BM25) search
+  const sparseResults = bm25.search(query, sparse)
+
+  // 3. Combine and rerank
+  const combined = combineResults(denseResults, sparseResults)
+  const reranked = await rerank(query, combined)
+
+  return reranked.slice(0, 10)
+}
+```
+
+##Reciprocal Rank Fusion (RRF)
+
+```typescript
+function reciprocalRankFusion(
+  rankings: Document[][],
+  k: number = 60
+): Document[] {
+  const scores = new Map<string, number>()
+
+  for (const ranking of rankings) {
+    ranking.forEach((doc, index) => {
+      const score = 1 / (k + index + 1)
+      scores.set(
+        doc.id,
+        (scores.get(doc.id) || 0) + score
+      )
+    })
+  }
+
+  return Array.from(scores.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, score]) => ({ id, score }))
+}
+```
+
+##Cross-Encoder Reranking
+
+```typescript
+async function rerank(
+  query: string,
+  documents: Document[]
+): Promise<Document[]> {
+  const pairs = documents.map(doc => ({
+    doc,
+    text: `Query: ${query}\nDocument: ${doc.text}`
+  }))
+
+  const scores = await crossEncoder.score(
+    pairs.map(p => p.text)
+  )
+
+  return documents
+    .map((doc, i) => ({ ...doc, score: scores[i] }))
+    .sort((a, b) => b.score - a.score)
+}
+```
+
+##Implementation Example
+
+```typescript
+class HybridRAG {
+  async retrieve(query: string): Promise<Document[]> {
+    // Stage 1: Broad retrieval
+    const [dense, sparse] = await Promise.all([
+      this.denseSearch(query, 20),
+      this.sparseSearch(query, 20)
+    ])
+
+    // Stage 2: Fusion
+    const fused = reciprocalRankFusion([dense, sparse])
+
+    // Stage 3: Reranking
+    const reranked = await this.rerank(query, fused.slice(0, 10))
+
+    return reranked.slice(0, 5)
+  }
+}
+```
+
+##When to Use What
+
+- **Vector only**: Semantic queries, paraphrasing
+- **Keyword only**: Exact matches, IDs, codes
+- **Hybrid**: Production systems, best quality
+
+##Resources
+
+- [Pinecone Hybrid Search](https://www.pinecone.io/learn/hybrid-search/)
+- [Weaviate Hybrid Search](https://weaviate.io/developers/weaviate/search/hybrid)

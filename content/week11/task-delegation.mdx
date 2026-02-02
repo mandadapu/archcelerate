@@ -1,0 +1,66 @@
+---
+title: "Task Delegation & Orchestration"
+description: "Delegate tasks intelligently among agents"
+estimatedMinutes: 40
+---
+
+# Task Delegation & Orchestration
+
+## Intelligent Router
+
+```typescript
+class AgentRouter {
+  async route(task: Task): Promise<Agent> {
+    const analysis = await this.analyzeTask(task)
+    
+    // Match task to agent capabilities
+    const agent = this.selectBestAgent(analysis.requirements)
+    
+    return agent
+  }
+  
+  private async analyzeTask(task: Task) {
+    const response = await claude.messages.create({
+      model: 'claude-3-sonnet',
+      messages: [{
+        role: 'user',
+        content: `Analyze this task and determine required capabilities:
+
+Task: ${task.description}
+
+Return JSON: { requirements: string[], complexity: 'low' | 'medium' | 'high' }`
+      }]
+    })
+    
+    return JSON.parse(response.content[0].text)
+  }
+}
+```
+
+## Hierarchical Delegation
+
+```typescript
+class ManagerAgent {
+  async delegateTask(task: ComplexTask) {
+    // Break down task
+    const subtasks = await this.decompose(task)
+    
+    // Assign to specialists
+    const assignments = subtasks.map(subtask => ({
+      subtask,
+      agent: this.selectAgent(subtask)
+    }))
+    
+    // Execute in parallel
+    const results = await Promise.all(
+      assignments.map(a => a.agent.execute(a.subtask))
+    )
+    
+    // Synthesize
+    return await this.synthesize(results)
+  }
+}
+```
+
+## Resources
+- [AutoGPT Architecture](https://github.com/Significant-Gravitas/AutoGPT)

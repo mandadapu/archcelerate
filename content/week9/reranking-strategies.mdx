@@ -1,0 +1,72 @@
+---
+title: "Re-ranking and Filtering Strategies"
+description: "Improve retrieval quality with reranking"
+estimatedMinutes: 40
+---
+
+# Re-ranking and Filtering Strategies
+
+Initial retrieval casts a wide net. Reranking refines results.
+
+## Cross-Encoder Reranking
+
+```typescript
+import { pipeline } from '@xenova/transformers'
+
+const reranker = await pipeline('text-classification', 'cross-encoder/ms-marco-MiniLM-L-6-v2')
+
+async function rerank(query: string, documents: Document[]): Promise<Document[]> {
+  const pairs = documents.map(doc => `${query} [SEP] ${doc.text}`)
+  const scores = await reranker(pairs)
+  
+  return documents
+    .map((doc, i) => ({ ...doc, score: scores[i].score }))
+    .sort((a, b) => b.score - a.score)
+}
+```
+
+## Diversity Filtering
+
+```typescript
+function diversifyResults(results: Document[]): Document[] {
+  const diverse: Document[] = []
+  const seen = new Set<string>()
+  
+  for (const result of results) {
+    const key = extractKey(result) // e.g., source, topic
+    if (!seen.has(key)) {
+      diverse.push(result)
+      seen.add(key)
+    }
+    if (diverse.length >= 5) break
+  }
+  
+  return diverse
+}
+```
+
+## Contextual Filtering
+
+```typescript
+async function contextualFilter(
+  results: Document[],
+  userContext: UserContext
+): Promise<Document[]> {
+  return results.filter(doc => {
+    // Filter by date
+    if (userContext.dateRange && !inDateRange(doc.date, userContext.dateRange)) {
+      return false
+    }
+    
+    // Filter by permission
+    if (!userHasAccess(userContext.userId, doc)) {
+      return false
+    }
+    
+    return true
+  })
+}
+```
+
+## Resources
+- [Cohere Rerank](https://docs.cohere.com/docs/rerank)

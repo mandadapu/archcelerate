@@ -1,0 +1,65 @@
+---
+title: "Model Evaluation & Iteration"
+description: "Evaluate and improve fine-tuned models"
+estimatedMinutes: 40
+---
+
+# Model Evaluation & Iteration
+
+## Evaluation Metrics
+
+```typescript
+interface EvaluationResults {
+  accuracy: number
+  precision: number
+  recall: number
+  f1Score: number
+  examples: EvaluationExample[]
+}
+
+async function evaluateModel(
+  model: string,
+  testSet: Example[]
+): Promise<EvaluationResults> {
+  const results = await Promise.all(
+    testSet.map(async (example) => {
+      const prediction = await model.predict(example.input)
+      return {
+        input: example.input,
+        expected: example.output,
+        predicted: prediction,
+        correct: prediction === example.output
+      }
+    })
+  )
+  
+  return calculateMetrics(results)
+}
+```
+
+## A/B Testing
+
+```typescript
+async function compareModels(
+  baseModel: string,
+  fineTunedModel: string,
+  queries: string[]
+) {
+  const results = await Promise.all(
+    queries.map(async (query) => ({
+      query,
+      base: await baseModel.complete(query),
+      fineTuned: await fineTunedModel.complete(query)
+    }))
+  )
+  
+  // Human evaluation
+  return results.map(r => ({
+    ...r,
+    winner: await humanEvaluate(r.base, r.fineTuned)
+  }))
+}
+```
+
+## Resources
+- [Model Evaluation Guide](https://platform.openai.com/docs/guides/fine-tuning/analyzing-your-fine-tuned-model)

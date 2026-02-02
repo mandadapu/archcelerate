@@ -1,0 +1,78 @@
+---
+title: "Multi-Agent Coordination Patterns"
+description: "Coordinate multiple AI agents effectively"
+estimatedMinutes: 45
+---
+
+# Multi-Agent Coordination Patterns
+
+Multiple agents working together can solve complex tasks.
+
+## Agent Roles
+
+```typescript
+interface Agent {
+  role: string
+  capabilities: string[]
+  execute: (task: Task) => Promise<Result>
+}
+
+const agents = {
+  researcher: {
+    role: 'researcher',
+    capabilities: ['web_search', 'document_analysis'],
+    execute: async (task) => await research(task)
+  },
+  writer: {
+    role: 'writer',
+    capabilities: ['content_generation', 'summarization'],
+    execute: async (task) => await write(task)
+  },
+  coder: {
+    role: 'coder',
+    capabilities: ['code_generation', 'debugging'],
+    execute: async (task) => await code(task)
+  }
+}
+```
+
+## Orchestration Patterns
+
+### Sequential
+
+```typescript
+async function sequentialWorkflow(task: string) {
+  // Agent 1: Research
+  const research = await agents.researcher.execute({ type: 'research', query: task })
+  
+  // Agent 2: Write (uses research)
+  const draft = await agents.writer.execute({ type: 'write', context: research })
+  
+  // Agent 3: Review
+  const final = await agents.reviewer.execute({ type: 'review', content: draft })
+  
+  return final
+}
+```
+
+### Parallel
+
+```typescript
+async function parallelWorkflow(task: string) {
+  // Multiple agents work simultaneously
+  const [research, examples, references] = await Promise.all([
+    agents.researcher.execute({ type: 'research', query: task }),
+    agents.coder.execute({ type: 'examples', query: task }),
+    agents.librarian.execute({ type: 'references', query: task })
+  ])
+  
+  // Coordinator synthesizes results
+  return await agents.coordinator.execute({
+    type: 'synthesize',
+    inputs: { research, examples, references }
+  })
+}
+```
+
+## Resources
+- [Multi-Agent Systems](https://lilianweng.github.io/posts/2023-06-23-agent/)

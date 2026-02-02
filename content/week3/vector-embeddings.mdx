@@ -1,0 +1,277 @@
+---
+title: "Vector Embeddings & Similarity Search"
+description: "Understand vector embeddings and how to use them for semantic search"
+estimatedMinutes: 35
+---
+
+# Vector Embeddings & Similarity Search
+
+## Introduction
+
+Vector embeddings are the foundation of modern semantic search and RAG systems. They transform text into high-dimensional numerical representations that capture meaning.
+
+## What Are Vector Embeddings?
+
+An **embedding** is a dense vector (array of numbers) that represents the semantic meaning of text.
+
+```python
+# Example embedding (simplified - real embeddings are 1536+ dimensions)
+text = "The cat sat on the mat"
+embedding = [0.23, -0.45, 0.67, 0.12, ...]  # 1536 numbers
+```
+
+**Key Properties:**
+- **Semantic similarity**: Similar meanings → similar vectors
+- **Fixed size**: All text maps to same dimension (e.g., 1536)
+- **Dense**: Every dimension has a meaningful value
+- **Learned**: Trained on massive text corpora
+
+## How Embeddings Work
+
+```typescript
+import OpenAI from 'openai'
+
+const openai = new OpenAI()
+
+async function embed(text: string): Promise<number[]> {
+  const response = await openai.embeddings.create({
+    model: 'text-embedding-3-small',
+    input: text
+  })
+
+  return response.data[0].embedding
+}
+
+// Usage
+const query = "What is machine learning?"
+const embedding = await embed(query)
+// Returns: [0.023, -0.045, 0.067, ...] (1536 numbers)
+```
+
+## Similarity Search
+
+Find similar texts by comparing their embeddings using **cosine similarity**.
+
+### Cosine Similarity
+
+Measures the angle between two vectors (range: -1 to 1, where 1 = identical).
+
+```typescript
+function cosineSimilarity(a: number[], b: number[]): number {
+  const dotProduct = a.reduce((sum, val, i) => sum + val * b[i], 0)
+  const magnitudeA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0))
+  const magnitudeB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0))
+
+  return dotProduct / (magnitudeA * magnitudeB)
+}
+
+// Example
+const query = await embed("machine learning algorithms")
+const doc1 = await embed("neural networks and deep learning")
+const doc2 = await embed("pizza recipes and cooking tips")
+
+console.log(cosineSimilarity(query, doc1))  // 0.87 (high similarity)
+console.log(cosineSimilarity(query, doc2))  // 0.12 (low similarity)
+```
+
+## Vector Databases
+
+Store and search millions of embeddings efficiently.
+
+### Popular Vector Databases
+
+| Database | Best For | Hosting |
+|----------|----------|---------|
+| **Pinecone** | Production, managed | Cloud-only |
+| **Chroma** | Local development | Self-hosted |
+| **Weaviate** | Enterprise, open-source | Both |
+| **Qdrant** | Performance, filtering | Both |
+| **pgvector** | Existing PostgreSQL | Self-hosted |
+
+### Using Pinecone
+
+```typescript
+import { Pinecone } from '@pinecone-database/pinecone'
+
+const pinecone = new Pinecone({
+  apiKey: process.env.PINECONE_API_KEY!
+})
+
+const index = pinecone.index('my-index')
+
+// Insert vectors
+await index.upsert([
+  {
+    id: 'doc-1',
+    values: embedding1,  // [0.23, -0.45, ...]
+    metadata: { text: 'Original document text', source: 'page-1.pdf' }
+  },
+  {
+    id: 'doc-2',
+    values: embedding2,
+    metadata: { text: 'Another document', source: 'page-2.pdf' }
+  }
+])
+
+// Search
+const queryEmbedding = await embed("machine learning")
+
+const results = await index.query({
+  vector: queryEmbedding,
+  topK: 5,
+  includeMetadata: true
+})
+
+results.matches.forEach(match => {
+  console.log(`Score: ${match.score}`)
+  console.log(`Text: ${match.metadata?.text}`)
+})
+```
+
+### Using Chroma (Local)
+
+```typescript
+import { ChromaClient } from 'chromadb'
+
+const client = new ChromaClient()
+const collection = await client.createCollection({
+  name: 'my-documents'
+})
+
+// Add documents (Chroma handles embedding automatically)
+await collection.add({
+  ids: ['doc1', 'doc2'],
+  documents: [
+    'Neural networks are inspired by biological neurons',
+    'Pizza is a popular Italian dish'
+  ],
+  metadatas: [
+    { source: 'ml-book' },
+    { source: 'cooking-blog' }
+  ]
+})
+
+// Search
+const results = await collection.query({
+  queryTexts: ['machine learning'],
+  nResults: 5
+})
+```
+
+## Embedding Best Practices
+
+### 1. Chunk Size Matters
+
+```typescript
+// ❌ Too large - loses specificity
+const chunk = "entire 50-page document..."
+const embedding = await embed(chunk)  // Mediocre results
+
+// ✅ Right size - focused meaning
+const chunks = [
+  "Section 1: Introduction to neural networks...",
+  "Section 2: Training deep learning models...",
+  "Section 3: Evaluation metrics..."
+]
+const embeddings = await Promise.all(chunks.map(embed))
+```
+
+**Optimal chunk sizes:**
+- Technical docs: 200-500 tokens
+- Conversational text: 100-300 tokens
+- Code: 50-200 lines
+
+### 2. Add Context
+
+```typescript
+// ❌ No context
+const embedding = await embed("he scored 3 goals")
+
+// ✅ With context
+const embedding = await embed(
+  "Document: Soccer Match Report\n\n" +
+  "he scored 3 goals"
+)
+```
+
+### 3. Use Appropriate Models
+
+```typescript
+// OpenAI Embeddings
+const models = {
+  'text-embedding-3-small': {
+    dimensions: 1536,
+    cost: '$0.02 / 1M tokens',
+    speed: 'Fast',
+    quality: 'Good'
+  },
+  'text-embedding-3-large': {
+    dimensions: 3072,
+    cost: '$0.13 / 1M tokens',
+    speed: 'Slower',
+    quality: 'Excellent'
+  }
+}
+```
+
+## Metadata Filtering
+
+Combine vector search with metadata filters for precision.
+
+```typescript
+// Search with filters
+const results = await index.query({
+  vector: queryEmbedding,
+  topK: 10,
+  filter: {
+    source: { $eq: 'technical-docs' },
+    date: { $gte: '2024-01-01' }
+  }
+})
+```
+
+## Common Pitfalls
+
+1. **Embedding mismatch**: Query and documents use different embedding models
+2. **No chunking strategy**: Embedding entire documents reduces quality
+3. **Ignoring metadata**: Missing opportunities for hybrid search
+4. **Not normalizing**: Some vector DBs require normalized vectors
+5. **Over-fetching**: Retrieving too many results increases noise
+
+## Performance Optimization
+
+```typescript
+// Batch embeddings for efficiency
+async function embedBatch(texts: string[]): Promise<number[][]> {
+  const response = await openai.embeddings.create({
+    model: 'text-embedding-3-small',
+    input: texts  // Up to 2048 texts in one call
+  })
+
+  return response.data.map(d => d.embedding)
+}
+
+// Instead of:
+for (const text of texts) {
+  await embed(text)  // Slow: 100 API calls
+}
+
+// Do:
+const embeddings = await embedBatch(texts)  // Fast: 1 API call
+```
+
+## Exercise
+
+Build a simple semantic search system:
+
+1. Embed 10-20 documents
+2. Store in Chroma or Pinecone
+3. Perform similarity search
+4. Experiment with different chunk sizes
+5. Add metadata filtering
+
+## Resources
+
+- [OpenAI Embeddings Guide](https://platform.openai.com/docs/guides/embeddings)
+- [Pinecone Documentation](https://docs.pinecone.io/)
+- [Understanding Vector Databases](https://www.pinecone.io/learn/vector-database/)

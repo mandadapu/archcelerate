@@ -1,0 +1,69 @@
+---
+title: "Conflict Resolution in Agent Systems"
+description: "Handle disagreements and conflicts between agents"
+estimatedMinutes: 35
+---
+
+# Conflict Resolution in Agent Systems
+
+## Detecting Conflicts
+
+```typescript
+interface AgentResponse {
+  agent: string
+  response: string
+  confidence: number
+}
+
+function detectConflict(responses: AgentResponse[]): boolean {
+  const uniqueResponses = new Set(responses.map(r => r.response))
+  return uniqueResponses.size > 1
+}
+```
+
+## Resolution Strategies
+
+### Voting
+
+```typescript
+function resolveByVoting(responses: AgentResponse[]): string {
+  const votes = new Map<string, number>()
+  
+  responses.forEach(r => {
+    votes.set(r.response, (votes.get(r.response) || 0) + 1)
+  })
+  
+  // Return response with most votes
+  return Array.from(votes.entries())
+    .sort((a, b) => b[1] - a[1])[0][0]
+}
+```
+
+### Confidence-Based
+
+```typescript
+function resolveByConfidence(responses: AgentResponse[]): string {
+  return responses.sort((a, b) => b.confidence - a.confidence)[0].response
+}
+```
+
+### Arbitrator Agent
+
+```typescript
+async function resolveWithArbitrator(
+  responses: AgentResponse[]
+): Promise<string> {
+  const arbitrator = new ArbitratorAgent()
+  
+  return await arbitrator.decide({
+    question: 'Which response is most accurate?',
+    responses: responses.map(r => ({
+      from: r.agent,
+      content: r.response
+    }))
+  })
+}
+```
+
+## Resources
+- [Consensus Mechanisms](https://arxiv.org/abs/2305.14930)

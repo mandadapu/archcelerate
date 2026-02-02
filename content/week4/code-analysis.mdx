@@ -1,0 +1,450 @@
+---
+title: "AI-Powered Code Analysis"
+description: "Use AI to analyze code structure, patterns, and potential issues"
+estimatedMinutes: 35
+---
+
+# AI-Powered Code Analysis
+
+## Introduction
+
+LLMs can understand code across multiple languages and provide insights that traditional static analysis tools miss.
+
+## What LLMs Can Do
+
+**Strengths:**
+- Understand code semantics and intent
+- Identify code smells and anti-patterns
+- Suggest refactoring opportunities
+- Explain complex logic
+- Detect security vulnerabilities
+
+**Limitations:**
+- May hallucinate non-existent bugs
+- Can't execute code or run tests
+- Limited context window (~200K tokens)
+- Requires careful prompting
+
+## Basic Code Analysis
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic()
+
+async function analyzeCode(code: string, language: string): Promise<Analysis> {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20241022',
+    max_tokens: 4096,
+    messages: [{
+      role: 'user',
+      content: `Analyze this ${language} code for:
+1. Potential bugs
+2. Security issues
+3. Performance problems
+4. Code quality issues
+
+Code:
+\`\`\`${language}
+${code}
+\`\`\`
+
+Provide specific line numbers and actionable suggestions.`
+    }]
+  })
+
+  return parseAnalysisResponse(response.content[0].text)
+}
+```
+
+## Multi-File Analysis
+
+```typescript
+interface FileContext {
+  path: string
+  content: string
+  language: string
+}
+
+async function analyzeProject(files: FileContext[]): Promise<ProjectAnalysis> {
+  //Build context map
+  const contextMap = files.map(f => `
+File: ${f.path}
+\`\`\`${f.language}
+${f.content}
+\`\`\`
+`).join('\n\n')
+
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20241022',
+    max_tokens: 8192,
+    messages: [{
+      role: 'user',
+      content: `Analyze this codebase for:
+1. Architecture patterns
+2. Cross-file issues
+3. Missing error handling
+4. Inconsistent patterns
+5. Security vulnerabilities
+
+${contextMap}
+
+Focus on issues that span multiple files.`
+    }]
+  })
+
+  return parseProjectAnalysis(response.content[0].text)
+}
+```
+
+## Structured Analysis Output
+
+```typescript
+interface Issue {
+  file: string
+  line?: number
+  severity: 'error' | 'warning' | 'info'
+  category: 'bug' | 'security' | 'performance' | 'quality'
+  message: string
+  suggestion?: string
+  codeSnippet?: string
+}
+
+async function structuredAnalysis(code: string): Promise<Issue[]> {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20241022',
+    max_tokens: 4096,
+    messages: [{
+      role: 'user',
+      content: `Analyze this code and return issues as JSON array:
+
+\`\`\`typescript
+${code}
+\`\`\`
+
+Return JSON:
+[{
+  "line": number,
+  "severity": "error|warning|info",
+  "category": "bug|security|performance|quality",
+  "message": "description",
+  "suggestion": "how to fix"
+}]`
+    }]
+  })
+
+  const jsonMatch = response.content[0].text.match(/\[[\s\S]*\]/)
+  if (jsonMatch) {
+    return JSON.parse(jsonMatch[0])
+  }
+
+  return []
+}
+```
+
+## Security Analysis
+
+```typescript
+async function securityScan(code: string): Promise<SecurityIssue[]> {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20241022',
+    max_tokens: 4096,
+    messages: [{
+      role: 'user',
+      content: `Perform security analysis on this code. Check for:
+
+**Injection Vulnerabilities:**
+- SQL injection
+- Command injection
+- XSS (Cross-Site Scripting)
+- Path traversal
+
+**Authentication & Authorization:**
+- Weak authentication
+- Missing authorization checks
+- Insecure session management
+
+**Data Protection:**
+- Sensitive data exposure
+- Weak cryptography
+- Hardcoded secrets
+
+**Other:**
+- CSRF vulnerabilities
+- Insecure dependencies
+- Race conditions
+
+Code:
+\`\`\`
+${code}
+\`\`\`
+
+For each issue found, provide:
+1. Vulnerability type
+2. Severity (Critical/High/Medium/Low)
+3. Location (line number)
+4. Exploitation scenario
+5. Fix recommendation`
+    }]
+  })
+
+  return parseSecurityIssues(response.content[0].text)
+}
+```
+
+## Performance Analysis
+
+```typescript
+async function analyzePerformance(code: string): Promise<PerformanceIssue[]> {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20241022',
+    max_tokens: 4096,
+    messages: [{
+      role: 'user',
+      content: `Analyze performance issues in this code:
+
+**Check for:**
+- O(n²) or worse algorithms
+- Unnecessary loops or iterations
+- Missing indexes on database queries
+- Expensive operations in loops
+- Memory leaks
+- Unnecessary re-renders (React)
+- Missing caching opportunities
+- Blocking I/O operations
+
+Code:
+\`\`\`
+${code}
+\`\`\`
+
+For each issue:
+1. Performance impact (High/Medium/Low)
+2. Current complexity
+3. Suggested optimization
+4. Expected improvement`
+    }]
+  })
+
+  return parsePerformanceIssues(response.content[0].text)
+}
+```
+
+## Code Quality Metrics
+
+```typescript
+interface CodeQuality {
+  maintainability: number  // 0-100
+  complexity: number
+  testCoverage: number
+  documentation: number
+  suggestions: string[]
+}
+
+async function assessQuality(code: string): Promise<CodeQuality> {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20241022',
+    max_tokens: 2048,
+    messages: [{
+      role: 'user',
+      content: `Rate code quality (0-100) for:
+1. Maintainability
+2. Complexity
+3. Documentation
+4. Test coverage
+
+Code:
+\`\`\`
+${code}
+\`\`\`
+
+Provide:
+- Scores for each metric
+- Top 3 improvement suggestions
+- Overall assessment`
+    }]
+  })
+
+  return parseQualityMetrics(response.content[0].text)
+}
+```
+
+## Diff Analysis
+
+```typescript
+async function analyzeDiff(beforeCode: string, afterCode: string): Promise<DiffAnalysis> {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20241022',
+    max_tokens: 4096,
+    messages: [{
+      role: 'user',
+      content: `Analyze changes between these code versions:
+
+**Before:**
+\`\`\`
+${beforeCode}
+\`\`\`
+
+**After:**
+\`\`\`
+${afterCode}
+\`\`\`
+
+Analyze:
+1. What changed and why?
+2. Potential bugs introduced
+3. Performance impact
+4. Breaking changes
+5. Suggested improvements`
+    }]
+  })
+
+  return parseDiffAnalysis(response.content[0].text)
+}
+```
+
+## Context-Aware Analysis
+
+```typescript
+async function contextualAnalysis(
+  targetFile: string,
+  relatedFiles: FileContext[]
+): Promise<Analysis> {
+  const context = relatedFiles.map(f => `
+// ${f.path}
+${f.content}
+`).join('\n\n')
+
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20241022',
+    max_tokens: 8192,
+    messages: [{
+      role: 'user',
+      content: `Analyze this file in context of the codebase:
+
+**Related files:**
+${context}
+
+**Target file:**
+${targetFile}
+
+Check for:
+1. API misuse
+2. Type mismatches
+3. Missing imports
+4. Unused code
+5. Integration issues`
+    }]
+  })
+
+  return parseAnalysis(response.content[0].text)
+}
+```
+
+## Best Practices
+
+### 1. Provide Context
+
+```typescript
+// ❌ No context
+analyzeCode(functionCode)
+
+// ✅ With context
+analyzeCode(functionCode, {
+  framework: 'React',
+  dependencies: ['axios', 'zod'],
+  purpose: 'User authentication',
+  constraints: ['Must work offline', 'PCI compliance required']
+})
+```
+
+### 2. Chunk Large Files
+
+```typescript
+async function analyzeLargeFile(filePath: string): Promise<Issue[]> {
+  const content = await readFile(filePath)
+  const functions = extractFunctions(content)
+
+  const analyses = await Promise.all(
+    functions.map(fn => analyzeCode(fn.code))
+  )
+
+  return analyses.flat()
+}
+```
+
+### 3. Validate AI Suggestions
+
+```typescript
+async function validateSuggestion(issue: Issue): Promise<boolean> {
+  // Don't blindly apply AI suggestions
+  // 1. Check if issue is real
+  // 2. Test the suggested fix
+  // 3. Consider false positives
+
+  if (issue.severity === 'error') {
+    // Verify with static analysis tools
+    const confirmed = await runLinter(issue.file)
+    return confirmed.includes(issue.message)
+  }
+
+  return true
+}
+```
+
+## Integration with Tools
+
+### ESLint Integration
+
+```typescript
+async function augmentESLint(filePath: string): Promise<Issue[]> {
+  // Run ESLint first
+  const eslintIssues = await runESLint(filePath)
+
+  // Then AI analysis
+  const code = await readFile(filePath)
+  const aiIssues = await analyzeCode(code)
+
+  // Deduplicate and merge
+  return mergeIssues(eslintIssues, aiIssues)
+}
+```
+
+### CI/CD Integration
+
+```typescript
+// GitHub Actions workflow
+async function prAnalysis(prNumber: number): Promise<void> {
+  const files = await getPRFiles(prNumber)
+
+  const issues = await Promise.all(
+    files.map(f => analyzeCode(f.content, f.language))
+  )
+
+  // Post as PR comment
+  await postPRComment(prNumber, formatIssues(issues.flat()))
+}
+```
+
+## Limitations & Considerations
+
+1. **Hallucinations**: AI may report non-existent issues
+2. **Context limits**: Can't analyze very large codebases at once
+3. **No execution**: Can't catch runtime-only bugs
+4. **Cost**: API calls can be expensive for large projects
+5. **Privacy**: Code sent to external API
+
+## Exercise
+
+Build a code analyzer:
+1. Analyze a TypeScript/Python file
+2. Extract and categorize issues
+3. Generate security report
+4. Compare with ESLint/Pylint
+5. Measure false positive rate
+
+## Resources
+
+- [Claude Code Analysis](https://docs.anthropic.com/claude/docs/code-analysis)
+- [AI Code Review Best Practices](https://github.blog/2023-11-08-ai-powered-code-review/)
+- [Static Analysis Tools](https://github.com/analysis-tools-dev/static-analysis)
