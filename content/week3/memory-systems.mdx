@@ -1,0 +1,452 @@
+---
+title: "Conversation Memory Systems"
+description: "Implement memory for AI agents and chatbots"
+estimatedMinutes: 35
+---
+
+# Conversation Memory Systems
+
+## Why Memory Matters
+
+LLMs are stateless - they don't remember previous conversations. Memory systems solve this.
+
+**Without Memory:**
+```
+User: "My name is Alice"
+Bot: "Nice to meet you!"
+User: "What's my name?"
+Bot: "I don't know your name."
+```
+
+**With Memory:**
+```
+User: "My name is Alice"
+Bot: "Nice to meet you, Alice!"
+User: "What's my name?"
+Bot: "Your name is Alice."
+```
+
+## Types of Memory
+
+### 1. Short-Term Memory (Conversation Buffer)
+
+Store recent conversation in context window.
+
+```typescript
+interface Message {
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: Date
+}
+
+class ConversationBuffer {
+  private messages: Message[] = []
+  private maxMessages: number = 10
+
+  add(role: 'user' | 'assistant', content: string) {
+    this.messages.push({
+      role,
+      content,
+      timestamp: new Date()
+    })
+
+    // Keep only recent messages
+    if (this.messages.length > this.maxMessages) {
+      this.messages = this.messages.slice(-this.maxMessages)
+    }
+  }
+
+  getHistory(): Message[] {
+    return this.messages
+  }
+
+  formatForLLM(): Array<{ role: string; content: string }> {
+    return this.messages.map(m => ({
+      role: m.role,
+      content: m.content
+    }))
+  }
+}
+```
+
+### 2. Long-Term Memory (Vector Store)
+
+Store all conversations in vector database for retrieval.
+
+```typescript
+class LongTermMemory {
+  constructor(
+    private vectorDB: VectorDB,
+    private userId: string
+  ) {}
+
+  async remember(message: string, metadata: any = {}) {
+    const embedding = await embed(message)
+
+    await this.vectorDB.upsert({
+      id: `${this.userId}-${Date.now()}`,
+      vector: embedding,
+      metadata: {
+        userId: this.userId,
+        text: message,
+        timestamp: new Date().toISOString(),
+        ...metadata
+      }
+    })
+  }
+
+  async recall(query: string, k: number = 5): Promise<Memory[]> {
+    const queryEmbedding = await embed(query)
+
+    const results = await this.vectorDB.query({
+      vector: queryEmbedding,
+      filter: { userId: this.userId },
+      topK: k
+    })
+
+    return results.matches.map(m => ({
+      text: m.metadata.text,
+      timestamp: m.metadata.timestamp,
+      score: m.score
+    }))
+  }
+}
+```
+
+### 3. Summary Memory
+
+Summarize old conversations to save tokens.
+
+```typescript
+class SummaryMemory {
+  private summary: string = ''
+  private recentMessages: Message[] = []
+  private maxRecent: number = 5
+
+  async addMessage(role: string, content: string) {
+    this.recentMessages.push({ role, content, timestamp: new Date() })
+
+    // When buffer full, summarize
+    if (this.recentMessages.length > this.maxRecent) {
+      await this.summarize()
+    }
+  }
+
+  private async summarize() {
+    const conversationText = this.recentMessages
+      .map(m => `${m.role}: ${m.content}`)
+      .join('\n')
+
+    const newSummary = await llm.complete({
+      prompt: `Current summary: ${this.summary}\n\n` +
+              `New conversation:\n${conversationText}\n\n` +
+              `Provide an updated summary of the conversation:`
+    })
+
+    this.summary = newSummary
+    this.recentMessages = []
+  }
+
+  getContext(): string {
+    const recent = this.recentMessages
+      .map(m => `${m.role}: ${m.content}`)
+      .join('\n')
+
+    return `Summary of previous conversation: ${this.summary}\n\n` +
+           `Recent messages:\n${recent}`
+  }
+}
+```
+
+## Entity Memory
+
+Track facts about entities (people, places, things).
+
+```typescript
+interface Entity {
+  name: string
+  type: 'person' | 'place' | 'thing' | 'concept'
+  facts: string[]
+  lastMentioned: Date
+}
+
+class EntityMemory {
+  private entities: Map<string, Entity> = new Map()
+
+  async extractEntities(text: string): Promise<Entity[]> {
+    const response = await llm.complete({
+      prompt: `Extract entities and facts from this text:\n\n${text}\n\n` +
+              `Return JSON: [{ name, type, facts: [] }]`
+    })
+
+    const entities = JSON.parse(response)
+
+    entities.forEach((e: Entity) => {
+      this.updateEntity(e)
+    })
+
+    return entities
+  }
+
+  private updateEntity(entity: Entity) {
+    const existing = this.entities.get(entity.name)
+
+    if (existing) {
+      existing.facts.push(...entity.facts)
+      existing.lastMentioned = new Date()
+    } else {
+      this.entities.set(entity.name, {
+        ...entity,
+        lastMentioned: new Date()
+      })
+    }
+  }
+
+  getEntity(name: string): Entity | undefined {
+    return this.entities.get(name)
+  }
+
+  getRelevantEntities(limit: number = 5): Entity[] {
+    return Array.from(this.entities.values())
+      .sort((a, b) => b.lastMentioned.getTime() - a.lastMentioned.getTime())
+      .slice(0, limit)
+  }
+
+  formatContext(): string {
+    const entities = this.getRelevantEntities()
+
+    return entities
+      .map(e => `${e.name} (${e.type}): ${e.facts.join('; ')}`)
+      .join('\n')
+  }
+}
+```
+
+## Hybrid Memory System
+
+Combine multiple memory types.
+
+```typescript
+class HybridMemory {
+  private shortTerm: ConversationBuffer
+  private longTerm: LongTermMemory
+  private entities: EntityMemory
+  private summary: SummaryMemory
+
+  constructor(userId: string, vectorDB: VectorDB) {
+    this.shortTerm = new ConversationBuffer()
+    this.longTerm = new LongTermMemory(vectorDB, userId)
+    this.entities = new EntityMemory()
+    this.summary = new SummaryMemory()
+  }
+
+  async addMessage(role: 'user' | 'assistant', content: string) {
+    // Add to all memory systems
+    this.shortTerm.add(role, content)
+    await this.longTerm.remember(content, { role })
+    await this.summary.addMessage(role, content)
+
+    // Extract entities
+    if (role === 'user') {
+      await this.entities.extractEntities(content)
+    }
+  }
+
+  async getContext(currentQuery: string): Promise<string> {
+    // 1. Short-term (always include)
+    const shortTermContext = this.shortTerm.formatForLLM()
+
+    // 2. Relevant long-term memories
+    const longTermMemories = await this.longTerm.recall(currentQuery, 3)
+
+    // 3. Entity context
+    const entityContext = this.entities.formatContext()
+
+    // 4. Summary
+    const summaryContext = this.summary.getContext()
+
+    return `
+Previous conversation summary:
+${summaryContext}
+
+Relevant past memories:
+${longTermMemories.map(m => m.text).join('\n')}
+
+Known facts:
+${entityContext}
+
+Recent conversation:
+${shortTermContext.map(m => `${m.role}: ${m.content}`).join('\n')}
+`
+  }
+}
+```
+
+## Usage Example
+
+```typescript
+const memory = new HybridMemory(userId, vectorDB)
+
+// Conversation 1
+await memory.addMessage('user', 'My name is Alice and I love pizza')
+const context1 = await memory.getContext('What do you know about me?')
+
+const response1 = await llm.complete({
+  system: 'You are a helpful assistant.',
+  messages: [
+    { role: 'user', content: context1 + '\n\nWhat do you know about me?' }
+  ]
+})
+// Response: "Your name is Alice and you love pizza."
+
+// Conversation 2 (later)
+await memory.addMessage('user', 'What food do I like?')
+const context2 = await memory.getContext('What food do I like?')
+
+const response2 = await llm.complete({
+  system: 'You are a helpful assistant.',
+  messages: [
+    { role: 'user', content: context2 + '\n\nWhat food do I like?' }
+  ]
+})
+// Response: "You mentioned you love pizza."
+```
+
+## Token Management
+
+Manage context window limits.
+
+```typescript
+class TokenBudgetMemory {
+  private maxTokens: number = 4000
+
+  async getContext(query: string): Promise<string> {
+    let context = ''
+    let tokens = 0
+
+    // Priority 1: Current query (always include)
+    tokens += countTokens(query)
+
+    // Priority 2: Recent messages
+    const recent = this.shortTerm.getHistory()
+    for (const msg of recent.reverse()) {
+      const msgTokens = countTokens(msg.content)
+      if (tokens + msgTokens < this.maxTokens * 0.6) {
+        context = `${msg.role}: ${msg.content}\n${context}`
+        tokens += msgTokens
+      }
+    }
+
+    // Priority 3: Relevant memories
+    const memories = await this.longTerm.recall(query, 10)
+    for (const mem of memories) {
+      const memTokens = countTokens(mem.text)
+      if (tokens + memTokens < this.maxTokens * 0.9) {
+        context += `\nPast memory: ${mem.text}`
+        tokens += memTokens
+      }
+    }
+
+    return context
+  }
+}
+```
+
+## Forgetting Strategies
+
+### Time-Based Decay
+
+```typescript
+async function forgetOldMemories(days: number = 90) {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - days)
+
+  await vectorDB.delete({
+    filter: {
+      timestamp: { $lt: cutoff.toISOString() }
+    }
+  })
+}
+```
+
+### Relevance-Based Pruning
+
+```typescript
+async function pruneIrrelevantMemories() {
+  // Keep only memories accessed in last 30 days
+  const memories = await getAllMemories()
+
+  for (const memory of memories) {
+    if (memory.lastAccessed < thirtyDaysAgo) {
+      await deleteMemory(memory.id)
+    }
+  }
+}
+```
+
+## Privacy & Security
+
+```typescript
+class SecureMemory {
+  async remember(userId: string, content: string) {
+    // 1. Sanitize sensitive data
+    const sanitized = await removePII(content)
+
+    // 2. Encrypt before storage
+    const encrypted = encrypt(sanitized, getUserKey(userId))
+
+    // 3. Store with access controls
+    await vectorDB.upsert({
+      id: generateId(),
+      vector: await embed(sanitized),
+      metadata: {
+        userId,
+        encrypted,
+        accessLevel: 'private'
+      }
+    })
+  }
+
+  async recall(userId: string, query: string): Promise<Memory[]> {
+    // Only retrieve user's own memories
+    const results = await vectorDB.query({
+      vector: await embed(query),
+      filter: {
+        userId: { $eq: userId },
+        accessLevel: { $eq: 'private' }
+      }
+    })
+
+    // Decrypt before returning
+    return results.map(r => ({
+      ...r,
+      text: decrypt(r.metadata.encrypted, getUserKey(userId))
+    }))
+  }
+}
+```
+
+## Best Practices
+
+1. **Hybrid approach**: Combine short-term and long-term memory
+2. **Token budgets**: Always check context window limits
+3. **Relevance ranking**: Retrieve most relevant memories first
+4. **Privacy first**: Encrypt sensitive data
+5. **Forgetting**: Implement data retention policies
+6. **Entity tracking**: Extract and store key entities
+7. **Summarization**: Compress old conversations
+
+## Exercise
+
+Build a memory system:
+1. Implement conversation buffer
+2. Add vector-based long-term memory
+3. Extract and track entities
+4. Test across multiple sessions
+5. Add token budget management
+
+## Resources
+
+- [LangChain Memory](https://python.langchain.com/docs/modules/memory/)
+- [Memory in LLM Applications](https://www.pinecone.io/learn/series/langchain/langchain-conversational-memory/)
+- [Entity Memory Patterns](https://arxiv.org/abs/2304.03442)

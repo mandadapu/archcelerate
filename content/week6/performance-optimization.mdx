@@ -1,0 +1,387 @@
+---
+title: "Performance Optimization & Caching"
+description: "Optimize AI system performance with caching strategies and best practices"
+estimatedMinutes: 40
+---
+
+# Performance Optimization & Caching
+
+## Introduction
+
+LLM API calls are slow (1-5 seconds) and expensive. Caching and optimization strategies can dramatically reduce costs and improve user experience.
+
+## Why Caching Matters
+
+**Without Caching:**
+- User asks "What is prompt engineering?" → $0.01, 2 seconds
+- Another user asks "What is prompt engineering?" → $0.01, 2 seconds
+- 100 users = $1, 200 seconds of waiting
+
+**With Caching:**
+- First user: Cache miss → $0.01, 2 seconds
+- Next 99 users: Cache hit → $0, instant
+- 100 users = $0.01, 2 seconds total
+
+## Caching Strategies
+
+### 1. Semantic Caching
+
+Cache based on semantic similarity, not exact matches:
+
+```typescript
+import { embed } from '@/lib/embeddings'
+import { redis } from '@/lib/redis'
+
+async function semanticCache(
+  query: string,
+  threshold: number = 0.95
+): Promise<string | null> {
+  // Get embedding of query
+  const queryEmbedding = await embed(query)
+
+  // Search for similar queries in cache
+  const similar = await redis.ft.search(
+    'idx:cache',
+    `*=>[KNN 1 @embedding $blob AS score]`,
+    {
+      PARAMS: {
+        blob: queryEmbedding
+      },
+      RETURN: ['content', 'score'],
+      DIALECT: 2
+    }
+  )
+
+  if (similar.documents.length > 0) {
+    const doc = similar.documents[0]
+    if (parseFloat(doc.value.score) >= threshold) {
+      return doc.value.content as string
+    }
+  }
+
+  return null
+}
+
+async function setCachedResponse(
+  query: string,
+  response: string,
+  ttl: number = 3600
+) {
+  const embedding = await embed(query)
+
+  await redis.hSet(`cache:${hashQuery(query)}`, {
+    query,
+    response,
+    embedding: JSON.stringify(embedding),
+    timestamp: Date.now()
+  })
+
+  await redis.expire(`cache:${hashQuery(query)}`, ttl)
+}
+```
+
+### 2. Prompt Caching (Anthropic)
+
+Anthropic supports prompt caching natively:
+
+```typescript
+const response = await anthropic.messages.create({
+  model: "claude-3-sonnet-20240229",
+  max_tokens: 1024,
+  system: [
+    {
+      type: "text",
+      text: longSystemPrompt,
+      cache_control: { type: "ephemeral" } // Cache this!
+    }
+  ],
+  messages: [
+    { role: "user", content: userQuery }
+  ]
+})
+
+// Subsequent requests with same system prompt:
+// - 90% cost reduction for cached portion
+// - Faster response time
+```
+
+### 3. Response Caching by Route
+
+Cache entire responses for common queries:
+
+```typescript
+// app/api/chat/route.ts
+import { redis } from '@/lib/redis'
+
+export async function POST(req: Request) {
+  const { message } = await req.json()
+
+  // Generate cache key
+  const cacheKey = `chat:${hashMessage(message)}`
+
+  // Check cache
+  const cached = await redis.get(cacheKey)
+  if (cached) {
+    return Response.json({
+      response: cached,
+      cached: true,
+      cost: 0
+    })
+  }
+
+  // Call LLM
+  const response = await llm.complete(message)
+
+  // Cache response (1 hour TTL)
+  await redis.setex(cacheKey, 3600, response)
+
+  return Response.json({
+    response,
+    cached: false,
+    cost: calculateCost(usage)
+  })
+}
+```
+
+### 4. RAG Document Caching
+
+Cache retrieved documents to avoid re-embedding:
+
+```typescript
+async function retrieveWithCache(
+  query: string,
+  topK: number = 5
+) {
+  const cacheKey = `rag:${hashQuery(query)}:${topK}`
+
+  // Check cache
+  const cached = await redis.get(cacheKey)
+  if (cached) {
+    return JSON.parse(cached)
+  }
+
+  // Perform retrieval
+  const results = await vectorDB.search(query, topK)
+
+  // Cache for 1 hour
+  await redis.setex(cacheKey, 3600, JSON.stringify(results))
+
+  return results
+}
+```
+
+## Performance Optimization Techniques
+
+### 1. Streaming Responses
+
+Improve perceived performance with streaming:
+
+```typescript
+const stream = await anthropic.messages.stream({
+  model: 'claude-3-sonnet-20240229',
+  max_tokens: 1024,
+  messages: [{ role: 'user', content: query }]
+})
+
+// Stream to client immediately
+return new Response(
+  new ReadableStream({
+    async start(controller) {
+      for await (const chunk of stream) {
+        if (chunk.type === 'content_block_delta') {
+          controller.enqueue(chunk.delta.text)
+        }
+      }
+      controller.close()
+    }
+  }),
+  {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache'
+    }
+  }
+)
+```
+
+### 2. Parallel Processing
+
+Run independent operations in parallel:
+
+```typescript
+// ❌ Sequential (slow)
+const user = await getUser(userId)
+const context = await retrieveContext(query)
+const history = await getChatHistory(userId)
+// Total: 300ms + 500ms + 200ms = 1000ms
+
+// ✅ Parallel (fast)
+const [user, context, history] = await Promise.all([
+  getUser(userId),
+  retrieveContext(query),
+  getChatHistory(userId)
+])
+// Total: max(300, 500, 200) = 500ms
+```
+
+### 3. Request Deduplication
+
+Prevent duplicate concurrent requests:
+
+```typescript
+const pendingRequests = new Map<string, Promise<any>>()
+
+async function deduplicateRequest<T>(
+  key: string,
+  fn: () => Promise<T>
+): Promise<T> {
+  // Check if request is already in flight
+  if (pendingRequests.has(key)) {
+    return pendingRequests.get(key) as Promise<T>
+  }
+
+  // Execute and cache promise
+  const promise = fn().finally(() => {
+    pendingRequests.delete(key)
+  })
+
+  pendingRequests.set(key, promise)
+  return promise
+}
+
+// Usage
+const response = await deduplicateRequest(
+  `llm:${userId}:${queryHash}`,
+  () => llm.complete(query)
+)
+```
+
+### 4. Compression
+
+Compress large contexts before sending to LLM:
+
+```typescript
+function compressContext(docs: Document[]): string {
+  // Remove duplicate information
+  const unique = deduplicateContent(docs)
+
+  // Summarize if too long
+  if (totalTokens(unique) > 10000) {
+    return summarize(unique, maxTokens: 5000)
+  }
+
+  return unique.map(d => d.content).join('\n\n')
+}
+```
+
+## Cache Invalidation Strategies
+
+### Time-Based (TTL)
+```typescript
+// Cache for 1 hour
+await redis.setex(key, 3600, value)
+```
+
+### Event-Based
+```typescript
+// Invalidate when content updates
+await prisma.document.update({
+  where: { id },
+  data: { content: newContent }
+})
+
+// Clear related caches
+await redis.del(`rag:*:${documentId}`)
+```
+
+### Stale-While-Revalidate
+```typescript
+async function getWithStaleRevalidate(key: string, fn: () => Promise<any>) {
+  const cached = await redis.get(key)
+  const ttl = await redis.ttl(key)
+
+  // If cached and not stale, return immediately
+  if (cached && ttl > 300) {
+    return JSON.parse(cached)
+  }
+
+  // If stale, return cached but revalidate in background
+  if (cached && ttl > 0) {
+    // Revalidate asynchronously
+    fn().then(fresh => redis.setex(key, 3600, JSON.stringify(fresh)))
+    return JSON.parse(cached)
+  }
+
+  // If no cache, fetch fresh
+  const fresh = await fn()
+  await redis.setex(key, 3600, JSON.stringify(fresh))
+  return fresh
+}
+```
+
+## Measuring Cache Effectiveness
+
+```typescript
+interface CacheMetrics {
+  hits: number
+  misses: number
+  hitRate: number
+  avgSavingsPerHit: number
+  totalSavings: number
+}
+
+async function getCacheMetrics(period: '1h' | '24h' | '7d'): Promise<CacheMetrics> {
+  const metrics = await prisma.cacheEvent.aggregate({
+    where: {
+      createdAt: {
+        gte: getStartTime(period)
+      }
+    },
+    _count: {
+      _all: true
+    },
+    _sum: {
+      savedCost: true
+    }
+  })
+
+  const hits = await prisma.cacheEvent.count({
+    where: {
+      hit: true,
+      createdAt: { gte: getStartTime(period) }
+    }
+  })
+
+  const total = metrics._count._all
+
+  return {
+    hits,
+    misses: total - hits,
+    hitRate: hits / total,
+    avgSavingsPerHit: metrics._sum.savedCost / hits,
+    totalSavings: metrics._sum.savedCost
+  }
+}
+```
+
+## Best Practices
+
+1. **Cache Hot Paths** - Identify and cache most frequent queries
+2. **Monitor Hit Rates** - Aim for >60% cache hit rate
+3. **Use Appropriate TTLs** - Balance freshness vs. cost savings
+4. **Invalidate Smartly** - Clear caches when data changes
+5. **Measure Everything** - Track cost savings from caching
+
+## Exercise
+
+Implement caching for your AI application:
+1. Add Redis caching layer
+2. Implement semantic caching for queries
+3. Measure cache hit rate
+4. Calculate cost savings
+
+## Resources
+
+- [Redis Caching Patterns](https://redis.io/docs/manual/patterns/)
+- [Anthropic Prompt Caching](https://docs.anthropic.com/claude/docs/prompt-caching)
+- [Helicone Caching](https://docs.helicone.ai/features/advanced-usage/caching)

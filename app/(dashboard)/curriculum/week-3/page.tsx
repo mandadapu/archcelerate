@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 
 export const metadata: Metadata = {
-  title: 'Week 5: Observability + Production',
+  title: 'Week 3: Observability + Production',
   description: 'Learn production-ready AI observability, monitoring, and deployment'
 }
 
@@ -19,13 +19,13 @@ export default async function Week6Page() {
     return null // Middleware should redirect
   }
 
-  // Fetch Week 5 data
+  // Fetch Week 3 data
   const week = await prisma.curriculumWeek.findUnique({
-    where: { weekNumber: 5 }
+    where: { weekNumber: 3 }
   })
 
   if (!week) {
-    return <div className="container max-w-4xl py-8">Week 5 not found</div>
+    return <div className="container max-w-4xl py-8">Week 3 not found</div>
   }
 
   // Fetch concepts
@@ -66,7 +66,7 @@ export default async function Week6Page() {
       <div className="space-y-8">
         {/* Header */}
         <div>
-          <div className="text-sm text-muted-foreground mb-2">Week 5</div>
+          <div className="text-sm text-muted-foreground mb-2">Week 3</div>
           <h1 className="text-4xl font-bold">{week.title}</h1>
           <p className="text-lg text-muted-foreground mt-2">
             {week.description}
@@ -139,7 +139,7 @@ export default async function Week6Page() {
             {concepts.map((concept, i) => (
               <Link
                 key={concept.id}
-                href={`/curriculum/week-5/concepts/${concept.slug}`}
+                href={`/curriculum/week-3/concepts/${concept.slug}`}
                 className="border rounded-lg p-4 hover:border-red-600 transition-colors bg-red-50/50 dark:bg-red-950/50"
               >
                 <div className="flex items-start justify-between">
@@ -167,7 +167,7 @@ export default async function Week6Page() {
           <div>
             <h2 className="text-2xl font-bold mb-4">Lab</h2>
             <Link
-              href={`/curriculum/week-5/lab/${lab.slug}`}
+              href={`/curriculum/week-3/lab/${lab.slug}`}
               className="border rounded-lg p-6 hover:border-blue-600 transition-colors block bg-blue-50/50 dark:bg-blue-950/50"
             >
               <h3 className="font-semibold text-xl mb-2">{lab.title}</h3>
@@ -184,7 +184,7 @@ export default async function Week6Page() {
           <div>
             <h2 className="text-2xl font-bold mb-4">Project</h2>
             <Link
-              href={`/curriculum/week-5/project/${project.slug}`}
+              href={`/curriculum/week-3/project/${project.slug}`}
               className="border rounded-lg p-6 hover:border-violet-600 transition-colors block bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-950 dark:to-purple-950"
             >
               <div className="flex items-start justify-between">

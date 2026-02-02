@@ -1,0 +1,241 @@
+---
+title: "Monitoring LLM Applications"
+description: "Implement comprehensive monitoring for production AI systems"
+estimatedMinutes: 35
+---
+
+# Monitoring LLM Applications
+
+## Introduction
+
+Monitoring LLM applications requires tracking both traditional web metrics and AI-specific metrics like token usage, prompt quality, and response accuracy.
+
+## What to Monitor
+
+### 1. Request Metrics
+
+**Latency**
+```typescript
+// Track end-to-end latency
+const startTime = Date.now()
+const response = await llm.complete(prompt)
+const latency = Date.now() - startTime
+
+await metrics.recordLatency('llm_completion', latency, {
+  model: 'claude-3-sonnet',
+  user_id: userId
+})
+```
+
+**Throughput**
+- Requests per second
+- Requests per user
+- Peak vs. average load
+
+**Error Rates**
+- 4xx errors (client errors)
+- 5xx errors (server errors)
+- LLM API errors (rate limits, timeouts)
+
+### 2. Cost Metrics
+
+Track token usage and costs in real-time:
+
+```typescript
+async function trackLLMCost(
+  inputTokens: number,
+  outputTokens: number,
+  model: string
+) {
+  const pricing = {
+    'claude-3-sonnet': {
+      input: 0.003,  // per 1K tokens
+      output: 0.015
+    }
+  }
+
+  const cost = (
+    (inputTokens / 1000) * pricing[model].input +
+    (outputTokens / 1000) * pricing[model].output
+  )
+
+  await metrics.recordCost('llm_api', cost, {
+    model,
+    input_tokens: inputTokens,
+    output_tokens: outputTokens
+  })
+
+  return cost
+}
+```
+
+### 3. Quality Metrics
+
+**User Feedback**
+```typescript
+interface FeedbackEvent {
+  messageId: string
+  userId: string
+  rating: 1 | 2 | 3 | 4 | 5
+  feedback?: string
+  timestamp: Date
+}
+
+// Track feedback rate
+const feedbackRate = positiveFeedback / totalResponses
+```
+
+**Response Quality**
+- Average response length
+- Coherence scores
+- Factual accuracy (if verifiable)
+- Citation quality (for RAG)
+
+### 4. RAG-Specific Metrics
+
+```typescript
+interface RAGMetrics {
+  // Retrieval
+  documentsRetrieved: number
+  retrievalTimeMs: number
+  averageRelevanceScore: number
+
+  // Context
+  contextLength: number
+  contextUtilization: number // % of context used in response
+
+  // Quality
+  citationAccuracy: number
+  groundedness: number // Response grounded in retrieved docs
+}
+```
+
+## Implementing Monitoring
+
+### Option 1: LangSmith (Recommended for LangChain)
+
+```typescript
+import { Client } from "langsmith"
+
+const client = new Client({
+  apiKey: process.env.LANGCHAIN_API_KEY
+})
+
+// Automatically traces LangChain calls
+const result = await chain.invoke(input, {
+  callbacks: [
+    {
+      handleLLMStart: async (llm, prompts) => {
+        // Log prompt
+      },
+      handleLLMEnd: async (output) => {
+        // Log response and tokens
+      }
+    }
+  ]
+})
+```
+
+### Option 2: Custom Monitoring with Prisma
+
+```typescript
+// Log every LLM request
+await prisma.llmRequest.create({
+  data: {
+    userId: user.id,
+    model: 'claude-3-sonnet',
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    cost: calculateCost(usage),
+    latencyMs: endTime - startTime,
+    promptHash: hashPrompt(prompt), // For deduplication
+    cached: false
+  }
+})
+```
+
+### Option 3: Helicone Proxy
+
+```typescript
+// Use Helicone as a proxy
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+  baseURL: "https://anthropic.helicone.ai/",
+  defaultHeaders: {
+    "Helicone-Auth": `Bearer ${process.env.HELICONE_API_KEY}`,
+  }
+})
+
+// All requests automatically logged to Helicone dashboard
+```
+
+## Setting Up Alerts
+
+### Cost Alerts
+
+```typescript
+// Alert if daily cost exceeds budget
+const dailyCost = await prisma.llmRequest.aggregate({
+  where: {
+    createdAt: {
+      gte: startOfDay(new Date())
+    }
+  },
+  _sum: {
+    cost: true
+  }
+})
+
+if (dailyCost._sum.cost > DAILY_BUDGET) {
+  await sendAlert({
+    type: 'cost_exceeded',
+    message: `Daily LLM cost $${dailyCost._sum.cost} exceeds budget $${DAILY_BUDGET}`
+  })
+}
+```
+
+### Quality Alerts
+
+```typescript
+// Alert if error rate is high
+const errorRate = recentErrors / totalRequests
+
+if (errorRate > 0.05) { // 5% threshold
+  await sendAlert({
+    type: 'high_error_rate',
+    message: `LLM error rate is ${(errorRate * 100).toFixed(1)}%`
+  })
+}
+```
+
+## Dashboard Examples
+
+Key metrics to display:
+1. **Real-time request volume**
+2. **P95 latency over time**
+3. **Hourly cost breakdown**
+4. **Error rate by endpoint**
+5. **User satisfaction scores**
+6. **Cache hit rate**
+
+## Best Practices
+
+1. **Start Simple** - Begin with basic metrics, add complexity as needed
+2. **Use Sampling** - Don't log every single request if volume is high
+3. **Aggregate Data** - Pre-compute hourly/daily aggregates
+4. **Set Baselines** - Know what "normal" looks like
+5. **Review Regularly** - Weekly dashboard reviews to spot trends
+
+## Exercise
+
+Implement basic monitoring for your AI application:
+- Track token usage and costs
+- Set up error logging
+- Create a simple dashboard
+- Configure one cost alert
+
+## Resources
+
+- [LangSmith Documentation](https://docs.smith.langchain.com/)
+- [Helicone Documentation](https://docs.helicone.ai/)
+- [OpenTelemetry for LLMs](https://opentelemetry.io/)

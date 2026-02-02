@@ -1,0 +1,108 @@
+---
+title: "Scaling AI Systems to Production"
+description: "Scale AI applications to handle enterprise load"
+estimatedMinutes: 40
+---
+
+# Scaling AI Systems to Production
+
+## Load Balancing
+
+```typescript
+// Multiple LLM providers for redundancy
+class LoadBalancedLLM {
+  private providers = [
+    { name: 'anthropic', client: anthropic, weight: 60 },
+    { name: 'openai', client: openai, weight: 40 }
+  ]
+  
+  async complete(prompt: string) {
+    const provider = this.selectProvider()
+    
+    try {
+      return await provider.client.complete(prompt)
+    } catch (error) {
+      // Fallback to alternative provider
+      return await this.fallback(prompt, provider.name)
+    }
+  }
+  
+  private selectProvider() {
+    // Weighted random selection
+    const total = this.providers.reduce((sum, p) => sum + p.weight, 0)
+    let random = Math.random() * total
+    
+    for (const provider of this.providers) {
+      random -= provider.weight
+      if (random <= 0) return provider
+    }
+    
+    return this.providers[0]
+  }
+}
+```
+
+## Auto-scaling
+
+```typescript
+// Scale based on queue depth
+async function checkAndScale() {
+  const queueDepth = await getQueueDepth()
+  const currentPods = await getCurrentPodCount()
+  
+  if (queueDepth > 100 && currentPods < MAX_PODS) {
+    await scaleUp()
+  } else if (queueDepth < 10 && currentPods > MIN_PODS) {
+    await scaleDown()
+  }
+}
+```
+
+## Caching at Scale
+
+```typescript
+// Multi-tier caching
+class CacheHierarchy {
+  async get(key: string) {
+    // L1: Memory cache (fastest)
+    let value = await memoryCache.get(key)
+    if (value) return value
+    
+    // L2: Redis (fast)
+    value = await redisCache.get(key)
+    if (value) {
+      await memoryCache.set(key, value)
+      return value
+    }
+    
+    // L3: Database (slowest)
+    value = await database.get(key)
+    if (value) {
+      await redisCache.set(key, value)
+      await memoryCache.set(key, value)
+    }
+    
+    return value
+  }
+}
+```
+
+## Rate Limiting at Scale
+
+```typescript
+// Distributed rate limiting
+async function checkRateLimit(userId: string): Promise<boolean> {
+  const key = `ratelimit:${userId}`
+  const count = await redis.incr(key)
+  
+  if (count === 1) {
+    await redis.expire(key, 60) // 1 minute window
+  }
+  
+  return count <= RATE_LIMIT
+}
+```
+
+## Resources
+- [Scaling Strategies](https://aws.amazon.com/architecture/scalability/)
+- [Production Best Practices](https://kubernetes.io/docs/concepts/configuration/overview/)

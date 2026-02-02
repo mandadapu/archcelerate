@@ -1,0 +1,76 @@
+---
+title: "Query Rewriting & Expansion"
+description: "Optimize user queries for better retrieval"
+estimatedMinutes: 35
+---
+
+# Query Rewriting & Expansion
+
+User queries are often vague or poorly phrased. Query optimization improves retrieval by rewriting them.
+
+## Query Rewriting with LLMs
+
+```typescript
+async function rewriteQuery(userQuery: string): Promise<string> {
+  const response = await claude.messages.create({
+    model: 'claude-3-sonnet',
+    messages: [{
+      role: 'user',
+      content: `Rewrite this search query to be more specific and include relevant keywords:
+
+"${userQuery}"
+
+Return only the rewritten query, nothing else.`
+    }]
+  })
+  
+  return response.content[0].text
+}
+
+// Example:
+// Input: "how to make it faster"
+// Output: "how to optimize code performance and reduce execution time"
+```
+
+## Multi-Query Generation
+
+```typescript
+async function generateMultipleQueries(query: string): Promise<string[]> {
+  const response = await claude.messages.create({
+    model: 'claude-3-sonnet',
+    messages: [{
+      role: 'user',
+      content: `Generate 3 different search queries that capture different aspects of this question:
+
+"${query}"
+
+Return as JSON array.`
+    }]
+  })
+  
+  return JSON.parse(response.content[0].text)
+}
+
+// Search with all queries, combine results
+const queries = await generateMultipleQueries(userQuery)
+const results = await Promise.all(queries.map(q => vectorDB.search(q)))
+const combined = deduplicateAndMerge(results)
+```
+
+## Query Expansion
+
+```typescript
+// Add synonyms and related terms
+function expandQuery(query: string): string[] {
+  const expansions = [
+    query,
+    addSynonyms(query),
+    addRelatedTerms(query)
+  ]
+  
+  return expansions
+}
+```
+
+## Resources
+- [Query Understanding](https://www.pinecone.io/learn/query-understanding/)

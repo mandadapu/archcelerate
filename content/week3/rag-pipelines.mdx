@@ -1,0 +1,430 @@
+---
+title: "Building RAG Pipelines"
+description: "Build production retrieval-augmented generation systems"
+estimatedMinutes: 40
+---
+
+# Building RAG Pipelines
+
+## What is RAG?
+
+**Retrieval-Augmented Generation (RAG)** combines information retrieval with LLM generation to answer questions using external knowledge.
+
+**Without RAG:**
+```
+User: "What are our Q4 revenue numbers?"
+LLM: "I don't have access to that information."
+```
+
+**With RAG:**
+```
+User: "What are our Q4 revenue numbers?"
+→ Retrieve: [Q4 Financial Report: Revenue was $2.4M...]
+→ Generate: "According to the Q4 financial report, revenue was $2.4M."
+```
+
+## RAG Pipeline Architecture
+
+```
+┌─────────┐     ┌──────────┐     ┌─────────┐     ┌─────────┐
+│  Query  │ ──> │ Retrieve │ ──> │ Rerank  │ ──> │Generate │
+└─────────┘     └──────────┘     └─────────┘     └─────────┘
+                     │                               │
+                     ▼                               ▼
+              Vector Database                    LLM API
+```
+
+## Implementation
+
+### Basic RAG System
+
+```typescript
+import { embed } from './embeddings'
+import { pinecone } from './vector-db'
+import { anthropic } from '@anthropic-ai/sdk'
+
+async function ragQuery(question: string): Promise<string> {
+  // 1. Embed the question
+  const queryEmbedding = await embed(question)
+
+  // 2. Retrieve relevant documents
+  const results = await pinecone.index('docs').query({
+    vector: queryEmbedding,
+    topK: 5,
+    includeMetadata: true
+  })
+
+  // 3. Format context
+  const context = results.matches
+    .map(match => match.metadata?.text)
+    .join('\n\n---\n\n')
+
+  // 4. Generate answer
+  const response = await anthropic.messages.create({
+    model: 'claude-3-sonnet-20240229',
+    max_tokens: 1024,
+    messages: [{
+      role: 'user',
+      content: `Answer this question using ONLY the context below. If the answer isn't in the context, say "I don't know."
+
+Context:
+${context}
+
+Question: ${question}`
+    }]
+  })
+
+  return response.content[0].text
+}
+```
+
+### Production RAG Pipeline
+
+```typescript
+interface RAGConfig {
+  retrievalK: number
+  rerankK: number
+  minScore: number
+  includeMetadata: boolean
+}
+
+class RAGPipeline {
+  constructor(
+    private vectorDB: VectorDB,
+    private llm: LLM,
+    private config: RAGConfig
+  ) {}
+
+  async query(question: string): Promise<RAGResponse> {
+    // 1. Query preprocessing
+    const processedQuery = await this.preprocessQuery(question)
+
+    // 2. Retrieval
+    const retrieved = await this.retrieve(processedQuery)
+
+    // 3. Reranking
+    const reranked = await this.rerank(question, retrieved)
+
+    // 4. Context assembly
+    const context = this.assembleContext(reranked)
+
+    // 5. Generation
+    const answer = await this.generate(question, context)
+
+    // 6. Citation extraction
+    const citations = this.extractCitations(answer, reranked)
+
+    return {
+      answer: answer.text,
+      citations,
+      sources: reranked.map(d => d.metadata)
+    }
+  }
+
+  private async preprocessQuery(query: string): Promise<string> {
+    // Expand query with synonyms, fix typos, etc.
+    return query
+  }
+
+  private async retrieve(query: string): Promise<Document[]> {
+    const embedding = await embed(query)
+
+    const results = await this.vectorDB.query({
+      vector: embedding,
+      topK: this.config.retrievalK,
+      includeMetadata: true
+    })
+
+    return results.matches
+      .filter(m => m.score >= this.config.minScore)
+      .map(m => ({
+        id: m.id,
+        text: m.metadata.text,
+        metadata: m.metadata,
+        score: m.score
+      }))
+  }
+
+  private async rerank(
+    query: string,
+    documents: Document[]
+  ): Promise<Document[]> {
+    // Use cross-encoder or LLM for reranking
+    const reranked = await rerankWithCrossEncoder(query, documents)
+
+    return reranked.slice(0, this.config.rerankK)
+  }
+
+  private assembleContext(documents: Document[]): string {
+    return documents
+      .map((doc, i) => `[${i + 1}] ${doc.text}\nSource: ${doc.metadata.source}`)
+      .join('\n\n---\n\n')
+  }
+
+  private async generate(
+    question: string,
+    context: string
+  ): Promise<{ text: string }> {
+    const response = await this.llm.complete({
+      system: `You are a helpful assistant. Answer questions using the provided context.
+Always cite sources using [1], [2], etc.
+If the answer isn't in the context, say "I don't have enough information to answer that."`,
+      messages: [{
+        role: 'user',
+        content: `Context:\n${context}\n\nQuestion: ${question}`
+      }]
+    })
+
+    return { text: response.content }
+  }
+
+  private extractCitations(
+    answer: string,
+    sources: Document[]
+  ): Citation[] {
+    const citationPattern = /\[(\d+)\]/g
+    const matches = [...answer.matchAll(citationPattern)]
+
+    return matches.map(match => {
+      const index = parseInt(match[1]) - 1
+      return {
+        text: match[0],
+        source: sources[index]
+      }
+    })
+  }
+}
+```
+
+## Document Chunking Strategies
+
+### Fixed-Size Chunking
+
+```typescript
+function chunkByTokens(text: string, chunkSize: number, overlap: number): string[] {
+  const tokens = tokenize(text)
+  const chunks: string[] = []
+
+  for (let i = 0; i < tokens.length; i += chunkSize - overlap) {
+    const chunk = tokens.slice(i, i + chunkSize)
+    chunks.push(chunk.join(' '))
+  }
+
+  return chunks
+}
+
+// Usage
+const document = "long text..."
+const chunks = chunkByTokens(document, 500, 50)
+```
+
+### Semantic Chunking
+
+```typescript
+async function semanticChunk(text: string): Promise<string[]> {
+  // Split by paragraphs
+  const paragraphs = text.split('\n\n')
+
+  const chunks: string[] = []
+  let currentChunk = ''
+
+  for (const para of paragraphs) {
+    const combined = currentChunk + '\n\n' + para
+
+    // If too large, start new chunk
+    if (tokenCount(combined) > 500) {
+      if (currentChunk) chunks.push(currentChunk)
+      currentChunk = para
+    } else {
+      currentChunk = combined
+    }
+  }
+
+  if (currentChunk) chunks.push(currentChunk)
+
+  return chunks
+}
+```
+
+### Markdown-Aware Chunking
+
+```typescript
+function chunkMarkdown(markdown: string): Chunk[] {
+  const sections = parseMarkdownSections(markdown)
+
+  return sections.map(section => ({
+    text: section.content,
+    metadata: {
+      heading: section.heading,
+      level: section.level,
+      path: section.path  // e.g., "Introduction > Setup > Prerequisites"
+    }
+  }))
+}
+```
+
+## Indexing Pipeline
+
+```typescript
+class DocumentIndexer {
+  async indexDocument(document: Document): Promise<void> {
+    // 1. Extract text
+    const text = await this.extractText(document)
+
+    // 2. Chunk
+    const chunks = await this.chunk(text)
+
+    // 3. Embed
+    const embeddings = await this.embedBatch(chunks)
+
+    // 4. Store in vector DB
+    await this.store(chunks, embeddings, document.metadata)
+  }
+
+  private async extractText(document: Document): Promise<string> {
+    // Handle different file types
+    switch (document.type) {
+      case 'pdf':
+        return await extractPdfText(document.path)
+      case 'docx':
+        return await extractDocxText(document.path)
+      case 'html':
+        return await extractHtmlText(document.content)
+      default:
+        return document.content
+    }
+  }
+
+  private async chunk(text: string): Promise<string[]> {
+    // Use appropriate chunking strategy
+    return chunkByTokens(text, 500, 50)
+  }
+
+  private async embedBatch(chunks: string[]): Promise<number[][]> {
+    // Batch for efficiency
+    const BATCH_SIZE = 100
+
+    const embeddings: number[][] = []
+
+    for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+      const batch = chunks.slice(i, i + BATCH_SIZE)
+      const batchEmbeddings = await embed(batch)
+      embeddings.push(...batchEmbeddings)
+    }
+
+    return embeddings
+  }
+
+  private async store(
+    chunks: string[],
+    embeddings: number[][],
+    metadata: any
+  ): Promise<void> {
+    const vectors = chunks.map((chunk, i) => ({
+      id: `${metadata.id}-chunk-${i}`,
+      values: embeddings[i],
+      metadata: {
+        ...metadata,
+        text: chunk,
+        chunkIndex: i
+      }
+    }))
+
+    await this.vectorDB.upsert(vectors)
+  }
+}
+```
+
+## Advanced Techniques
+
+### Hypothetical Document Embeddings (HyDE)
+
+```typescript
+async function hydeQuery(question: string): Promise<string> {
+  // 1. Generate hypothetical answer
+  const hypothetical = await llm.complete({
+    prompt: `Write a detailed answer to this question: ${question}`
+  })
+
+  // 2. Embed the hypothetical answer (not the question)
+  const embedding = await embed(hypothetical)
+
+  // 3. Retrieve using hypothetical embedding
+  const results = await vectorDB.query({ vector: embedding })
+
+  // 4. Generate real answer from retrieved docs
+  return await ragGenerate(question, results)
+}
+```
+
+### Query Decomposition
+
+```typescript
+async function decomposeQuery(complexQuestion: string): Promise<string> {
+  // Break complex question into sub-questions
+  const subQuestions = await llm.complete({
+    prompt: `Break this question into simpler sub-questions:\n${complexQuestion}`
+  })
+
+  // Answer each sub-question
+  const answers = await Promise.all(
+    subQuestions.map(q => ragQuery(q))
+  )
+
+  // Synthesize final answer
+  return await llm.complete({
+    prompt: `Synthesize these answers into one:\n${answers.join('\n\n')}`
+  })
+}
+```
+
+## Evaluation
+
+```typescript
+interface EvaluationMetrics {
+  retrievalPrecision: number
+  retrievalRecall: number
+  answerQuality: number
+  citationAccuracy: number
+}
+
+async function evaluateRAG(
+  questions: string[],
+  groundTruth: string[]
+): Promise<EvaluationMetrics> {
+  const results = await Promise.all(
+    questions.map(q => ragQuery(q))
+  )
+
+  return {
+    retrievalPrecision: calculatePrecision(results),
+    retrievalRecall: calculateRecall(results),
+    answerQuality: scoreAnswers(results, groundTruth),
+    citationAccuracy: verifyCitations(results)
+  }
+}
+```
+
+## Best Practices
+
+1. **Chunk overlap**: Use 10-20% overlap to preserve context
+2. **Metadata enrichment**: Add source, date, category to chunks
+3. **Hybrid search**: Combine vector + keyword search
+4. **Reranking**: Always rerank top results with cross-encoder
+5. **Citation tracking**: Track which chunks contributed to answer
+6. **Fallback handling**: Handle "no relevant docs" gracefully
+
+## Exercise
+
+Build a RAG system:
+1. Index 10+ documents
+2. Implement chunking strategy
+3. Add metadata filtering
+4. Track citations
+5. Evaluate retrieval quality
+
+## Resources
+
+- [LangChain RAG Tutorial](https://python.langchain.com/docs/use_cases/question_answering/)
+- [RAG Best Practices](https://www.pinecone.io/learn/retrieval-augmented-generation/)
+- [Advanced RAG Techniques](https://arxiv.org/abs/2312.10997)

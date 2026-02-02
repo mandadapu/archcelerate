@@ -40,8 +40,8 @@ export default async function DashboardPage() {
     }
   }
 
-  // Fetch Week 2-8 progress
-  const weeks = await Promise.all([2, 3, 4, 5, 6, 7, 8].map(async (weekNum) => {
+  // Fetch Week 2-12 progress
+  const weeks = await Promise.all([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(async (weekNum) => {
     if (!user) return null
     const week = await prisma.curriculumWeek.findUnique({
       where: { weekNumber: weekNum }
@@ -67,6 +67,10 @@ export default async function DashboardPage() {
   const week6Data = weeks.find(w => w?.weekNumber === 6)
   const week7Data = weeks.find(w => w?.weekNumber === 7)
   const week8Data = weeks.find(w => w?.weekNumber === 8)
+  const week9Data = weeks.find(w => w?.weekNumber === 9)
+  const week10Data = weeks.find(w => w?.weekNumber === 10)
+  const week11Data = weeks.find(w => w?.weekNumber === 11)
+  const week12Data = weeks.find(w => w?.weekNumber === 12)
 
   // Sprint progress removed - using Week-based curriculum instead
 
@@ -316,6 +320,82 @@ export default async function DashboardPage() {
               <Link href="/curriculum/week-8">
                 <Button size="sm" variant="outline" className="border-cyan-300 text-cyan-700 hover:bg-cyan-50">
                   {week8Data.progress ? 'Continue' : 'Start'} Week 8
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
+        {week9Data?.week && (
+          <Card className="border-2 border-violet-200 bg-gradient-to-br from-violet-50 to-purple-50">
+            <CardHeader>
+              <CardTitle>Week 9</CardTitle>
+              <CardDescription>{week9Data.week.title}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-slate-600 mb-4">
+                {week9Data.week.description}
+              </p>
+              <Link href="/curriculum/week-9">
+                <Button size="sm" variant="outline" className="border-violet-300 text-violet-700 hover:bg-violet-50">
+                  {week9Data.progress ? 'Continue' : 'Start'} Week 9
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
+        {week10Data?.week && (
+          <Card className="border-2 border-fuchsia-200 bg-gradient-to-br from-fuchsia-50 to-pink-50">
+            <CardHeader>
+              <CardTitle>Week 10</CardTitle>
+              <CardDescription>{week10Data.week.title}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-slate-600 mb-4">
+                {week10Data.week.description}
+              </p>
+              <Link href="/curriculum/week-10">
+                <Button size="sm" variant="outline" className="border-fuchsia-300 text-fuchsia-700 hover:bg-fuchsia-50">
+                  {week10Data.progress ? 'Continue' : 'Start'} Week 10
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
+        {week11Data?.week && (
+          <Card className="border-2 border-lime-200 bg-gradient-to-br from-lime-50 to-green-50">
+            <CardHeader>
+              <CardTitle>Week 11</CardTitle>
+              <CardDescription>{week11Data.week.title}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-slate-600 mb-4">
+                {week11Data.week.description}
+              </p>
+              <Link href="/curriculum/week-11">
+                <Button size="sm" variant="outline" className="border-lime-300 text-lime-700 hover:bg-lime-50">
+                  {week11Data.progress ? 'Continue' : 'Start'} Week 11
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
+        {week12Data?.week && (
+          <Card className="border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-gray-50">
+            <CardHeader>
+              <CardTitle>Week 12</CardTitle>
+              <CardDescription>{week12Data.week.title}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-slate-600 mb-4">
+                {week12Data.week.description}
+              </p>
+              <Link href="/curriculum/week-12">
+                <Button size="sm" variant="outline" className="border-slate-300 text-slate-700 hover:bg-slate-50">
+                  {week12Data.progress ? 'Continue' : 'Start'} Week 12
                 </Button>
               </Link>
             </CardContent>

@@ -1,0 +1,79 @@
+---
+title: "Enterprise AI Architecture Patterns"
+description: "Design AI systems for enterprise scale"
+estimatedMinutes: 45
+---
+
+# Enterprise AI Architecture Patterns
+
+## Multi-Tenant Architecture
+
+```typescript
+class TenantIsolation {
+  async query(tenantId: string, userId: string, query: string) {
+    // Tenant-specific vector DB namespace
+    const namespace = `tenant_${tenantId}`
+    
+    // Query with tenant isolation
+    const results = await vectorDB.query({
+      namespace,
+      vector: await embed(query),
+      filter: {
+        tenantId: { $eq: tenantId },
+        // Additional permission checks
+        accessibleBy: { $in: [userId, 'public'] }
+      }
+    })
+    
+    return results
+  }
+}
+```
+
+## High Availability
+
+```yaml
+# Kubernetes deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-api
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+  template:
+    spec:
+      containers:
+      - name: api
+        image: ai-api:latest
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+```
+
+## Disaster Recovery
+
+```typescript
+// Automated backups
+async function backupSystem() {
+  // 1. Database backup
+  await backupDatabase()
+  
+  // 2. Vector DB snapshot
+  await vectorDB.createSnapshot()
+  
+  // 3. Configuration backup
+  await backupConfig()
+  
+  // 4. Store in multiple regions
+  await replicateToBackupRegions()
+}
+```
+
+## Resources
+- [AWS Well-Architected Framework](https://aws.amazon.com/architecture/well-architected/)

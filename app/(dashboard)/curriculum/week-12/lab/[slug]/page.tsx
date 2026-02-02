@@ -127,7 +127,7 @@ export default async function LabPage({ params }: Props) {
         create: {
           userId: user.id,
           weekId: weekId,
-          conceptsTotal: 3, // Week 5 has 4 concepts
+          conceptsTotal: 3, // Week 12 has 4 concepts
           labCompleted: true
         },
         update: {
@@ -136,7 +136,7 @@ export default async function LabPage({ params }: Props) {
       })
     }
 
-    redirect(`/curriculum/week-5/lab/${params.slug}`)
+    redirect(`/curriculum/week-12/lab/${params.slug}`)
   }
 
   const completedCount = submissions.filter(s => s.completed).length
@@ -146,8 +146,8 @@ export default async function LabPage({ params }: Props) {
     <div className="container max-w-4xl py-8">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-        <Link href="/curriculum/week-5" className="hover:text-foreground">
-          Week 5
+        <Link href="/curriculum/week-12" className="hover:text-foreground">
+          Week 12
         </Link>
         <span>/</span>
         <span>Lab</span>
@@ -263,14 +263,14 @@ export default async function LabPage({ params }: Props) {
               Lab Completed!
             </CardTitle>
             <CardDescription>
-              Great work! You&apos;ve completed all exercises. Head back to Week 5 to continue with the project.
+              Great work! You&apos;ve completed all exercises. Head back to Week 12 to continue with the project.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Link href="/curriculum/week-5">
+            <Link href="/curriculum/week-12">
               <Button>
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Week 5
+                Back to Week 12
               </Button>
             </Link>
           </CardContent>

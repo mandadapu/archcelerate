@@ -1,0 +1,424 @@
+---
+title: "Production Deployment Best Practices"
+description: "Deploy AI systems reliably with proper error handling, rate limiting, and scaling"
+estimatedMinutes: 35
+---
+
+# Production Deployment Best Practices
+
+## Introduction
+
+Deploying AI systems to production requires careful consideration of reliability, security, scaling, and cost management beyond typical web applications.
+
+## Pre-Deployment Checklist
+
+### 1. Environment Configuration
+
+```bash
+# .env.production
+NODE_ENV=production
+
+# API Keys
+ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
+
+# Database
+DATABASE_URL=postgresql://...
+
+# Redis Cache
+REDIS_URL=redis://...
+
+# Observability
+LANGSMITH_API_KEY=...
+HELICONE_API_KEY=...
+
+# Limits
+MAX_TOKENS_PER_REQUEST=4096
+RATE_LIMIT_PER_MINUTE=10
+DAILY_COST_LIMIT=100
+```
+
+### 2. Error Handling
+
+Implement robust error handling for LLM API failures:
+
+```typescript
+async function resilientLLMCall(
+  prompt: string,
+  options: {
+    maxRetries?: number
+    timeout?: number
+  } = {}
+) {
+  const { maxRetries = 3, timeout = 30000 } = options
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), timeout)
+
+      const response = await anthropic.messages.create({
+        model: 'claude-3-sonnet-20240229',
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: prompt }],
+        signal: controller.signal
+      })
+
+      clearTimeout(timeoutId)
+      return response
+
+    } catch (error) {
+      const isLastAttempt = attempt === maxRetries - 1
+
+      // Handle specific errors
+      if (error.status === 429) {
+        // Rate limit - wait and retry
+        const retryAfter = error.headers?.['retry-after'] || 5
+        if (!isLastAttempt) {
+          await sleep(retryAfter * 1000)
+          continue
+        }
+      } else if (error.status === 529) {
+        // Overloaded - exponential backoff
+        if (!isLastAttempt) {
+          await sleep(Math.pow(2, attempt) * 1000)
+          continue
+        }
+      } else if (error.name === 'AbortError') {
+        // Timeout
+        throw new Error('LLM request timed out')
+      }
+
+      // If last attempt or unrecoverable error, throw
+      if (isLastAttempt) {
+        throw new Error(`LLM API error after ${maxRetries} attempts: ${error.message}`)
+      }
+    }
+  }
+}
+```
+
+### 3. Rate Limiting
+
+Protect your API from abuse:
+
+```typescript
+import { Ratelimit } from "@upstash/ratelimit"
+import { Redis } from "@upstash/redis"
+
+const ratelimit = new Ratelimit({
+  redis: Redis.fromEnv(),
+  limiter: Ratelimit.slidingWindow(10, "1 m"), // 10 requests per minute
+  analytics: true
+})
+
+export async function POST(req: Request) {
+  // Get user identifier
+  const ip = req.headers.get('x-forwarded-for') || 'anonymous'
+
+  // Check rate limit
+  const { success, limit, remaining, reset } = await ratelimit.limit(ip)
+
+  if (!success) {
+    return Response.json(
+      {
+        error: 'Rate limit exceeded',
+        limit,
+        reset: new Date(reset)
+      },
+      {
+        status: 429,
+        headers: {
+          'X-RateLimit-Limit': limit.toString(),
+          'X-RateLimit-Remaining': remaining.toString(),
+          'X-RateLimit-Reset': reset.toString()
+        }
+      }
+    )
+  }
+
+  // Process request...
+}
+```
+
+### 4. Cost Controls
+
+Prevent runaway costs:
+
+```typescript
+async function checkDailyCostLimit(userId: string): Promise<boolean> {
+  const today = startOfDay(new Date())
+
+  const dailyCost = await prisma.llmRequest.aggregate({
+    where: {
+      userId,
+      createdAt: { gte: today }
+    },
+    _sum: { cost: true }
+  })
+
+  const spent = dailyCost._sum.cost || 0
+  const limit = DAILY_COST_LIMIT_PER_USER
+
+  return spent < limit
+}
+
+// In your API route
+const canProceed = await checkDailyCostLimit(user.id)
+if (!canProceed) {
+  return Response.json({
+    error: 'Daily cost limit reached',
+    limit: DAILY_COST_LIMIT_PER_USER
+  }, { status: 429 })
+}
+```
+
+## Deployment Platforms
+
+### Option 1: Vercel (Recommended for Next.js)
+
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Deploy
+vercel --prod
+
+# Set environment variables
+vercel env add ANTHROPIC_API_KEY
+vercel env add DATABASE_URL
+```
+
+**Pros:**
+- Zero configuration for Next.js
+- Edge functions for low latency
+- Automatic HTTPS and CDN
+- Built-in analytics
+
+**Cons:**
+- Function timeout limits (10s hobby, 60s pro)
+- Cold starts for serverless functions
+
+### Option 2: Docker + Cloud Run / ECS
+
+```dockerfile
+# Dockerfile
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY . .
+RUN npm run build
+
+EXPOSE 3000
+
+CMD ["npm", "start"]
+```
+
+```bash
+# Build and deploy to Google Cloud Run
+gcloud builds submit --tag gcr.io/PROJECT_ID/ai-app
+gcloud run deploy ai-app \
+  --image gcr.io/PROJECT_ID/ai-app \
+  --platform managed \
+  --region us-central1 \
+  --allow-unauthenticated
+```
+
+**Pros:**
+- Full control over runtime
+- No timeout limits
+- Can run long-running processes
+- Better for CPU-intensive tasks
+
+**Cons:**
+- More complex setup
+- Manual scaling configuration
+
+### Option 3: Railway / Render
+
+Simple deployment for full-stack apps:
+
+```bash
+# railway.toml
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "npm start"
+healthcheckPath = "/api/health"
+```
+
+## Scaling Strategies
+
+### 1. Horizontal Scaling
+
+Run multiple instances behind a load balancer:
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+
+services:
+  app:
+    image: ai-app:latest
+    deploy:
+      replicas: 3
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - app
+```
+
+### 2. Queue-Based Processing
+
+For expensive operations, use background jobs:
+
+```typescript
+// Add job to queue
+import { Queue } from 'bullmq'
+
+const documentQueue = new Queue('document-processing', {
+  connection: redis
+})
+
+await documentQueue.add('embed-document', {
+  documentId,
+  userId
+})
+
+// Worker process
+const worker = new Worker('document-processing', async (job) => {
+  const { documentId, userId } = job.data
+
+  // Expensive embedding operation
+  await embedDocument(documentId)
+
+  // Notify user
+  await notifyUser(userId, 'Document processed')
+}, {
+  connection: redis,
+  concurrency: 5 // Process 5 jobs at a time
+})
+```
+
+### 3. Auto-scaling Configuration
+
+```yaml
+# Kubernetes HPA
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ai-app-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ai-app
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+```
+
+## Health Checks & Monitoring
+
+```typescript
+// app/api/health/route.ts
+export async function GET() {
+  const checks = await Promise.all([
+    checkDatabase(),
+    checkRedis(),
+    checkLLMAPI()
+  ])
+
+  const healthy = checks.every(c => c.status === 'ok')
+
+  return Response.json({
+    status: healthy ? 'healthy' : 'degraded',
+    checks,
+    timestamp: new Date().toISOString()
+  }, {
+    status: healthy ? 200 : 503
+  })
+}
+
+async function checkDatabase() {
+  try {
+    await prisma.$queryRaw`SELECT 1`
+    return { name: 'database', status: 'ok' }
+  } catch (error) {
+    return { name: 'database', status: 'error', message: error.message }
+  }
+}
+
+async function checkLLMAPI() {
+  try {
+    await anthropic.messages.create({
+      model: 'claude-3-haiku-20240307',
+      max_tokens: 10,
+      messages: [{ role: 'user', content: 'test' }]
+    })
+    return { name: 'llm_api', status: 'ok' }
+  } catch (error) {
+    return { name: 'llm_api', status: 'error', message: error.message }
+  }
+}
+```
+
+## Security Best Practices
+
+1. **Never commit API keys** - Use environment variables
+2. **Validate all inputs** - Prevent prompt injection
+3. **Rate limit aggressively** - Protect against abuse
+4. **Use HTTPS** - Encrypt data in transit
+5. **Sanitize outputs** - Remove sensitive data from responses
+6. **Implement CORS** - Control which domains can access your API
+7. **Log security events** - Track suspicious activity
+
+## Incident Response Plan
+
+When things go wrong:
+
+1. **Detect** - Automated alerts notify you
+2. **Assess** - Check dashboards and logs
+3. **Mitigate** - Roll back or scale up
+4. **Communicate** - Update users via status page
+5. **Resolve** - Fix root cause
+6. **Post-mortem** - Document what happened and how to prevent it
+
+## Checklist Before Going Live
+
+- [ ] All environment variables configured
+- [ ] Error handling and retries implemented
+- [ ] Rate limiting enabled
+- [ ] Cost controls in place
+- [ ] Monitoring and alerts set up
+- [ ] Health checks configured
+- [ ] Database backed up
+- [ ] Load testing completed
+- [ ] Security review passed
+- [ ] Documentation updated
+
+## Resources
+
+- [Next.js Production Checklist](https://nextjs.org/docs/going-to-production)
+- [Vercel Deployment Docs](https://vercel.com/docs/deployments)
+- [Anthropic Best Practices](https://docs.anthropic.com/claude/docs/best-practices)
+- [The Twelve-Factor App](https://12factor.net/)

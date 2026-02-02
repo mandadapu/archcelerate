@@ -1,0 +1,63 @@
+---
+title: "Fine-tuning Fundamentals"
+description: "Learn when and how to fine-tune language models"
+estimatedMinutes: 40
+---
+
+# Fine-tuning Fundamentals
+
+Fine-tuning adapts a pre-trained model to your specific use case.
+
+## When to Fine-tune
+
+**Fine-tune when:**
+- Prompt engineering isn't enough
+- Need consistent formatting
+- Domain-specific language
+- Cost/latency critical
+
+**Don't fine-tune when:**
+- Prompt engineering works
+- Limited training data (<100 examples)
+- Requirements change frequently
+
+## OpenAI Fine-tuning
+
+```typescript
+import OpenAI from 'openai'
+
+const openai = new OpenAI()
+
+// Prepare training data
+const trainingData = [
+  {
+    messages: [
+      { role: 'system', content: 'You are a code reviewer' },
+      { role: 'user', content: 'Review this code: function foo() { var x = 1 }' },
+      { role: 'assistant', content: 'Issue: Use const instead of var for immutable variables' }
+    ]
+  }
+  // ... more examples
+]
+
+// Upload training file
+const file = await openai.files.create({
+  file: fs.createReadStream('training.jsonl'),
+  purpose: 'fine-tune'
+})
+
+// Create fine-tuning job
+const fineTune = await openai.fineTuning.jobs.create({
+  training_file: file.id,
+  model: 'gpt-3.5-turbo'
+})
+
+// Use fine-tuned model
+const response = await openai.chat.completions.create({
+  model: fineTune.fine_tuned_model,
+  messages: [{ role: 'user', content: 'Review this code...' }]
+})
+```
+
+## Resources
+- [OpenAI Fine-tuning Guide](https://platform.openai.com/docs/guides/fine-tuning)

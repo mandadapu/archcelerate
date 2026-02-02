@@ -1,0 +1,78 @@
+---
+title: "AI Compliance, Security & Governance"
+description: "Ensure compliance and security in enterprise AI"
+estimatedMinutes: 50
+---
+
+# AI Compliance, Security & Governance
+
+## Data Privacy (GDPR/CCPA)
+
+```typescript
+class PrivacyCompliance {
+  async handleDataRequest(userId: string, type: 'access' | 'delete') {
+    switch (type) {
+      case 'access':
+        // Export all user data
+        return await this.exportUserData(userId)
+      
+      case 'delete':
+        // Delete all user data
+        await this.deleteUserData(userId)
+        await this.deleteFromVectorDB(userId)
+        await this.deleteFromLogs(userId)
+        break
+    }
+  }
+  
+  async anonymizePII(text: string): Promise<string> {
+    // Remove personally identifiable information
+    return text
+      .replace(/\b[\w\.-]+@[\w\.-]+\.\w+\b/g, '[EMAIL]')
+      .replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[SSN]')
+      .replace(/\b\d{3}-\d{3}-\d{4}\b/g, '[PHONE]')
+  }
+}
+```
+
+## Audit Logging
+
+```typescript
+async function auditLog(event: AuditEvent) {
+  await prisma.auditLog.create({
+    data: {
+      timestamp: new Date(),
+      userId: event.userId,
+      action: event.action,
+      resource: event.resource,
+      ipAddress: event.ip,
+      userAgent: event.userAgent,
+      result: event.success ? 'success' : 'failure',
+      metadata: event.metadata
+    }
+  })
+}
+
+// Log all sensitive operations
+await auditLog({
+  userId: user.id,
+  action: 'data_access',
+  resource: '/api/sensitive-data',
+  ip: req.ip,
+  userAgent: req.headers['user-agent'],
+  success: true
+})
+```
+
+## SOC 2 Compliance
+
+**Required Controls:**
+1. Access Control (who can access what)
+2. Encryption (data at rest and in transit)
+3. Monitoring (detect anomalies)
+4. Incident Response (handle breaches)
+5. Vendor Management (third-party risk)
+
+## Resources
+- [GDPR Compliance Guide](https://gdpr.eu/)
+- [SOC 2 Checklist](https://www.vanta.com/resources/soc-2-compliance-checklist)

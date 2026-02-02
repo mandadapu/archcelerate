@@ -1,0 +1,65 @@
+---
+title: "Dataset Preparation & Curation"
+description: "Prepare high-quality training data for fine-tuning"
+estimatedMinutes: 45
+---
+
+# Dataset Preparation & Curation
+
+Quality data > Quantity of data
+
+## Data Collection
+
+```typescript
+// Collect examples from production
+async function collectTrainingData() {
+  const conversations = await prisma.conversation.findMany({
+    where: {
+      rating: { gte: 4 }, // Only high-rated conversations
+      flagged: false
+    },
+    include: { messages: true }
+  })
+  
+  return conversations.map(conv => ({
+    messages: conv.messages.map(m => ({
+      role: m.role,
+      content: m.content
+    }))
+  }))
+}
+```
+
+## Data Cleaning
+
+```typescript
+function cleanData(examples: Example[]): Example[] {
+  return examples
+    .filter(ex => ex.messages.length >= 2) // Minimum length
+    .filter(ex => !containsPII(ex)) // Remove PII
+    .filter(ex => isHighQuality(ex)) // Quality check
+    .map(ex => normalizeFormat(ex)) // Consistent format
+}
+```
+
+## Data Augmentation
+
+```typescript
+async function augmentData(examples: Example[]): Promise<Example[]> {
+  const augmented = []
+  
+  for (const example of examples) {
+    // Original
+    augmented.push(example)
+    
+    // Paraphrased version
+    const paraphrased = await paraphrase(example)
+    augmented.push(paraphrased)
+  }
+  
+  return augmented
+}
+```
+
+## Resources
+- [Dataset Preparation Best Practices](https://platform.openai.com/docs/guides/fine-tuning/preparing-your-dataset)
