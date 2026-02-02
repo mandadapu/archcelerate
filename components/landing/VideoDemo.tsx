@@ -37,7 +37,7 @@ const VIDEO_CONFIG = {
 
   // Thumbnail (optional) - shown before video plays
   // If not provided, video first frame is used
-  thumbnail: '/images/video-thumbnail.jpg', // optional
+  thumbnail: undefined, // optional - set to image path if you have one
 }
 // ===== END CONFIGURATION =====
 
