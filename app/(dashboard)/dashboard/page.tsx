@@ -521,9 +521,11 @@ export default async function DashboardPage() {
                 and usage monitoring with infrastructure (CIA Triad) and governance
                 layers. Implements OWASP Top 10 for LLMs defenses.
               </p>
-              <Button size="sm" variant="outline" className="w-full border-green-300 text-green-700 hover:bg-green-50">
-                Coming Soon
-              </Button>
+              <Link href="/security">
+                <Button size="sm" variant="outline" className="w-full border-green-300 text-green-700 hover:bg-green-50">
+                  Learn Security Framework →
+                </Button>
+              </Link>
             </CardContent>
           </Card>
         </div>
