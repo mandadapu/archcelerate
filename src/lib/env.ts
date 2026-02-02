@@ -31,8 +31,8 @@ const envSchema = z.object({
   NEXT_PUBLIC_VERCEL_ANALYTICS_ID: z.string().optional(),
 
   // Feature Flags
-  NEXT_PUBLIC_ENABLE_AI_AGENTS: z.string().transform(val => val === 'true').default('false'),
-  NEXT_PUBLIC_ENABLE_MULTIMODAL: z.string().transform(val => val === 'true').default('false'),
+  NEXT_PUBLIC_ENABLE_AI_AGENTS: z.string().default('false').transform(val => val === 'true'),
+  NEXT_PUBLIC_ENABLE_MULTIMODAL: z.string().default('false').transform(val => val === 'true'),
 })
 
 export type Env = z.infer<typeof envSchema>
