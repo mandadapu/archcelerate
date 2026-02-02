@@ -85,9 +85,437 @@ function manageContext(messages: Message[], maxTokens: number) {
 
 ## Practical Exercises
 
-1. **Token Counting**: Use an LLM API to count tokens in different types of text
-2. **Cost Calculation**: Estimate costs for a real application scenario
-3. **Model Comparison**: Same prompt to different models, compare quality/speed/cost
+### Exercise 1: Token Counting
+
+**Goal**: Learn how to count tokens in different types of text using the Anthropic API.
+
+**Why This Matters**: Token counting is critical for:
+- Estimating costs before making API calls
+- Ensuring prompts fit within context windows
+- Optimizing prompt efficiency
+
+**Step-by-Step Guide**:
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY
+})
+
+async function countTokens(text: string): Promise<number> {
+  // Anthropic's token counting endpoint
+  const response = await anthropic.messages.countTokens({
+    model: 'claude-3-5-sonnet-20241022',
+    messages: [{ role: 'user', content: text }]
+  })
+
+  return response.input_tokens
+}
+
+// Test with different text types
+async function runTokenCountingExercise() {
+  const testCases = [
+    {
+      name: 'Short message',
+      text: 'Hello, how are you?'
+    },
+    {
+      name: 'Code snippet',
+      text: `
+function fibonacci(n) {
+  if (n <= 1) return n
+  return fibonacci(n - 1) + fibonacci(n - 2)
+}
+      `.trim()
+    },
+    {
+      name: 'Markdown documentation',
+      text: `
+# API Documentation
+
+## Authentication
+
+All API requests require authentication using an API key:
+
+\`\`\`bash
+curl -H "Authorization: Bearer YOUR_API_KEY" https://api.example.com/data
+\`\`\`
+
+## Rate Limits
+
+- Free tier: 100 requests/hour
+- Pro tier: 1000 requests/hour
+      `.trim()
+    },
+    {
+      name: 'JSON data',
+      text: JSON.stringify({
+        users: [
+          { id: 1, name: 'Alice', email: 'alice@example.com' },
+          { id: 2, name: 'Bob', email: 'bob@example.com' }
+        ]
+      }, null, 2)
+    }
+  ]
+
+  console.log('Token Counting Results:\n')
+
+  for (const testCase of testCases) {
+    const tokens = await countTokens(testCase.text)
+    const charCount = testCase.text.length
+    const tokensPerChar = (tokens / charCount).toFixed(3)
+
+    console.log(`${testCase.name}:`)
+    console.log(`  Characters: ${charCount}`)
+    console.log(`  Tokens: ${tokens}`)
+    console.log(`  Tokens/Char: ${tokensPerChar}`)
+    console.log(`  Cost (input): $${(tokens / 1000 * 0.003).toFixed(6)}`)
+    console.log()
+  }
+}
+
+// Run the exercise
+runTokenCountingExercise()
+
+// Expected output:
+// Short message:
+//   Characters: 19
+//   Tokens: 6
+//   Tokens/Char: 0.316
+//   Cost (input): $0.000018
+//
+// Code snippet:
+//   Characters: 94
+//   Tokens: 35
+//   Tokens/Char: 0.372
+//   Cost (input): $0.000105
+// ...
+```
+
+**Key Insights You'll Discover**:
+- Code typically uses more tokens per character than plain text
+- JSON/structured data is relatively token-efficient
+- Whitespace and formatting affect token count
+
+### Exercise 2: Cost Calculation
+
+**Goal**: Calculate the actual cost of running a real AI application.
+
+**Scenario**: You're building a customer support chatbot that:
+- Receives 1000 conversations per day
+- Each conversation has 5 messages on average
+- Each message is ~100 tokens input, ~200 tokens output
+
+```typescript
+interface CostEstimate {
+  scenario: string
+  dailyConversations: number
+  messagesPerConversation: number
+  avgInputTokens: number
+  avgOutputTokens: number
+  model: string
+  inputCostPerMillion: number
+  outputCostPerMillion: number
+}
+
+function calculateMonthlyCost(estimate: CostEstimate) {
+  // Calculate total tokens
+  const dailyMessages = estimate.dailyConversations * estimate.messagesPerConversation
+  const dailyInputTokens = dailyMessages * estimate.avgInputTokens
+  const dailyOutputTokens = dailyMessages * estimate.avgOutputTokens
+
+  // Calculate daily cost
+  const dailyInputCost = (dailyInputTokens / 1_000_000) * estimate.inputCostPerMillion
+  const dailyOutputCost = (dailyOutputTokens / 1_000_000) * estimate.outputCostPerMillion
+  const dailyCost = dailyInputCost + dailyOutputCost
+
+  // Calculate monthly cost (30 days)
+  const monthlyCost = dailyCost * 30
+
+  return {
+    dailyMetrics: {
+      conversations: estimate.dailyConversations,
+      messages: dailyMessages,
+      inputTokens: dailyInputTokens,
+      outputTokens: dailyOutputTokens,
+      cost: dailyCost
+    },
+    monthlyMetrics: {
+      conversations: estimate.dailyConversations * 30,
+      messages: dailyMessages * 30,
+      inputTokens: dailyInputTokens * 30,
+      outputTokens: dailyOutputTokens * 30,
+      cost: monthlyCost
+    },
+    costPerConversation: dailyCost / estimate.dailyConversations,
+    breakdown: {
+      inputCost: dailyInputCost,
+      outputCost: dailyOutputCost,
+      inputPercentage: (dailyInputCost / dailyCost * 100).toFixed(1) + '%',
+      outputPercentage: (dailyOutputCost / dailyCost * 100).toFixed(1) + '%'
+    }
+  }
+}
+
+// Run the exercise
+const scenarios: CostEstimate[] = [
+  {
+    scenario: 'Customer Support (Claude 3.5 Sonnet)',
+    dailyConversations: 1000,
+    messagesPerConversation: 5,
+    avgInputTokens: 100,
+    avgOutputTokens: 200,
+    model: 'claude-3-5-sonnet-20241022',
+    inputCostPerMillion: 3,    // $3 per million input tokens
+    outputCostPerMillion: 15   // $15 per million output tokens
+  },
+  {
+    scenario: 'Customer Support (Claude 3 Haiku)',
+    dailyConversations: 1000,
+    messagesPerConversation: 5,
+    avgInputTokens: 100,
+    avgOutputTokens: 200,
+    model: 'claude-3-haiku-20240307',
+    inputCostPerMillion: 0.25,
+    outputCostPerMillion: 1.25
+  },
+  {
+    scenario: 'Code Assistant (High Volume)',
+    dailyConversations: 5000,
+    messagesPerConversation: 3,
+    avgInputTokens: 500,  // Code context is larger
+    avgOutputTokens: 300,
+    model: 'claude-3-5-sonnet-20241022',
+    inputCostPerMillion: 3,
+    outputCostPerMillion: 15
+  }
+]
+
+console.log('Cost Estimation Exercise\n')
+
+for (const scenario of scenarios) {
+  const results = calculateMonthlyCost(scenario)
+
+  console.log(`${scenario.scenario}:`)
+  console.log(`  Model: ${scenario.model}`)
+  console.log(`  Daily: ${results.dailyMetrics.conversations.toLocaleString()} conversations`)
+  console.log(`  Daily Cost: $${results.dailyMetrics.cost.toFixed(2)}`)
+  console.log(`  Monthly Cost: $${results.monthlyMetrics.cost.toFixed(2)}`)
+  console.log(`  Cost per Conversation: $${results.costPerConversation.toFixed(4)}`)
+  console.log(`  Breakdown: ${results.breakdown.inputPercentage} input, ${results.breakdown.outputPercentage} output`)
+  console.log()
+}
+
+// Expected output:
+// Customer Support (Claude 3.5 Sonnet):
+//   Model: claude-3-5-sonnet-20241022
+//   Daily: 1,000 conversations
+//   Daily Cost: $16.50
+//   Monthly Cost: $495.00
+//   Cost per Conversation: $0.0165
+//   Breakdown: 9.1% input, 90.9% output
+//
+// Customer Support (Claude 3 Haiku):
+//   Model: claude-3-haiku-20240307
+//   Daily: 1,000 conversations
+//   Daily Cost: $1.38
+//   Monthly Cost: $41.25
+//   Cost per Conversation: $0.0014
+//   Breakdown: 9.1% input, 90.9% output
+// ...
+```
+
+**Key Insights**:
+- Output tokens cost more than input tokens (often 5x more)
+- Model choice dramatically affects cost (Haiku vs Sonnet: ~12x difference)
+- Volume adds up quickly - optimize for high-traffic applications
+
+### Exercise 3: Model Comparison
+
+**Goal**: Compare different models on the same task to understand quality/speed/cost tradeoffs.
+
+```typescript
+interface ModelConfig {
+  name: string
+  model: string
+  provider: 'anthropic' | 'openai'
+}
+
+interface ComparisonResult {
+  model: string
+  response: string
+  latency: number  // milliseconds
+  inputTokens: number
+  outputTokens: number
+  cost: number
+  quality?: number  // Optional: your subjective rating 1-10
+}
+
+async function compareModels(prompt: string): Promise<ComparisonResult[]> {
+  const models: ModelConfig[] = [
+    { name: 'Claude 3.5 Sonnet', model: 'claude-3-5-sonnet-20241022', provider: 'anthropic' },
+    { name: 'Claude 3 Haiku', model: 'claude-3-haiku-20240307', provider: 'anthropic' },
+    { name: 'GPT-4 Turbo', model: 'gpt-4-turbo', provider: 'openai' },
+    { name: 'GPT-3.5 Turbo', model: 'gpt-3.5-turbo', provider: 'openai' }
+  ]
+
+  const results: ComparisonResult[] = []
+
+  for (const modelConfig of models) {
+    console.log(`Testing ${modelConfig.name}...`)
+
+    const startTime = Date.now()
+
+    try {
+      if (modelConfig.provider === 'anthropic') {
+        const response = await anthropic.messages.create({
+          model: modelConfig.model,
+          max_tokens: 1024,
+          messages: [{ role: 'user', content: prompt }]
+        })
+
+        const latency = Date.now() - startTime
+
+        // Calculate cost
+        const inputCost = modelConfig.model.includes('haiku')
+          ? 0.25 / 1_000_000
+          : 3 / 1_000_000
+        const outputCost = modelConfig.model.includes('haiku')
+          ? 1.25 / 1_000_000
+          : 15 / 1_000_000
+
+        const cost =
+          response.usage.input_tokens * inputCost +
+          response.usage.output_tokens * outputCost
+
+        results.push({
+          model: modelConfig.name,
+          response: response.content[0].text,
+          latency,
+          inputTokens: response.usage.input_tokens,
+          outputTokens: response.usage.output_tokens,
+          cost
+        })
+      } else {
+        // OpenAI implementation
+        const response = await openai.chat.completions.create({
+          model: modelConfig.model,
+          max_tokens: 1024,
+          messages: [{ role: 'user', content: prompt }]
+        })
+
+        const latency = Date.now() - startTime
+
+        // GPT-4 Turbo pricing
+        const inputCost = modelConfig.model.includes('gpt-4')
+          ? 10 / 1_000_000
+          : 0.5 / 1_000_000
+        const outputCost = modelConfig.model.includes('gpt-4')
+          ? 30 / 1_000_000
+          : 1.5 / 1_000_000
+
+        const cost =
+          response.usage.prompt_tokens * inputCost +
+          response.usage.completion_tokens * outputCost
+
+        results.push({
+          model: modelConfig.name,
+          response: response.choices[0].message.content,
+          latency,
+          inputTokens: response.usage.prompt_tokens,
+          outputTokens: response.usage.completion_tokens,
+          cost
+        })
+      }
+    } catch (error) {
+      console.error(`Error with ${modelConfig.name}:`, error)
+    }
+  }
+
+  return results
+}
+
+// Run the comparison
+async function runModelComparison() {
+  const testPrompt = `Explain the difference between synchronous and asynchronous programming in JavaScript. Provide a simple code example for each.`
+
+  console.log('Model Comparison Exercise\n')
+  console.log(`Prompt: "${testPrompt}"\n`)
+
+  const results = await compareModels(testPrompt)
+
+  // Display results in a table
+  console.log('Results:')
+  console.log('─'.repeat(100))
+  console.log(
+    'Model'.padEnd(25),
+    'Latency'.padEnd(12),
+    'Input Tokens'.padEnd(15),
+    'Output Tokens'.padEnd(15),
+    'Cost'.padEnd(12)
+  )
+  console.log('─'.repeat(100))
+
+  for (const result of results) {
+    console.log(
+      result.model.padEnd(25),
+      `${result.latency}ms`.padEnd(12),
+      result.inputTokens.toString().padEnd(15),
+      result.outputTokens.toString().padEnd(15),
+      `$${result.cost.toFixed(6)}`.padEnd(12)
+    )
+  }
+
+  console.log('─'.repeat(100))
+  console.log('\nResponses:\n')
+
+  for (const result of results) {
+    console.log(`${result.model}:`)
+    console.log(result.response.substring(0, 200) + '...\n')
+  }
+
+  // Calculate averages
+  const avgLatency = results.reduce((sum, r) => sum + r.latency, 0) / results.length
+  const avgCost = results.reduce((sum, r) => sum + r.cost, 0) / results.length
+
+  console.log('Summary:')
+  console.log(`  Average latency: ${avgLatency.toFixed(0)}ms`)
+  console.log(`  Average cost: $${avgCost.toFixed(6)}`)
+  console.log(`  Fastest: ${results.sort((a, b) => a.latency - b.latency)[0].model}`)
+  console.log(`  Cheapest: ${results.sort((a, b) => a.cost - b.cost)[0].model}`)
+}
+
+runModelComparison()
+
+// Expected output:
+// Results:
+// ────────────────────────────────────────────────────────────────────
+// Model                    Latency     Input Tokens   Output Tokens   Cost
+// ────────────────────────────────────────────────────────────────────
+// Claude 3.5 Sonnet        2450ms      28             245             $0.003759
+// Claude 3 Haiku           1800ms      28             220             $0.000282
+// GPT-4 Turbo              3200ms      27             260             $0.008070
+// GPT-3.5 Turbo            1200ms      27             235             $0.000366
+// ────────────────────────────────────────────────────────────────────
+//
+// Summary:
+//   Average latency: 2163ms
+//   Average cost: $0.003119
+//   Fastest: GPT-3.5 Turbo
+//   Cheapest: Claude 3 Haiku
+```
+
+**Key Insights You'll Discover**:
+- Latency varies significantly between models (1-3 seconds)
+- Cost can vary by 25x between models
+- Cheaper/faster models often provide good quality for simple tasks
+- Balance quality, speed, and cost based on your use case
+
+**Your Turn**: Try these experiments:
+1. Test with different prompt complexities (simple vs complex reasoning)
+2. Compare the same model with different max_tokens settings
+3. Test multilingual prompts to see if token counts change
 
 ## Further Reading
 

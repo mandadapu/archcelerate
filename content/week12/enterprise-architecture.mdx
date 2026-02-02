@@ -6,44 +6,281 @@ estimatedMinutes: 45
 
 # Enterprise AI Architecture Patterns
 
+## Why Enterprise Architecture Differs
+
+**Simple Explanation**: Building an AI app for 100 users is different from building for 100 companies with 10,000 users each. Enterprise systems need multi-tenancy, high availability, disaster recovery, and strict security.
+
+**Enterprise Requirements**:
+1. **Multi-Tenancy**: Isolate data between companies
+2. **High Availability**: 99.9%+ uptime (< 8.7 hours downtime per year)
+3. **Scalability**: Handle 10x traffic spikes
+4. **Security**: SOC 2, GDPR, HIPAA compliance
+5. **Disaster Recovery**: Backup and restore capabilities
+6. **Observability**: Comprehensive logging and monitoring
+7. **Performance SLAs**: Response time guarantees
+
+**Cost of Downtime**:
+- Small business: $8,000 per hour
+- Mid-size business: $74,000 per hour
+- Enterprise: $540,000 per hour
+(Source: Gartner)
+
 ## Multi-Tenant Architecture
 
+**Simple Explanation**: Multiple companies (tenants) use your AI system, but each company's data must be completely isolated from others. Like an apartment building - everyone shares the infrastructure but has their own private unit.
+
+### Tenant Isolation Strategies
+
 ```typescript
+// Strategy 1: Database per Tenant (Strongest Isolation)
+class DatabasePerTenant {
+  private connections = new Map<string, PrismaClient>()
+
+  async getConnection(tenantId: string): Promise<PrismaClient> {
+    if (!this.connections.has(tenantId)) {
+      // Each tenant gets their own database
+      const dbUrl = `postgresql://user:pass@localhost:5432/tenant_${tenantId}`
+
+      const prisma = new PrismaClient({
+        datasources: { db: { url: dbUrl } }
+      })
+
+      this.connections.set(tenantId, prisma)
+    }
+
+    return this.connections.get(tenantId)!
+  }
+
+  async query(tenantId: string, userId: string, query: string) {
+    const prisma = await this.getConnection(tenantId)
+
+    // All queries automatically scoped to this tenant's database
+    const conversations = await prisma.conversation.findMany({
+      where: { userId }
+    })
+
+    return conversations
+  }
+}
+
+// Pros: Perfect isolation, easy to backup/restore individual tenants
+// Cons: Higher cost (one DB per tenant), complex migrations
+// Use when: Handling regulated data (healthcare, finance)
+```
+
+```typescript
+// Strategy 2: Schema per Tenant (Good Isolation)
+class SchemaPerTenant {
+  private prisma: PrismaClient
+
+  async query(tenantId: string, userId: string) {
+    // Set schema for this tenant
+    await this.prisma.$executeRaw`SET search_path TO tenant_${tenantId}`
+
+    // All subsequent queries use this schema
+    const conversations = await this.prisma.conversation.findMany({
+      where: { userId }
+    })
+
+    return conversations
+  }
+}
+
+// Pros: Better isolation than shared schema, easier migrations than DB-per-tenant
+// Cons: All tenants share same database connection pool
+// Use when: Need good isolation without full database separation
+```
+
+```typescript
+// Strategy 3: Shared Schema with Tenant ID (Most Efficient)
 class TenantIsolation {
   async query(tenantId: string, userId: string, query: string) {
-    // Tenant-specific vector DB namespace
+    // Tenant ID column in every table
     const namespace = `tenant_${tenantId}`
-    
-    // Query with tenant isolation
-    const results = await vectorDB.query({
+
+    // 1. Query vector DB with tenant filter
+    const vectorResults = await vectorDB.query({
       namespace,
       vector: await embed(query),
       filter: {
-        tenantId: { $eq: tenantId },
-        // Additional permission checks
+        tenantId: { $eq: tenantId },  // CRITICAL: Always filter by tenant
         accessibleBy: { $in: [userId, 'public'] }
+      },
+      topK: 10
+    })
+
+    // 2. Query SQL database with tenant filter
+    const conversations = await prisma.conversation.findMany({
+      where: {
+        tenantId: tenantId,  // CRITICAL: Always filter by tenant
+        userId: userId
       }
     })
-    
-    return results
+
+    return { vectorResults, conversations }
   }
+}
+
+// Pros: Most cost-effective, easiest to manage
+// Cons: Risk of data leakage if tenant filter forgotten
+// Use when: Cost optimization is priority
+```
+
+### Enforcing Tenant Isolation
+
+**Simple Explanation**: Use middleware to automatically inject tenant filters into every query. This prevents accidental data leaks.
+
+```typescript
+// Middleware to enforce tenant context
+class TenantMiddleware {
+  async withTenantContext<T>(
+    tenantId: string,
+    operation: () => Promise<T>
+  ): Promise<T> {
+    // Set tenant context in async local storage
+    return await asyncLocalStorage.run({ tenantId }, async () => {
+      return await operation()
+    })
+  }
+}
+
+// Prisma middleware to auto-inject tenant filter
+prisma.$use(async (params, next) => {
+  const tenantId = asyncLocalStorage.getStore()?.tenantId
+
+  if (!tenantId) {
+    throw new Error('Tenant context not set - possible security issue!')
+  }
+
+  // Automatically add tenantId to all queries
+  if (params.action === 'findMany' || params.action === 'findFirst') {
+    params.args.where = {
+      ...params.args.where,
+      tenantId: tenantId
+    }
+  }
+
+  if (params.action === 'create') {
+    params.args.data = {
+      ...params.args.data,
+      tenantId: tenantId
+    }
+  }
+
+  return next(params)
+})
+
+// Usage in API route
+export async function GET(req: Request) {
+  const tenantId = await getTenantFromRequest(req)
+
+  return tenantMiddleware.withTenantContext(tenantId, async () => {
+    // All database queries automatically scoped to this tenant
+    const users = await prisma.user.findMany() // Automatically includes tenantId filter
+
+    return NextResponse.json(users)
+  })
+}
+```
+
+### Tenant-Specific Configuration
+
+```typescript
+interface TenantConfig {
+  tenantId: string
+  name: string
+  settings: {
+    llmModel: 'claude-3-5-sonnet' | 'gpt-4-turbo'
+    maxTokens: number
+    rateLimit: number  // requests per hour
+    features: string[] // enabled features
+    customPrompts?: Record<string, string>
+  }
+  billing: {
+    plan: 'free' | 'pro' | 'enterprise'
+    costPerToken: number
+    monthlyQuota: number
+  }
+}
+
+class TenantConfigService {
+  private cache = new LRUCache<string, TenantConfig>({ max: 1000 })
+
+  async getConfig(tenantId: string): Promise<TenantConfig> {
+    // Check cache first
+    const cached = this.cache.get(tenantId)
+    if (cached) return cached
+
+    // Load from database
+    const config = await prisma.tenantConfig.findUnique({
+      where: { tenantId }
+    })
+
+    if (!config) throw new Error(`Tenant ${tenantId} not found`)
+
+    this.cache.set(tenantId, config)
+    return config
+  }
+
+  async getLLMSettings(tenantId: string) {
+    const config = await this.getConfig(tenantId)
+
+    return {
+      model: config.settings.llmModel,
+      maxTokens: config.settings.maxTokens,
+      systemPrompt: config.settings.customPrompts?.system || DEFAULT_PROMPT
+    }
+  }
+}
+
+// Usage
+const tenantConfig = new TenantConfigService()
+
+async function generateResponse(tenantId: string, userMessage: string) {
+  const settings = await tenantConfig.getLLMSettings(tenantId)
+
+  const response = await anthropic.messages.create({
+    model: settings.model,
+    max_tokens: settings.maxTokens,
+    system: settings.systemPrompt,
+    messages: [{ role: 'user', content: userMessage }]
+  })
+
+  return response.content[0].text
 }
 ```
 
 ## High Availability
 
+**Simple Explanation**: Your system should stay online even if servers crash, databases fail, or entire data centers go down.
+
+### Multi-Region Deployment
+
 ```yaml
-# Kubernetes deployment
+# Kubernetes deployment across multiple regions
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ai-api
 spec:
-  replicas: 3
-  strategy:
-    type: RollingUpdate
+  replicas: 6  # 2 per region
+  selector:
+    matchLabels:
+      app: ai-api
   template:
+    metadata:
+      labels:
+        app: ai-api
     spec:
+      # Spread pods across availability zones
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app: ai-api
+
       containers:
       - name: api
         image: ai-api:latest
@@ -54,26 +291,406 @@ spec:
           limits:
             memory: "1Gi"
             cpu: "1000m"
+
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+
+        # Environment variables from secrets
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: url
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: api-keys
+              key: anthropic
+```
+
+### Health Checks and Circuit Breakers
+
+```typescript
+class HealthCheckService {
+  async check(): Promise<HealthStatus> {
+    const checks = await Promise.allSettled([
+      this.checkDatabase(),
+      this.checkRedis(),
+      this.checkLLMAPI(),
+      this.checkVectorDB(),
+      this.checkDiskSpace(),
+      this.checkMemory()
+    ])
+
+    const results = checks.map((check, i) => ({
+      name: ['database', 'redis', 'llm_api', 'vector_db', 'disk', 'memory'][i],
+      status: check.status === 'fulfilled' && check.value ? 'healthy' : 'unhealthy',
+      details: check.status === 'fulfilled' ? check.value : { error: check.reason }
+    }))
+
+    const allHealthy = results.every(r => r.status === 'healthy')
+
+    return {
+      status: allHealthy ? 'healthy' : 'degraded',
+      checks: results,
+      timestamp: new Date().toISOString()
+    }
+  }
+
+  private async checkDatabase(): Promise<boolean> {
+    try {
+      await prisma.$queryRaw`SELECT 1`
+      return true
+    } catch (error) {
+      console.error('Database health check failed:', error)
+      return false
+    }
+  }
+
+  private async checkRedis(): Promise<boolean> {
+    try {
+      await redis.ping()
+      return true
+    } catch (error) {
+      console.error('Redis health check failed:', error)
+      return false
+    }
+  }
+
+  private async checkLLMAPI(): Promise<boolean> {
+    try {
+      // Simple ping to verify API is reachable
+      const response = await fetch('https://api.anthropic.com', {
+        method: 'HEAD',
+        signal: AbortSignal.timeout(5000)
+      })
+      return response.ok
+    } catch (error) {
+      console.error('LLM API health check failed:', error)
+      return false
+    }
+  }
+}
+
+// Circuit breaker to prevent cascade failures
+class CircuitBreaker {
+  private failures = 0
+  private lastFailureTime = 0
+  private state: 'closed' | 'open' | 'half-open' = 'closed'
+
+  private readonly failureThreshold = 5
+  private readonly resetTimeout = 60000 // 1 minute
+
+  async execute<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.state === 'open') {
+      // Check if we should try again
+      if (Date.now() - this.lastFailureTime > this.resetTimeout) {
+        this.state = 'half-open'
+      } else {
+        throw new Error('Circuit breaker is OPEN - service unavailable')
+      }
+    }
+
+    try {
+      const result = await operation()
+
+      // Success - reset circuit
+      if (this.state === 'half-open') {
+        this.state = 'closed'
+        this.failures = 0
+      }
+
+      return result
+    } catch (error) {
+      this.failures++
+      this.lastFailureTime = Date.now()
+
+      if (this.failures >= this.failureThreshold) {
+        this.state = 'open'
+        console.error(`Circuit breaker opened after ${this.failures} failures`)
+      }
+
+      throw error
+    }
+  }
+
+  getState() {
+    return {
+      state: this.state,
+      failures: this.failures,
+      lastFailureTime: this.lastFailureTime
+    }
+  }
+}
+
+// Usage
+const llmCircuitBreaker = new CircuitBreaker()
+
+async function callLLM(prompt: string) {
+  return await llmCircuitBreaker.execute(async () => {
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: prompt }]
+    })
+
+    return response.content[0].text
+  })
+}
 ```
 
 ## Disaster Recovery
 
+**Simple Explanation**: Plan for the worst - entire data centers going offline, accidental data deletion, ransomware attacks. You need backups and a recovery plan.
+
 ```typescript
-// Automated backups
-async function backupSystem() {
-  // 1. Database backup
-  await backupDatabase()
-  
-  // 2. Vector DB snapshot
-  await vectorDB.createSnapshot()
-  
-  // 3. Configuration backup
-  await backupConfig()
-  
-  // 4. Store in multiple regions
-  await replicateToBackupRegions()
+class DisasterRecovery {
+  // Automated backup strategy
+  async performBackup(): Promise<BackupResult> {
+    const backupId = `backup_${Date.now()}`
+    console.log(`Starting backup: ${backupId}`)
+
+    try {
+      // 1. Database backup
+      const dbBackup = await this.backupDatabase(backupId)
+
+      // 2. Vector DB snapshot
+      const vectorBackup = await this.backupVectorDB(backupId)
+
+      // 3. Configuration backup
+      const configBackup = await this.backupConfiguration(backupId)
+
+      // 4. File storage backup
+      const filesBackup = await this.backupFiles(backupId)
+
+      // 5. Replicate to multiple regions
+      await this.replicateToBackupRegions(backupId, [
+        dbBackup,
+        vectorBackup,
+        configBackup,
+        filesBackup
+      ])
+
+      // 6. Verify backup integrity
+      await this.verifyBackup(backupId)
+
+      console.log(`Backup completed: ${backupId}`)
+
+      return {
+        backupId,
+        timestamp: new Date(),
+        components: {
+          database: dbBackup,
+          vectorDB: vectorBackup,
+          config: configBackup,
+          files: filesBackup
+        },
+        regions: ['us-east-1', 'us-west-2', 'eu-west-1'],
+        verified: true
+      }
+    } catch (error) {
+      console.error(`Backup failed: ${backupId}`, error)
+      await this.alertOps({ type: 'backup_failed', backupId, error })
+      throw error
+    }
+  }
+
+  private async backupDatabase(backupId: string): Promise<string> {
+    // PostgreSQL backup
+    const filename = `${backupId}_database.sql.gz`
+
+    await exec(`
+      pg_dump ${DATABASE_URL} | gzip > /backups/${filename}
+    `)
+
+    // Upload to S3
+    await this.uploadToS3(filename, 'database-backups')
+
+    return filename
+  }
+
+  private async backupVectorDB(backupId: string): Promise<string> {
+    // Chroma/Pinecone snapshot
+    const snapshot = await vectorDB.createSnapshot({
+      name: backupId
+    })
+
+    return snapshot.id
+  }
+
+  // Recovery process
+  async restore(backupId: string): Promise<void> {
+    console.log(`Starting restore from backup: ${backupId}`)
+
+    // 1. Verify backup exists and is valid
+    const backup = await this.getBackup(backupId)
+    if (!backup.verified) {
+      throw new Error('Backup not verified - refusing to restore')
+    }
+
+    // 2. Create point-in-time snapshot before restore (safety)
+    const preRestoreSnapshot = await this.performBackup()
+    console.log(`Pre-restore snapshot created: ${preRestoreSnapshot.backupId}`)
+
+    try {
+      // 3. Restore database
+      await this.restoreDatabase(backup.components.database)
+
+      // 4. Restore vector DB
+      await this.restoreVectorDB(backup.components.vectorDB)
+
+      // 5. Restore configuration
+      await this.restoreConfiguration(backup.components.config)
+
+      // 6. Restore files
+      await this.restoreFiles(backup.components.files)
+
+      // 7. Run post-restore validation
+      await this.validateRestore()
+
+      console.log(`Restore completed successfully from ${backupId}`)
+    } catch (error) {
+      console.error('Restore failed, rolling back to pre-restore snapshot')
+      await this.restore(preRestoreSnapshot.backupId)
+      throw error
+    }
+  }
+
+  // RTO (Recovery Time Objective): How long can you be down?
+  // RPO (Recovery Point Objective): How much data can you lose?
+
+  async getRTORPO(): Promise<{ rto: string; rpo: string }> {
+    return {
+      rto: '4 hours',    // Max downtime
+      rpo: '15 minutes'  // Max data loss (backup every 15 min)
+    }
+  }
+}
+
+// Automated backup schedule
+const dr = new DisasterRecovery()
+
+// Full backup daily
+cron.schedule('0 2 * * *', async () => {
+  await dr.performBackup()
+})
+
+// Incremental backup every 15 minutes
+cron.schedule('*/15 * * * *', async () => {
+  await dr.performIncrementalBackup()
+})
+```
+
+## Observability
+
+**Simple Explanation**: You can't fix what you can't see. Comprehensive monitoring, logging, and tracing help you understand system behavior and debug issues.
+
+```typescript
+// Structured logging
+class Logger {
+  log(level: 'info' | 'warn' | 'error', message: string, metadata?: any) {
+    const logEntry = {
+      timestamp: new Date().toISOString(),
+      level,
+      message,
+      ...metadata,
+      // Add context
+      environment: process.env.NODE_ENV,
+      service: 'ai-api',
+      version: process.env.APP_VERSION,
+      // Correlation ID for tracing
+      traceId: asyncLocalStorage.getStore()?.traceId
+    }
+
+    // Send to logging service (DataDog, CloudWatch, etc.)
+    console.log(JSON.stringify(logEntry))
+
+    // Also send errors to error tracking
+    if (level === 'error') {
+      Sentry.captureException(new Error(message), { extra: metadata })
+    }
+  }
+}
+
+// Metrics tracking
+class Metrics {
+  async recordLLMCall(metadata: {
+    model: string
+    tokens: number
+    latency: number
+    cost: number
+    tenantId: string
+  }) {
+    // Send to metrics service (Prometheus, DataDog, etc.)
+    await statsd.timing('llm.latency', metadata.latency, {
+      model: metadata.model,
+      tenant: metadata.tenantId
+    })
+
+    await statsd.increment('llm.calls', {
+      model: metadata.model,
+      tenant: metadata.tenantId
+    })
+
+    await statsd.gauge('llm.cost', metadata.cost, {
+      tenant: metadata.tenantId
+    })
+  }
+}
+
+// Distributed tracing
+import { trace } from '@opentelemetry/api'
+
+async function handleRequest(req: Request) {
+  const tracer = trace.getTracer('ai-api')
+
+  return await tracer.startActiveSpan('handleRequest', async (span) => {
+    span.setAttribute('http.method', req.method)
+    span.setAttribute('http.url', req.url)
+
+    try {
+      const result = await processRequest(req)
+      span.setStatus({ code: 1 }) // OK
+      return result
+    } catch (error) {
+      span.setStatus({ code: 2, message: error.message }) // ERROR
+      span.recordException(error)
+      throw error
+    } finally {
+      span.end()
+    }
+  })
 }
 ```
 
+## Best Practices
+
+1. **Design for Failure**: Assume everything will fail eventually
+2. **Automate Everything**: Deployments, backups, scaling, monitoring
+3. **Test Disaster Recovery**: Run fire drills quarterly
+4. **Monitor Business Metrics**: Not just technical metrics
+5. **Cost Attribution**: Track costs per tenant
+6. **Security in Depth**: Multiple layers of security
+7. **Documentation**: Runbooks for common incidents
+
 ## Resources
 - [AWS Well-Architected Framework](https://aws.amazon.com/architecture/well-architected/)
+- [Google SRE Book](https://sre.google/sre-book/table-of-contents/)
+- [Kubernetes Best Practices](https://kubernetes.io/docs/concepts/configuration/overview/)

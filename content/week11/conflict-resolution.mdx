@@ -6,64 +6,681 @@ estimatedMinutes: 35
 
 # Conflict Resolution in Agent Systems
 
+## Why Conflicts Happen
+
+**Simple Explanation**: When multiple AI agents analyze the same task, they might reach different conclusions - just like human experts often disagree. You need a systematic way to resolve these conflicts.
+
+**Common Conflict Scenarios**:
+1. **Different Answers**: Agent A says "use Redis", Agent B says "use Memcached"
+2. **Contradictory Information**: One agent finds data suggesting X, another finds data suggesting NOT X
+3. **Priority Conflicts**: Multiple agents want to act first, but only one can
+4. **Resource Conflicts**: Two agents need the same limited resource
+
+**Real Example**: Building a recommendation system
+- **ML Agent**: "Use collaborative filtering based on historical data"
+- **Rule-Based Agent**: "Use business rules to ensure compliance"
+- **Hybrid Agent**: "Combine both approaches with weighting"
+
+Who's right? You need a conflict resolution strategy.
+
 ## Detecting Conflicts
+
+**Simple Explanation**: Before you can resolve a conflict, you need to detect it. This means comparing agent responses and identifying disagreements.
 
 ```typescript
 interface AgentResponse {
-  agent: string
-  response: string
-  confidence: number
+  agentId: string
+  agentRole: string
+  response: any           // The actual answer
+  confidence: number      // 0-1, how confident the agent is
+  reasoning: string       // Why the agent chose this answer
+  sources?: string[]      // Data sources used
+  timestamp: number
 }
 
-function detectConflict(responses: AgentResponse[]): boolean {
-  const uniqueResponses = new Set(responses.map(r => r.response))
-  return uniqueResponses.size > 1
+class ConflictDetector {
+  detect(responses: AgentResponse[]): ConflictReport {
+    // Strategy 1: Exact match detection
+    const uniqueResponses = this.getUniqueResponses(responses)
+
+    if (uniqueResponses.size === 1) {
+      return {
+        hasConflict: false,
+        agreement: 'unanimous',
+        responses: responses
+      }
+    }
+
+    // Strategy 2: Semantic similarity
+    const clusters = this.clusterSimilarResponses(responses)
+
+    if (clusters.length === 1) {
+      return {
+        hasConflict: false,
+        agreement: 'semantic_consensus',
+        responses: responses
+      }
+    }
+
+    // Conflict detected
+    return {
+      hasConflict: true,
+      conflictType: this.categorizeConflict(clusters),
+      clusters: clusters,
+      severity: this.assessSeverity(clusters)
+    }
+  }
+
+  private getUniqueResponses(responses: AgentResponse[]): Set<string> {
+    return new Set(responses.map(r => JSON.stringify(r.response)))
+  }
+
+  private async clusterSimilarResponses(
+    responses: AgentResponse[]
+  ): Promise<ResponseCluster[]> {
+    // Use semantic similarity to group similar responses
+    const clusters: ResponseCluster[] = []
+
+    for (const response of responses) {
+      // Find existing cluster with similar response
+      let foundCluster = false
+
+      for (const cluster of clusters) {
+        const similarity = await this.calculateSimilarity(
+          response.response,
+          cluster.representative.response
+        )
+
+        if (similarity > 0.85) {  // 85% similar = same cluster
+          cluster.members.push(response)
+          foundCluster = true
+          break
+        }
+      }
+
+      if (!foundCluster) {
+        // Create new cluster
+        clusters.push({
+          representative: response,
+          members: [response]
+        })
+      }
+    }
+
+    return clusters
+  }
+
+  private async calculateSimilarity(response1: any, response2: any): Promise<number> {
+    // Use LLM to assess semantic similarity
+    const result = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 100,
+      messages: [{
+        role: 'user',
+        content: `Rate the semantic similarity of these two responses on a scale of 0-1:
+
+Response 1: ${JSON.stringify(response1)}
+Response 2: ${JSON.stringify(response2)}
+
+Return only a number between 0 and 1.`
+      }]
+    })
+
+    return parseFloat(result.content[0].text.trim())
+  }
+
+  private categorizeConflict(clusters: ResponseCluster[]): ConflictType {
+    if (clusters.length === 2) {
+      return 'binary'  // A vs B
+    } else if (clusters.length > 2) {
+      return 'multi_way'  // A vs B vs C
+    }
+    return 'none'
+  }
+
+  private assessSeverity(clusters: ResponseCluster[]): 'low' | 'medium' | 'high' {
+    // Low severity: Close confidence scores
+    // Medium severity: Some clear winners
+    // High severity: Completely different answers with high confidence
+
+    const confidences = clusters.map(c =>
+      c.members.reduce((sum, m) => sum + m.confidence, 0) / c.members.length
+    )
+
+    const maxConfidence = Math.max(...confidences)
+    const minConfidence = Math.min(...confidences)
+    const confidenceGap = maxConfidence - minConfidence
+
+    if (confidenceGap < 0.2) return 'low'
+    if (confidenceGap < 0.5) return 'medium'
+    return 'high'
+  }
 }
+
+// Example usage
+const detector = new ConflictDetector()
+
+const responses: AgentResponse[] = [
+  {
+    agentId: 'agent-1',
+    agentRole: 'researcher',
+    response: 'Use Redis for caching',
+    confidence: 0.9,
+    reasoning: 'Redis is faster and supports complex data structures',
+    timestamp: Date.now()
+  },
+  {
+    agentId: 'agent-2',
+    agentRole: 'performance-expert',
+    response: 'Use Memcached for caching',
+    confidence: 0.85,
+    reasoning: 'Memcached is simpler and uses less memory',
+    timestamp: Date.now()
+  },
+  {
+    agentId: 'agent-3',
+    agentRole: 'cost-optimizer',
+    response: 'Use in-memory Map for caching',
+    confidence: 0.7,
+    reasoning: 'No external dependencies, lowest cost',
+    timestamp: Date.now()
+  }
+]
+
+const conflict = detector.detect(responses)
+console.log(conflict)
+// {
+//   hasConflict: true,
+//   conflictType: 'multi_way',
+//   clusters: [...],
+//   severity: 'medium'
+// }
 ```
 
 ## Resolution Strategies
 
-### Voting
+### Strategy 1: Voting (Democratic)
+
+**Simple Explanation**: Each agent gets one vote. The answer with the most votes wins. Like a democratic election.
+
+**When to Use**:
+- Multiple agents with similar expertise
+- No clear authority or hierarchy
+- Want to avoid bias toward any single agent
 
 ```typescript
-function resolveByVoting(responses: AgentResponse[]): string {
-  const votes = new Map<string, number>()
-  
-  responses.forEach(r => {
-    votes.set(r.response, (votes.get(r.response) || 0) + 1)
-  })
-  
-  // Return response with most votes
-  return Array.from(votes.entries())
-    .sort((a, b) => b[1] - a[1])[0][0]
+class VotingResolver {
+  resolve(responses: AgentResponse[]): ResolvedResponse {
+    // Count votes for each unique response
+    const votes = new Map<string, VoteCount>()
+
+    for (const response of responses) {
+      const key = JSON.stringify(response.response)
+
+      if (!votes.has(key)) {
+        votes.set(key, {
+          response: response.response,
+          count: 0,
+          supporters: [],
+          totalConfidence: 0
+        })
+      }
+
+      const voteCount = votes.get(key)!
+      voteCount.count++
+      voteCount.supporters.push(response.agentId)
+      voteCount.totalConfidence += response.confidence
+    }
+
+    // Find response with most votes
+    const winner = Array.from(votes.values())
+      .sort((a, b) => {
+        // Primary: vote count
+        if (b.count !== a.count) return b.count - a.count
+
+        // Tiebreaker: average confidence
+        const avgA = a.totalConfidence / a.count
+        const avgB = b.totalConfidence / b.count
+        return avgB - avgA
+      })[0]
+
+    return {
+      finalAnswer: winner.response,
+      method: 'voting',
+      voteCounts: Array.from(votes.values()),
+      confidence: winner.totalConfidence / winner.count,
+      reasoning: `${winner.count}/${responses.length} agents agreed`
+    }
+  }
+}
+
+// Example
+const resolver = new VotingResolver()
+const result = resolver.resolve(responses)
+
+console.log(result)
+// {
+//   finalAnswer: 'Use Redis for caching',
+//   method: 'voting',
+//   voteCounts: [
+//     { response: 'Use Redis', count: 1, supporters: ['agent-1'], totalConfidence: 0.9 },
+//     { response: 'Use Memcached', count: 1, supporters: ['agent-2'], totalConfidence: 0.85 },
+//     { response: 'Use Map', count: 1, supporters: ['agent-3'], totalConfidence: 0.7 }
+//   ],
+//   confidence: 0.9,
+//   reasoning: '1/3 agents agreed'
+// }
+```
+
+**Pros**:
+- Simple and fair
+- No single point of failure
+- Democratic
+
+**Cons**:
+- Ties are common with few agents
+- Doesn't account for agent expertise
+- Quantity doesn't equal quality
+
+### Strategy 2: Confidence-Based (Meritocratic)
+
+**Simple Explanation**: Trust the agent that's most confident in their answer. Like asking who's most sure about their answer.
+
+**When to Use**:
+- Agents provide confidence scores
+- Some agents are naturally more conservative
+- Want to reward certainty
+
+```typescript
+class ConfidenceResolver {
+  resolve(responses: AgentResponse[]): ResolvedResponse {
+    // Sort by confidence, highest first
+    const sorted = responses.sort((a, b) => b.confidence - a.confidence)
+
+    const winner = sorted[0]
+    const runnerUp = sorted[1]
+
+    // Check if winner is significantly more confident
+    const confidenceGap = winner.confidence - (runnerUp?.confidence || 0)
+
+    return {
+      finalAnswer: winner.response,
+      method: 'confidence',
+      confidence: winner.confidence,
+      reasoning: `${winner.agentRole} was most confident (${winner.confidence.toFixed(2)})`,
+      metadata: {
+        winnerAgent: winner.agentId,
+        confidenceGap: confidenceGap,
+        wasCloseCall: confidenceGap < 0.1
+      }
+    }
+  }
+}
+
+// Example
+const confResolver = new ConfidenceResolver()
+const result = confResolver.resolve(responses)
+
+console.log(result)
+// {
+//   finalAnswer: 'Use Redis for caching',
+//   method: 'confidence',
+//   confidence: 0.9,
+//   reasoning: 'researcher was most confident (0.90)',
+//   metadata: {
+//     winnerAgent: 'agent-1',
+//     confidenceGap: 0.05,
+//     wasCloseCall: true
+//   }
+// }
+```
+
+**Pros**:
+- Rewards well-calibrated agents
+- Fast decision making
+- Clear winner in most cases
+
+**Cons**:
+- Overconfident agents can dominate
+- Doesn't check if high confidence is justified
+- Ignores minority opinions
+
+### Strategy 3: Weighted Voting (Expert-Based)
+
+**Simple Explanation**: Different agents have different weights based on their expertise and track record. Like giving domain experts more say.
+
+**When to Use**:
+- Agents have different expertise levels
+- Historical performance data available
+- Want to balance democracy with meritocracy
+
+```typescript
+class WeightedVotingResolver {
+  private agentWeights: Map<string, number>
+
+  constructor() {
+    this.agentWeights = new Map()
+  }
+
+  setAgentWeight(agentId: string, weight: number) {
+    this.agentWeights.set(agentId, weight)
+  }
+
+  calculateWeightFromHistory(agentId: string, history: TaskHistory[]): number {
+    // Calculate weight based on historical accuracy
+    const agentTasks = history.filter(h => h.agentId === agentId)
+
+    if (agentTasks.length === 0) return 0.5  // Default weight
+
+    const successRate = agentTasks.filter(t => t.wasCorrect).length / agentTasks.length
+    const avgConfidence = agentTasks.reduce((sum, t) => sum + t.confidence, 0) / agentTasks.length
+    const calibration = this.calculateCalibration(agentTasks)
+
+    // Weighted combination
+    return (
+      successRate * 0.5 +        // 50% based on accuracy
+      calibration * 0.3 +        // 30% based on calibration
+      avgConfidence * 0.2        // 20% based on confidence
+    )
+  }
+
+  private calculateCalibration(tasks: TaskHistory[]): number {
+    // How well does confidence match actual correctness?
+    const calibrationErrors = tasks.map(task => {
+      const expected = task.confidence
+      const actual = task.wasCorrect ? 1 : 0
+      return Math.abs(expected - actual)
+    })
+
+    const avgError = calibrationErrors.reduce((a, b) => a + b, 0) / tasks.length
+    return 1 - avgError  // Lower error = better calibration
+  }
+
+  resolve(responses: AgentResponse[]): ResolvedResponse {
+    // Calculate weighted votes
+    const weightedVotes = new Map<string, WeightedVote>()
+
+    for (const response of responses) {
+      const key = JSON.stringify(response.response)
+      const weight = this.agentWeights.get(response.agentId) || 0.5
+
+      if (!weightedVotes.has(key)) {
+        weightedVotes.set(key, {
+          response: response.response,
+          totalWeight: 0,
+          supporters: []
+        })
+      }
+
+      const vote = weightedVotes.get(key)!
+      vote.totalWeight += weight * response.confidence
+      vote.supporters.push({
+        agentId: response.agentId,
+        weight: weight,
+        confidence: response.confidence
+      })
+    }
+
+    // Find winner
+    const winner = Array.from(weightedVotes.values())
+      .sort((a, b) => b.totalWeight - a.totalWeight)[0]
+
+    return {
+      finalAnswer: winner.response,
+      method: 'weighted_voting',
+      confidence: winner.totalWeight / responses.length,
+      reasoning: `Weighted vote: ${winner.totalWeight.toFixed(2)} points`,
+      metadata: {
+        supporters: winner.supporters,
+        alternativesSuppressed: weightedVotes.size - 1
+      }
+    }
+  }
+}
+
+// Example
+const weightedResolver = new WeightedVotingResolver()
+
+// Set weights based on historical performance
+weightedResolver.setAgentWeight('agent-1', 0.9)  // Researcher: 90% accurate historically
+weightedResolver.setAgentWeight('agent-2', 0.75) // Performance expert: 75% accurate
+weightedResolver.setAgentWeight('agent-3', 0.6)  // Cost optimizer: 60% accurate
+
+const result = weightedResolver.resolve(responses)
+
+console.log(result)
+// {
+//   finalAnswer: 'Use Redis for caching',
+//   method: 'weighted_voting',
+//   confidence: 0.81,
+//   reasoning: 'Weighted vote: 0.81 points',
+//   metadata: {
+//     supporters: [
+//       { agentId: 'agent-1', weight: 0.9, confidence: 0.9 }
+//     ],
+//     alternativesSuppressed: 2
+//   }
+// }
+```
+
+**Pros**:
+- Accounts for agent expertise
+- Improves over time with data
+- Balances multiple factors
+
+**Cons**:
+- Requires historical data
+- Complex to set up initially
+- Can create echo chambers (good agents always win)
+
+### Strategy 4: Arbitrator Agent (Hierarchical)
+
+**Simple Explanation**: A specialized "judge" agent reviews all responses and makes the final decision. Like having a senior engineer review junior suggestions.
+
+**When to Use**:
+- Conflicts are complex or nuanced
+- Need human-like judgment
+- Have a more capable model available for arbitration
+
+```typescript
+class ArbitratorResolver {
+  private arbitratorModel = 'claude-3-5-sonnet-20241022'
+
+  async resolve(
+    task: Task,
+    responses: AgentResponse[]
+  ): Promise<ResolvedResponse> {
+    // Present all agent responses to arbitrator
+    const arbitratorPrompt = `You are an expert arbitrator resolving a conflict between AI agents.
+
+ORIGINAL TASK: ${task.description}
+
+AGENT RESPONSES:
+${responses.map((r, i) => `
+Agent ${i + 1} (${r.agentRole}):
+- Answer: ${JSON.stringify(r.response)}
+- Confidence: ${r.confidence}
+- Reasoning: ${r.reasoning}
+${r.sources ? `- Sources: ${r.sources.join(', ')}` : ''}
+`).join('\n')}
+
+Analyze these responses and decide on the best answer. Consider:
+1. Correctness and accuracy
+2. Completeness
+3. Practical feasibility
+4. Risk factors
+5. Agent expertise and confidence
+
+Return JSON:
+{
+  "finalAnswer": <your decision>,
+  "reasoning": "Detailed explanation of why you chose this answer",
+  "confidence": <0-1>,
+  "agreesWithAgent": "<agent-id or 'synthesis' if combining multiple>",
+  "dissent": "<brief note on why other answers weren't chosen>"
+}`
+
+    const response = await anthropic.messages.create({
+      model: this.arbitratorModel,
+      max_tokens: 1500,
+      messages: [{
+        role: 'user',
+        content: arbitratorPrompt
+      }]
+    })
+
+    const decision = JSON.parse(response.content[0].text)
+
+    return {
+      finalAnswer: decision.finalAnswer,
+      method: 'arbitrator',
+      confidence: decision.confidence,
+      reasoning: decision.reasoning,
+      metadata: {
+        agreesWithAgent: decision.agreesWithAgent,
+        dissent: decision.dissent,
+        arbitratorModel: this.arbitratorModel
+      }
+    }
+  }
+}
+
+// Example
+const arbitrator = new ArbitratorResolver()
+
+const result = await arbitrator.resolve(
+  { description: 'Choose a caching solution for our API' },
+  responses
+)
+
+console.log(result)
+// {
+//   finalAnswer: 'Use Redis for caching with Memcached as fallback',
+//   method: 'arbitrator',
+//   confidence: 0.88,
+//   reasoning: 'Redis offers the best balance of performance and features. The researcher correctly identified its advantages. However, the cost optimizer raises a valid concern about complexity. A hybrid approach with Memcached as a lightweight fallback provides the best of both worlds.',
+//   metadata: {
+//     agreesWithAgent: 'synthesis',
+//     dissent: 'In-memory Map is too simplistic for production use',
+//     arbitratorModel: 'claude-3-5-sonnet-20241022'
+//   }
+// }
+```
+
+**Pros**:
+- Can synthesize multiple viewpoints
+- Provides detailed reasoning
+- Can handle complex, nuanced conflicts
+
+**Cons**:
+- Extra API call (cost + latency)
+- Adds single point of failure
+- May not have domain expertise
+
+## Hybrid Strategy: Best of All Worlds
+
+```typescript
+class SmartConflictResolver {
+  async resolve(task: Task, responses: AgentResponse[]): Promise<ResolvedResponse> {
+    const detector = new ConflictDetector()
+    const conflict = detector.detect(responses)
+
+    // No conflict? Easy!
+    if (!conflict.hasConflict) {
+      return {
+        finalAnswer: responses[0].response,
+        method: 'consensus',
+        confidence: 1.0,
+        reasoning: 'All agents agreed'
+      }
+    }
+
+    // Choose resolution strategy based on conflict characteristics
+    if (conflict.severity === 'low') {
+      // Low severity: Use confidence-based (fast)
+      return new ConfidenceResolver().resolve(responses)
+    }
+
+    if (responses.length <= 3) {
+      // Few agents: Use arbitrator (comprehensive)
+      return await new ArbitratorResolver().resolve(task, responses)
+    }
+
+    // Many agents: Use weighted voting (scalable)
+    const weightedResolver = new WeightedVotingResolver()
+    // Initialize weights from agent metadata
+    for (const response of responses) {
+      const weight = response.metadata?.historicalAccuracy || 0.5
+      weightedResolver.setAgentWeight(response.agentId, weight)
+    }
+    return weightedResolver.resolve(responses)
+  }
 }
 ```
 
-### Confidence-Based
+## Best Practices
+
+1. **Log All Conflicts**: Track when and why conflicts occur for analysis
+2. **Measure Resolution Quality**: Over time, check if your strategy makes good decisions
+3. **Combine Strategies**: Use different strategies for different conflict types
+4. **Set Confidence Thresholds**: If no agent is confident, defer to human
+5. **Learn From Outcomes**: Update agent weights based on resolution outcomes
+
+## Common Pitfalls
+
+1. **Always Using Same Strategy**: Different conflicts need different approaches
+   - **Fix**: Match strategy to conflict type and severity
+
+2. **Ignoring Minority Opinions**: Sometimes the lone dissenter is right
+   - **Fix**: Track cases where minority was correct, adjust weights
+
+3. **No Tie-Breaking**: What happens when votes are exactly equal?
+   - **Fix**: Always have a tiebreaker (confidence, agent priority, or arbitrator)
+
+4. **No Validation**: Assuming resolution is always correct
+   - **Fix**: Validate resolved answer before using it
+
+## Real-World Example
 
 ```typescript
-function resolveByConfidence(responses: AgentResponse[]): string {
-  return responses.sort((a, b) => b.confidence - a.confidence)[0].response
-}
-```
+// Multi-agent system for code review
+const codeReviews: AgentResponse[] = [
+  {
+    agentId: 'security-agent',
+    agentRole: 'security',
+    response: 'REJECT: SQL injection vulnerability on line 42',
+    confidence: 0.95,
+    reasoning: 'Unsanitized user input directly in query'
+  },
+  {
+    agentId: 'performance-agent',
+    agentRole: 'performance',
+    response: 'APPROVE: Code is performant',
+    confidence: 0.85,
+    reasoning: 'O(n) complexity, no N+1 queries'
+  },
+  {
+    agentId: 'style-agent',
+    agentRole: 'style',
+    response: 'APPROVE: Follows style guide',
+    confidence: 0.9,
+    reasoning: 'Proper formatting and naming conventions'
+  }
+]
 
-### Arbitrator Agent
+const resolver = new SmartConflictResolver()
+const decision = await resolver.resolve(
+  { description: 'Review pull request #123' },
+  codeReviews
+)
 
-```typescript
-async function resolveWithArbitrator(
-  responses: AgentResponse[]
-): Promise<string> {
-  const arbitrator = new ArbitratorAgent()
-  
-  return await arbitrator.decide({
-    question: 'Which response is most accurate?',
-    responses: responses.map(r => ({
-      from: r.agent,
-      content: r.response
-    }))
-  })
-}
+// Result: REJECT
+// Reasoning: Security concerns outweigh style and performance approvals
+// Even with 2/3 agents approving, the security agent's high-confidence
+// rejection triggers the "safety-critical" override
 ```
 
 ## Resources
 - [Consensus Mechanisms](https://arxiv.org/abs/2305.14930)
+- [Multi-Agent Debate](https://arxiv.org/abs/2305.19118)
+- [Agent Cooperation Strategies](https://www.anthropic.com/research/cooperative-ai)
