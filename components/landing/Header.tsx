@@ -44,8 +44,26 @@ export function Header({ onLoginClick }: HeaderProps) {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-gradient-to-r from-purple-600 to-cyan-500 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-[10px]">Arch</span>
+            <div className="w-8 h-8 bg-gradient-to-br from-slate-800 to-slate-600 rounded-lg flex items-center justify-center relative overflow-hidden">
+              {/* Architectural arch icon */}
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="relative z-10">
+                {/* Pillars */}
+                <path d="M5 19 L5 10 L7 9 L7 19 Z" fill="url(#headerGrad)" opacity="0.9"/>
+                <path d="M17 19 L17 10 L19 9 L19 19 Z" fill="url(#headerGrad)" opacity="0.9"/>
+                {/* Top beam */}
+                <rect x="6" y="8" width="12" height="2" rx="0.5" fill="#e5e7eb" opacity="0.8"/>
+                {/* Center arch */}
+                <path d="M8 19 Q8 12 12 12 Q16 12 16 19" fill="none" stroke="url(#headerGrad)" strokeWidth="1.5" opacity="0.6"/>
+                {/* AI chip */}
+                <rect x="10" y="10" width="4" height="4" rx="0.5" fill="#06b6d4"/>
+                <defs>
+                  <linearGradient id="headerGrad" x1="0" y1="0" x2="24" y2="24">
+                    <stop offset="0%" stopColor="#8b5cf6"/>
+                    <stop offset="50%" stopColor="#06b6d4"/>
+                    <stop offset="100%" stopColor="#f59e0b"/>
+                  </linearGradient>
+                </defs>
+              </svg>
             </div>
             <span className="text-xl font-bold text-gray-900">Archcelerate</span>
           </Link>
