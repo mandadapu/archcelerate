@@ -7,6 +7,7 @@ import { prisma } from '@/lib/db'
 import { loadMDXContent } from '@/lib/mdx'
 import { Button } from '@/components/ui/button'
 import { CheckCircle2, ArrowLeft, ArrowRight } from 'lucide-react'
+import { ConceptQuiz } from '@/components/curriculum/ConceptQuiz'
 
 interface Props {
   params: { slug: string }
@@ -134,6 +135,9 @@ export default async function ConceptPage({ params }: Props) {
           <p className="text-muted-foreground">Failed to load concept content</p>
         </div>
       )}
+
+      {/* Concept Quiz */}
+      <ConceptQuiz conceptSlug={params.slug} conceptTitle={concept.title} />
 
       {/* Complete Button & Navigation */}
       <div className="mt-12 flex items-center justify-between border-t pt-8">

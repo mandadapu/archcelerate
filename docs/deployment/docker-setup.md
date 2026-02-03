@@ -68,14 +68,14 @@ docker-compose exec app npx prisma migrate dev
 ### Build Production Image
 
 ```bash
-docker build -t aicelerate:latest .
+docker build -t archcelerate:latest .
 ```
 
 ### Run Production Container
 
 ```bash
 docker run -d \
-  --name aicelerate-app \
+  --name archcelerate-app \
   -p 3000:3000 \
   -e DATABASE_URL="postgresql://user:password@host:5432/db" \
   -e REDIS_URL="redis://host:6379" \
@@ -83,7 +83,7 @@ docker run -d \
   -e NEXTAUTH_URL="https://yourdomain.com" \
   -e GOOGLE_CLIENT_ID="your-client-id" \
   -e GOOGLE_CLIENT_SECRET="your-client-secret" \
-  aicelerate:latest
+  archcelerate:latest
 ```
 
 ## Environment Variables
@@ -122,7 +122,7 @@ docker-compose logs -f redis
 docker-compose exec app sh
 
 # PostgreSQL container
-docker-compose exec postgres psql -U aicelerate
+docker-compose exec postgres psql -U archcelerate
 ```
 
 ### Health Checks
@@ -180,7 +180,7 @@ For local development, the docker-compose configuration mounts:
 The postgres service runs `docker/postgres/init.sql` on first startup, which:
 
 - Enables `pg_trgm` and `btree_gin` extensions
-- Grants permissions to the `aicelerate` user
+- Grants permissions to the `archcelerate` user
 - Notes that `pgvector` extension needs manual installation if required
 
 ## Next Steps

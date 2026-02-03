@@ -20,10 +20,13 @@ export async function POST(request: Request) {
     }
 
     // Parse request body
-    const { answers }: { answers: QuizAnswer[] } = await request.json()
+    const { answers, questions }: { answers: QuizAnswer[], questions?: any[] } = await request.json()
 
-    // Validate answers
-    const validation = validateQuizAnswers(answers)
+    // Use provided questions or fallback to static ones
+    const questionsToUse = questions || quizQuestions
+
+    // Validate answers with the questions being used
+    const validation = validateQuizAnswers(answers, questionsToUse)
     if (!validation.isValid) {
       return NextResponse.json(
         { error: 'Invalid answers', details: validation.errors },
@@ -34,7 +37,11 @@ export async function POST(request: Request) {
     // Prepare data for AI analysis
     const analysisInput: DiagnosisAnalysisInput = {
       answers: answers.map(a => {
-        const question = quizQuestions.find(q => q.id === a.questionId)!
+        const question = questionsToUse.find(q => q.id === a.questionId)
+        if (!question) {
+          console.error(`Question not found: ${a.questionId}`)
+          return null
+        }
         return {
           questionId: a.questionId,
           question: question.question,
@@ -43,20 +50,21 @@ export async function POST(request: Request) {
           skillArea: question.skillArea,
           isCorrect: a.isCorrect,
         }
-      }),
-      totalQuestions: quizQuestions.length,
+      }).filter(Boolean) as any[],
+      totalQuestions: questionsToUse.length,
     }
 
     // Analyze with Claude AI
     const analysis = await analyzeDiagnosis(analysisInput)
 
-    // Store results in database
+    // Store results in database (including questions for review)
     await prisma.skillDiagnosis.upsert({
       where: {
         userId: session.user.id,
       },
       update: {
         quizAnswers: answers as any,
+        quizQuestions: questionsToUse as any,
         skillScores: analysis.skillScores as any,
         recommendedPath: analysis.recommendedPath,
         completedAt: new Date(),
@@ -64,6 +72,7 @@ export async function POST(request: Request) {
       create: {
         userId: session.user.id,
         quizAnswers: answers as any,
+        quizQuestions: questionsToUse as any,
         skillScores: analysis.skillScores as any,
         recommendedPath: analysis.recommendedPath,
       },
@@ -82,7 +91,7 @@ export async function POST(request: Request) {
         eventType: 'diagnosis.completed',
         eventData: {
           score: answers.filter(a => a.isCorrect).length,
-          total: quizQuestions.length,
+          total: questionsToUse.length,
           recommended_path: analysis.recommendedPath,
         } as any,
       },

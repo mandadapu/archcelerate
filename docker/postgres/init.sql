@@ -4,12 +4,12 @@ CREATE EXTENSION IF NOT EXISTS btree_gin;
 
 -- Note: pgvector extension needs to be installed separately
 -- For local development, you may need to:
--- docker exec -it aicelerate-db psql -U aicelerate -c "CREATE EXTENSION vector;"
+-- docker exec -it archcelerate-db psql -U archcelerate -c "CREATE EXTENSION vector;"
 
 -- Create indexes for common queries (migrations will create tables)
 -- These will be created after Prisma migrations run
 
 -- Grant permissions
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO aicelerate;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO aicelerate;
-GRANT ALL PRIVILEGES ON SCHEMA public TO aicelerate;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO archcelerate;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO archcelerate;
+GRANT ALL PRIVILEGES ON SCHEMA public TO archcelerate;

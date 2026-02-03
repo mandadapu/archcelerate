@@ -77,16 +77,16 @@ services:
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: aicelerate
+      POSTGRES_USER: archcelerate
       POSTGRES_PASSWORD: dev_password
-      POSTGRES_DB: aicelerate_dev
+      POSTGRES_DB: archcelerate_dev
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U aicelerate"]
+      test: ["CMD-SHELL", "pg_isready -U archcelerate"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -110,7 +110,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: postgresql://aicelerate:dev_password@postgres:5432/aicelerate_dev
+      DATABASE_URL: postgresql://archcelerate:dev_password@postgres:5432/archcelerate_dev
       REDIS_URL: redis://redis:6379
       NODE_ENV: development
     depends_on:
@@ -165,8 +165,8 @@ CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);
 CREATE INDEX IF NOT EXISTS idx_document_chunks_document_id ON document_chunks(document_id);
 
 -- Grant permissions
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO aicelerate;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO aicelerate;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO archcelerate;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO archcelerate;
 ```
 
 **Step 5: Test docker-compose**
@@ -211,12 +211,12 @@ docker-compose down -v
 
 Build production image:
 ```bash
-docker build -t aicelerate:latest .
+docker build -t archcelerate:latest .
 ```
 
 Run production container:
 ```bash
-docker run -p 3000:3000 --env-file .env.production aicelerate:latest
+docker run -p 3000:3000 --env-file .env.production archcelerate:latest
 ```
 
 ## Troubleshooting
@@ -230,7 +230,7 @@ docker-compose logs -f postgres
 Access container shell:
 ```bash
 docker-compose exec app sh
-docker-compose exec postgres psql -U aicelerate
+docker-compose exec postgres psql -U archcelerate
 ```
 ```
 
@@ -376,7 +376,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: production
-      url: https://aicelerate.com
+      url: https://archcelerate.com
 
     steps:
       - name: Checkout code
@@ -412,7 +412,7 @@ jobs:
       - name: Run smoke tests
         run: npm run test:smoke
         env:
-          BASE_URL: https://aicelerate.com
+          BASE_URL: https://archcelerate.com
 
       - name: Notify deployment
         if: always()
@@ -440,7 +440,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: staging
-      url: https://staging.aicelerate.com
+      url: https://staging.archcelerate.com
 
     steps:
       - name: Checkout code
@@ -592,7 +592,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "aicelerate-terraform-state"
+    bucket         = "archcelerate-terraform-state"
     key            = "production/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
@@ -635,13 +635,13 @@ variable "environment" {
 variable "project_name" {
   description = "Project name"
   type        = string
-  default     = "aicelerate"
+  default     = "archcelerate"
 }
 
 variable "domain_name" {
   description = "Primary domain name"
   type        = string
-  default     = "aicelerate.com"
+  default     = "archcelerate.com"
 }
 ```
 
@@ -650,13 +650,13 @@ variable "domain_name" {
 Create `infrastructure/terraform/vercel.tf`:
 
 ```hcl
-resource "vercel_project" "aicelerate" {
+resource "vercel_project" "archcelerate" {
   name      = var.project_name
   framework = "nextjs"
 
   git_repository = {
     type = "github"
-    repo = "yourusername/aicelerate"
+    repo = "yourusername/archcelerate"
   }
 
   build_command    = "npm run build"
@@ -683,12 +683,12 @@ resource "vercel_project" "aicelerate" {
 }
 
 resource "vercel_project_domain" "production" {
-  project_id = vercel_project.aicelerate.id
+  project_id = vercel_project.archcelerate.id
   domain     = var.domain_name
 }
 
 resource "vercel_project_domain" "www" {
-  project_id = vercel_project.aicelerate.id
+  project_id = vercel_project.archcelerate.id
   domain     = "www.${var.domain_name}"
 }
 ```
@@ -732,7 +732,7 @@ Create `infrastructure/terraform/outputs.tf`:
 ```hcl
 output "vercel_project_id" {
   description = "Vercel project ID"
-  value       = vercel_project.aicelerate.id
+  value       = vercel_project.archcelerate.id
 }
 
 output "production_domain" {
@@ -742,7 +742,7 @@ output "production_domain" {
 
 output "deployment_url" {
   description = "Latest deployment URL"
-  value       = vercel_project.aicelerate.deployment_url
+  value       = vercel_project.archcelerate.deployment_url
 }
 ```
 
@@ -851,8 +851,8 @@ Create `.env.example`:
 
 ```env
 # Database
-DATABASE_URL=postgresql://user:password@localhost:5432/aicelerate
-DATABASE_URL_UNPOOLED=postgresql://user:password@localhost:5432/aicelerate
+DATABASE_URL=postgresql://user:password@localhost:5432/archcelerate
+DATABASE_URL_UNPOOLED=postgresql://user:password@localhost:5432/archcelerate
 
 # Redis
 REDIS_URL=redis://localhost:6379
@@ -1088,7 +1088,7 @@ brew install dopplerhq/cli/doppler
 
 # Login and setup
 doppler login
-doppler setup --project aicelerate --config production
+doppler setup --project archcelerate --config production
 
 # Fetch secrets
 doppler secrets download --format env > .env.production

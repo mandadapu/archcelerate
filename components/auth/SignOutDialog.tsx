@@ -19,29 +19,29 @@ export function SignOutDialog({ open, onOpenChange }: SignOutDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader className="text-center space-y-3">
           <DialogTitle className="text-2xl font-bold text-gray-900">
-            Sign out?
+            Logout Confirmation
           </DialogTitle>
-          <DialogDescription className="text-base text-gray-600 pt-2">
-            You can always sign back in anytime to continue your learning journey.
+          <DialogDescription className="text-base text-gray-500">
+            Are you sure you want to do logout?
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-2 pt-4">
+        <div className="flex gap-3 pt-6 justify-center">
           <button
             onClick={handleSignOut}
             disabled={isSigningOut}
-            className="w-full h-9 px-4 bg-white border border-black rounded-full text-sm font-medium text-gray-900 transition-all duration-200 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-8 py-2.5 bg-blue-600 text-white rounded-md text-sm font-medium transition-all duration-200 hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSigningOut ? 'Signing out...' : 'Yes, sign me out'}
+            {isSigningOut ? 'Signing out...' : 'Confirm'}
           </button>
 
           <button
             onClick={() => onOpenChange(false)}
             disabled={isSigningOut}
-            className="w-full h-9 px-4 bg-gray-900 text-white rounded-full text-sm font-medium transition-all duration-200 hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-8 py-2.5 bg-white border-2 border-blue-600 text-blue-600 rounded-md text-sm font-medium transition-all duration-200 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Cancel
           </button>

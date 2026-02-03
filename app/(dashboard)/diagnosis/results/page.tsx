@@ -27,8 +27,10 @@ export default async function DiagnosisResultsPage() {
   }
 
   const skillScores = diagnosis.skillScores as any
-  const correctAnswers = (diagnosis.quizAnswers as any[]).filter(a => a.isCorrect).length
-  const totalQuestions = (diagnosis.quizAnswers as any[]).length
+  const quizAnswers = diagnosis.quizAnswers as any[]
+  const quizQuestions = diagnosis.quizQuestions as any[] || []
+  const correctAnswers = quizAnswers.filter(a => a.isCorrect).length
+  const totalQuestions = quizAnswers.length
   const percentCorrect = Math.round((correctAnswers / totalQuestions) * 100)
 
   return (
@@ -103,6 +105,79 @@ export default async function DiagnosisResultsPage() {
         </CardContent>
       </Card>
 
+      {/* Question Review */}
+      {quizQuestions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Question Review</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              {quizQuestions.map((question, index) => {
+                const answer = quizAnswers.find(a => a.questionId === question.id)
+                if (!answer) return null
+
+                const userAnswer = answer.selectedOptions[0] // Assuming single choice
+                const correctAnswer = question.correctAnswers[0]
+                const isCorrect = answer.isCorrect
+
+                const userOption = question.options.find((o: any) => o.id === userAnswer)
+                const correctOption = question.options.find((o: any) => o.id === correctAnswer)
+
+                return (
+                  <div
+                    key={question.id}
+                    className={`border-l-4 pl-4 py-3 ${
+                      isCorrect ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <h3 className="font-medium text-slate-900">
+                        {index + 1}. {question.question}
+                      </h3>
+                      <span
+                        className={`px-2 py-1 rounded text-xs font-medium ${
+                          isCorrect
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}
+                      >
+                        {isCorrect ? '✓ Correct' : '✗ Wrong'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 text-sm">
+                      <div>
+                        <span className="font-medium text-slate-700">Your answer: </span>
+                        <span className={isCorrect ? 'text-green-700' : 'text-red-700'}>
+                          {userOption?.text || userAnswer}
+                        </span>
+                      </div>
+
+                      {!isCorrect && (
+                        <div>
+                          <span className="font-medium text-slate-700">Correct answer: </span>
+                          <span className="text-green-700">
+                            {correctOption?.text || correctAnswer}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="text-xs text-slate-600 mt-2">
+                        <span className="font-medium">Skill Area: </span>
+                        <span className="capitalize">{question.skillArea?.replace(/_/g, ' ')}</span>
+                        {' • '}
+                        <span className="capitalize">{question.difficulty}</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Next Steps */}
       <Card>
         <CardHeader>
@@ -111,7 +186,7 @@ export default async function DiagnosisResultsPage() {
         <CardContent>
           <p className="text-slate-600 mb-4">
             Your learning path has been customized based on your results.
-            Start Sprint 1 to build your first AI product!
+            Start Week 1 to build your first AI product!
           </p>
           <Link href="/dashboard">
             <Button className="bg-blue-600 hover:bg-blue-700">

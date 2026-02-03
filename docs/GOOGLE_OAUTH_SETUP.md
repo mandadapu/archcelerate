@@ -173,7 +173,7 @@ docker-compose up -d
 2. Check Next.js server logs
 3. Verify all environment variables are set:
    ```bash
-   docker exec aicelerate-app env | grep GOOGLE
+   docker exec archcelerate-app env | grep GOOGLE
    ```
 4. Make sure the OAuth consent screen is configured
 5. Try using an incognito/private window to avoid cached auth state

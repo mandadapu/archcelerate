@@ -105,11 +105,14 @@ export default function DiagnosisPage() {
         }
       })
 
-      // Send to API for analysis
+      // Send to API for analysis (include questions for dynamic quiz)
       const response = await fetch('/api/diagnosis/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers: quizAnswers }),
+        body: JSON.stringify({
+          answers: quizAnswers,
+          questions: quizQuestions // Include the questions used
+        }),
       })
 
       if (!response.ok) {
@@ -160,7 +163,7 @@ export default function DiagnosisPage() {
         answered={answeredCount}
       />
 
-      <QuizQuestion
+      <QuizQuestionComponent
         question={currentQuestion}
         selectedOptions={currentAnswer}
         onAnswerChange={handleAnswerChange}

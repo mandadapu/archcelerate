@@ -1,7 +1,7 @@
 # Security and Code Quality Audit Report
 
 **Date:** 2026-02-02
-**Project:** AI Architect Accelerator (aicelerate)
+**Project:** AI Architect Accelerator (Archcelerate)
 **Auditor:** Claude Sonnet 4.5
 
 ## Executive Summary

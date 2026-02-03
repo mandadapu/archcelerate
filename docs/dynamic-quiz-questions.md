@@ -145,7 +145,7 @@ curl -X POST http://localhost:3000/api/diagnosis/questions \
 ### Option 3: Redis CLI
 ```bash
 # Connect to Redis
-docker exec -it aicelerate-redis redis-cli
+docker exec -it archcelerate-redis redis-cli
 
 # Delete cache key
 DEL diagnosis:quiz:questions
@@ -159,7 +159,7 @@ EXISTS diagnosis:quiz:questions  # Should return 0
 ### Check Cache Status
 ```bash
 # Connect to Redis
-docker exec -it aicelerate-redis redis-cli
+docker exec -it archcelerate-redis redis-cli
 
 # Check if questions are cached
 EXISTS diagnosis:quiz:questions

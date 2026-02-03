@@ -18,7 +18,7 @@ const faqs = [
   },
   {
     question: 'Can I get help if I am stuck?',
-    answer: 'Yes! We offer multiple support channels: in-app help widget (click the ? button), community forum, email support (support@aicelerate.com), and live office hours twice a week.',
+    answer: 'Yes! We offer multiple support channels: in-app help widget (click the ? button), community forum, email support (support@archcelerate.com), and live office hours twice a week.',
   },
   {
     question: 'Do you offer certificates?',
@@ -71,7 +71,7 @@ export function FAQSection() {
         </p>
         <div className="flex gap-3">
           <Button asChild variant="outline" size="sm">
-            <a href="mailto:support@aicelerate.com">Email Support</a>
+            <a href="mailto:support@archcelerate.com">Email Support</a>
           </Button>
           <Button asChild size="sm">
             <a href="/help/tutorials">Watch Tutorials</a>
