@@ -364,6 +364,6 @@ test('complete onboarding flow', async ({ page }) => {
 ## Contact
 
 For onboarding improvements:
-- Product: product@aicelerate.com
-- Design: design@aicelerate.com
-- Engineering: dev@aicelerate.com
+- Product: product@archcelerate.com
+- Design: design@archcelerate.com
+- Engineering: dev@archcelerate.com

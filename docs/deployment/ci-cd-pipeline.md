@@ -62,7 +62,7 @@ The AI Architect Accelerator platform uses GitHub Actions for continuous integra
 - `PROD_NEXTAUTH_URL`: Production application URL
 - `GITHUB_TOKEN`: Automatically provided by GitHub
 
-**Output:** Docker image pushed to `ghcr.io/<owner>/aicelerate:latest`
+**Output:** Docker image pushed to `ghcr.io/<owner>/archcelerate:latest`
 
 ### Deploy to Staging
 
@@ -90,7 +90,7 @@ The AI Architect Accelerator platform uses GitHub Actions for continuous integra
 - `STAGING_NEXTAUTH_URL`: Staging application URL
 - `GITHUB_TOKEN`: Automatically provided by GitHub
 
-**Output:** Docker image pushed to `ghcr.io/<owner>/aicelerate:staging`
+**Output:** Docker image pushed to `ghcr.io/<owner>/archcelerate:staging`
 
 ## Setting Up Secrets
 
@@ -102,20 +102,20 @@ The AI Architect Accelerator platform uses GitHub Actions for continuous integra
 
 **Production Secrets:**
 ```
-PROD_DATABASE_URL=postgresql://user:password@host:5432/aicelerate_prod
+PROD_DATABASE_URL=postgresql://user:password@host:5432/archcelerate_prod
 PROD_REDIS_URL=redis://host:6379
 PROD_NEXTAUTH_SECRET=<generate-secure-32+-char-string>
-PROD_NEXTAUTH_URL=https://aicelerate.com
+PROD_NEXTAUTH_URL=https://archcelerate.com
 PROD_GOOGLE_CLIENT_ID=<your-google-client-id>
 PROD_GOOGLE_CLIENT_SECRET=<your-google-client-secret>
 ```
 
 **Staging Secrets:**
 ```
-STAGING_DATABASE_URL=postgresql://user:password@host:5432/aicelerate_staging
+STAGING_DATABASE_URL=postgresql://user:password@host:5432/archcelerate_staging
 STAGING_REDIS_URL=redis://host:6379
 STAGING_NEXTAUTH_SECRET=<generate-secure-32+-char-string>
-STAGING_NEXTAUTH_URL=https://staging.aicelerate.com
+STAGING_NEXTAUTH_URL=https://staging.archcelerate.com
 STAGING_GOOGLE_CLIENT_ID=<your-google-client-id>
 STAGING_GOOGLE_CLIENT_SECRET=<your-google-client-secret>
 ```
@@ -128,25 +128,25 @@ After the workflow pushes images to GHCR, deploy them to your infrastructure:
 
 ```bash
 # Production
-docker pull ghcr.io/<owner>/aicelerate:latest
+docker pull ghcr.io/<owner>/archcelerate:latest
 
 # Staging
-docker pull ghcr.io/<owner>/aicelerate:staging
+docker pull ghcr.io/<owner>/archcelerate:staging
 ```
 
 ### Run the Container
 
 ```bash
 docker run -d \
-  --name aicelerate-production \
+  --name archcelerate-production \
   -p 3000:3000 \
-  -e DATABASE_URL="postgresql://user:password@db-host:5432/aicelerate_prod" \
+  -e DATABASE_URL="postgresql://user:password@db-host:5432/archcelerate_prod" \
   -e REDIS_URL="redis://redis-host:6379" \
   -e NEXTAUTH_SECRET="your-secret-min-32-chars" \
-  -e NEXTAUTH_URL="https://aicelerate.com" \
+  -e NEXTAUTH_URL="https://archcelerate.com" \
   -e GOOGLE_CLIENT_ID="your-client-id" \
   -e GOOGLE_CLIENT_SECRET="your-client-secret" \
-  ghcr.io/<owner>/aicelerate:latest
+  ghcr.io/<owner>/archcelerate:latest
 ```
 
 ## Branch Strategy
@@ -229,7 +229,7 @@ act -j build
 ## Monitoring
 
 - **Action runs**: Check GitHub **Actions** tab for workflow status
-- **Container registry**: View published images at `https://github.com/<owner>/aicelerate/pkgs/container/aicelerate`
+- **Container registry**: View published images at `https://github.com/<owner>/archcelerate/pkgs/container/archcelerate`
 - **Build artifacts**: Download from workflow run summary
 
 ## Next Steps

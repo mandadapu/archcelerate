@@ -75,7 +75,7 @@ Get user profile data
 
 ```bash
 # Database
-DATABASE_URL="postgresql://aicelerate:aicelerate_dev_password@localhost:5433/aicelerate"
+DATABASE_URL="postgresql://archcelerate:archcelerate_dev_password@localhost:5433/archcelerate"
 
 # NextAuth
 NEXTAUTH_URL="http://localhost:3000"
@@ -132,7 +132,7 @@ model MentorConversation {
 
 ### Test Redis connection:
 ```bash
-docker exec -it aicelerate-redis redis-cli ping
+docker exec -it archcelerate-redis redis-cli ping
 # Should return: PONG
 ```
 

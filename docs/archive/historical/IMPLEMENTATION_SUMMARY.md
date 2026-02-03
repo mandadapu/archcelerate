@@ -61,7 +61,7 @@ Tables Created:
 ## 📁 Project Structure
 
 ```
-aicelerate/
+archcelerate/
 ├── app/
 │   ├── (auth)/
 │   │   ├── login/page.tsx        # OAuth login page
@@ -150,13 +150,13 @@ Requires OAuth credentials before testing:
 ```yaml
 PostgreSQL:
   Image: postgres:16-alpine
-  Container: aicelerate-db
+  Container: archcelerate-db
   Port: 5433:5432
   Status: Running (healthy)
   Credentials:
-    User: aicelerate
-    Password: aicelerate_dev_password
-    Database: aicelerate
+    User: archcelerate
+    Password: archcelerate_dev_password
+    Database: archcelerate
 ```
 
 ## 📈 Metrics

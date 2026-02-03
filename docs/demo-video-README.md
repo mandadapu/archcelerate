@@ -26,7 +26,7 @@ npm run dev
 # In another terminal, run the recording script
 npx tsx scripts/record-demo.ts
 
-# Output: demos/aicelerate-demo-{timestamp}.webm
+# Output: demos/archcelerate-demo-{timestamp}.webm
 ```
 
 **What it does**:
@@ -169,7 +169,7 @@ Add these text callouts in your video editor:
 - "80% automation rate"
 
 **Scene 6** (CTA):
-- "github.com/mandadapu/aicelerate"
+- "github.com/mandadapu/archcelerate"
 - "⭐ Star the repo"
 - "100% Free & Open Source"
 

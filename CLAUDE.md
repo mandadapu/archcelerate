@@ -121,7 +121,7 @@ OPENAI_API_KEY="sk-..."          # GPT
 ## 📁 Structure
 
 ```
-aicelerate/
+archcelerate/
 ├── app/(dashboard)/curriculum/week-{1-12}/  # ✅ All weeks
 ├── content/week{1-12}/*.mdx                 # ✅ 38 content files
 ├── prisma/schema.prisma                     # ✅ Full schema
@@ -162,7 +162,7 @@ aicelerate/
 3. Run tests (`npm run test:all`)
 4. Submit PR
 
-**Support**: [GitHub Issues](https://github.com/mandadapu/aicelerate/issues)
+**Support**: [GitHub Issues](https://github.com/mandadapu/archcelerate/issues)
 
 ---
 

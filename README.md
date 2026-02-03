@@ -188,7 +188,7 @@ These advanced guides show how to apply core agent concepts to real-world indust
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd aicelerate
+   cd archcelerate
    ```
 
 2. **Install dependencies**
@@ -288,7 +288,7 @@ ANALYZE=true npm run build  # Analyze bundle size
 ## Project Structure
 
 ```
-aicelerate/
+archcelerate/
 ├── app/                          # Next.js App Router
 │   ├── (auth)/                   # Auth group
 │   │   ├── login/                # Login page
@@ -746,5 +746,5 @@ MIT
 ## Support
 
 For issues and questions:
-- GitHub Issues: [Repository Issues](https://github.com/yourusername/aicelerate/issues)
-- Documentation: [Wiki](https://github.com/yourusername/aicelerate/wiki)
+- GitHub Issues: [Repository Issues](https://github.com/yourusername/archcelerate/issues)
+- Documentation: [Wiki](https://github.com/yourusername/archcelerate/wiki)

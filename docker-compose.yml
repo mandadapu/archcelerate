@@ -2,26 +2,26 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgres:16-alpine
-    container_name: aicelerate-db
+    image: pgvector/pgvector:pg16
+    container_name: archcelerate-db
     restart: always
     environment:
-      POSTGRES_USER: aicelerate
-      POSTGRES_PASSWORD: aicelerate_dev_password
-      POSTGRES_DB: aicelerate
+      POSTGRES_USER: archcelerate
+      POSTGRES_PASSWORD: archcelerate_dev_password
+      POSTGRES_DB: archcelerate
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U aicelerate"]
+      test: ["CMD-SHELL", "pg_isready -U archcelerate"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: aicelerate-redis
+    container_name: archcelerate-redis
     restart: always
     ports:
       - "6379:6379"
@@ -37,11 +37,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: aicelerate-app
+    image: archcelerate-app
+    container_name: archcelerate-app
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: postgresql://aicelerate:aicelerate_dev_password@postgres:5432/aicelerate
+      DATABASE_URL: postgresql://archcelerate:archcelerate_dev_password@postgres:5432/archcelerate
       REDIS_URL: redis://redis:6379
       NODE_ENV: development
       NEXTAUTH_SECRET: dev-secret-key-min-32-characters-long
@@ -66,4 +67,6 @@ services:
 
 volumes:
   postgres_data:
+    name: archcelerate_postgres_data
   redis_data:
+    name: archcelerate_redis_data

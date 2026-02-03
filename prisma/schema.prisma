@@ -45,7 +45,7 @@ model Session {
 model User {
   id                 String    @id @default(cuid())
   name               String?
-  email              String?
+  email              String?   @unique
   emailVerified      DateTime?
   image              String?
   experienceYears    Int?
@@ -61,6 +61,7 @@ model User {
   mentorConversations     MentorConversation[]
   userProgress            UserProgress[]
   conceptCompletions      ConceptCompletion[]
+  conceptQuizAttempts     ConceptQuizAttempt[]
   labAttempts             LabAttempt[]
   projectSubmissions      ProjectSubmission[]
   documents               Document[]
@@ -94,6 +95,7 @@ model LearningEvent {
 model SkillDiagnosis {
   userId          String   @id
   quizAnswers     Json
+  quizQuestions   Json?
   skillScores     Json
   recommendedPath String
   completedAt     DateTime @default(now())
@@ -165,6 +167,23 @@ model LabAttempt {
 
   @@index([userId, labId])
   @@index([userId, sprintId])
+}
+
+model ConceptQuizAttempt {
+  id               String   @id @default(cuid())
+  userId           String
+  conceptSlug      String
+  questionsData    Json     // Store the questions used
+  answersData      Json     // Store user's answers
+  score            Int      // Number of correct answers
+  totalQuestions   Int      // Total number of questions
+  passed           Boolean  @default(false) // true if score >= 70%
+  attemptedAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, conceptSlug])
+  @@index([userId, attemptedAt])
 }
 
 // Project Submission & Code Review Models
