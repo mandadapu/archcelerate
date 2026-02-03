@@ -25,42 +25,8 @@ export const authOptions: NextAuthOptions = {
     // }),
   ],
   callbacks: {
-    async signIn({ user, account, profile, email }) {
-      if (!account || !email?.verificationRequest) {
-        // Check if user with this email already exists
-        if (user.email) {
-          const existingUser = await prisma.user.findUnique({
-            where: { email: user.email },
-            include: { accounts: true },
-          })
-
-          if (existingUser && account) {
-            // Check if this provider is already linked
-            const accountExists = existingUser.accounts.find(
-              (acc) => acc.provider === account.provider && acc.providerAccountId === account.providerAccountId
-            )
-
-            if (!accountExists) {
-              // Link the new provider account to existing user
-              await prisma.account.create({
-                data: {
-                  userId: existingUser.id,
-                  type: account.type,
-                  provider: account.provider,
-                  providerAccountId: account.providerAccountId,
-                  refresh_token: account.refresh_token,
-                  access_token: account.access_token,
-                  expires_at: account.expires_at,
-                  token_type: account.token_type,
-                  scope: account.scope,
-                  id_token: account.id_token,
-                  session_state: account.session_state,
-                },
-              })
-            }
-          }
-        }
-      }
+    async signIn({ user, account, profile }) {
+      // Allow sign in - account linking is handled by the adapter with allowDangerousEmailAccountLinking
       return true
     },
     async session({ session, user }) {
