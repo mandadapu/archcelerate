@@ -32,6 +32,8 @@ if gcloud run jobs describe migrate-db --region=$REGION --project=$PROJECT_ID &>
     --image $REGION-docker.pkg.dev/$PROJECT_ID/${SERVICE_NAME}-repo/$SERVICE_NAME \
     --region $REGION \
     --project=$PROJECT_ID \
+    --command "npx" \
+    --args "prisma,migrate,deploy" \
     --set-secrets "DATABASE_URL=DATABASE_URL:latest"
 else
   echo -e "${GREEN}Creating new job...${NC}"
