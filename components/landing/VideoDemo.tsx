@@ -71,7 +71,7 @@ export function VideoDemo() {
             <video
               ref={videoRef}
               className="absolute inset-0 w-full h-full object-cover"
-              {...(VIDEO_CONFIG.thumbnail && { poster: VIDEO_CONFIG.thumbnail })}
+              poster={VIDEO_CONFIG.thumbnail || undefined}
               onEnded={handleVideoEnded}
               controls={isPlaying}
               playsInline
