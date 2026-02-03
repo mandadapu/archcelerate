@@ -1,22 +1,61 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { quizQuestions } from '@/lib/quiz/questions'
-import { QuizQuestion } from '@/components/quiz/QuizQuestion'
+import { quizQuestions as fallbackQuestions } from '@/lib/quiz/questions'
+import { QuizQuestion as QuizQuestionComponent } from '@/components/quiz/QuizQuestion'
 import { QuizProgress } from '@/components/quiz/QuizProgress'
 import { QuizNavigation } from '@/components/quiz/QuizNavigation'
-import { QuizAnswer } from '@/types/diagnosis'
+import { QuizAnswer, QuizQuestion } from '@/types/diagnosis'
 
 export default function DiagnosisPage() {
   const router = useRouter()
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>(fallbackQuestions)
+  const [isLoading, setIsLoading] = useState(true)
+  const [questionSource, setQuestionSource] = useState<'cache' | 'generated' | 'fallback'>('fallback')
   const [currentIndex, setCurrentIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<string, string[]>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // Fetch questions from API on mount
+  useEffect(() => {
+    const fetchQuestions = async () => {
+      try {
+        const response = await fetch('/api/diagnosis/questions')
+        const data = await response.json()
+
+        if (data.questions && data.questions.length > 0) {
+          setQuizQuestions(data.questions)
+          setQuestionSource(data.source)
+          console.log(`📝 Loaded ${data.questions.length} questions from ${data.source}`)
+        }
+      } catch (error) {
+        console.error('Failed to fetch questions:', error)
+        toast.error('Using fallback questions')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchQuestions()
+  }, [])
+
+  if (isLoading) {
+    return (
+      <div className="max-w-3xl mx-auto space-y-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center space-y-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
+            <p className="text-slate-600">Loading your skill diagnosis...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const currentQuestion = quizQuestions[currentIndex]
-  const currentAnswer = answers[currentQuestion.id] || []
+  const currentAnswer = answers[currentQuestion?.id] || []
 
   const answeredCount = Object.keys(answers).length
   const canGoPrevious = currentIndex > 0
@@ -96,9 +135,20 @@ export default function DiagnosisPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-slate-900 mb-2">
-          Skill Diagnosis
-        </h1>
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-3xl font-bold text-slate-900">
+            Skill Diagnosis
+          </h1>
+          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+            questionSource === 'generated' ? 'bg-green-100 text-green-800' :
+            questionSource === 'cache' ? 'bg-blue-100 text-blue-800' :
+            'bg-gray-100 text-gray-800'
+          }`}>
+            {questionSource === 'generated' ? '🤖 AI Generated' :
+             questionSource === 'cache' ? '⚡ Cached' :
+             '📋 Fallback'}
+          </span>
+        </div>
         <p className="text-slate-600">
           Answer these questions to get your personalized learning path
         </p>
