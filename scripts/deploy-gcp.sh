@@ -65,8 +65,24 @@ else
   NEXTAUTH_URL=$SERVICE_URL
 fi
 
-# Step 5: Deploy to Cloud Run
-echo -e "${GREEN}Step 5: Deploying to Cloud Run...${NC}"
+# Step 5: Check for VPC connector
+echo -e "${GREEN}Step 5: Checking VPC connector...${NC}"
+VPC_CONNECTOR_NAME="archcelerate-connector"
+
+if gcloud compute networks vpc-access connectors describe $VPC_CONNECTOR_NAME \
+  --region=$REGION \
+  --project=$PROJECT_ID &>/dev/null; then
+  echo -e "${GREEN}✓ VPC connector found${NC}"
+  VPC_CONNECTOR="projects/$PROJECT_ID/locations/$REGION/connectors/$VPC_CONNECTOR_NAME"
+else
+  echo -e "${YELLOW}⚠ VPC connector not found${NC}"
+  echo -e "${YELLOW}Note: VPC connector is required to connect to Cloud SQL and Redis${NC}"
+  echo -e "${YELLOW}Run ./scripts/provision-gcp-services.sh first to create it${NC}"
+  VPC_CONNECTOR=""
+fi
+
+# Step 6: Deploy to Cloud Run
+echo -e "${GREEN}Step 6: Deploying to Cloud Run...${NC}"
 
 # Check if all required secrets exist
 REQUIRED_SECRETS=(
@@ -93,12 +109,12 @@ if [ ${#MISSING_SECRETS[@]} -gt 0 ]; then
     echo -e "${RED}  - $secret${NC}"
   done
   echo ""
-  echo -e "${YELLOW}Run ./scripts/setup-secrets.sh first to create secrets${NC}"
+  echo -e "${YELLOW}Run ./scripts/provision-gcp-services.sh and ./scripts/setup-secrets.sh first${NC}"
   exit 1
 fi
 
-# Deploy service
-gcloud run deploy $SERVICE_NAME \
+# Build deploy command
+DEPLOY_CMD="gcloud run deploy $SERVICE_NAME \
   --image $REGION-docker.pkg.dev/$PROJECT_ID/${SERVICE_NAME}-repo/$SERVICE_NAME \
   --platform managed \
   --region $REGION \
@@ -110,8 +126,16 @@ gcloud run deploy $SERVICE_NAME \
   --min-instances 0 \
   --port 3000 \
   --project=$PROJECT_ID \
-  --set-env-vars "NODE_ENV=production,NEXTAUTH_URL=$NEXTAUTH_URL,NEXT_PUBLIC_ENABLE_AI_AGENTS=true,NEXT_PUBLIC_ENABLE_MULTIMODAL=false" \
-  --set-secrets "ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,NEXTAUTH_SECRET=NEXTAUTH_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest"
+  --set-env-vars \"NODE_ENV=production,NEXTAUTH_URL=$NEXTAUTH_URL,NEXT_PUBLIC_ENABLE_AI_AGENTS=true,NEXT_PUBLIC_ENABLE_MULTIMODAL=false\" \
+  --set-secrets \"ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,NEXTAUTH_SECRET=NEXTAUTH_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest\""
+
+# Add VPC connector if available
+if [ ! -z "$VPC_CONNECTOR" ]; then
+  DEPLOY_CMD="$DEPLOY_CMD --vpc-connector=$VPC_CONNECTOR --vpc-egress=private-ranges-only"
+fi
+
+# Execute deployment
+eval $DEPLOY_CMD
 
 # Get final service URL
 SERVICE_URL=$(gcloud run services describe $SERVICE_NAME \

@@ -35,6 +35,16 @@ create_or_update_secret() {
   fi
 }
 
+# Check if DATABASE_URL and REDIS_URL already exist
+DB_EXISTS=$(gcloud secrets describe DATABASE_URL --project=$PROJECT_ID &>/dev/null && echo "yes" || echo "no")
+REDIS_EXISTS=$(gcloud secrets describe REDIS_URL --project=$PROJECT_ID &>/dev/null && echo "yes" || echo "no")
+
+if [ "$DB_EXISTS" == "yes" ] && [ "$REDIS_EXISTS" == "yes" ]; then
+  echo -e "${GREEN}✓ DATABASE_URL and REDIS_URL already configured${NC}"
+  echo -e "${YELLOW}(Automatically created by provision-gcp-services.sh)${NC}"
+  echo ""
+fi
+
 # Prompt for secrets
 echo -e "${YELLOW}Enter your secrets (press Enter to skip existing):${NC}"
 echo ""
@@ -89,14 +99,24 @@ if [ ! -z "$TAVILY_API_KEY" ]; then
   create_or_update_secret "TAVILY_API_KEY" "$TAVILY_API_KEY"
 fi
 
-read -p "DATABASE_URL (Supabase connection string): " DATABASE_URL
-if [ ! -z "$DATABASE_URL" ]; then
-  create_or_update_secret "DATABASE_URL" "$DATABASE_URL"
+if [ "$DB_EXISTS" == "no" ]; then
+  echo ""
+  echo -e "${YELLOW}DATABASE_URL not found. Enter connection string:${NC}"
+  echo -e "${YELLOW}(Skip if you ran provision-gcp-services.sh or using external provider)${NC}"
+  read -p "DATABASE_URL: " DATABASE_URL
+  if [ ! -z "$DATABASE_URL" ]; then
+    create_or_update_secret "DATABASE_URL" "$DATABASE_URL"
+  fi
 fi
 
-read -p "REDIS_URL (Upstash connection string): " REDIS_URL
-if [ ! -z "$REDIS_URL" ]; then
-  create_or_update_secret "REDIS_URL" "$REDIS_URL"
+if [ "$REDIS_EXISTS" == "no" ]; then
+  echo ""
+  echo -e "${YELLOW}REDIS_URL not found. Enter connection string:${NC}"
+  echo -e "${YELLOW}(Skip if you ran provision-gcp-services.sh or using external provider)${NC}"
+  read -p "REDIS_URL: " REDIS_URL
+  if [ ! -z "$REDIS_URL" ]; then
+    create_or_update_secret "REDIS_URL" "$REDIS_URL"
+  fi
 fi
 
 echo ""
