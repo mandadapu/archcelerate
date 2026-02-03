@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Header } from '@/components/landing/Header'
 import { VideoDemo } from '@/components/landing/VideoDemo'
@@ -12,11 +13,61 @@ import { LoginModal } from '@/components/auth/LoginModal'
 
 export default function Home() {
   const [showLoginModal, setShowLoginModal] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    const error = searchParams.get('error')
+    if (error) {
+      const errorMessages: Record<string, string> = {
+        'OAuthAccountNotLinked': 'This email is already registered. Please sign in with your original provider.',
+        'OAuthSignin': 'Error signing in with OAuth provider.',
+        'OAuthCallback': 'Error in OAuth callback.',
+        'Configuration': 'Server configuration error.',
+        'AccessDenied': 'Access denied.',
+        'Verification': 'Verification error.',
+        'Default': 'An error occurred during sign in.'
+      }
+      setErrorMessage(errorMessages[error] || errorMessages['Default'])
+
+      // Clear error from URL after 5 seconds
+      setTimeout(() => {
+        setErrorMessage(null)
+        window.history.replaceState({}, '', '/')
+      }, 5000)
+    }
+  }, [searchParams])
 
   return (
     <div className="min-h-screen bg-white">
       {/* Fixed Navigation Header */}
       <Header onLoginClick={() => setShowLoginModal(true)} />
+
+      {/* Error Banner */}
+      {errorMessage && (
+        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-md px-4">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 shadow-lg">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3 flex-1">
+                <p className="text-sm font-medium text-red-800">{errorMessage}</p>
+              </div>
+              <button
+                onClick={() => setErrorMessage(null)}
+                className="ml-auto flex-shrink-0 text-red-400 hover:text-red-500"
+              >
+                <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Hero Section */}
       <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-16">

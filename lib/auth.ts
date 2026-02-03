@@ -25,10 +25,6 @@ export const authOptions: NextAuthOptions = {
     // }),
   ],
   callbacks: {
-    async signIn({ user, account, profile }) {
-      // Allow sign in - account linking is handled by the adapter with allowDangerousEmailAccountLinking
-      return true
-    },
     async session({ session, user }) {
       if (session?.user) {
         session.user.id = user.id
@@ -45,10 +41,4 @@ export const authOptions: NextAuthOptions = {
   },
   secret: process.env.NEXTAUTH_SECRET,
   debug: process.env.NODE_ENV === 'development',
-  // Allow linking accounts with same email from different providers
-  events: {
-    async linkAccount({ user, account, profile }) {
-      console.log('Account linked:', { user, account: account.provider })
-    },
-  },
 }
