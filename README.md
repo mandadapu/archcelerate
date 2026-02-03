@@ -254,6 +254,52 @@ These advanced guides show how to apply core agent concepts to real-world indust
 
    Navigate to [http://localhost:3000](http://localhost:3000)
 
+## Deployment
+
+### Google Cloud Run
+
+Deploy to Google Cloud Run with managed PostgreSQL (Supabase) and Redis (Upstash):
+
+```bash
+# 1. Setup secrets
+export GCP_PROJECT_ID="your-project-id"
+./scripts/setup-secrets.sh
+
+# 2. Deploy
+./scripts/deploy-gcp.sh
+
+# 3. Run migrations
+./scripts/run-migrations.sh
+```
+
+See [Deployment Guide](./docs/DEPLOYMENT.md) for detailed instructions.
+
+### Local Docker
+
+Test the production build locally:
+
+```bash
+# Build image
+docker build -t archcelerate .
+
+# Run container
+docker run -p 3000:3000 \
+  -e DATABASE_URL="postgresql://..." \
+  -e REDIS_URL="redis://..." \
+  -e NEXTAUTH_SECRET="your-secret" \
+  -e NEXTAUTH_URL="http://localhost:3000" \
+  archcelerate
+```
+
+### Vercel Deployment
+
+For Vercel deployment:
+
+1. **Connect GitHub Repository** - Import project in Vercel dashboard
+2. **Configure Environment Variables** - Add all variables from `.env.local`
+3. **Set Up Database** - Use Supabase production project and run migrations
+4. **Deploy** - Vercel auto-deploys on push to main, preview deployments for PRs
+
 ## Development Commands
 
 ```bash
@@ -545,39 +591,6 @@ npm test path/to/test.test.ts
 - Initial CSS: < 50 KB
 - First Contentful Paint: < 1.5s
 - Time to Interactive: < 3.5s
-
-## Deployment
-
-### Vercel Deployment
-
-1. **Connect GitHub Repository**
-   - Import project in Vercel dashboard
-   - Select the repository
-
-2. **Configure Environment Variables**
-   - Add all variables from `.env.local`
-   - Set production URLs and API keys
-
-3. **Set Up Database**
-   - Use Supabase production project
-   - Run migrations: `supabase db push`
-
-4. **Deploy**
-   - Vercel auto-deploys on push to main
-   - Preview deployments for PRs
-
-### Environment-Specific Configuration
-
-```bash
-# Development
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-
-# Staging
-NEXT_PUBLIC_APP_URL=https://staging.yourapp.com
-
-# Production
-NEXT_PUBLIC_APP_URL=https://yourapp.com
-```
 
 ## Monitoring & Observability
 
