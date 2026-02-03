@@ -45,7 +45,7 @@ export function Header({ onLoginClick }: HeaderProps) {
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-gradient-to-r from-purple-600 to-cyan-500 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">AI</span>
+              <span className="text-white font-bold text-[10px]">Arch</span>
             </div>
             <span className="text-xl font-bold text-gray-900">Archcelerate</span>
           </Link>
