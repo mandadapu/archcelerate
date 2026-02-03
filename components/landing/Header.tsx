@@ -44,23 +44,23 @@ export function Header({ onLoginClick }: HeaderProps) {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-slate-800 to-slate-600 rounded-lg flex items-center justify-center relative overflow-hidden">
+            <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm border border-gray-100">
               {/* Architectural arch icon */}
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="relative z-10">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                 {/* Pillars */}
-                <path d="M5 19 L5 10 L7 9 L7 19 Z" fill="url(#headerGrad)" opacity="0.9"/>
-                <path d="M17 19 L17 10 L19 9 L19 19 Z" fill="url(#headerGrad)" opacity="0.9"/>
+                <rect x="5" y="9" width="2" height="10" rx="0.5" fill="url(#headerGrad)"/>
+                <rect x="17" y="9" width="2" height="10" rx="0.5" fill="url(#headerGrad)"/>
                 {/* Top beam */}
-                <rect x="6" y="8" width="12" height="2" rx="0.5" fill="#e5e7eb" opacity="0.8"/>
+                <rect x="5" y="8" width="14" height="1.5" rx="0.5" fill="url(#headerGrad)"/>
                 {/* Center arch */}
-                <path d="M8 19 Q8 12 12 12 Q16 12 16 19" fill="none" stroke="url(#headerGrad)" strokeWidth="1.5" opacity="0.6"/>
+                <path d="M7 19 Q7 13 12 13 Q17 13 17 19" fill="none" stroke="url(#headerGrad)" strokeWidth="1.2"/>
                 {/* AI chip */}
-                <rect x="10" y="10" width="4" height="4" rx="0.5" fill="#06b6d4"/>
+                <rect x="10.5" y="11" width="3" height="3" rx="0.5" fill="#06b6d4"/>
+                <circle cx="12" cy="12.5" r="0.7" fill="white" opacity="0.8"/>
                 <defs>
                   <linearGradient id="headerGrad" x1="0" y1="0" x2="24" y2="24">
-                    <stop offset="0%" stopColor="#8b5cf6"/>
-                    <stop offset="50%" stopColor="#06b6d4"/>
-                    <stop offset="100%" stopColor="#f59e0b"/>
+                    <stop offset="0%" stopColor="#9333ea"/>
+                    <stop offset="100%" stopColor="#06b6d4"/>
                   </linearGradient>
                 </defs>
               </svg>
