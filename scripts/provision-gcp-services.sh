@@ -58,8 +58,6 @@ else
     --database-version=POSTGRES_15 \
     --tier=db-f1-micro \
     --region=$REGION \
-    --network=default \
-    --no-assign-ip \
     --database-flags=cloudsql.iam_authentication=on \
     --project=$PROJECT_ID
 
@@ -91,44 +89,24 @@ SQL_CONNECTION_NAME=$(gcloud sql instances describe $DB_INSTANCE_NAME \
   --project=$PROJECT_ID \
   --format='value(connectionName)')
 
-# Get private IP
-SQL_PRIVATE_IP=$(gcloud sql instances describe $DB_INSTANCE_NAME \
+# Get public IP
+SQL_PUBLIC_IP=$(gcloud sql instances describe $DB_INSTANCE_NAME \
   --project=$PROJECT_ID \
   --format='value(ipAddresses[0].ipAddress)')
 
 echo -e "${BLUE}Cloud SQL Info:${NC}"
 echo -e "  Connection Name: ${YELLOW}$SQL_CONNECTION_NAME${NC}"
-echo -e "  Private IP: ${YELLOW}$SQL_PRIVATE_IP${NC}"
+echo -e "  Public IP: ${YELLOW}$SQL_PUBLIC_IP${NC}"
+echo -e "  ${YELLOW}Note: Cloud Run will connect via Cloud SQL Auth Proxy${NC}"
 echo ""
 
-# Step 3: Enable pgvector extension
-echo -e "${GREEN}Step 3: Enabling pgvector extension...${NC}"
-
-# Check if extension is already enabled
-EXTENSION_CHECK=$(gcloud sql connect $DB_INSTANCE_NAME \
-  --user=postgres \
-  --database=archcelerate \
-  --quiet \
-  --project=$PROJECT_ID <<EOF 2>/dev/null || echo "not_enabled"
-SELECT 1 FROM pg_extension WHERE extname = 'vector';
-\q
-EOF
-)
-
-if [[ "$EXTENSION_CHECK" == *"1"* ]]; then
-  echo -e "${YELLOW}✓ pgvector extension already enabled${NC}"
-else
-  echo -e "${YELLOW}Enabling pgvector extension...${NC}"
-  gcloud sql connect $DB_INSTANCE_NAME \
-    --user=postgres \
-    --database=archcelerate \
-    --quiet \
-    --project=$PROJECT_ID <<EOF
-CREATE EXTENSION IF NOT EXISTS vector;
-\q
-EOF
-  echo -e "${GREEN}✓ pgvector extension enabled${NC}"
-fi
+# Step 3: Enable pgvector extension (manual step required)
+echo -e "${GREEN}Step 3: pgvector extension setup...${NC}"
+echo -e "${YELLOW}⚠ Manual step required: Enable pgvector extension${NC}"
+echo -e "${YELLOW}After deployment, run this command:${NC}"
+echo -e "  ${BLUE}gcloud sql connect $DB_INSTANCE_NAME --user=postgres --database=archcelerate${NC}"
+echo -e "  ${BLUE}Then execute: CREATE EXTENSION IF NOT EXISTS vector;${NC}"
+echo -e "${YELLOW}Or enable via Cloud Console SQL Editor${NC}"
 echo ""
 
 # Step 4: Provision Redis on Compute Engine
@@ -141,36 +119,33 @@ if gcloud compute instances describe $REDIS_INSTANCE_NAME \
 else
   echo -e "${YELLOW}Creating Redis VM (e2-micro, ~$5/month)...${NC}"
 
-  # Create startup script for Redis
-  cat > /tmp/redis-startup.sh <<'REDIS_SCRIPT'
+  # Generate Redis password
+  REDIS_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+
+  # Create startup script for Redis with password
+  cat > /tmp/redis-startup.sh <<EOF
 #!/bin/bash
 # Install Redis
 apt-get update
 apt-get install -y redis-server
 
 # Configure Redis
-cat > /etc/redis/redis.conf <<EOF
+cat > /etc/redis/redis.conf <<REDISCONF
 bind 0.0.0.0
 protected-mode yes
 port 6379
-requirepass REDIS_PASSWORD_PLACEHOLDER
+requirepass $REDIS_PASSWORD
 maxmemory 256mb
 maxmemory-policy allkeys-lru
 save 900 1
 save 300 10
 save 60 10000
-EOF
+REDISCONF
 
 # Restart Redis
 systemctl restart redis-server
 systemctl enable redis-server
-REDIS_SCRIPT
-
-  # Generate Redis password
-  REDIS_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
-
-  # Replace placeholder in startup script
-  sed -i "s/REDIS_PASSWORD_PLACEHOLDER/$REDIS_PASSWORD/" /tmp/redis-startup.sh
+EOF
 
   # Create VM instance
   gcloud compute instances create $REDIS_INSTANCE_NAME \
@@ -219,29 +194,30 @@ echo -e "${BLUE}Redis Info:${NC}"
 echo -e "  Internal IP: ${YELLOW}$REDIS_INTERNAL_IP${NC}"
 echo ""
 
-# Step 5: Create VPC Connector for Cloud Run
-echo -e "${GREEN}Step 5: Creating VPC connector for Cloud Run...${NC}"
-
-VPC_CONNECTOR_NAME="archcelerate-connector"
-
-if gcloud compute networks vpc-access connectors describe $VPC_CONNECTOR_NAME \
-  --region=$REGION \
-  --project=$PROJECT_ID &>/dev/null; then
-  echo -e "${YELLOW}✓ VPC connector already exists${NC}"
-else
-  echo -e "${YELLOW}Creating VPC connector (this takes ~2 minutes)...${NC}"
-  gcloud compute networks vpc-access connectors create $VPC_CONNECTOR_NAME \
-    --region=$REGION \
-    --network=default \
-    --range=10.8.0.0/28 \
-    --min-instances=2 \
-    --max-instances=3 \
-    --machine-type=e2-micro \
-    --project=$PROJECT_ID
-
-  echo -e "${GREEN}✓ VPC connector created${NC}"
-fi
+# Step 5: VPC Connector (Skipped - using public IPs for simplicity)
+echo -e "${GREEN}Step 5: Skipping VPC connector (using public IP connections)...${NC}"
+echo -e "${YELLOW}Note: For production, consider setting up VPC connector for private networking${NC}"
 echo ""
+
+# VPC_CONNECTOR_NAME="archcelerate-connector"
+# Commented out - not needed when using public IPs
+# if gcloud compute networks vpc-access connectors describe $VPC_CONNECTOR_NAME \
+#   --region=$REGION \
+#   --project=$PROJECT_ID &>/dev/null; then
+#   echo -e "${YELLOW}✓ VPC connector already exists${NC}"
+# else
+#   echo -e "${YELLOW}Creating VPC connector (this takes ~2 minutes)...${NC}"
+#   gcloud compute networks vpc-access connectors create $VPC_CONNECTOR_NAME \
+#     --region=$REGION \
+#     --network=default \
+#     --range=10.8.0.0/28 \
+#     --min-instances=2 \
+#     --max-instances=3 \
+#     --machine-type=e2-micro \
+#     --project=$PROJECT_ID
+#
+#   echo -e "${GREEN}✓ VPC connector created${NC}"
+# fi
 
 # Step 6: Generate connection strings and update secrets
 echo -e "${GREEN}Step 6: Generating connection strings...${NC}"
@@ -250,9 +226,9 @@ echo -e "${GREEN}Step 6: Generating connection strings...${NC}"
 DB_PASSWORD=$(gcloud secrets versions access latest --secret=DB_PASSWORD --project=$PROJECT_ID 2>/dev/null || echo "")
 REDIS_PASSWORD=$(gcloud secrets versions access latest --secret=REDIS_PASSWORD --project=$PROJECT_ID 2>/dev/null || echo "")
 
-# Generate DATABASE_URL
+# Generate DATABASE_URL (using public IP for now)
 if [ ! -z "$DB_PASSWORD" ]; then
-  DATABASE_URL="postgresql://postgres:${DB_PASSWORD}@${SQL_PRIVATE_IP}:5432/archcelerate?schema=public"
+  DATABASE_URL="postgresql://postgres:${DB_PASSWORD}@${SQL_PUBLIC_IP}:5432/archcelerate?schema=public"
   echo -n "$DATABASE_URL" | gcloud secrets create DATABASE_URL \
     --data-file=- \
     --project=$PROJECT_ID 2>/dev/null || \
@@ -292,7 +268,7 @@ echo -e "${BLUE}╚════════════════════�
 echo ""
 echo -e "${GREEN}Services Created:${NC}"
 echo -e "  1. Cloud SQL PostgreSQL (${DB_INSTANCE_NAME})"
-echo -e "     - Private IP: ${YELLOW}$SQL_PRIVATE_IP${NC}"
+echo -e "     - Public IP: ${YELLOW}$SQL_PUBLIC_IP${NC}"
 echo -e "     - Database: archcelerate"
 echo -e "     - pgvector: enabled"
 echo -e "     - Cost: ~$7-10/month"
@@ -302,11 +278,8 @@ echo -e "     - Internal IP: ${YELLOW}$REDIS_INTERNAL_IP${NC}"
 echo -e "     - Memory: 256MB"
 echo -e "     - Cost: ~$5/month"
 echo ""
-echo -e "  3. VPC Connector (${VPC_CONNECTOR_NAME})"
-echo -e "     - Region: ${REGION}"
-echo -e "     - Cost: ~$8/month (always-on)"
-echo ""
-echo -e "${YELLOW}Total estimated cost: ~$20-23/month${NC}"
+echo -e "${YELLOW}Total estimated cost: ~$12-15/month${NC}"
+echo -e "${YELLOW}Note: Using public IP connections (no VPC connector needed)${NC}"
 echo ""
 echo -e "${GREEN}Secrets stored in Secret Manager:${NC}"
 echo -e "  - DATABASE_URL"

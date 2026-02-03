@@ -87,12 +87,19 @@ echo -e "${GREEN}Step 6: Deploying to Cloud Run...${NC}"
 # Check if all required secrets exist
 REQUIRED_SECRETS=(
   "ANTHROPIC_API_KEY"
-  "OPENAI_API_KEY"
   "NEXTAUTH_SECRET"
   "GOOGLE_CLIENT_ID"
   "GOOGLE_CLIENT_SECRET"
   "DATABASE_URL"
   "REDIS_URL"
+)
+
+# Optional secrets (won't fail deployment if missing)
+OPTIONAL_SECRETS=(
+  "OPENAI_API_KEY"
+  "FACEBOOK_CLIENT_ID"
+  "FACEBOOK_CLIENT_SECRET"
+  "TAVILY_API_KEY"
 )
 
 echo -e "${YELLOW}Checking secrets...${NC}"
@@ -104,7 +111,7 @@ for secret in "${REQUIRED_SECRETS[@]}"; do
 done
 
 if [ ${#MISSING_SECRETS[@]} -gt 0 ]; then
-  echo -e "${RED}Error: Missing secrets:${NC}"
+  echo -e "${RED}Error: Missing required secrets:${NC}"
   for secret in "${MISSING_SECRETS[@]}"; do
     echo -e "${RED}  - $secret${NC}"
   done
@@ -112,6 +119,19 @@ if [ ${#MISSING_SECRETS[@]} -gt 0 ]; then
   echo -e "${YELLOW}Run ./scripts/provision-gcp-services.sh and ./scripts/setup-secrets.sh first${NC}"
   exit 1
 fi
+
+# Build secrets list dynamically
+SECRETS_LIST="ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,NEXTAUTH_SECRET=NEXTAUTH_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest"
+
+# Add optional secrets if they exist
+for secret in "${OPTIONAL_SECRETS[@]}"; do
+  if gcloud secrets describe $secret --project=$PROJECT_ID &>/dev/null; then
+    SECRETS_LIST="${SECRETS_LIST},${secret}=${secret}:latest"
+    echo -e "${GREEN}✓ Found optional secret: $secret${NC}"
+  else
+    echo -e "${YELLOW}⊘ Skipping optional secret: $secret (not configured)${NC}"
+  fi
+done
 
 # Build deploy command
 DEPLOY_CMD="gcloud run deploy $SERVICE_NAME \
@@ -127,7 +147,7 @@ DEPLOY_CMD="gcloud run deploy $SERVICE_NAME \
   --port 3000 \
   --project=$PROJECT_ID \
   --set-env-vars \"NODE_ENV=production,NEXTAUTH_URL=$NEXTAUTH_URL,NEXT_PUBLIC_ENABLE_AI_AGENTS=true,NEXT_PUBLIC_ENABLE_MULTIMODAL=false\" \
-  --set-secrets \"ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,NEXTAUTH_SECRET=NEXTAUTH_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest\""
+  --set-secrets \"$SECRETS_LIST\""
 
 # Add VPC connector if available
 if [ ! -z "$VPC_CONNECTOR" ]; then
