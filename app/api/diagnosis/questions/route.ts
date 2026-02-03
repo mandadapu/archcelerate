@@ -73,7 +73,32 @@ Make questions practical and relevant to building production AI systems. Focus o
     jsonText = jsonText.replace(/```\n?/, '').replace(/\n?```$/, '')
   }
 
-  const questions: QuizQuestion[] = JSON.parse(jsonText)
+  // Clean up common JSON formatting issues
+  jsonText = jsonText.trim()
+
+  // Remove any text before the opening bracket
+  const jsonStart = jsonText.indexOf('[')
+  if (jsonStart > 0) {
+    jsonText = jsonText.substring(jsonStart)
+  }
+
+  // Remove any text after the closing bracket
+  const jsonEnd = jsonText.lastIndexOf(']')
+  if (jsonEnd !== -1 && jsonEnd < jsonText.length - 1) {
+    jsonText = jsonText.substring(0, jsonEnd + 1)
+  }
+
+  // Remove trailing commas before closing brackets/braces
+  jsonText = jsonText.replace(/,(\s*[}\]])/g, '$1')
+
+  let questions: QuizQuestion[]
+  try {
+    questions = JSON.parse(jsonText)
+  } catch (parseError) {
+    console.error('❌ Failed to parse Claude response:', parseError)
+    console.error('Response text:', content.text.substring(0, 500))
+    throw new Error(`Failed to parse JSON response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`)
+  }
 
   // Validate structure
   if (!Array.isArray(questions) || questions.length === 0) {
