@@ -66,7 +66,7 @@ else
 fi
 
 # Step 5: Deploy to Cloud Run
-echo -e "${GREEN}Step 4: Deploying to Cloud Run...${NC}"
+echo -e "${GREEN}Step 5: Deploying to Cloud Run...${NC}"
 
 # Check if all required secrets exist
 REQUIRED_SECRETS=(

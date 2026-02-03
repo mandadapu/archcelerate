@@ -54,6 +54,10 @@ fi
 read -p "NEXTAUTH_SECRET (min 32 chars): " -s NEXTAUTH_SECRET
 echo ""
 if [ ! -z "$NEXTAUTH_SECRET" ]; then
+  if [ ${#NEXTAUTH_SECRET} -lt 32 ]; then
+    echo -e "${RED}Error: NEXTAUTH_SECRET must be at least 32 characters${NC}"
+    exit 1
+  fi
   create_or_update_secret "NEXTAUTH_SECRET" "$NEXTAUTH_SECRET"
 fi
 
