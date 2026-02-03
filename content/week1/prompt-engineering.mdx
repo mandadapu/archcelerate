@@ -2,9 +2,43 @@
 
 Master the art and science of crafting effective prompts for LLMs.
 
+> **Note**: Updated February 2026 with Claude 4.5 and GPT-5 best practices, including prompt caching, structured outputs, and extended thinking modes.
+
 ## Prompting Fundamentals
 
 A well-crafted prompt is the difference between mediocre and excellent LLM outputs.
+
+### Critical: Claude 4.x & GPT-5 Behavioral Changes
+
+**Modern models respond literally to instructions** - they do exactly what you ask, nothing more:
+
+- **Claude 3.x**: Inferred intent, expanded on vague requests
+- **Claude 4.x**: Takes you literally, requires explicit instructions
+- **GPT-5**: Highly steerable but needs precise direction
+
+**Key implications**:
+- ❌ Don't assume the model will "figure out" what you want
+- ✅ Be explicit about every requirement
+- ✅ State constraints clearly (especially for Opus 4.5 to avoid over-engineering)
+- ✅ Provide context and motivation for better results
+
+### Modern Prompting Frameworks
+
+**4-Block Pattern** (Recommended for Claude 4.x):
+```
+[INSTRUCTIONS] - What to do
+[CONTEXT] - Background information and motivation
+[TASK] - Specific request
+[OUTPUT FORMAT] - Exact structure expected
+```
+
+**CTCO Framework** (Recommended for GPT-5):
+```
+[CONTEXT] - Relevant background
+[TASK] - What needs to be done
+[CONSTRAINTS] - Boundaries and requirements
+[OUTPUT] - Desired format and structure
+```
 
 ### Anatomy of a Prompt
 
@@ -82,6 +116,221 @@ Please solve this by:
 
 **When to use**: Mathematical reasoning, multi-step problems, debugging
 
+## Extended Thinking & Reasoning Modes (2026)
+
+Modern models support enhanced reasoning modes for complex tasks.
+
+### Claude Extended Thinking
+
+```typescript
+const response = await anthropic.messages.create({
+  model: 'claude-opus-4-5-20251101',
+  max_tokens: 4096,
+  thinking: {
+    type: 'enabled',
+    budget_tokens: 2048  // Minimum 1,024 tokens
+  },
+  messages: [{ role: 'user', content: 'Solve this complex problem...' }]
+})
+
+// Access thinking process
+console.log(response.content.find(block => block.type === 'thinking'))
+```
+
+**When to use**:
+- Complex reasoning tasks
+- Multi-step problem solving
+- Code debugging and architecture decisions
+- Mathematical proofs
+
+**Cost**: Thinking tokens billed as output tokens at standard rates
+
+### GPT-5 Reasoning Effort
+
+```typescript
+const response = await openai.chat.completions.create({
+  model: 'gpt-5',
+  messages: [{ role: 'user', content: 'Analyze this system architecture...' }],
+  reasoning_effort: 'high'  // Options: minimal, low, medium, high
+})
+```
+
+**Reasoning effort levels**:
+- **Minimal**: Quick responses, simple tasks
+- **Medium**: Balanced (default)
+- **High**: Deep analysis, complex reasoning
+
+## Structured Outputs (Type-Safe JSON)
+
+Enforce JSON schema for reliable, type-safe outputs.
+
+### Claude Structured Outputs
+
+```typescript
+const response = await anthropic.messages.create({
+  model: 'claude-sonnet-4-5-20251101',
+  max_tokens: 1024,
+  messages: [{
+    role: 'user',
+    content: 'Extract user info from: "John Doe, john@example.com, age 30"'
+  }],
+  response_format: {
+    type: 'json_schema',
+    json_schema: {
+      name: 'user_info',
+      strict: true,
+      schema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          email: { type: 'string' },
+          age: { type: 'number' }
+        },
+        required: ['name', 'email', 'age']
+      }
+    }
+  }
+})
+```
+
+### GPT-5 Structured Outputs
+
+```typescript
+const response = await openai.chat.completions.create({
+  model: 'gpt-5',
+  messages: [{
+    role: 'user',
+    content: 'Extract product data from this description...'
+  }],
+  response_format: {
+    type: 'json_schema',
+    json_schema: {
+      name: 'product_info',
+      strict: true,
+      schema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          price: { type: 'number' },
+          features: {
+            type: 'array',
+            items: { type: 'string' }
+          }
+        },
+        required: ['name', 'price']
+      }
+    }
+  }
+})
+```
+
+**Benefits**:
+- Type-safe outputs (no parsing errors)
+- Guaranteed structure compliance
+- Better for production systems
+- Reduces post-processing code
+
+## Prompt Caching (90% Cost Savings)
+
+Cache repeated context to dramatically reduce costs.
+
+### How Prompt Caching Works
+
+Claude caches the first part of your prompt (system, tools, context) and reuses it across requests:
+
+```typescript
+const response = await anthropic.messages.create({
+  model: 'claude-sonnet-4-5-20251101',
+  max_tokens: 1024,
+  system: [
+    {
+      type: 'text',
+      text: 'You are an expert code reviewer...',  // This gets cached
+      cache_control: { type: 'ephemeral' }
+    }
+  ],
+  messages: [
+    {
+      role: 'user',
+      content: [
+        {
+          type: 'text',
+          text: largeCodebase,  // Large context gets cached
+          cache_control: { type: 'ephemeral' }
+        },
+        {
+          type: 'text',
+          text: 'Review this specific file...'  // Only this changes
+        }
+      ]
+    }
+  ]
+})
+```
+
+**Pricing**:
+- Cache write: Standard input token price
+- Cache read: **0.1x** input price (90% savings!)
+- Cache TTL: 5 minutes
+
+**Best practices**:
+- Place static content first (system prompts, documentation, codebases)
+- Cache content must be ≥1024 tokens
+- Cache is isolated per workspace (as of Feb 2026)
+
+**Example savings**:
+```
+Without caching: 100K tokens × $3/M = $0.30 per request
+With caching:
+  - First request: $0.30 (cache write)
+  - Next requests: 100K × $0.30/M = $0.03 per request (90% savings)
+```
+
+## XML Structuring for Complex Prompts
+
+Use XML tags for better structure in complex prompts:
+
+```xml
+<instructions>
+You are a senior software architect reviewing code.
+</instructions>
+
+<context>
+The system is a microservices architecture handling 1M requests/day.
+Performance and security are critical.
+</context>
+
+<task>
+Review the following code for:
+1. Security vulnerabilities
+2. Performance bottlenecks
+3. Scalability issues
+</task>
+
+<code>
+[Your code here]
+</code>
+
+<output_format>
+Return findings in this XML structure:
+<findings>
+  <critical>
+    <issue>Description</issue>
+    <location>Line numbers</location>
+    <fix>Suggested fix</fix>
+  </critical>
+  <high>...</high>
+  <medium>...</medium>
+</findings>
+</output_format>
+```
+
+**Benefits**:
+- Clear section boundaries
+- Better for complex, nested instructions
+- Easier to reference specific sections
+- Claude 4.x handles XML exceptionally well
+
 ## System Prompts and Personas
 
 System prompts set the LLM's behavior for the entire conversation.
@@ -106,7 +355,7 @@ Output format:
 [How to structure responses]
 ```
 
-**Example - Code Review Agent**:
+**Example - Code Review Agent (Claude 4.x optimized)**:
 ```
 You are an expert code reviewer with 10 years of experience in production systems.
 
@@ -124,62 +373,113 @@ Constraints:
 - Never approve code with security vulnerabilities
 - Don't nitpick minor style issues
 - Don't suggest changes without explaining why
+- IMPORTANT: Keep solutions minimal - don't over-engineer or add unnecessary abstractions
+- Only suggest changes that directly address identified issues
 
 Output format:
 - Categorize findings by severity (Critical, High, Medium, Low)
 - Include line numbers and specific code snippets
 - Provide corrected code examples
+- Limit responses to 3-6 sentences per finding
 ```
 
-## Output Formatting
+**Note**: The "keep solutions minimal" constraint is crucial for Claude Opus 4.5, which tends to over-engineer if not explicitly instructed otherwise.
 
-### JSON Mode
+## Tool Use & Function Calling
 
-Request structured output in JSON format.
+Modern LLMs can call functions/tools to interact with external systems.
 
-**Pattern**:
-```
-Extract information and respond in JSON format:
-{
-  "field1": "description",
-  "field2": "description"
+### Defining Tools (Claude)
+
+```typescript
+const tools = [
+  {
+    name: 'get_weather',
+    description: 'Get current weather for a location',
+    input_schema: {
+      type: 'object',
+      properties: {
+        location: {
+          type: 'string',
+          description: 'City name, e.g., San Francisco, CA'
+        },
+        unit: {
+          type: 'string',
+          enum: ['celsius', 'fahrenheit'],
+          description: 'Temperature unit'
+        }
+      },
+      required: ['location']
+    }
+  }
+]
+
+const response = await anthropic.messages.create({
+  model: 'claude-sonnet-4-5-20251101',
+  max_tokens: 1024,
+  tools,
+  messages: [{ role: 'user', content: 'What\'s the weather in Tokyo?' }]
+})
+
+// Check if tool was called
+if (response.stop_reason === 'tool_use') {
+  const toolUse = response.content.find(block => block.type === 'tool_use')
+  console.log('Tool called:', toolUse.name, toolUse.input)
 }
 ```
 
-**Example**:
+### Tool Preambles (GPT-5)
+
+GPT-5 provides planning messages before tool use:
+
+```typescript
+const response = await openai.chat.completions.create({
+  model: 'gpt-5',
+  messages: [{
+    role: 'user',
+    content: 'Research the top 3 AI papers from 2026 and summarize them'
+  }],
+  tools: [searchTool, summarizerTool]
+})
+
+// GPT-5 provides tool preamble explaining its plan
+// Then executes tools in sequence with progress updates
 ```
-Extract product information from this description and respond in JSON:
 
-{
-  "name": "product name",
-  "price": numeric value,
-  "features": ["feature 1", "feature 2"],
-  "category": "category name"
-}
-
-Description: "The UltraWidget Pro costs $99 and includes wireless connectivity,
-cloud sync, and a 2-year warranty. It's in the Smart Home category."
+**Steering tool preambles**:
+```
+Before using tools, briefly state your plan in 1-2 sentences.
+After each tool call, summarize what you learned in one sentence.
 ```
 
-### Structured Extraction
+### Best Practices for Tool Use
 
-Guide the model to extract specific information.
+1. **Clear tool descriptions**: Be explicit about what each tool does
+2. **Strict schemas**: Use type-safe input schemas
+3. **Error handling**: Handle tool failures gracefully
+4. **Progress tracking**: Use preambles to show reasoning
+5. **Stateful conversations**: Pass tool results back for multi-step tasks
 
+## Prefill Technique (Claude-Specific)
+
+Guide Claude's response by prefilling the assistant message:
+
+```typescript
+const response = await anthropic.messages.create({
+  model: 'claude-sonnet-4-5-20251101',
+  max_tokens: 1024,
+  messages: [
+    { role: 'user', content: 'Analyze this code for bugs' },
+    { role: 'assistant', content: 'I found the following issues:\n\n1.' }
+  ]
+})
 ```
-From the following text, extract:
-- Company name
-- Revenue (if mentioned)
-- Number of employees (if mentioned)
-- Industry
 
-Text: [input text]
-
-Format:
-Company: [name]
-Revenue: [amount or "Not mentioned"]
-Employees: [number or "Not mentioned"]
-Industry: [industry]
-```
+**Use cases**:
+- Force specific output format
+- Skip preamble/pleasantries
+- Guide response structure
+- Ensure consistent formatting
 
 ## Common Failure Modes and Fixes
 
@@ -203,58 +503,570 @@ Industry: [industry]
 ❌ **Problem**: Model goes beyond scope
 ✅ **Fix**: Add constraints in system prompt: "Stay focused on [specific topic]. Do not discuss [off-topic areas]"
 
-## Advanced Techniques
+## Advanced Techniques (2026)
 
-### Prompt Chaining
+### Prompt Chaining with Caching
 
-Break complex tasks into multiple prompts.
+Break complex tasks into multiple prompts while caching shared context:
+
+```typescript
+// Step 1: Extract key points (cache the article)
+const step1 = await anthropic.messages.create({
+  model: 'claude-sonnet-4-5-20251101',
+  max_tokens: 1024,
+  messages: [{
+    role: 'user',
+    content: [
+      {
+        type: 'text',
+        text: longArticle,  // Cache this
+        cache_control: { type: 'ephemeral' }
+      },
+      { type: 'text', text: 'Extract the 5 main points.' }
+    ]
+  }]
+})
+
+// Step 2: Organize into outline (reuses cached article)
+const step2 = await anthropic.messages.create({
+  model: 'claude-sonnet-4-5-20251101',
+  max_tokens: 1024,
+  messages: [{
+    role: 'user',
+    content: [
+      {
+        type: 'text',
+        text: longArticle,  // Read from cache (90% cheaper)
+        cache_control: { type: 'ephemeral' }
+      },
+      { type: 'text', text: `Organize these points into an outline: ${step1.content[0].text}` }
+    ]
+  }]
+})
+```
+
+### Self-Consistency with Reasoning
+
+Ask for multiple reasoning paths, then synthesize:
 
 ```
-Prompt 1: Extract key points from article
-↓
-Prompt 2: Organize points into outline
-↓
-Prompt 3: Write summary from outline
+Solve this problem using 3 different approaches:
+
+Approach 1: [Method name]
+Let's think step by step:
+[Reasoning]
+
+Approach 2: [Method name]
+Let's think step by step:
+[Reasoning]
+
+Approach 3: [Method name]
+Let's think step by step:
+[Reasoning]
+
+Now compare the three solutions and identify the most reliable answer,
+explaining why.
 ```
 
-### Self-Consistency
+### Context Awareness (Claude 4.5)
 
-Ask for multiple attempts, choose best/most common answer.
-
-```
-Solve this problem 3 different ways, then pick the most reliable answer.
-```
-
-### Role Prompting
-
-Assign specific expert roles for better responses.
+Claude 4.5 tracks its token budget and can self-manage context:
 
 ```
-As a [specific expert], explain [topic] considering [constraints]
+You have a limited context window. As our conversation continues:
+1. Summarize older messages to free up space
+2. Keep the most recent 5 exchanges in full detail
+3. Alert me when you're at 80% context capacity
+
+Current task: [Your task description]
+```
+
+### Verbosity Control
+
+Modern models can be overly verbose. Set explicit constraints:
+
+```
+VERBOSITY RULES:
+- Default response length: 3-6 sentences
+- For lists: Maximum 5 bullet points
+- For code: Minimal working example only
+- Omit pleasantries and meta-commentary
+- Get straight to the answer
+
+[Your actual prompt]
+```
+
+### Scope Discipline (Prevent Drift)
+
+Keep models focused on the specific task:
+
+```
+SCOPE BOUNDARIES:
+- ONLY address: [specific topics]
+- DO NOT discuss: [off-limit topics]
+- If user asks outside scope, respond: "That's outside my current scope. I can help with [in-scope topics]."
+- Stay focused on the immediate task, don't expand unless explicitly asked
+
+Task: [Your specific task]
 ```
 
 ## Practical Exercises
 
-1. **Zero to Few-Shot**: Start with zero-shot, add examples until quality improves
-2. **CoT Practice**: Solve a complex problem with and without CoT, compare results
-3. **Format Precision**: Extract structured data from unstructured text
-4. **Persona Testing**: Same question to different personas, compare outputs
+### Exercise 1: Structured Outputs
 
-## Prompt Template Library
-
-Build reusable templates for common tasks:
+Build a type-safe data extractor using JSON schema:
 
 ```typescript
-const TEMPLATES = {
-  codeReview: `Review this code for security and performance issues...`,
-  summarization: `Summarize the following text in [N] bullet points...`,
-  extraction: `Extract [specific fields] from this text and return as JSON...`,
-  classification: `Classify this text into one of [categories]...`
+import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY
+})
+
+async function extractUserInfo(text: string) {
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-5-20251101',
+    max_tokens: 1024,
+    messages: [{
+      role: 'user',
+      content: `Extract user information: ${text}`
+    }],
+    response_format: {
+      type: 'json_schema',
+      json_schema: {
+        name: 'user_data',
+        strict: true,
+        schema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            email: { type: 'string' },
+            age: { type: 'number' },
+            location: { type: 'string' }
+          },
+          required: ['name', 'email']
+        }
+      }
+    }
+  })
+
+  return JSON.parse(response.content[0].text)
+}
+
+// Test it
+const result = await extractUserInfo(
+  'Contact John Doe at john@example.com, he is 30 years old and lives in NYC'
+)
+console.log(result)
+// Guaranteed to match schema: { name: string, email: string, age?: number, location?: string }
+```
+
+### Exercise 2: Prompt Caching for Cost Optimization
+
+Implement a chatbot that caches a large knowledge base:
+
+```typescript
+const knowledgeBase = `
+[Large documentation - 50K tokens]
+Product specs, API docs, FAQs, etc.
+`
+
+async function answerQuestion(question: string) {
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-5-20251101',
+    max_tokens: 1024,
+    system: [{
+      type: 'text',
+      text: 'You are a helpful product support agent.',
+      cache_control: { type: 'ephemeral' }
+    }],
+    messages: [{
+      role: 'user',
+      content: [
+        {
+          type: 'text',
+          text: knowledgeBase,  // Cached across all requests
+          cache_control: { type: 'ephemeral' }
+        },
+        {
+          type: 'text',
+          text: `Question: ${question}`
+        }
+      ]
+    }]
+  })
+
+  // First call: $0.15 (50K tokens × $3/M)
+  // Next calls: $0.015 (50K tokens × $0.30/M) - 90% savings!
+  console.log('Cache stats:', response.usage)
+
+  return response.content[0].text
 }
 ```
 
+### Exercise 3: Extended Thinking for Complex Problems
+
+Use extended thinking to solve a complex reasoning task:
+
+```typescript
+async function solveComplexProblem(problem: string) {
+  const response = await anthropic.messages.create({
+    model: 'claude-opus-4-5-20251101',
+    max_tokens: 4096,
+    thinking: {
+      type: 'enabled',
+      budget_tokens: 2048
+    },
+    messages: [{
+      role: 'user',
+      content: problem
+    }]
+  })
+
+  // Access the thinking process
+  const thinking = response.content.find(block => block.type === 'thinking')
+  const answer = response.content.find(block => block.type === 'text')
+
+  console.log('Thinking process:', thinking.thinking)
+  console.log('Final answer:', answer.text)
+
+  return { thinking: thinking.thinking, answer: answer.text }
+}
+
+// Test with a complex problem
+await solveComplexProblem(`
+Design a distributed caching system that handles:
+- 1M requests/second
+- 99.99% availability
+- Multi-region deployment
+- Automatic failover
+Explain your architecture decisions.
+`)
+```
+
+### Exercise 4: Tool Use with Function Calling
+
+Build an agent that uses multiple tools:
+
+```typescript
+const tools = [
+  {
+    name: 'search_web',
+    description: 'Search the internet for current information',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query' }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'calculate',
+    description: 'Perform mathematical calculations',
+    input_schema: {
+      type: 'object',
+      properties: {
+        expression: { type: 'string', description: 'Math expression to evaluate' }
+      },
+      required: ['expression']
+    }
+  }
+]
+
+async function agentic_task(userRequest: string) {
+  let messages = [{ role: 'user', content: userRequest }]
+
+  while (true) {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5-20251101',
+      max_tokens: 2048,
+      tools,
+      messages
+    })
+
+    if (response.stop_reason === 'tool_use') {
+      // Execute tool
+      const toolUse = response.content.find(b => b.type === 'tool_use')
+      const result = await executeTool(toolUse.name, toolUse.input)
+
+      // Continue conversation with tool result
+      messages.push(
+        { role: 'assistant', content: response.content },
+        { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolUse.id, content: result }] }
+      )
+    } else {
+      // Final answer
+      return response.content[0].text
+    }
+  }
+}
+
+function executeTool(name: string, input: any) {
+  // Implement actual tool execution
+  if (name === 'search_web') return searchWeb(input.query)
+  if (name === 'calculate') return eval(input.expression).toString()
+}
+```
+
+### Exercise 5: Compare Zero-Shot, Few-Shot, and CoT
+
+Run the same task with different prompting techniques and compare:
+
+```typescript
+const task = 'Classify the sentiment of: "The product works but customer service was terrible"'
+
+// Zero-shot
+const zeroShot = await ask('Classify sentiment as positive, negative, or mixed: ' + task)
+
+// Few-shot
+const fewShot = await ask(`
+Examples:
+"Great product!" → positive
+"Awful experience" → negative
+"Good price, slow shipping" → mixed
+
+${task}
+`)
+
+// Chain-of-Thought
+const cot = await ask(`
+${task}
+
+Let's analyze step by step:
+1. Identify positive aspects
+2. Identify negative aspects
+3. Determine overall sentiment
+`)
+
+console.log({ zeroShot, fewShot, cot })
+// Compare accuracy and reasoning quality
+```
+
+## Prompt Template Library (2026)
+
+Build reusable, production-ready templates:
+
+```typescript
+const TEMPLATES = {
+  // Structured extraction with type safety
+  extraction: {
+    system: 'You are a data extraction expert. Extract information accurately.',
+    user: (text: string, schema: object) => `Extract information from this text:\n\n${text}`,
+    responseFormat: (schema: object) => ({
+      type: 'json_schema',
+      json_schema: { name: 'extraction', strict: true, schema }
+    })
+  },
+
+  // Code review with minimal output (Claude 4.x optimized)
+  codeReview: {
+    system: `You are a senior code reviewer.
+
+CONSTRAINTS:
+- Keep solutions minimal - no over-engineering
+- Only suggest necessary changes
+- Limit to 3-6 sentences per issue
+- Focus on security and correctness`,
+    user: (code: string) => `Review this code:\n\n${code}`,
+    cacheControl: { type: 'ephemeral' }  // Cache system prompt
+  },
+
+  // Reasoning-heavy tasks with extended thinking
+  complexAnalysis: {
+    model: 'claude-opus-4-5-20251101',
+    thinking: { type: 'enabled', budget_tokens: 2048 },
+    system: 'You are an expert analyst. Think through problems methodically.',
+    user: (problem: string) => `Analyze:\n\n${problem}\n\nThink step by step.`
+  },
+
+  // Summarization with verbosity control
+  summarization: {
+    system: `You are a concise summarizer.
+
+VERBOSITY RULES:
+- Maximum 5 bullet points
+- Each point: 1-2 sentences
+- No preamble or conclusion
+- Get straight to key points`,
+    user: (text: string, numPoints: number = 5) =>
+      `Summarize in ${numPoints} bullet points:\n\n${text}`
+  },
+
+  // Classification with structured output
+  classification: {
+    system: 'You are a text classifier. Classify accurately and provide confidence.',
+    user: (text: string, categories: string[]) =>
+      `Classify into one of: ${categories.join(', ')}\n\nText: ${text}`,
+    responseFormat: {
+      type: 'json_schema',
+      json_schema: {
+        name: 'classification',
+        strict: true,
+        schema: {
+          type: 'object',
+          properties: {
+            category: { type: 'string' },
+            confidence: { type: 'number', minimum: 0, maximum: 1 },
+            reasoning: { type: 'string' }
+          },
+          required: ['category', 'confidence']
+        }
+      }
+    }
+  },
+
+  // Agentic workflow with tools
+  research: {
+    system: `You are a research assistant.
+
+Before using tools, state your plan in 1-2 sentences.
+After each tool use, summarize what you learned.`,
+    tools: [
+      {
+        name: 'search',
+        description: 'Search for information',
+        input_schema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string' }
+          },
+          required: ['query']
+        }
+      }
+    ]
+  }
+}
+
+// Usage example
+async function useTemplate(templateName: string, params: any) {
+  const template = TEMPLATES[templateName]
+
+  return await anthropic.messages.create({
+    model: template.model || 'claude-sonnet-4-5-20251101',
+    max_tokens: 2048,
+    thinking: template.thinking,
+    system: template.cacheControl
+      ? [{ type: 'text', text: template.system, cache_control: template.cacheControl }]
+      : template.system,
+    messages: [{ role: 'user', content: template.user(...params) }],
+    response_format: template.responseFormat,
+    tools: template.tools
+  })
+}
+```
+
+## Cost Optimization Strategies (2026)
+
+### 1. Prompt Caching (Highest Impact)
+
+**Savings**: Up to 90% on repeated context
+**Best for**: Chatbots, code review, document analysis
+
+```typescript
+// Cache large static content
+const response = await anthropic.messages.create({
+  model: 'claude-sonnet-4-5-20251101',
+  system: [{
+    type: 'text',
+    text: largeSystemPrompt,  // Cache this
+    cache_control: { type: 'ephemeral' }
+  }],
+  messages: [{
+    role: 'user',
+    content: [
+      { type: 'text', text: documentation, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: 'User question here' }  // Only this changes
+    ]
+  }]
+})
+```
+
+### 2. Model Selection
+
+**Savings**: 3-6x cost reduction
+**Strategy**: Use cheaper models for simple tasks
+
+```typescript
+// Route by complexity
+async function intelligentRouting(task: string) {
+  const complexity = await classifyComplexity(task)
+
+  if (complexity === 'simple') {
+    return callModel('claude-haiku-4-5-20250514')  // $1/$5 per M
+  } else if (complexity === 'medium') {
+    return callModel('claude-sonnet-4-5-20251101')  // $3/$15 per M
+  } else {
+    return callModel('claude-opus-4-5-20251101')  // $5/$25 per M
+  }
+}
+```
+
+### 3. Structured Outputs
+
+**Savings**: Reduces retries and post-processing
+**Strategy**: Use JSON schema to eliminate parsing errors
+
+```typescript
+// No retry needed - guaranteed valid JSON
+const response = await anthropic.messages.create({
+  model: 'claude-sonnet-4-5-20251101',
+  response_format: { type: 'json_schema', json_schema: schema },
+  messages: [{ role: 'user', content: 'Extract data...' }]
+})
+```
+
+### 4. Prompt Compression
+
+**Savings**: 20-40% token reduction
+**Strategy**: Remove unnecessary words, use abbreviations in context
+
+```typescript
+// Verbose (expensive)
+const verbose = `
+Please carefully review the following code and provide a detailed analysis
+of any potential bugs, security vulnerabilities, or performance issues you
+may find. Be thorough in your examination.
+`
+
+// Compressed (cheaper)
+const compressed = `
+Review code for bugs, security issues, and performance problems.
+`
+```
+
+### 5. Batch Processing
+
+**Savings**: 50% with Batch API (Claude)
+**Strategy**: Queue non-urgent requests
+
+```typescript
+// Use Batch API for 50% discount
+const batch = await anthropic.batches.create({
+  requests: [
+    { custom_id: 'req1', params: { model: 'claude-sonnet-4-5-20251101', messages: [...] } },
+    { custom_id: 'req2', params: { model: 'claude-sonnet-4-5-20251101', messages: [...] } }
+  ]
+})
+// Results delivered within 24 hours at 50% cost
+```
+
+## Key Takeaways (2026 Edition)
+
+1. **Claude 4.x/GPT-5 require explicit instructions** - They do exactly what you ask, nothing more
+2. **Prompt caching can save 90%** on repeated context - Use it for production systems
+3. **Structured outputs eliminate parsing errors** - Use JSON schema for type safety
+4. **Extended thinking for complex reasoning** - Let models show their work
+5. **Tool use enables agentic workflows** - Build systems that can take actions
+6. **XML structuring for complex prompts** - Better organization than plain text
+7. **Verbosity control prevents bloat** - Set explicit length constraints
+8. **Cost optimization is critical** - Cache, compress, and route intelligently
+
 ## Further Reading
 
-- [Anthropic Prompt Engineering Guide](https://docs.anthropic.com/claude/docs/prompt-engineering)
-- [OpenAI Prompt Engineering](https://platform.openai.com/docs/guides/prompt-engineering)
-- [Prompt Engineering Guide](https://www.promptingguide.ai/)
+- [Claude 4.x Prompt Engineering Best Practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-4-best-practices) - Official Anthropic guide
+- [Prompt Caching Documentation](https://platform.claude.com/docs/en/build-with-claude/prompt-caching) - 90% cost savings guide
+- [GPT-5 Prompting Guide](https://cookbook.openai.com/examples/gpt-5/gpt-5_prompting_guide) - Official OpenAI cookbook
+- [GPT-5.2 Prompting Guide 2026](https://www.atlabs.ai/blog/gpt-5.2-prompting-guide-the-2026-playbook-for-developers-agents) - Advanced techniques
+- [Structured Outputs Guide](https://platform.openai.com/docs/guides/structured-outputs) - Type-safe JSON responses
+- [Prompt Engineering Guide 2026](https://www.promptingguide.ai/) - Comprehensive community resource
