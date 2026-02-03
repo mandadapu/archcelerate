@@ -13,16 +13,16 @@ interface LoginModalProps {
 export function LoginModal({ open, onOpenChange }: LoginModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-2xl font-bold text-gray-900 text-center">
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader className="text-center">
+          <DialogTitle className="text-2xl font-bold text-gray-900">
             Log In
           </DialogTitle>
         </DialogHeader>
 
-        <div className="py-4">
+        <div className="py-3">
           {/* Agreement text */}
-          <p className="text-xs text-gray-600 text-center mb-6">
+          <p className="text-xs text-gray-500 text-center mb-4">
             By continuing, you agree to our{' '}
             <Link href="/terms" className="text-blue-600 hover:underline">
               User Agreement
@@ -35,7 +35,7 @@ export function LoginModal({ open, onOpenChange }: LoginModalProps) {
           </p>
 
           {/* Auth buttons */}
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             <AuthButton
               provider="google"
               onClick={() => {

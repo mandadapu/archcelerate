@@ -152,7 +152,7 @@
 
 **Screen**:
 - AI Architect Accelerator logo
-- GitHub URL: github.com/mandadapu/aicelerate
+- GitHub URL: github.com/mandadapu/archcelerate
 - Text: "100% Open Source"
 - Star count animation
 
@@ -160,7 +160,7 @@
 > "Start learning today. It's completely open source and free."
 
 **On-screen text**:
-- "github.com/mandadapu/aicelerate"
+- "github.com/mandadapu/archcelerate"
 - "⭐ Star the repo"
 - "Start Week 1 now"
 
@@ -290,7 +290,7 @@ system design frameworks and company-specific strategies.
 
 [1:25]
 Start learning today. It's completely open source and free.
-github.com/mandadapu/aicelerate
+github.com/mandadapu/archcelerate
 ```
 
 **Total**: ~230 words at 150 WPM = 92 seconds ✓
@@ -506,7 +506,7 @@ Transform from software engineer to AI product builder in 12 weeks.
 ✅ Interview preparation with system design
 ✅ 100% open source and free
 
-Get started: https://github.com/mandadapu/aicelerate
+Get started: https://github.com/mandadapu/archcelerate
 
 Timestamps:
 0:00 - Introduction

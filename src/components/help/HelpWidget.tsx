@@ -85,8 +85,8 @@ export function HelpWidget() {
         <div className="pt-4 border-t">
           <p className="text-xs text-slate-600">
             Need urgent help? Email{' '}
-            <a href="mailto:support@aicelerate.com" className="text-blue-600 hover:underline">
-              support@aicelerate.com
+            <a href="mailto:support@archcelerate.com" className="text-blue-600 hover:underline">
+              support@archcelerate.com
             </a>
           </p>
         </div>

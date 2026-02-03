@@ -9,6 +9,6 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ['/admin/', '/api/', '/onboarding/', '/dashboard/'],
       },
     ],
-    sitemap: 'https://aicelerate.com/sitemap.xml',
+    sitemap: 'https://archcelerate.com/sitemap.xml',
   }
 }

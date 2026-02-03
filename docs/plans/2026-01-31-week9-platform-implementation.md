@@ -960,7 +960,7 @@ export function getSupabaseClient() {
         },
         global: {
           headers: {
-            'x-application-name': 'aicelerate'
+            'x-application-name': 'archcelerate'
           }
         }
       }

@@ -28,7 +28,7 @@ export function generateMetadata(params: {
 
   const fullDescription = description || defaultMetadata.description
   const fullImage = image || '/og-image.png'
-  const url = `https://aicelerate.com${path}`
+  const url = `https://archcelerate.com${path}`
 
   return {
     title: fullTitle,
@@ -38,7 +38,7 @@ export function generateMetadata(params: {
     creator: defaultMetadata.creator,
     publisher: defaultMetadata.publisher,
     formatDetection: defaultMetadata.formatDetection,
-    metadataBase: new URL('https://aicelerate.com'),
+    metadataBase: new URL('https://archcelerate.com'),
     alternates: {
       canonical: url,
     },
@@ -63,7 +63,7 @@ export function generateMetadata(params: {
       title: fullTitle,
       description: fullDescription,
       images: [fullImage],
-      creator: '@aicelerate',
+      creator: '@archcelerate',
     },
     robots: {
       index: true,

@@ -50,8 +50,8 @@ Return ONLY a valid JSON array of questions in this exact format:
 Make questions practical and relevant to building production AI systems. Focus on real-world scenarios.`
 
   const message = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
-    max_tokens: 8000,
+    model: 'claude-3-haiku-20240307',
+    max_tokens: 4096,
     messages: [
       {
         role: 'user',

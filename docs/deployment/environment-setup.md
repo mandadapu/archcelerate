@@ -47,7 +47,7 @@ DATABASE_URL=postgresql://user:password@host:port/database
 
 **Local Development:**
 ```env
-DATABASE_URL=postgresql://aicelerate:aicelerate_dev_password@localhost:5433/aicelerate
+DATABASE_URL=postgresql://archcelerate:archcelerate_dev_password@localhost:5433/archcelerate
 ```
 
 **Docker Compose:**
@@ -190,7 +190,7 @@ Fix the errors and restart the server.
 
 3. Set required variables:
    ```env
-   DATABASE_URL=postgresql://aicelerate:aicelerate_dev_password@localhost:5433/aicelerate
+   DATABASE_URL=postgresql://archcelerate:archcelerate_dev_password@localhost:5433/archcelerate
    REDIS_URL=redis://localhost:6379
    NEXTAUTH_SECRET=$(openssl rand -base64 32)
    NEXTAUTH_URL=http://localhost:3000

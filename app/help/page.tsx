@@ -84,7 +84,7 @@ export default function HelpPage() {
           </CardHeader>
           <CardContent>
             <Button asChild variant="outline" className="w-full">
-              <a href="mailto:support@aicelerate.com">Email Us</a>
+              <a href="mailto:support@archcelerate.com">Email Us</a>
             </Button>
           </CardContent>
         </Card>
@@ -112,7 +112,7 @@ export default function HelpPage() {
         </p>
         <div className="flex flex-wrap gap-3 justify-center">
           <Button asChild>
-            <a href="mailto:support@aicelerate.com">Email Support</a>
+            <a href="mailto:support@archcelerate.com">Email Support</a>
           </Button>
           <Button asChild variant="outline">
             <Link href="/community">Join Community</Link>

@@ -1,20 +1,23 @@
 import { QuizAnswer } from '@/types/diagnosis'
-import { quizQuestions } from '@/lib/quiz/questions'
+import { quizQuestions as defaultQuestions } from '@/lib/quiz/questions'
 
-export function validateQuizAnswers(answers: QuizAnswer[]): {
+export function validateQuizAnswers(
+  answers: QuizAnswer[],
+  questions: any[] = defaultQuestions
+): {
   isValid: boolean
   errors: string[]
 } {
   const errors: string[] = []
 
   // Check if all questions are answered
-  if (answers.length !== quizQuestions.length) {
-    errors.push(`Expected ${quizQuestions.length} answers, got ${answers.length}`)
+  if (answers.length !== questions.length) {
+    errors.push(`Expected ${questions.length} answers, got ${answers.length}`)
   }
 
   // Validate each answer
   answers.forEach((answer, index) => {
-    const question = quizQuestions.find(q => q.id === answer.questionId)
+    const question = questions.find(q => q.id === answer.questionId)
 
     if (!question) {
       errors.push(`Invalid question ID at index ${index}: ${answer.questionId}`)
@@ -23,7 +26,7 @@ export function validateQuizAnswers(answers: QuizAnswer[]): {
 
     // Check if selected options are valid
     const invalidOptions = answer.selectedOptions.filter(
-      opt => !question.options.some(o => o.id === opt)
+      opt => !question.options.some((o: any) => o.id === opt)
     )
 
     if (invalidOptions.length > 0) {

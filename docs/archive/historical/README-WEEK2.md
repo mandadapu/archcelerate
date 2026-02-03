@@ -101,7 +101,7 @@ Logs diagnosis completion events
 2. **Set up environment variables:**
    Create/update `.env.local`:
    ```bash
-   DATABASE_URL="postgresql://aicelerate:aicelerate_dev_password@localhost:5433/aicelerate"
+   DATABASE_URL="postgresql://archcelerate:archcelerate_dev_password@localhost:5433/archcelerate"
    NEXTAUTH_URL="http://localhost:3000"
    NEXTAUTH_SECRET="your-secret-here"
    ANTHROPIC_API_KEY="your-api-key-here"

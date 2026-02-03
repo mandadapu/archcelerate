@@ -47,7 +47,7 @@ export function Header({ onLoginClick }: HeaderProps) {
             <div className="w-8 h-8 bg-gradient-to-r from-purple-600 to-cyan-500 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-sm">AI</span>
             </div>
-            <span className="text-xl font-bold text-gray-900">AIcelerate</span>
+            <span className="text-xl font-bold text-gray-900">Archcelerate</span>
           </Link>
 
           {/* Navigation */}
@@ -71,7 +71,7 @@ export function Header({ onLoginClick }: HeaderProps) {
               Testimonials
             </button>
             <a
-              href="https://github.com/mandadapu/aicelerate"
+              href="https://github.com/mandadapu/archcelerate"
               target="_blank"
               rel="noopener noreferrer"
               className="text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium"

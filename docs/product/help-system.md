@@ -150,7 +150,7 @@ const tutorials = [
 - Search functionality
 
 ### 2. Email Support
-- support@aicelerate.com
+- support@archcelerate.com
 - Response time: < 24 hours
 - Handles: bugs, account issues, general questions
 
@@ -276,6 +276,6 @@ analytics.track('tutorial_started', {
 ## Contact
 
 For help system improvements or issues:
-- Technical: dev@aicelerate.com
-- Content: content@aicelerate.com
-- Support: support@aicelerate.com
+- Technical: dev@archcelerate.com
+- Content: content@archcelerate.com
+- Support: support@archcelerate.com

@@ -88,7 +88,7 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      {!diagnosisCompleted && (
+      {!diagnosisCompleted ? (
         <Card className="border-2 border-blue-200 bg-blue-50">
           <CardHeader>
             <CardTitle>🎯 Start Here</CardTitle>
@@ -100,6 +100,27 @@ export default async function DashboardPage() {
             <Link href="/diagnosis">
               <Button className="bg-blue-600 hover:bg-blue-700">
                 Start Skill Diagnosis
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border-2 border-green-200 bg-green-50">
+          <CardHeader>
+            <CardTitle>✓ Diagnosis Complete</CardTitle>
+            <CardDescription>
+              View your personalized results and question review
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex gap-3">
+            <Link href="/diagnosis/results">
+              <Button variant="outline" className="border-green-300 text-green-700 hover:bg-green-100">
+                View Results
+              </Button>
+            </Link>
+            <Link href="/diagnosis">
+              <Button variant="outline" className="border-slate-300 text-slate-700 hover:bg-slate-100">
+                Retake Quiz
               </Button>
             </Link>
           </CardContent>
