@@ -18,9 +18,12 @@ export function DashboardNav({ userEmail }: DashboardNavProps) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center space-x-8">
-              <h1 className="text-xl font-bold text-slate-900">
-                AI Architect Accelerator
-              </h1>
+              <Link href="/dashboard" className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-gradient-to-r from-purple-600 to-cyan-500 rounded-lg flex items-center justify-center">
+                  <span className="text-white font-bold text-sm">AI</span>
+                </div>
+                <h1 className="text-xl font-bold text-slate-900">Archcelerate</h1>
+              </Link>
               <div className="flex items-center space-x-4">
                 <Link href="/dashboard" className="text-sm text-slate-600 hover:text-slate-900">
                   Dashboard
