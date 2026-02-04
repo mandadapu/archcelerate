@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { CheckCircle2, Circle, Clock } from 'lucide-react'
+import { CheckCircle2, Circle, Clock, ChevronRight } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
@@ -140,7 +140,7 @@ export default async function Week6Page() {
               <Link
                 key={concept.id}
                 href={`/curriculum/week-2/concepts/${concept.slug}`}
-                className="border rounded-lg p-4 hover:border-red-600 transition-colors bg-red-50/50 dark:bg-red-950/50"
+                className="group border rounded-lg p-4 hover:border-red-600 transition-colors bg-red-50/50 dark:bg-red-950/50"
               >
                 <div className="flex items-start justify-between">
                   <div>
@@ -155,7 +155,7 @@ export default async function Week6Page() {
                       </div>
                     )}
                   </div>
-                  <Circle className="h-5 w-5 text-gray-400 mt-1" />
+                  <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-red-600 group-hover:translate-x-0.5 transition-all" />
                 </div>
               </Link>
             ))}
@@ -168,7 +168,7 @@ export default async function Week6Page() {
             <h2 className="text-2xl font-bold mb-4">Lab</h2>
             <Link
               href={`/curriculum/week-2/lab/${lab.slug}`}
-              className="border rounded-lg p-6 hover:border-blue-600 transition-colors block bg-blue-50/50 dark:bg-blue-950/50"
+              className="group border rounded-lg p-6 hover:border-blue-600 transition-colors block bg-blue-50/50 dark:bg-blue-950/50"
             >
               <h3 className="font-semibold text-xl mb-2">{lab.title}</h3>
               <p className="text-muted-foreground">{lab.description}</p>
@@ -185,7 +185,7 @@ export default async function Week6Page() {
             <h2 className="text-2xl font-bold mb-4">Project</h2>
             <Link
               href={`/curriculum/week-2/project/${project.slug}`}
-              className="border rounded-lg p-6 hover:border-violet-600 transition-colors block bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-950 dark:to-purple-950"
+              className="group border rounded-lg p-6 hover:border-violet-600 transition-colors block bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-950 dark:to-purple-950"
             >
               <div className="flex items-start justify-between">
                 <div>
@@ -203,7 +203,7 @@ export default async function Week6Page() {
                     </div>
                   </div>
                 </div>
-                <Circle className="h-6 w-6 text-gray-400" />
+                <ChevronRight className="h-6 w-6 text-muted-foreground group-hover:text-violet-600 group-hover:translate-x-0.5 transition-all" />
               </div>
             </Link>
           </div>
