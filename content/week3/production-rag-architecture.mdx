@@ -1452,6 +1452,160 @@ Use this table to evaluate your RAG system's readiness:
 - [ ] **Audit Logs**: Log all queries and access for compliance
 - [ ] **Load Testing**: Test with 10x expected production load
 
+### Production Performance Checklist
+
+Before shipping, an AI Architect must verify these three **Stability Pillars**:
+
+| Metric | Target | Why It Matters |
+|--------|--------|----------------|
+| **Token Pressure** | < 80% Context Window | Avoids "Lost in the Middle" syndrome where LLMs ignore chunks in the middle of long contexts. Keep total prompt tokens (system + retrieved chunks + user query) under 80% of model's context limit (e.g., <160K for Claude Sonnet 4.5's 200K limit). |
+| **Index Choice** | HNSW for Speed | IVFFlat is easier to build and requires training, but HNSW (Hierarchical Navigable Small World) is faster for high-concurrency production apps. HNSW provides consistent low latency even under load. |
+| **Cold-Start Latency** | < 1 second | The first query after a period of inactivity often takes longer due to database "warming" (indexes not in memory, connections not pooled). Use connection pooling and warm up indexes on deployment. |
+
+**Implementation guidance**:
+
+```typescript
+interface PerformanceConfig {
+  maxContextTokens: number       // e.g., 160_000 for Claude Sonnet 4.5 (80% of 200K)
+  maxChunkCount: number         // Enforce top-K limit (e.g., 3-5 chunks)
+  vectorIndexType: 'hnsw' | 'ivfflat'
+  connectionPoolSize: number    // e.g., 20 for high-concurrency
+}
+
+/**
+ * Calculate token pressure before sending to LLM
+ */
+function checkTokenPressure(
+  systemPrompt: string,
+  retrievedChunks: string[],
+  userQuery: string,
+  config: PerformanceConfig
+): { withinBudget: boolean; tokenCount: number; pressurePercent: number } {
+  // Rough approximation: 1 token ≈ 4 characters
+  const systemTokens = systemPrompt.length / 4
+  const chunkTokens = retrievedChunks.reduce((sum, chunk) => sum + chunk.length / 4, 0)
+  const queryTokens = userQuery.length / 4
+
+  const totalTokens = systemTokens + chunkTokens + queryTokens
+  const pressurePercent = (totalTokens / config.maxContextTokens) * 100
+
+  return {
+    withinBudget: totalTokens < config.maxContextTokens,
+    tokenCount: Math.round(totalTokens),
+    pressurePercent: Math.round(pressurePercent)
+  }
+}
+
+/**
+ * Postgres HNSW index configuration (pgvector)
+ */
+async function createProductionIndex() {
+  await pool.query(`
+    -- Create HNSW index for production
+    CREATE INDEX idx_embedding_hnsw ON document_chunks
+    USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
+
+    -- m: Max connections per layer (higher = better recall, more memory)
+    -- ef_construction: Size of dynamic candidate list (higher = better index quality, slower build)
+  `)
+}
+
+/**
+ * Connection pooling to avoid cold-start
+ */
+import { Pool } from 'pg'
+
+const pool = new Pool({
+  host: 'localhost',
+  database: 'vectors',
+  max: 20,                    // Connection pool size
+  idleTimeoutMillis: 30000,   // Keep connections warm
+  connectionTimeoutMillis: 2000
+})
+
+// Warm up connection pool on startup
+async function warmupPool() {
+  const promises = []
+  for (let i = 0; i < 5; i++) {
+    promises.push(
+      pool.query('SELECT 1')  // Dummy query to establish connections
+    )
+  }
+  await Promise.all(promises)
+}
+```
+
+**Performance monitoring**:
+
+```typescript
+interface PerformanceMetrics {
+  queryLatency: number        // ms
+  retrievalLatency: number    // ms
+  llmLatency: number          // ms
+  tokenCount: number
+  tokenPressure: number       // percent
+  cacheHit: boolean
+}
+
+async function monitoredRAGQuery(query: string): Promise<{ result: string; metrics: PerformanceMetrics }> {
+  const startTime = Date.now()
+
+  // 1. Check cache
+  const cached = await checkCache(query)
+  if (cached) {
+    return {
+      result: cached,
+      metrics: {
+        queryLatency: Date.now() - startTime,
+        retrievalLatency: 0,
+        llmLatency: 0,
+        tokenCount: 0,
+        tokenPressure: 0,
+        cacheHit: true
+      }
+    }
+  }
+
+  // 2. Retrieve
+  const retrievalStart = Date.now()
+  const chunks = await hybridSearch(query)
+  const retrievalLatency = Date.now() - retrievalStart
+
+  // 3. Check token pressure
+  const pressure = checkTokenPressure(SYSTEM_PROMPT, chunks, query, performanceConfig)
+
+  if (!pressure.withinBudget) {
+    // Trim chunks to fit budget
+    console.warn(`Token pressure ${pressure.pressurePercent}% exceeds 80% threshold`)
+    chunks.splice(3)  // Keep only top-3
+  }
+
+  // 4. Generate
+  const llmStart = Date.now()
+  const result = await generateAnswer(query, chunks)
+  const llmLatency = Date.now() - llmStart
+
+  return {
+    result,
+    metrics: {
+      queryLatency: Date.now() - startTime,
+      retrievalLatency,
+      llmLatency,
+      tokenCount: pressure.tokenCount,
+      tokenPressure: pressure.pressurePercent,
+      cacheHit: false
+    }
+  }
+}
+```
+
+**Key insights**:
+- **Token Pressure**: Monitor and enforce < 80% to avoid "Lost in the Middle" degradation
+- **HNSW vs IVFFlat**: HNSW is almost always better for production (consistent latency, no training needed)
+- **Cold-Start**: Connection pooling + index warmup = consistent sub-second latency
+- **Monitoring**: Track all three pillars in production to catch regressions early
+
 ---
 
 ## Key Takeaways
