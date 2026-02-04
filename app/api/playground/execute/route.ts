@@ -156,9 +156,9 @@ async function executeStructuredOutput(): Promise<string> {
     output.push(`Input: "${sampleText}"`)
     output.push('')
     output.push('Extracted Data:')
-    const firstBlock = response.content[0]
-    if (firstBlock.type === 'text') {
-      output.push(firstBlock.text)
+    const content = response.content[0]
+    if (content.type === 'text') {
+      output.push(content.text)
     }
     output.push('')
     output.push('Benefits of Structured Outputs:')
@@ -252,8 +252,8 @@ async function executeContentModeration(): Promise<string> {
         }]
       })
 
-      const firstBlock = response.content[0]
-      const text = firstBlock.type === 'text' ? firstBlock.text : 'No text response'
+      const content = response.content[0]
+      const text = content.type === 'text' ? content.text : 'No text content'
       output.push(`Input: "${input}"`)
       output.push(`Analysis: ${text}`)
       output.push('')
@@ -288,7 +288,7 @@ async function executeInputValidation(): Promise<string> {
     } catch (error) {
       if (error instanceof z.ZodError) {
         output.push(`✗ Invalid: ${JSON.stringify(input).slice(0, 50)}`)
-        error.errors.forEach(err => {
+        error.issues.forEach((err: z.ZodIssue) => {
           output.push(`  ${err.path.join('.')}: ${err.message}`)
         })
       }

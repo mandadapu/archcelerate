@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { Header } from '@/components/landing/Header'
 import { VideoDemo } from '@/components/landing/VideoDemo'
 import { TechStack } from '@/components/landing/TechStack'
@@ -147,11 +148,12 @@ export default function Home() {
             <div className="group relative bg-white p-8 rounded-2xl border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent hover:bg-gradient-to-br hover:from-purple-50 hover:to-cyan-50">
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
               <div className="relative">
-                <div className="aspect-video rounded-lg mb-6 overflow-hidden">
-                  <img
+                <div className="aspect-video rounded-lg mb-6 overflow-hidden relative">
+                  <Image
                     src="/images/cards/projects.svg"
                     alt="7 Hands-on Projects"
-                    className="w-full h-full object-cover"
+                    fill
+                    className="object-cover"
                   />
                 </div>
 
@@ -177,11 +179,12 @@ export default function Home() {
             <div className="group relative bg-white p-8 rounded-2xl border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent hover:bg-gradient-to-br hover:from-purple-50 hover:to-cyan-50">
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
               <div className="relative">
-                <div className="aspect-video rounded-lg mb-6 overflow-hidden">
-                  <img
+                <div className="aspect-video rounded-lg mb-6 overflow-hidden relative">
+                  <Image
                     src="/images/cards/mentor.svg"
                     alt="24/7 AI Mentor"
-                    className="w-full h-full object-cover"
+                    fill
+                    className="object-cover"
                   />
                 </div>
 
@@ -207,11 +210,12 @@ export default function Home() {
             <div className="group relative bg-white p-8 rounded-2xl border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent hover:bg-gradient-to-br hover:from-purple-50 hover:to-cyan-50">
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
               <div className="relative">
-                <div className="aspect-video rounded-lg mb-6 overflow-hidden">
-                  <img
+                <div className="aspect-video rounded-lg mb-6 overflow-hidden relative">
+                  <Image
                     src="/images/cards/deploy.svg"
                     alt="Deploy to Production"
-                    className="w-full h-full object-cover"
+                    fill
+                    className="object-cover"
                   />
                 </div>
 
