@@ -11,7 +11,14 @@ interface CodePlaygroundProps {
   code: string
   title?: string
   description?: string
-  exerciseType?: 'token-counting' | 'cost-calculation' | 'custom'
+  exerciseType?:
+    | 'token-counting'
+    | 'cost-calculation'
+    | 'structured-output'
+    | 'prompt-caching'
+    | 'content-moderation'
+    | 'input-validation'
+    | 'custom'
 }
 
 export function CodePlayground({
