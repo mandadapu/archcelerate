@@ -26,6 +26,35 @@ export const authOptions: NextAuthOptions = {
     // }),
   ],
   callbacks: {
+    async signIn({ user, account, profile }) {
+      // Allow automatic account linking for users with the same email
+      if (account?.provider && user.email) {
+        const existingUser = await prisma.user.findUnique({
+          where: { email: user.email },
+          include: { accounts: true },
+        })
+
+        // If user exists but doesn't have this provider linked, link it
+        if (existingUser && !existingUser.accounts.some(acc => acc.provider === account.provider)) {
+          await prisma.account.create({
+            data: {
+              userId: existingUser.id,
+              type: account.type,
+              provider: account.provider,
+              providerAccountId: account.providerAccountId,
+              refresh_token: account.refresh_token,
+              access_token: account.access_token,
+              expires_at: account.expires_at,
+              token_type: account.token_type,
+              scope: account.scope,
+              id_token: account.id_token,
+              session_state: account.session_state,
+            },
+          })
+        }
+      }
+      return true
+    },
     async session({ session, user }) {
       if (session?.user) {
         session.user.id = user.id
