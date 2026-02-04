@@ -8,8 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 
 export const metadata: Metadata = {
-  title: 'Week 2: Observability + Production',
-  description: 'Learn production-ready AI observability, monitoring, and deployment'
+  title: 'Week 2: AI Governance & Responsible AI',
+  description: 'Build production AI with proper governance, fairness, compliance, and safety controls'
 }
 
 export default async function Week6Page() {

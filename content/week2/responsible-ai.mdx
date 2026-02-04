@@ -1,0 +1,601 @@
+---
+title: "Responsible AI: Fairness, Transparency & Explainability"
+description: "Build fair, transparent, and explainable AI systems"
+estimatedMinutes: 60
+---
+
+import { CodePlayground } from '@/components/curriculum/CodePlayground'
+
+# Responsible AI: Fairness, Transparency & Explainability
+
+Build AI systems that are fair, transparent, and explainable for regulated industries.
+
+## Why Responsible AI Matters
+
+**Real-world impact**:
+- **Amazon hiring AI** (2018): Discriminated against women, scrapped after 1 year
+- **COMPAS recidivism** (2016): Higher false positive rates for Black defendants
+- **Apple Card** (2019): Lower credit limits for women vs. men with same credit score
+- **Cost of bias**: Lawsuits, regulatory fines, reputational damage
+
+**Regulatory pressure**:
+- **EU AI Act** (2024): High-risk AI requires explainability, bias testing
+- **ECOA** (US): Equal Credit Opportunity Act - must explain credit decisions
+- **GDPR Article 22**: Right to explanation for automated decisions
+- **HIPAA**: Medical AI must be auditable and explainable
+
+## The Three Pillars
+
+### 1. Fairness
+Ensure AI decisions don't discriminate based on protected attributes (race, gender, age, etc.)
+
+### 2. Transparency
+Users understand what data is used and how decisions are made
+
+### 3. Explainability
+Provide clear explanations for specific AI decisions
+
+---
+
+## Fairness: Detecting and Mitigating Bias
+
+### Types of Fairness
+
+**Demographic Parity** (Statistical Parity):
+- AI approves loans at same rate across all groups
+- Example: 60% approval for men → must be ~60% for women
+
+**Equal Opportunity**:
+- True positive rates equal across groups
+- Example: If qualified, approval rate should be same regardless of gender
+
+**Equalized Odds**:
+- Both true positive and false positive rates equal across groups
+- Stricter than equal opportunity
+
+**Individual Fairness**:
+- Similar individuals get similar outcomes
+- Example: Two people with same credit score get similar loan terms
+
+### Measuring Bias
+
+```typescript
+interface FairnessMetrics {
+  demographicParity: number    // Difference in positive rates
+  equalOpportunity: number     // Difference in TPR
+  equalizedOdds: number        // Max difference in TPR and FPR
+  disparateImpact: number      // Ratio of positive rates (should be > 0.8)
+}
+
+async function calculateFairnessMetrics(
+  predictions: Prediction[],
+  protectedAttribute: 'gender' | 'race' | 'age'
+): Promise<FairnessMetrics> {
+  // Group by protected attribute
+  const groups = groupBy(predictions, protectedAttribute)
+
+  // Calculate metrics for each group
+  const metrics = Object.keys(groups).map(group => ({
+    group,
+    positiveRate: groups[group].filter(p => p.prediction === 1).length / groups[group].length,
+    truePositiveRate: calculateTPR(groups[group]),
+    falsePositiveRate: calculateFPR(groups[group])
+  }))
+
+  // Calculate fairness scores
+  const positiveRates = metrics.map(m => m.positiveRate)
+  const tprValues = metrics.map(m => m.truePositiveRate)
+  const fprValues = metrics.map(m => m.falsePositiveRate)
+
+  return {
+    demographicParity: Math.max(...positiveRates) - Math.min(...positiveRates),
+    equalOpportunity: Math.max(...tprValues) - Math.min(...tprValues),
+    equalizedOdds: Math.max(
+      Math.max(...tprValues) - Math.min(...tprValues),
+      Math.max(...fprValues) - Math.min(...fprValues)
+    ),
+    disparateImpact: Math.min(...positiveRates) / Math.max(...positiveRates)
+  }
+}
+```
+
+### Bias Mitigation Strategies
+
+**1. Pre-processing** (fix training data):
+```typescript
+// Reweight samples to balance representation
+function reweightData(data: TrainingData[]) {
+  const groupCounts = countByGroup(data, 'gender')
+  const targetCount = Math.max(...Object.values(groupCounts))
+
+  return data.map(sample => ({
+    ...sample,
+    weight: targetCount / groupCounts[sample.gender]
+  }))
+}
+```
+
+**2. In-processing** (constrain model during training):
+```typescript
+// Add fairness constraint to loss function
+function fairnessConstrainedLoss(predictions, labels, groups) {
+  const baseLoss = crossEntropy(predictions, labels)
+
+  // Penalize demographic disparity
+  const groupRates = calculateGroupPositiveRates(predictions, groups)
+  const fairnessPenalty = variance(groupRates) * FAIRNESS_WEIGHT
+
+  return baseLoss + fairnessPenalty
+}
+```
+
+**3. Post-processing** (adjust predictions):
+```typescript
+// Adjust decision threshold per group to achieve equal opportunity
+function equalizeOpportunity(predictions: Prediction[], groups: string[]) {
+  // Find threshold per group that gives equal TPR
+  const targetTPR = 0.7
+
+  return groups.map(group => {
+    const groupPreds = predictions.filter(p => p.group === group)
+    const threshold = findThresholdForTPR(groupPreds, targetTPR)
+
+    return {
+      group,
+      threshold,
+      adjustedPredictions: groupPreds.map(p => ({
+        ...p,
+        decision: p.score >= threshold ? 1 : 0
+      }))
+    }
+  })
+}
+```
+
+### Try It Yourself: Bias Detection
+
+<CodePlayground
+  title="Interactive Bias Detection Demo"
+  description="Analyze a loan dataset for demographic bias and fairness metrics"
+  exerciseType="bias-detection"
+  code={`// This example analyzes loan approval data for bias
+// Calculates fairness metrics across demographic groups
+
+interface LoanApplication {
+  creditScore: number
+  income: number
+  gender: 'M' | 'F'
+  approved: boolean
+}
+
+// Synthetic dataset
+const applications: LoanApplication[] = [
+  // High credit score examples
+  { creditScore: 750, income: 80000, gender: 'M', approved: true },
+  { creditScore: 755, income: 82000, gender: 'F', approved: false }, // bias?
+  // ... more examples
+]
+
+// Calculate fairness metrics
+function analyzeBias(applications: LoanApplication[]) {
+  const maleApprovals = applications.filter(a => a.gender === 'M' && a.approved).length
+  const femaleApprovals = applications.filter(a => a.gender === 'F' && a.approved).length
+
+  // Demographic parity violation?
+  const disparity = Math.abs(maleApprovals - femaleApprovals)
+
+  return { disparity, isBiased: disparity > 0.2 }
+}`}
+/>
+
+---
+
+## Transparency: Model Cards & Data Sheets
+
+### Model Cards
+
+Document model capabilities, limitations, and intended use.
+
+**Example: Loan Approval Model Card**
+
+```markdown
+# Loan Approval Model Card
+
+## Model Details
+- **Developed by**: Finance AI Team
+- **Model type**: Gradient Boosted Trees (XGBoost)
+- **Version**: 2.1.0
+- **Last updated**: 2026-02-01
+
+## Intended Use
+- **Primary use**: Pre-screening loan applications ($5K-$50K personal loans)
+- **Out-of-scope**: Business loans, mortgages, applications > $50K
+
+## Training Data
+- **Source**: Historical loan applications (2020-2024)
+- **Size**: 500K applications
+- **Demographics**: 52% male, 48% female; 60% White, 20% Black, 15% Hispanic, 5% Asian
+- **Geographic**: US only (all 50 states)
+
+## Performance
+- **Overall accuracy**: 87%
+- **Precision**: 84% (true approvals / predicted approvals)
+- **Recall**: 82% (true approvals / actual qualified applicants)
+
+## Fairness Analysis
+- **Demographic parity**: 0.03 (within acceptable range < 0.05)
+- **Equal opportunity**: 0.04 (TPR difference between groups)
+- **Disparate impact ratio**: 0.91 (> 0.8 threshold)
+
+## Limitations
+- **Not suitable for**: Applications with co-signers, business loans
+- **Known issues**: Lower accuracy for applicants with <1 year credit history
+- **Refresh schedule**: Retrained quarterly with new data
+
+## Ethical Considerations
+- Regularly audited for bias (quarterly)
+- Human review required for declined applications > $25K
+- Appeals process available
+
+## Contact
+- Model owner: loans-ml-team@company.com
+```
+
+### Data Sheets
+
+Document training data characteristics.
+
+```typescript
+interface DataSheet {
+  // Composition
+  instances: number
+  timeRange: { start: string; end: string }
+  demographics: Record<string, number>
+
+  // Collection
+  collectionMethod: string
+  samplingStrategy: string
+
+  // Preprocessing
+  cleaningSteps: string[]
+  missingDataHandling: string
+
+  // Uses
+  recommendedUses: string[]
+  prohibitedUses: string[]
+
+  // Maintenance
+  updateFrequency: string
+  retentionPolicy: string
+}
+
+const loanDataSheet: DataSheet = {
+  instances: 500000,
+  timeRange: { start: '2020-01-01', end: '2024-12-31' },
+  demographics: {
+    male: 0.52,
+    female: 0.48,
+    age_18_30: 0.25,
+    age_31_50: 0.50,
+    age_51_plus: 0.25
+  },
+  collectionMethod: 'Automated from loan application system',
+  samplingStrategy: 'All applications, no sampling',
+  cleaningSteps: [
+    'Removed duplicates',
+    'Filtered incomplete applications',
+    'Anonymized PII'
+  ],
+  missingDataHandling: 'Imputed with median for numeric, mode for categorical',
+  recommendedUses: ['Personal loan screening', 'Risk assessment'],
+  prohibitedUses: ['Employment decisions', 'Housing decisions'],
+  updateFrequency: 'Quarterly',
+  retentionPolicy: 'Keep for 7 years per regulatory requirements'
+}
+```
+
+---
+
+## Explainability: Making AI Decisions Interpretable
+
+### Explainability Techniques
+
+| Technique | Scope | Use Case | Complexity |
+|-----------|-------|----------|------------|
+| **Feature Importance** | Global | Which features matter most? | Low |
+| **SHAP Values** | Local | Why this specific decision? | Medium |
+| **LIME** | Local | Counterfactual explanations | Medium |
+| **Partial Dependence** | Global | How does X affect output? | Medium |
+| **Anchors** | Local | Sufficient conditions | High |
+
+### Feature Importance (Global)
+
+```typescript
+interface FeatureImportance {
+  feature: string
+  importance: number
+  rank: number
+}
+
+async function getFeatureImportance(
+  model: MLModel,
+  features: string[]
+): Promise<FeatureImportance[]> {
+  // Get importance scores from model
+  const importances = await model.getFeatureImportances()
+
+  return features
+    .map((feature, i) => ({
+      feature,
+      importance: importances[i],
+      rank: 0
+    }))
+    .sort((a, b) => b.importance - a.importance)
+    .map((item, i) => ({ ...item, rank: i + 1 }))
+}
+
+// Example output:
+// [
+//   { feature: 'credit_score', importance: 0.35, rank: 1 },
+//   { feature: 'income', importance: 0.28, rank: 2 },
+//   { feature: 'debt_to_income', importance: 0.20, rank: 3 },
+//   { feature: 'age', importance: 0.10, rank: 4 },
+//   { feature: 'employment_years', importance: 0.07, rank: 5 }
+// ]
+```
+
+### SHAP Values (Local)
+
+**SHAP** (SHapley Additive exPlanations): Explains individual predictions
+
+```typescript
+interface SHAPExplanation {
+  prediction: number
+  baseValue: number
+  shapValues: Record<string, number>
+  topContributors: { feature: string; contribution: number }[]
+}
+
+async function explainPrediction(
+  model: MLModel,
+  instance: LoanApplication
+): Promise<SHAPExplanation> {
+  // Calculate SHAP values using game theory approach
+  const shapValues = await calculateSHAP(model, instance)
+
+  // Base value = average prediction across all training data
+  const baseValue = 0.5 // 50% approval rate
+
+  // Sort by absolute contribution
+  const topContributors = Object.entries(shapValues)
+    .map(([feature, value]) => ({ feature, contribution: value }))
+    .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
+    .slice(0, 5)
+
+  return {
+    prediction: baseValue + Object.values(shapValues).reduce((a, b) => a + b, 0),
+    baseValue,
+    shapValues,
+    topContributors
+  }
+}
+
+// Example explanation:
+// {
+//   prediction: 0.78,  // 78% probability of approval
+//   baseValue: 0.50,   // Average approval rate
+//   shapValues: {
+//     credit_score: +0.15,      // Increases approval by 15%
+//     income: +0.10,            // Increases by 10%
+//     debt_to_income: +0.05,    // Increases by 5%
+//     age: -0.02               // Decreases by 2%
+//   },
+//   topContributors: [
+//     { feature: 'credit_score', contribution: +0.15 },
+//     { feature: 'income', contribution: +0.10 }
+//   ]
+// }
+```
+
+**Human-readable explanation**:
+```typescript
+function generateExplanation(shap: SHAPExplanation): string {
+  const approved = shap.prediction > 0.5
+  const confidence = Math.abs(shap.prediction - 0.5) * 2 * 100
+
+  const explanation = [
+    `Decision: ${approved ? 'APPROVED' : 'DECLINED'}`,
+    `Confidence: ${confidence.toFixed(0)}%`,
+    ``,
+    `Key factors:`
+  ]
+
+  shap.topContributors.forEach(({ feature, contribution }) => {
+    const direction = contribution > 0 ? 'increased' : 'decreased'
+    const impact = Math.abs(contribution * 100).toFixed(0)
+    explanation.push(`  • ${feature}: ${direction} approval by ${impact}%`)
+  })
+
+  return explanation.join('\n')
+}
+
+// Output:
+// Decision: APPROVED
+// Confidence: 56%
+//
+// Key factors:
+//   • credit_score: increased approval by 15%
+//   • income: increased approval by 10%
+//   • debt_to_income: increased approval by 5%
+```
+
+### LIME (Counterfactual)
+
+**LIME** (Local Interpretable Model-agnostic Explanations): What would change the decision?
+
+```typescript
+async function generateCounterfactual(
+  model: MLModel,
+  instance: LoanApplication
+): Promise<string> {
+  // Find minimal changes needed to flip decision
+  const originalPrediction = await model.predict(instance)
+  const changes = []
+
+  // Test small perturbations
+  if (instance.creditScore < 700) {
+    const newInstance = { ...instance, creditScore: 700 }
+    const newPrediction = await model.predict(newInstance)
+
+    if (newPrediction > 0.5 && originalPrediction <= 0.5) {
+      changes.push(`Increase credit score to 700 (+${700 - instance.creditScore} points)`)
+    }
+  }
+
+  if (instance.income < 60000) {
+    const newInstance = { ...instance, income: 60000 }
+    const newPrediction = await model.predict(newInstance)
+
+    if (newPrediction > 0.5 && originalPrediction <= 0.5) {
+      changes.push(`Increase annual income to $60,000`)
+    }
+  }
+
+  return changes.length > 0
+    ? `To get approved, you would need to: ${changes.join(' OR ')}`
+    : 'Application meets approval criteria'
+}
+
+// Example output:
+// "To get approved, you would need to: Increase credit score to 700 (+35 points) OR Increase annual income to $60,000"
+```
+
+---
+
+## Practical Implementation
+
+### End-to-End Responsible AI Pipeline
+
+```typescript
+class ResponsibleAISystem {
+  constructor(
+    private model: MLModel,
+    private fairnessThresholds: FairnessThresholds
+  ) {}
+
+  async predict(application: LoanApplication): Promise<AIDecision> {
+    // 1. Make prediction
+    const score = await this.model.predict(application)
+
+    // 2. Generate explanation
+    const explanation = await explainPrediction(this.model, application)
+
+    // 3. Check fairness
+    const fairnessCheck = await this.checkFairness(application, score)
+
+    // 4. Audit trail
+    await this.logDecision({
+      applicationId: application.id,
+      score,
+      decision: score > 0.5,
+      explanation,
+      fairnessCheck,
+      timestamp: new Date()
+    })
+
+    return {
+      decision: score > 0.5 ? 'approved' : 'declined',
+      confidence: Math.abs(score - 0.5) * 2,
+      explanation: generateExplanation(explanation),
+      topFactors: explanation.topContributors,
+      fairnessChecked: fairnessCheck.passed,
+      appealAvailable: !fairnessCheck.passed || score < 0.55
+    }
+  }
+
+  private async checkFairness(
+    application: LoanApplication,
+    score: number
+  ): Promise<FairnessCheck> {
+    // Compare to similar applications from other demographic groups
+    const similarApps = await this.findSimilarApplications(application)
+    const groupScores = similarApps.map(app => ({
+      group: app.demographics,
+      score: app.score
+    }))
+
+    // Check if disparity exceeds threshold
+    const maxDisparity = Math.max(...groupScores.map(g => g.score)) -
+                         Math.min(...groupScores.map(g => g.score))
+
+    return {
+      passed: maxDisparity < this.fairnessThresholds.maxDisparity,
+      disparity: maxDisparity,
+      similarApplications: similarApps.length
+    }
+  }
+}
+```
+
+---
+
+## Regulatory Compliance
+
+### EU AI Act Requirements
+
+**For high-risk AI** (credit scoring, hiring, healthcare):
+- ✅ Risk management system
+- ✅ Data governance (quality, bias testing)
+- ✅ Technical documentation (model cards)
+- ✅ Record keeping (audit trails)
+- ✅ Transparency (user notifications)
+- ✅ Human oversight
+- ✅ Accuracy, robustness, cybersecurity
+
+### GDPR Article 22 (Automated Decisions)
+
+```typescript
+// User has right to explanation
+async function handleExplanationRequest(userId: string, decisionId: string) {
+  const decision = await prisma.aiDecision.findUnique({
+    where: { id: decisionId },
+    include: { explanation: true }
+  })
+
+  return {
+    decision: decision.outcome,
+    reasoning: decision.explanation.humanReadable,
+    factors: decision.explanation.topFactors,
+    appealProcess: 'Contact support@company.com within 30 days',
+    dataUsed: decision.explanation.features
+  }
+}
+```
+
+---
+
+## Key Takeaways
+
+1. **Fairness is measurable**: Use demographic parity, equal opportunity, disparate impact
+2. **Transparency builds trust**: Model cards and data sheets are essential
+3. **Explainability is required**: SHAP, LIME for regulated industries
+4. **Test for bias**: Pre-launch and continuous monitoring
+5. **Document everything**: Audit trails for regulatory compliance
+6. **Human oversight**: High-stakes decisions need human review
+
+## Further Reading
+
+- **Papers**:
+  - "Fairness Definitions Explained" (Verma & Rubin, 2018)
+  - "A Unified Approach to Interpreting Model Predictions" (SHAP, Lundberg 2017)
+  - "Why Should I Trust You?" (LIME, Ribeiro 2016)
+
+- **Tools**:
+  - Fairlearn (Microsoft): Bias detection and mitigation
+  - AI Fairness 360 (IBM): Comprehensive fairness toolkit
+  - What-If Tool (Google): Interactive model analysis
+
+- **Standards**:
+  - NIST AI Risk Management Framework
+  - ISO/IEC 23894: AI Risk Management
+  - IEEE 7000: Ethical AI Design

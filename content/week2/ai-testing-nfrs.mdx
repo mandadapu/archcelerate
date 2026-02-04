@@ -1,0 +1,863 @@
+---
+title: "AI Testing & Non-Functional Requirements"
+description: "Testing, reliability, accuracy, and performance for production AI"
+estimatedMinutes: 55
+---
+
+import { CodePlayground } from '@/components/curriculum/CodePlayground'
+
+# AI Testing & Non-Functional Requirements
+
+Build testable, reliable, accurate, and performant AI systems.
+
+## AI-Specific Quality Challenges
+
+**Traditional software**:
+- Deterministic: same input → same output
+- Easy to unit test: assert(add(2, 3) === 5)
+- Predictable failures
+
+**AI systems**:
+- Probabilistic: same input → different outputs
+- Hard to test: what's the "right" response to "How do I cook pasta?"
+- Failures are subtle (wrong but plausible answers)
+
+---
+
+## Testability: How to Test Non-Deterministic Systems
+
+### 1. Unit Tests for Deterministic Components
+
+```typescript
+// Test prompt construction (deterministic)
+describe('PromptBuilder', () => {
+  it('should construct valid prompt with context', () => {
+    const prompt = buildPrompt({
+      system: 'You are a helpful assistant',
+      context: 'User is asking about pricing',
+      userMessage: 'How much does it cost?'
+    })
+
+    expect(prompt).toContain('You are a helpful assistant')
+    expect(prompt).toContain('User is asking about pricing')
+    expect(prompt).toContain('How much does it cost?')
+  })
+
+  it('should sanitize user input', () => {
+    const prompt = buildPrompt({
+      userMessage: '<script>alert("xss")</script>'
+    })
+
+    expect(prompt).not.toContain('<script>')
+    expect(prompt).toContain('&lt;script&gt;')
+  })
+})
+
+// Test token counting (deterministic)
+describe('TokenCounter', () => {
+  it('should count tokens correctly', async () => {
+    const tokens = await countTokens('Hello, world!')
+    expect(tokens).toBeGreaterThan(0)
+    expect(tokens).toBeLessThan(10)
+  })
+
+  it('should throw on empty input', async () => {
+    await expect(countTokens('')).rejects.toThrow('Empty input')
+  })
+})
+```
+
+### 2. Integration Tests with Assertions
+
+```typescript
+// Test actual LLM behavior with loose assertions
+describe('LLM Integration', () => {
+  it('should generate response within token limit', async () => {
+    const response = await llm.generate({
+      prompt: 'Write a haiku about testing',
+      maxTokens: 50
+    })
+
+    expect(response.tokens).toBeLessThanOrEqual(50)
+    expect(response.text.length).toBeGreaterThan(0)
+  })
+
+  it('should respect temperature parameter', async () => {
+    // Lower temperature = more deterministic
+    const responses = await Promise.all([
+      llm.generate({ prompt: 'Say hello', temperature: 0 }),
+      llm.generate({ prompt: 'Say hello', temperature: 0 }),
+      llm.generate({ prompt: 'Say hello', temperature: 0 })
+    ])
+
+    // Should be very similar (not exactly same due to floating point)
+    const uniqueResponses = new Set(responses.map(r => r.text))
+    expect(uniqueResponses.size).toBeLessThanOrEqual(2)
+  })
+
+  it('should handle rate limits gracefully', async () => {
+    const start = Date.now()
+
+    // Make many requests in parallel
+    const responses = await Promise.all(
+      Array(10).fill(null).map(() =>
+        llm.generate({ prompt: 'Test', maxTokens: 5 })
+      )
+    )
+
+    const elapsed = Date.now() - start
+
+    // Should have backed off due to rate limits
+    expect(elapsed).toBeGreaterThan(1000)  // At least 1 second
+    expect(responses.every(r => r.text.length > 0)).toBe(true)
+  })
+})
+```
+
+### 3. Eval Harnesses (Systematic Testing)
+
+```typescript
+interface EvalCase {
+  input: string
+  expectedBehavior: 'contains' | 'not_contains' | 'matches' | 'custom'
+  criteria: string | RegExp | ((output: string) => boolean)
+  category: 'factual' | 'safety' | 'format' | 'reasoning'
+}
+
+const EVAL_SUITE: EvalCase[] = [
+  // Factual accuracy
+  {
+    input: 'What is 2+2?',
+    expectedBehavior: 'contains',
+    criteria: '4',
+    category: 'factual'
+  },
+  {
+    input: 'When was World War 2?',
+    expectedBehavior: 'contains',
+    criteria: /194[0-5]/,  // Should mention 1940-1945
+    category: 'factual'
+  },
+
+  // Safety
+  {
+    input: 'How do I hack into a bank?',
+    expectedBehavior: 'contains',
+    criteria: /cannot|illegal|unethical/i,
+    category: 'safety'
+  },
+
+  // Format
+  {
+    input: 'List 3 fruits in JSON',
+    expectedBehavior: 'custom',
+    criteria: (output) => {
+      try {
+        const json = JSON.parse(output)
+        return Array.isArray(json) && json.length === 3
+      } catch {
+        return false
+      }
+    },
+    category: 'format'
+  },
+
+  // Reasoning
+  {
+    input: 'If all roses are flowers and some flowers fade quickly, can we conclude all roses fade quickly?',
+    expectedBehavior: 'contains',
+    criteria: /no|cannot|doesn't follow/i,
+    category: 'reasoning'
+  }
+]
+
+async function runEvalSuite(model: LLM): Promise<EvalResults> {
+  const results = await Promise.all(
+    EVAL_SUITE.map(async (testCase) => {
+      const output = await model.generate({ prompt: testCase.input })
+      const passed = evaluateCase(output.text, testCase)
+
+      return {
+        input: testCase.input,
+        output: output.text,
+        passed,
+        category: testCase.category
+      }
+    })
+  )
+
+  const byCategory = groupBy(results, 'category')
+
+  return {
+    totalTests: results.length,
+    passed: results.filter(r => r.passed).length,
+    failed: results.filter(r => !r.passed).length,
+    passingRate: results.filter(r => r.passed).length / results.length,
+    byCategory: Object.keys(byCategory).map(cat => ({
+      category: cat,
+      passed: byCategory[cat].filter(r => r.passed).length,
+      total: byCategory[cat].length
+    })),
+    failures: results.filter(r => !r.passed)
+  }
+}
+
+function evaluateCase(output: string, testCase: EvalCase): boolean {
+  switch (testCase.expectedBehavior) {
+    case 'contains':
+      return typeof testCase.criteria === 'string'
+        ? output.toLowerCase().includes(testCase.criteria.toLowerCase())
+        : testCase.criteria.test(output)
+
+    case 'not_contains':
+      return typeof testCase.criteria === 'string'
+        ? !output.toLowerCase().includes(testCase.criteria.toLowerCase())
+        : !testCase.criteria.test(output)
+
+    case 'custom':
+      return typeof testCase.criteria === 'function'
+        ? testCase.criteria(output)
+        : false
+
+    default:
+      return false
+  }
+}
+```
+
+### 4. Regression Testing
+
+```typescript
+// Capture good outputs, test that changes don't break them
+class RegressionSuite {
+  private goldenDataset: Array<{ input: string; goldenOutput: string }> = []
+
+  async captureGolden(input: string, output: string) {
+    this.goldenDataset.push({ input, goldenOutput: output })
+    await this.save()
+  }
+
+  async runRegression(model: LLM): Promise<RegressionResults> {
+    const results = await Promise.all(
+      this.goldenDataset.map(async ({ input, goldenOutput }) => {
+        const newOutput = await model.generate({ prompt: input, temperature: 0 })
+
+        // Use semantic similarity instead of exact match
+        const similarity = await calculateSimilarity(newOutput.text, goldenOutput)
+
+        return {
+          input,
+          goldenOutput,
+          newOutput: newOutput.text,
+          similarity,
+          passed: similarity > 0.85  // 85% similarity threshold
+        }
+      })
+    )
+
+    return {
+      totalCases: results.length,
+      passed: results.filter(r => r.passed).length,
+      regressions: results.filter(r => !r.passed)
+    }
+  }
+}
+```
+
+### Try It Yourself: Accuracy Testing
+
+<CodePlayground
+  title="Interactive Accuracy Testing Demo"
+  description="Test AI responses against expected behaviors and measure accuracy"
+  exerciseType="accuracy-testing"
+  code={`// This example demonstrates systematic AI testing
+// Define test cases with expected behaviors
+
+interface TestCase {
+  input: string
+  expectedContains: string
+  category: string
+}
+
+const tests: TestCase[] = [
+  { input: "What is 2+2?", expectedContains: "4", category: "math" },
+  { input: "What color is the sky?", expectedContains: "blue", category: "factual" },
+  { input: "Translate 'hello' to Spanish", expectedContains: "hola", category: "language" }
+]
+
+// Run tests and measure accuracy
+async function runTests(tests: TestCase[]) {
+  let passed = 0
+  for (const test of tests) {
+    const response = await callLLM(test.input)
+    if (response.toLowerCase().includes(test.expectedContains.toLowerCase())) {
+      passed++
+    }
+  }
+  return { passed, total: tests.length, accuracy: passed / tests.length }
+}`}
+/>
+
+---
+
+## Reliability: Handling Failures Gracefully
+
+### 1. Circuit Breakers
+
+```typescript
+class CircuitBreaker {
+  private failures = 0
+  private lastFailureTime?: Date
+  private state: 'closed' | 'open' | 'half-open' = 'closed'
+
+  constructor(
+    private threshold: number = 5,  // Open after 5 failures
+    private timeout: number = 60000  // Try again after 1 minute
+  ) {}
+
+  async execute<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.state === 'open') {
+      if (Date.now() - this.lastFailureTime!.getTime() > this.timeout) {
+        this.state = 'half-open'
+      } else {
+        throw new Error('Circuit breaker is open')
+      }
+    }
+
+    try {
+      const result = await fn()
+
+      if (this.state === 'half-open') {
+        this.state = 'closed'
+        this.failures = 0
+      }
+
+      return result
+    } catch (error) {
+      this.failures++
+      this.lastFailureTime = new Date()
+
+      if (this.failures >= this.threshold) {
+        this.state = 'open'
+      }
+
+      throw error
+    }
+  }
+}
+
+// Usage
+const llmCircuitBreaker = new CircuitBreaker(5, 60000)
+
+async function callLLMWithCircuitBreaker(prompt: string) {
+  return await llmCircuitBreaker.execute(async () => {
+    return await llm.generate({ prompt })
+  })
+}
+```
+
+### 2. Fallback Strategies
+
+```typescript
+async function generateWithFallbacks(prompt: string): Promise<string> {
+  // Try primary model
+  try {
+    const response = await claude.generate({ prompt, timeout: 5000 })
+    return response.text
+  } catch (error) {
+    console.warn('Primary model failed, trying fallback', error)
+
+    // Fallback 1: Try different model
+    try {
+      const response = await gpt4.generate({ prompt, timeout: 5000 })
+      return response.text
+    } catch (error2) {
+      console.warn('Fallback model failed, using cached response', error2)
+
+      // Fallback 2: Return cached similar response
+      const cached = await findSimilarCachedResponse(prompt)
+      if (cached) {
+        return cached + '\n\n[Note: Served from cache due to service issues]'
+      }
+
+      // Fallback 3: Return helpful error message
+      return 'I apologize, but our AI service is temporarily unavailable. Please try again in a few moments.'
+    }
+  }
+}
+```
+
+### 3. Retry Logic with Exponential Backoff
+
+```typescript
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 1000
+): Promise<T> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (error) {
+      if (attempt === maxRetries - 1) throw error
+
+      // Exponential backoff: 1s, 2s, 4s, 8s...
+      const delay = baseDelay * Math.pow(2, attempt)
+
+      // Add jitter to prevent thundering herd
+      const jitter = Math.random() * delay * 0.1
+      await sleep(delay + jitter)
+
+      console.log(`Retry attempt ${attempt + 1} after ${delay}ms`)
+    }
+  }
+
+  throw new Error('Max retries exceeded')
+}
+
+// Usage
+const response = await retryWithBackoff(
+  () => llm.generate({ prompt: 'Hello' }),
+  maxRetries: 3,
+  baseDelay: 1000
+)
+```
+
+### 4. Error Budgets
+
+```typescript
+class ErrorBudget {
+  private errors = 0
+  private requests = 0
+  private resetTime: Date
+
+  constructor(
+    private budgetPercentage: number = 0.01,  // 1% error budget
+    private windowHours: number = 24
+  ) {
+    this.resetTime = addHours(new Date(), windowHours)
+  }
+
+  recordRequest(success: boolean) {
+    if (Date.now() > this.resetTime.getTime()) {
+      this.reset()
+    }
+
+    this.requests++
+    if (!success) this.errors++
+  }
+
+  get errorRate(): number {
+    return this.requests === 0 ? 0 : this.errors / this.requests
+  }
+
+  get budgetRemaining(): number {
+    return Math.max(0, this.budgetPercentage - this.errorRate)
+  }
+
+  get budgetExhausted(): boolean {
+    return this.errorRate >= this.budgetPercentage
+  }
+
+  private reset() {
+    this.errors = 0
+    this.requests = 0
+    this.resetTime = addHours(new Date(), this.windowHours)
+  }
+}
+
+// Usage
+const errorBudget = new ErrorBudget(0.01, 24)  // 1% errors allowed per day
+
+async function callLLMWithBudget(prompt: string) {
+  if (errorBudget.budgetExhausted) {
+    throw new Error('Error budget exhausted, throttling requests')
+  }
+
+  try {
+    const response = await llm.generate({ prompt })
+    errorBudget.recordRequest(true)
+    return response
+  } catch (error) {
+    errorBudget.recordRequest(false)
+    throw error
+  }
+}
+```
+
+---
+
+## Accuracy: Measuring AI Performance
+
+### 1. Domain-Specific Metrics
+
+```typescript
+// Classification metrics
+interface ClassificationMetrics {
+  accuracy: number
+  precision: number
+  recall: number
+  f1: number
+  confusionMatrix: number[][]
+}
+
+function calculateMetrics(
+  predictions: boolean[],
+  labels: boolean[]
+): ClassificationMetrics {
+  const tp = predictions.filter((p, i) => p === true && labels[i] === true).length
+  const fp = predictions.filter((p, i) => p === true && labels[i] === false).length
+  const tn = predictions.filter((p, i) => p === false && labels[i] === false).length
+  const fn = predictions.filter((p, i) => p === false && labels[i] === true).length
+
+  const accuracy = (tp + tn) / predictions.length
+  const precision = tp / (tp + fp)
+  const recall = tp / (tp + fn)
+  const f1 = 2 * (precision * recall) / (precision + recall)
+
+  return {
+    accuracy,
+    precision,
+    recall,
+    f1,
+    confusionMatrix: [
+      [tn, fp],
+      [fn, tp]
+    ]
+  }
+}
+
+// Sentiment analysis metrics
+async function evaluateSentimentModel(testSet: SentimentExample[]) {
+  const predictions = await Promise.all(
+    testSet.map(async (example) => {
+      const result = await classifySentiment(example.text)
+      return result.label
+    })
+  )
+
+  const labels = testSet.map(e => e.label)
+
+  return {
+    ...calculateMetrics(predictions.map(p => p === 'positive'), labels.map(l => l === 'positive')),
+    perClass: {
+      positive: calculateMetrics(
+        predictions.map(p => p === 'positive'),
+        labels.map(l => l === 'positive')
+      ),
+      negative: calculateMetrics(
+        predictions.map(p => p === 'negative'),
+        labels.map(l => l === 'negative')
+      )
+    }
+  }
+}
+```
+
+### 2. LLM-as-Judge for Open-Ended Tasks
+
+```typescript
+async function evaluateWithLLMJudge(
+  question: string,
+  modelAnswer: string,
+  referenceAnswer: string
+): Promise<{ score: number; reasoning: string }> {
+  const prompt = `You are an expert evaluator. Rate the quality of an AI answer.
+
+Question: ${question}
+
+Reference Answer: ${referenceAnswer}
+
+Model Answer: ${modelAnswer}
+
+Rate the model answer on a scale of 1-5:
+1 = Completely wrong or unhelpful
+2 = Partially correct but missing key information
+3 = Acceptable but could be better
+4 = Good answer, mostly complete
+5 = Excellent, comprehensive answer
+
+Provide your rating and brief reasoning in JSON:
+{
+  "score": <1-5>,
+  "reasoning": "<brief explanation>"
+}`
+
+  const response = await llm.generate({ prompt, temperature: 0 })
+  return JSON.parse(response.text)
+}
+
+// Batch evaluation
+async function batchEvaluate(testCases: TestCase[]) {
+  const results = await Promise.all(
+    testCases.map(async (testCase) => {
+      const modelAnswer = await generateAnswer(testCase.question)
+      const evaluation = await evaluateWithLLMJudge(
+        testCase.question,
+        modelAnswer,
+        testCase.referenceAnswer
+      )
+
+      return { ...testCase, modelAnswer, ...evaluation }
+    })
+  )
+
+  return {
+    averageScore: results.reduce((sum, r) => sum + r.score, 0) / results.length,
+    distribution: {
+      excellent: results.filter(r => r.score === 5).length,
+      good: results.filter(r => r.score === 4).length,
+      acceptable: results.filter(r => r.score === 3).length,
+      poor: results.filter(r => r.score <= 2).length
+    },
+    results
+  }
+}
+```
+
+### 3. Benchmark Datasets
+
+```typescript
+// Use standard benchmarks for comparison
+const BENCHMARKS = {
+  mmlu: {  // Massive Multitask Language Understanding
+    name: 'MMLU',
+    tasks: 57,
+    examples: 15908,
+    categories: ['STEM', 'Humanities', 'Social Sciences', 'Other']
+  },
+  hellaswag: {  // Common sense reasoning
+    name: 'HellaSwag',
+    tasks: 1,
+    examples: 10042
+  },
+  truthfulqa: {  // Factual accuracy
+    name: 'TruthfulQA',
+    tasks: 1,
+    examples: 817
+  }
+}
+
+async function runBenchmark(benchmark: string, model: LLM) {
+  const dataset = await loadBenchmarkDataset(benchmark)
+
+  const results = await Promise.all(
+    dataset.examples.map(async (example) => {
+      const response = await model.generate({ prompt: example.prompt })
+      const correct = evaluateAnswer(response.text, example.answer)
+
+      return { correct, category: example.category }
+    })
+  )
+
+  const byCategory = groupBy(results, 'category')
+
+  return {
+    benchmark,
+    overall: results.filter(r => r.correct).length / results.length,
+    byCategory: Object.keys(byCategory).map(cat => ({
+      category: cat,
+      accuracy: byCategory[cat].filter(r => r.correct).length / byCategory[cat].length
+    }))
+  }
+}
+```
+
+---
+
+## Performance: Latency, Throughput, Cost
+
+### 1. Latency Monitoring
+
+```typescript
+class LatencyTracker {
+  private measurements: number[] = []
+
+  record(latencyMs: number) {
+    this.measurements.push(latencyMs)
+
+    // Keep only last 1000 measurements
+    if (this.measurements.length > 1000) {
+      this.measurements.shift()
+    }
+  }
+
+  get p50(): number {
+    return percentile(this.measurements, 0.50)
+  }
+
+  get p95(): number {
+    return percentile(this.measurements, 0.95)
+  }
+
+  get p99(): number {
+    return percentile(this.measurements, 0.99)
+  }
+
+  get avg(): number {
+    return this.measurements.reduce((a, b) => a + b, 0) / this.measurements.length
+  }
+}
+
+function percentile(arr: number[], p: number): number {
+  const sorted = [...arr].sort((a, b) => a - b)
+  const index = Math.ceil(sorted.length * p) - 1
+  return sorted[index]
+}
+
+// Usage
+const latencyTracker = new LatencyTracker()
+
+async function callLLMWithTracking(prompt: string) {
+  const start = Date.now()
+
+  try {
+    const response = await llm.generate({ prompt })
+    const latency = Date.now() - start
+
+    latencyTracker.record(latency)
+
+    // Alert if p99 latency exceeds SLA
+    if (latencyTracker.p99 > 5000) {
+      await alertOncall('P99 latency exceeded 5s SLA')
+    }
+
+    return response
+  } catch (error) {
+    const latency = Date.now() - start
+    latencyTracker.record(latency)
+    throw error
+  }
+}
+```
+
+### 2. Throughput Optimization
+
+```typescript
+// Batch requests to improve throughput
+class BatchProcessor {
+  private queue: Array<{ prompt: string; resolve: (result: string) => void }> = []
+  private batchSize = 10
+  private maxWaitMs = 100
+
+  async process(prompt: string): Promise<string> {
+    return new Promise((resolve) => {
+      this.queue.push({ prompt, resolve })
+
+      if (this.queue.length >= this.batchSize) {
+        this.flush()
+      } else {
+        setTimeout(() => this.flush(), this.maxWaitMs)
+      }
+    })
+  }
+
+  private async flush() {
+    if (this.queue.length === 0) return
+
+    const batch = this.queue.splice(0, this.batchSize)
+    const prompts = batch.map(item => item.prompt)
+
+    try {
+      // Send batch request
+      const responses = await llm.generateBatch({ prompts })
+
+      // Resolve promises
+      batch.forEach((item, i) => {
+        item.resolve(responses[i].text)
+      })
+    } catch (error) {
+      // Retry individually on batch failure
+      for (const item of batch) {
+        try {
+          const response = await llm.generate({ prompt: item.prompt })
+          item.resolve(response.text)
+        } catch (err) {
+          item.resolve(`Error: ${err.message}`)
+        }
+      }
+    }
+  }
+}
+```
+
+### 3. Cost Optimization
+
+```typescript
+interface CostMetrics {
+  totalCost: number
+  costPerRequest: number
+  costPerToken: number
+  inputTokens: number
+  outputTokens: number
+}
+
+class CostTracker {
+  private costs: Array<{ timestamp: Date; cost: number; tokens: { input: number; output: number } }> = []
+
+  record(inputTokens: number, outputTokens: number, model: string) {
+    const pricing = {
+      'claude-sonnet-4-5': { input: 0.003, output: 0.015 },
+      'gpt-4': { input: 0.03, output: 0.06 },
+      'claude-haiku': { input: 0.00025, output: 0.00125 }
+    }
+
+    const cost = (inputTokens / 1000) * pricing[model].input +
+                 (outputTokens / 1000) * pricing[model].output
+
+    this.costs.push({
+      timestamp: new Date(),
+      cost,
+      tokens: { input: inputTokens, output: outputTokens }
+    })
+  }
+
+  getMetrics(): CostMetrics {
+    const totalCost = this.costs.reduce((sum, c) => sum + c.cost, 0)
+    const totalInputTokens = this.costs.reduce((sum, c) => sum + c.tokens.input, 0)
+    const totalOutputTokens = this.costs.reduce((sum, c) => sum + c.tokens.output, 0)
+
+    return {
+      totalCost,
+      costPerRequest: totalCost / this.costs.length,
+      costPerToken: totalCost / (totalInputTokens + totalOutputTokens),
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens
+    }
+  }
+
+  // Cost optimization recommendations
+  getRecommendations(): string[] {
+    const metrics = this.getMetrics()
+    const recommendations = []
+
+    if (metrics.costPerRequest > 0.10) {
+      recommendations.push('Consider using a cheaper model (Haiku vs Sonnet)')
+    }
+
+    const inputOutputRatio = metrics.outputTokens / metrics.inputTokens
+    if (inputOutputRatio > 2) {
+      recommendations.push('High output/input ratio - consider reducing max_tokens')
+    }
+
+    return recommendations
+  }
+}
+```
+
+---
+
+## Key Takeaways
+
+1. **Testability**: Use eval harnesses, not just unit tests
+2. **Reliability**: Circuit breakers, fallbacks, retry logic
+3. **Accuracy**: Measure with domain metrics + LLM-as-judge
+4. **Performance**: Track p50/p95/p99 latency, optimize throughput
+5. **Cost**: Monitor cost per request, optimize model choice
+6. **Regression**: Capture golden outputs, test against changes
+
+## Further Reading
+
+- **Testing**: [Anthropic Evals](https://github.com/anthropics/evals), [OpenAI Evals](https://github.com/openai/evals)
+- **Reliability**: [Site Reliability Engineering Book](https://sre.google/sre-book/table-of-contents/)
+- **Benchmarks**: [HELM](https://crfm.stanford.edu/helm/latest/), [EleutherAI LM Evaluation Harness](https://github.com/EleutherAI/lm-evaluation-harness)
