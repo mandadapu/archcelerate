@@ -69,6 +69,7 @@ const weekData = [
       'Test and validate AI systems with NFRs'
     ],
     concepts: [
+      { slug: 'governance-frameworks', title: 'AI Governance Frameworks', minutes: 45 },
       { slug: 'governance-foundations', title: 'AI Governance Foundations', minutes: 35 },
       { slug: 'responsible-ai', title: 'Responsible AI: Fairness, Transparency & Explainability', minutes: 60 },
       { slug: 'compliance-patterns', title: 'Domain Compliance Patterns', minutes: 50 },
