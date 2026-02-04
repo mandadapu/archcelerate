@@ -1,0 +1,1668 @@
+---
+title: "Production RAG Architecture"
+description: "Build enterprise-grade RAG systems with hybrid search, multi-tenancy, and data lifecycle management"
+estimatedMinutes: 50
+---
+
+# Production RAG Architecture
+
+Build enterprise-grade RAG systems that handle multi-tenancy, security, data lifecycle, and scale.
+
+> **For Architects**: This guide covers production considerations beyond naive RAG (Query → Embed → Retrieve). Learn hybrid search, ACL-based filtering, incremental syncing, and performance optimization.
+
+## The Production Gap
+
+**Naive RAG** (used in tutorials):
+```
+Query → Embed → Vector Search → Top-K Results → LLM
+```
+
+**Production RAG** (what enterprises need):
+```
+┌─────────────┐
+│ User Query  │ "Show me part #9921 specs"
+└──────┬──────┘
+       │
+       ▼
+┌──────────────────────────────────────────────────┐
+│ Layer 1: QUERY TRANSFORMATION                    │
+│ - Clean up query                                 │
+│ - Expand acronyms ("specs" → "specifications")  │
+│ - Add context from conversation history          │
+└──────────────────┬───────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────┐
+│ Layer 2: SEMANTIC CACHE CHECK                    │
+│ - Check Redis for similar queries               │
+│ - Return cached result if similarity > 0.95      │
+└──────────────────┬───────────────────────────────┘
+                   │ (cache miss)
+                   ▼
+┌──────────────────────────────────────────────────┐
+│ Layer 3: HYBRID RETRIEVAL                       │
+│ ┌────────────────┐  ┌─────────────────┐        │
+│ │ Vector Search  │  │ Keyword (BM25)  │        │
+│ │ (semantic)     │  │ (exact matches) │        │
+│ └────────┬───────┘  └────────┬────────┘        │
+│          └──────────┬─────────┘                 │
+│                     ▼                            │
+│          Reciprocal Rank Fusion                 │
+│          (Combine rankings)                      │
+└──────────────────┬───────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────┐
+│ Layer 4: ACL FILTERING                          │
+│ - Filter results by user permissions            │
+│ - Remove unauthorized documents                  │
+└──────────────────┬───────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────┐
+│ Layer 5: RERANKING                              │
+│ - Cross-encoder scores query-doc relevance      │
+│ - Keep top-3 high-quality results               │
+│ - ⚠️ More context ≠ better (Lost in Middle)     │
+└──────────────────┬───────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────┐
+│ Layer 6: LLM GENERATION                         │
+│ - Augment prompt with top-3 chunks              │
+│ - Generate grounded response                     │
+└──────────────────┬───────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────┐
+│ Layer 7: EVALUATION & MONITORING                │
+│ - RAGAS: Faithfulness, Answer Relevance         │
+│ - Log metrics for continuous improvement         │
+└──────────────────────────────────────────────────┘
+```
+
+**Key Differences**:
+- **Naive**: 5 steps, no optimization
+- **Production**: 7 layers with caching, security, quality control
+
+---
+
+## 1. The "Retrieval Gap": Hybrid Search
+
+**Problem**: Vector search alone fails on exact matches (Part IDs, product codes, acronyms).
+
+**Solution**: Combine Vector (semantic) + Keyword (BM25) search.
+
+**Key Finding**: Hybrid search improves retrieval accuracy by 15-25% in enterprise settings.
+
+### BM25 Keyword Search
+
+```typescript
+import { BM25 } from 'bm25-ts'
+
+interface Document {
+  id: string
+  text: string
+  metadata: Record<string, any>
+}
+
+class KeywordSearchIndex {
+  private bm25: BM25
+  private documents: Document[]
+
+  constructor(documents: Document[]) {
+    this.documents = documents
+
+    // Tokenize documents for BM25
+    const tokenizedDocs = documents.map(doc =>
+      doc.text.toLowerCase().split(/\W+/)
+    )
+
+    this.bm25 = new BM25(tokenizedDocs)
+  }
+
+  search(query: string, topK: number = 10): Array<{ doc: Document; score: number }> {
+    const tokenizedQuery = query.toLowerCase().split(/\W+/)
+    const scores = this.bm25.search(tokenizedQuery)
+
+    return scores
+      .map((score, index) => ({
+        doc: this.documents[index],
+        score
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, topK)
+  }
+}
+```
+
+### Hybrid Search Implementation
+
+```typescript
+interface SearchConfig {
+  vectorWeight: number    // 0.0 - 1.0
+  keywordWeight: number   // 0.0 - 1.0
+  topK: number
+}
+
+class HybridSearchEngine {
+  constructor(
+    private vectorDB: VectorDatabase,
+    private keywordIndex: KeywordSearchIndex,
+    private config: SearchConfig = {
+      vectorWeight: 0.7,
+      keywordWeight: 0.3,
+      topK: 10
+    }
+  ) {}
+
+  async search(query: string): Promise<Document[]> {
+    // 1. Vector search (semantic)
+    const queryEmbedding = await embed(query)
+    const vectorResults = await this.vectorDB.query({
+      vector: queryEmbedding,
+      topK: 20  // Over-fetch for fusion
+    })
+
+    // 2. Keyword search (BM25)
+    const keywordResults = this.keywordIndex.search(query, 20)
+
+    // 3. Reciprocal Rank Fusion (RRF)
+    const fused = this.reciprocalRankFusion([
+      vectorResults.map(r => ({ doc: r, score: r.similarity })),
+      keywordResults
+    ])
+
+    // 4. Return top-K
+    return fused.slice(0, this.config.topK).map(r => r.doc)
+  }
+
+  /**
+   * Reciprocal Rank Fusion (RRF)
+   * Combines multiple ranked lists without needing to normalize scores
+   */
+  private reciprocalRankFusion(
+    rankings: Array<Array<{ doc: Document; score: number }>>,
+    k: number = 60
+  ): Array<{ doc: Document; score: number }> {
+    const scores = new Map<string, number>()
+    const docs = new Map<string, Document>()
+
+    for (const ranking of rankings) {
+      ranking.forEach((result, index) => {
+        const docId = result.doc.id
+        const rrfScore = 1 / (k + index + 1)
+
+        scores.set(docId, (scores.get(docId) || 0) + rrfScore)
+        docs.set(docId, result.doc)
+      })
+    }
+
+    return Array.from(scores.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([docId, score]) => ({
+        doc: docs.get(docId)!,
+        score
+      }))
+  }
+}
+```
+
+### Postgres-Native Hybrid Search with RRF
+
+For teams using **pgvector**, you can implement RRF directly in SQL for better performance:
+
+```sql
+-- Hybrid search combining pgvector (semantic) + tsvector (full-text)
+-- Using Reciprocal Rank Fusion (RRF) to combine rankings
+
+WITH vector_search AS (
+  -- Semantic search with pgvector
+  SELECT
+    id,
+    content,
+    metadata,
+    1.0 / (60 + row_number() OVER (ORDER BY embedding <=> $1::vector)) AS rrf_score
+  FROM document_chunks
+  ORDER BY embedding <=> $1::vector
+  LIMIT 20
+),
+keyword_search AS (
+  -- Full-text search with tsvector
+  SELECT
+    id,
+    content,
+    metadata,
+    1.0 / (60 + row_number() OVER (ORDER BY ts_rank(content_tsv, query) DESC)) AS rrf_score
+  FROM document_chunks,
+       to_tsquery('english', $2) query
+  WHERE content_tsv @@ query
+  ORDER BY ts_rank(content_tsv, query) DESC
+  LIMIT 20
+)
+-- Combine both rankings with RRF
+SELECT
+  d.id,
+  d.content,
+  d.metadata,
+  COALESCE(v.rrf_score, 0) + COALESCE(k.rrf_score, 0) AS combined_score
+FROM document_chunks d
+LEFT JOIN vector_search v ON d.id = v.id
+LEFT JOIN keyword_search k ON d.id = k.id
+WHERE v.id IS NOT NULL OR k.id IS NOT NULL
+ORDER BY combined_score DESC
+LIMIT 10;
+```
+
+**TypeScript wrapper**:
+
+```typescript
+interface HybridSearchParams {
+  queryEmbedding: number[]
+  queryText: string
+  topK?: number
+}
+
+async function hybridSearchPostgres(
+  params: HybridSearchParams
+): Promise<Document[]> {
+  const { queryEmbedding, queryText, topK = 10 } = params
+
+  // Convert query text to tsquery format
+  const tsQuery = queryText
+    .split(/\s+/)
+    .map(term => term + ':*')
+    .join(' & ')
+
+  const result = await pool.query(
+    `
+    WITH vector_search AS (
+      SELECT
+        id, content, metadata,
+        1.0 / (60 + row_number() OVER (ORDER BY embedding <=> $1::vector)) AS rrf_score
+      FROM document_chunks
+      ORDER BY embedding <=> $1::vector
+      LIMIT 20
+    ),
+    keyword_search AS (
+      SELECT
+        id, content, metadata,
+        1.0 / (60 + row_number() OVER (ORDER BY ts_rank(content_tsv, query) DESC)) AS rrf_score
+      FROM document_chunks, to_tsquery('english', $2) query
+      WHERE content_tsv @@ query
+      ORDER BY ts_rank(content_tsv, query) DESC
+      LIMIT 20
+    )
+    SELECT
+      d.id, d.content, d.metadata,
+      COALESCE(v.rrf_score, 0) + COALESCE(k.rrf_score, 0) AS combined_score
+    FROM document_chunks d
+    LEFT JOIN vector_search v ON d.id = v.id
+    LEFT JOIN keyword_search k ON d.id = k.id
+    WHERE v.id IS NOT NULL OR k.id IS NOT NULL
+    ORDER BY combined_score DESC
+    LIMIT $3
+    `,
+    [pgvector.toSql(queryEmbedding), tsQuery, topK]
+  )
+
+  return result.rows
+}
+```
+
+**Why RRF works**:
+- **No score normalization needed**: Vector similarity and BM25 scores are on different scales. RRF uses ranks, not raw scores.
+- **Robust**: Works even when one method returns no results
+- **Simple**: `1/(k + rank)` formula is easy to implement and understand
+- **k parameter** (typically 60): Controls how much weight to give lower-ranked results
+
+**When to use what**:
+- **Vector only**: Semantic queries, paraphrasing ("how to reset password" → "password recovery")
+- **Keyword only**: Exact matches, IDs, codes ("Part #9921")
+- **Hybrid**: Production systems (use both, 70/30 split)
+
+> **Deep Dive**: See [Week 9: Hybrid Search](../../week9/hybrid-search.mdx) for BM25 implementation details and advanced fusion techniques.
+
+---
+
+## 2. Multi-Tenancy & Security: ACL-Based Filtering
+
+**Problem**: In multi-tenant systems, users must only see documents they have permission to access.
+
+**Solution**: Metadata filtering for Access Control Lists (ACLs) **before** the LLM sees results.
+
+### The Architect's Key Finding: Pre-filtering vs Post-filtering
+
+**❌ Post-filtering (Anti-pattern)**:
+```typescript
+// BAD: Retrieve first, filter later
+const allResults = await vectorDB.query({ vector: queryEmbedding, topK: 10 })
+const authorized = allResults.filter(doc => userHasAccess(user, doc))
+// Problem: You might be left with only 2 results after filtering 8!
+```
+
+**Why this fails**:
+- You retrieve top-10 most similar chunks across ALL documents
+- Then filter out the 8 chunks the user can't see
+- You're left with only 2 chunks, which might not be the most relevant authorized ones
+- The vector DB never searched within the user's authorized document set
+
+**✅ Pre-filtering (Best practice)**:
+```typescript
+// GOOD: Filter at query time
+const results = await vectorDB.query({
+  vector: queryEmbedding,
+  topK: 10,
+  filter: { teamId: user.teamId }  // Search ONLY authorized documents
+})
+// Result: Top-10 most similar chunks from documents user can access
+```
+
+**Why this works**:
+- The vector DB only searches within documents the user is authorized to see
+- You get the top-10 most relevant chunks from the authorized set
+- No information leakage, no incomplete results
+- Much better retrieval quality
+
+**Performance comparison**:
+
+| Approach | Search Space | Results Quality | Security Risk |
+|----------|-------------|-----------------|---------------|
+| Post-filtering | All documents (10M) | Poor (incomplete top-K) | High (leakage possible) |
+| Pre-filtering | Authorized only (100K) | Good (true top-K) | Low (never sees unauthorized) |
+
+### ACL-Based Retrieval
+
+```typescript
+interface DocumentMetadata {
+  docId: string
+  source: string
+  createdAt: Date
+  // Access control
+  owner: string
+  teamId: string
+  accessLevel: 'public' | 'team' | 'private'
+  allowedUsers: string[]
+  allowedTeams: string[]
+}
+
+interface UserContext {
+  userId: string
+  teamId: string
+  role: 'admin' | 'member' | 'viewer'
+}
+
+/**
+ * Retrieve documents with ACL filtering
+ * Security boundary: Filter BEFORE sending to LLM
+ */
+async function secureRetrieve(
+  query: string,
+  userContext: UserContext,
+  topK: number = 5
+): Promise<Document[]> {
+  const queryEmbedding = await embed(query)
+
+  // Build ACL filter
+  const aclFilter = {
+    $or: [
+      // Public documents
+      { accessLevel: { $eq: 'public' } },
+
+      // Team documents where user is team member
+      {
+        accessLevel: { $eq: 'team' },
+        teamId: { $eq: userContext.teamId }
+      },
+
+      // Private documents where user is explicitly allowed
+      {
+        accessLevel: { $eq: 'private' },
+        allowedUsers: { $in: [userContext.userId] }
+      },
+
+      // Documents owned by user
+      {
+        owner: { $eq: userContext.userId }
+      }
+    ]
+  }
+
+  // Vector search WITH metadata filtering
+  const results = await vectorDB.query({
+    vector: queryEmbedding,
+    topK: topK * 2,  // Over-fetch to account for filtering
+    filter: aclFilter,
+    includeMetadata: true
+  })
+
+  // Additional permission check (defense in depth)
+  const authorized = results.filter(doc =>
+    hasAccess(userContext, doc.metadata as DocumentMetadata)
+  )
+
+  return authorized.slice(0, topK)
+}
+
+/**
+ * Check if user has access to document
+ */
+function hasAccess(
+  userContext: UserContext,
+  metadata: DocumentMetadata
+): boolean {
+  // Admin can see everything
+  if (userContext.role === 'admin') {
+    return true
+  }
+
+  // Public documents
+  if (metadata.accessLevel === 'public') {
+    return true
+  }
+
+  // Owner can always see their documents
+  if (metadata.owner === userContext.userId) {
+    return true
+  }
+
+  // Team documents
+  if (metadata.accessLevel === 'team' && metadata.teamId === userContext.teamId) {
+    return true
+  }
+
+  // Explicitly allowed users
+  if (metadata.allowedUsers.includes(userContext.userId)) {
+    return true
+  }
+
+  // Explicitly allowed teams
+  if (metadata.allowedTeams.includes(userContext.teamId)) {
+    return true
+  }
+
+  return false
+}
+```
+
+### Postgres-Native ACL Filtering
+
+If you're using **pgvector** with Postgres, you can push the filtering directly to the database:
+
+```typescript
+/**
+ * Secure search using Postgres + pgvector with SQL-level filtering
+ * Filter is applied at query time, not post-retrieval
+ */
+async function secureSearchPostgres(
+  queryEmbedding: number[],
+  userId: string,
+  userRoles: string[],
+  topK: number = 5
+): Promise<Document[]> {
+  const result = await pool.query(
+    `
+    SELECT
+      id,
+      content,
+      metadata,
+      embedding <=> $1::vector AS distance
+    FROM document_chunks
+    WHERE
+      -- Pre-filter: Only search documents user can access
+      (
+        -- User is in allowed roles
+        metadata->'allowed_roles' ?| $2
+        OR
+        -- User is the owner
+        metadata->>'owner_id' = $3
+        OR
+        -- Document is public
+        metadata->>'access_level' = 'public'
+      )
+    ORDER BY embedding <=> $1::vector
+    LIMIT $4
+    `,
+    [pgvector.toSql(queryEmbedding), userRoles, userId, topK]
+  )
+
+  return result.rows
+}
+```
+
+**Key advantages**:
+- **Filter happens at query time**: Postgres only searches authorized documents
+- **Leverages Postgres indexes**: Can use HNSW or IVFFlat indexes with filtered queries
+- **No over-fetching**: Don't retrieve unauthorized documents at all
+- **Audit-friendly**: Database logs capture access patterns
+
+**Metadata schema for ACL**:
+
+```sql
+-- Example metadata structure for ACL
+CREATE TABLE document_chunks (
+  id UUID PRIMARY KEY,
+  content TEXT NOT NULL,
+  embedding vector(1536) NOT NULL,
+  metadata JSONB NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Example metadata:
+-- {
+--   "owner_id": "user-123",
+--   "team_id": "team-456",
+--   "access_level": "team",
+--   "allowed_roles": ["engineer", "manager"],
+--   "allowed_users": ["user-789", "user-012"]
+-- }
+
+-- Indexes for fast filtering
+CREATE INDEX idx_owner ON document_chunks ((metadata->>'owner_id'));
+CREATE INDEX idx_access_level ON document_chunks ((metadata->>'access_level'));
+CREATE INDEX idx_allowed_roles ON document_chunks USING gin ((metadata->'allowed_roles'));
+
+-- HNSW index for vector similarity
+CREATE INDEX idx_embedding ON document_chunks USING hnsw (embedding vector_cosine_ops);
+```
+
+### Row-Level Security in Vector Database
+
+```sql
+-- pgvector with Row-Level Security (RLS)
+CREATE POLICY user_documents_policy ON document_chunks
+  FOR SELECT
+  USING (
+    -- Public documents
+    (metadata->>'accessLevel' = 'public')
+    OR
+    -- User's own documents
+    (metadata->>'owner' = current_user_id())
+    OR
+    -- Team documents
+    (metadata->>'teamId' = current_user_team_id())
+    OR
+    -- Explicitly shared
+    (metadata->'allowedUsers' ? current_user_id())
+  );
+```
+
+**Security Best Practices**:
+1. **Filter at vector DB level**: Don't retrieve unauthorized docs
+2. **Double-check in application**: Defense in depth
+3. **Audit access logs**: Track who accessed what
+4. **Encrypt metadata**: Especially for sensitive fields
+
+---
+
+## 3. Data Lifecycle: The "Deletion Problem"
+
+**Problem**: Documents deleted from S3 but not from vector DB → AI hallucinates deleted information.
+
+**Solution**: Incremental syncing with Change Data Capture (CDC).
+
+### Incremental Sync Pipeline
+
+```typescript
+interface SyncEvent {
+  type: 'created' | 'updated' | 'deleted'
+  documentId: string
+  s3Key: string
+  timestamp: Date
+}
+
+/**
+ * Async ingestion pipeline with change tracking
+ */
+class IncrementalSyncPipeline {
+  private queue: Queue<SyncEvent>
+
+  constructor(
+    private s3: S3Client,
+    private vectorDB: VectorDatabase,
+    private lastSyncTimestamp: Date
+  ) {
+    this.queue = new Queue('rag-sync-queue')
+  }
+
+  /**
+   * Poll S3 for changes and enqueue sync events
+   */
+  async pollChanges(): Promise<void> {
+    // Get all objects modified since last sync
+    const objects = await this.s3.listObjects({
+      bucket: 'documents',
+      modifiedSince: this.lastSyncTimestamp
+    })
+
+    for (const obj of objects) {
+      // Check if document exists in vector DB
+      const exists = await this.vectorDB.documentExists(obj.key)
+
+      if (obj.deleted) {
+        // Document was deleted from S3
+        await this.queue.add({
+          type: 'deleted',
+          documentId: obj.key,
+          s3Key: obj.key,
+          timestamp: obj.lastModified
+        })
+      } else if (exists) {
+        // Document was updated
+        await this.queue.add({
+          type: 'updated',
+          documentId: obj.key,
+          s3Key: obj.key,
+          timestamp: obj.lastModified
+        })
+      } else {
+        // New document
+        await this.queue.add({
+          type: 'created',
+          documentId: obj.key,
+          s3Key: obj.key,
+          timestamp: obj.lastModified
+        })
+      }
+    }
+
+    this.lastSyncTimestamp = new Date()
+  }
+
+  /**
+   * Process sync events from queue
+   */
+  async processQueue(): Promise<void> {
+    this.queue.process(async (event: SyncEvent) => {
+      try {
+        switch (event.type) {
+          case 'created':
+            await this.handleCreate(event)
+            break
+          case 'updated':
+            await this.handleUpdate(event)
+            break
+          case 'deleted':
+            await this.handleDelete(event)
+            break
+        }
+
+        // Log successful sync
+        await this.logSync(event, 'success')
+      } catch (error) {
+        await this.logSync(event, 'failed', error)
+        throw error  // Retry via queue
+      }
+    })
+  }
+
+  private async handleCreate(event: SyncEvent): Promise<void> {
+    // Download document from S3
+    const content = await this.s3.getObject({
+      bucket: 'documents',
+      key: event.s3Key
+    })
+
+    // Extract text
+    const text = await extractText(content)
+
+    // Chunk document
+    const chunks = chunkDocument(text, {
+      chunkSize: 500,
+      overlap: 50
+    })
+
+    // Generate embeddings
+    const embeddings = await generateEmbeddings(chunks)
+
+    // Insert into vector DB
+    await this.vectorDB.upsert({
+      id: event.documentId,
+      embeddings,
+      metadata: {
+        source: event.s3Key,
+        createdAt: event.timestamp,
+        lastModified: event.timestamp
+      }
+    })
+  }
+
+  private async handleUpdate(event: SyncEvent): Promise<void> {
+    // Delete old version
+    await this.handleDelete(event)
+
+    // Insert new version
+    await this.handleCreate(event)
+  }
+
+  private async handleDelete(event: SyncEvent): Promise<void> {
+    // Delete all chunks for this document
+    await this.vectorDB.delete({
+      filter: {
+        documentId: { $eq: event.documentId }
+      }
+    })
+
+    console.log(`Deleted document ${event.documentId} from vector DB`)
+  }
+
+  private async logSync(
+    event: SyncEvent,
+    status: 'success' | 'failed',
+    error?: any
+  ): Promise<void> {
+    await prisma.syncLog.create({
+      data: {
+        documentId: event.documentId,
+        type: event.type,
+        status,
+        error: error?.message,
+        timestamp: new Date()
+      }
+    })
+  }
+}
+```
+
+### Change Data Capture (CDC) with PostgreSQL
+
+```typescript
+/**
+ * Listen to PostgreSQL changes for real-time sync
+ */
+async function setupCDC() {
+  const client = await pool.connect()
+
+  // Create trigger function
+  await client.query(`
+    CREATE OR REPLACE FUNCTION notify_document_change()
+    RETURNS trigger AS $$
+    BEGIN
+      PERFORM pg_notify(
+        'document_changes',
+        json_build_object(
+          'type', TG_OP,
+          'id', NEW.id,
+          's3_key', NEW.s3_key,
+          'timestamp', NEW.updated_at
+        )::text
+      );
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+  `)
+
+  // Create trigger
+  await client.query(`
+    CREATE TRIGGER document_change_trigger
+    AFTER INSERT OR UPDATE OR DELETE ON documents
+    FOR EACH ROW
+    EXECUTE FUNCTION notify_document_change();
+  `)
+
+  // Listen for notifications
+  await client.query('LISTEN document_changes')
+
+  client.on('notification', async (msg) => {
+    const event = JSON.parse(msg.payload)
+
+    // Enqueue sync event
+    await syncQueue.add(event)
+  })
+}
+```
+
+**Best Practices**:
+- **Schedule regular syncs**: Every 15 minutes or hourly
+- **Use CDC for real-time**: For critical documents
+- **Track sync status**: Log all operations for debugging
+- **Handle failures gracefully**: Retry with exponential backoff
+
+---
+
+## 4. Performance Optimization
+
+### Semantic Caching
+
+```typescript
+import { Redis } from 'ioredis'
+
+class SemanticCache {
+  private redis: Redis
+  private similarityThreshold: number = 0.95
+
+  constructor(redisUrl: string) {
+    this.redis = new Redis(redisUrl)
+  }
+
+  /**
+   * Check cache for similar queries
+   * Returns cached result if query is semantically similar
+   */
+  async get(query: string): Promise<string | null> {
+    // Embed query
+    const queryEmbedding = await embed(query)
+
+    // Search cache for similar queries
+    const cachedQueries = await this.redis.keys('cache:*')
+
+    for (const key of cachedQueries) {
+      const cached = await this.redis.hgetall(key)
+      const cachedEmbedding = JSON.parse(cached.embedding)
+
+      // Calculate similarity
+      const similarity = cosineSimilarity(queryEmbedding, cachedEmbedding)
+
+      if (similarity >= this.similarityThreshold) {
+        console.log(`Cache hit for query: "${query}" (similarity: ${similarity})`)
+        return cached.result
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * Cache query result with embedding for semantic lookup
+   */
+  async set(
+    query: string,
+    result: string,
+    ttl: number = 3600  // 1 hour
+  ): Promise<void> {
+    const queryEmbedding = await embed(query)
+    const key = `cache:${hashQuery(query)}`
+
+    await this.redis.hset(key, {
+      query,
+      embedding: JSON.stringify(queryEmbedding),
+      result,
+      timestamp: Date.now()
+    })
+
+    await this.redis.expire(key, ttl)
+  }
+}
+
+/**
+ * Use semantic cache in RAG pipeline
+ */
+async function cachedRAGQuery(query: string): Promise<string> {
+  // Check cache first
+  const cached = await semanticCache.get(query)
+  if (cached) {
+    return cached
+  }
+
+  // Cache miss: perform RAG
+  const result = await ragQuery(query)
+
+  // Cache result
+  await semanticCache.set(query, result)
+
+  return result
+}
+```
+
+**Cache Optimization**:
+- **Similarity threshold**: 0.95 for exact, 0.85 for broader matches
+- **TTL strategy**: Shorter for dynamic data (1 hour), longer for static (1 day)
+- **Cost savings**: 50-70% reduction in LLM calls for common queries
+
+### Async Ingestion Pipeline
+
+```typescript
+import Bull from 'bull'
+
+interface IngestionJob {
+  documentId: string
+  s3Key: string
+  priority: 'high' | 'normal' | 'low'
+}
+
+class AsyncIngestionPipeline {
+  private queue: Bull.Queue<IngestionJob>
+
+  constructor() {
+    this.queue = new Bull('ingestion', {
+      redis: {
+        host: process.env.REDIS_HOST,
+        port: 6379
+      },
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000
+        }
+      }
+    })
+
+    this.setupWorkers()
+  }
+
+  /**
+   * Add document to ingestion queue
+   */
+  async enqueue(job: IngestionJob): Promise<void> {
+    await this.queue.add(job, {
+      priority: job.priority === 'high' ? 1 : job.priority === 'normal' ? 2 : 3
+    })
+  }
+
+  /**
+   * Setup queue workers for parallel processing
+   */
+  private setupWorkers(): void {
+    // Process jobs with concurrency of 5
+    this.queue.process(5, async (job) => {
+      const { documentId, s3Key } = job.data
+
+      try {
+        // 1. Download from S3
+        const content = await s3.getObject({ key: s3Key })
+
+        // 2. Extract text
+        const text = await extractText(content)
+
+        // 3. Chunk
+        const chunks = chunkDocument(text)
+
+        // 4. Embed
+        const embeddings = await generateEmbeddings(chunks)
+
+        // 5. Upsert to vector DB
+        await vectorDB.upsert({
+          id: documentId,
+          embeddings,
+          metadata: { source: s3Key }
+        })
+
+        console.log(`Ingested document: ${documentId}`)
+      } catch (error) {
+        console.error(`Failed to ingest ${documentId}:`, error)
+        throw error  // Will retry
+      }
+    })
+
+    // Monitor queue
+    this.queue.on('completed', (job) => {
+      console.log(`Job ${job.id} completed`)
+    })
+
+    this.queue.on('failed', (job, err) => {
+      console.error(`Job ${job.id} failed:`, err)
+    })
+  }
+}
+```
+
+---
+
+## 5. Query Transformation: Fixing Bad Questions
+
+**Problem**: Users are bad at asking questions. "show part specs" doesn't include part number, acronyms are unclear.
+
+**Solution**: Query rewriter cleans up prompts before hitting vector DB.
+
+### Query Expansion & Rewriting
+
+```typescript
+interface QueryTransformation {
+  original: string
+  cleaned: string
+  expanded: string[]
+  context: string[]
+}
+
+class QueryRewriter {
+  /**
+   * Transform user query before retrieval
+   */
+  async transform(
+    query: string,
+    conversationHistory?: Message[]
+  ): Promise<QueryTransformation> {
+    // 1. Clean up query
+    const cleaned = this.cleanQuery(query)
+
+    // 2. Expand acronyms and abbreviations
+    const expanded = await this.expandAcronyms(cleaned)
+
+    // 3. Add conversation context
+    const context = this.extractContext(conversationHistory || [])
+
+    return {
+      original: query,
+      cleaned,
+      expanded,
+      context
+    }
+  }
+
+  /**
+   * Basic query cleaning
+   */
+  private cleanQuery(query: string): string {
+    return query
+      .trim()
+      .toLowerCase()
+      .replace(/[^\w\s#-]/g, '')  // Keep # for part numbers
+  }
+
+  /**
+   * Expand acronyms using LLM
+   */
+  private async expandAcronyms(query: string): Promise<string[]> {
+    const response = await anthropic.messages.create({
+      model: 'claude-3-haiku-20240307',
+      max_tokens: 200,
+      messages: [{
+        role: 'user',
+        content: `Expand acronyms and rewrite this query in 3 different ways:
+
+Query: "${query}"
+
+Return JSON array of expanded queries:
+["query1", "query2", "query3"]`
+      }]
+    })
+
+    const text = response.content[0].type === 'text' ? response.content[0].text : '[]'
+    return JSON.parse(text)
+  }
+
+  /**
+   * Extract context from conversation history
+   */
+  private extractContext(history: Message[]): string[] {
+    // Get last 3 messages for context
+    return history
+      .slice(-3)
+      .filter(m => m.role === 'user')
+      .map(m => m.content)
+  }
+}
+
+/**
+ * Use query rewriter in RAG pipeline
+ */
+async function smartRAGQuery(
+  query: string,
+  conversationHistory?: Message[]
+): Promise<string> {
+  // 1. Transform query
+  const transformed = await queryRewriter.transform(query, conversationHistory)
+
+  // 2. Search with expanded queries
+  const allResults = await Promise.all([
+    searchVectorDB(transformed.cleaned),
+    ...transformed.expanded.map(q => searchVectorDB(q))
+  ])
+
+  // 3. Deduplicate and merge results
+  const uniqueResults = deduplicateResults(allResults.flat())
+
+  // 4. Rerank
+  const reranked = await rerank(transformed.original, uniqueResults)
+
+  // 5. Generate with top-3
+  return await generateAnswer(reranked.slice(0, 3))
+}
+```
+
+**Query Transformation Examples**:
+
+| Original Query | Cleaned | Expanded |
+|----------------|---------|----------|
+| "show part specs" | "show part specs" | "show part specifications", "display part details", "part technical specifications" |
+| "API docs?" | "api docs" | "API documentation", "API reference", "API guide" |
+| "reset pw" | "reset pw" | "reset password", "password recovery", "change password" |
+
+---
+
+## 6. The "Lost in the Middle" Problem
+
+**Key Finding**: More context isn't always better. Top-3 high-quality chunks usually beat top-10 noisy chunks.
+
+**Problem**: LLMs struggle with many chunks - they ignore middle content, focus on first and last.
+
+### Quality Over Quantity
+
+```typescript
+/**
+ * Optimal chunk selection: Top-3 high-quality > Top-10 noisy
+ */
+async function selectOptimalChunks(
+  query: string,
+  candidates: Document[],
+  maxChunks: number = 3  // NOT 10!
+): Promise<Document[]> {
+  // 1. Rerank all candidates
+  const reranked = await rerank(query, candidates)
+
+  // 2. Apply quality threshold
+  const minRelevanceScore = 0.7
+  const highQuality = reranked.filter(doc => doc.score >= minRelevanceScore)
+
+  // 3. Return top-K high-quality chunks (max 3-5)
+  return highQuality.slice(0, maxChunks)
+}
+
+/**
+ * Position-aware prompt construction
+ * Put most relevant chunks at START and END (not middle)
+ */
+function buildRAGPrompt(query: string, chunks: Document[]): string {
+  if (chunks.length === 0) {
+    return `Question: ${query}\n\nI don't have any relevant information to answer this question.`
+  }
+
+  if (chunks.length === 1) {
+    return `Context:\n${chunks[0].text}\n\nQuestion: ${query}\n\nAnswer:`
+  }
+
+  // Position most relevant at start and end
+  const mostRelevant = chunks[0]
+  const secondMost = chunks[chunks.length - 1]
+  const rest = chunks.slice(1, -1)
+
+  return `Context:
+
+[Most Relevant]
+${mostRelevant.text}
+
+${rest.map((doc, i) => `[Reference ${i + 2}]\n${doc.text}`).join('\n\n')}
+
+[Also Relevant]
+${secondMost.text}
+
+Question: ${query}
+
+Answer based on the context above:`
+}
+```
+
+**Research Findings** (Liu et al., 2023):
+- **Top-3 chunks**: 85% answer accuracy
+- **Top-10 chunks**: 72% answer accuracy (worse!)
+- **Top-20 chunks**: 61% answer accuracy (much worse!)
+
+**Why**: LLMs have "recency bias" and "primacy bias" - they remember first and last better than middle.
+
+**Best Practices**:
+- **Retrieve broadly**: Get 20-30 candidates from vector DB
+- **Rerank aggressively**: Filter to top-3 high-quality chunks
+- **Position strategically**: Put most relevant at start/end
+- **Quality threshold**: Reject chunks with relevance < 0.7
+
+---
+
+## 7. Evaluation: The North Star
+
+**Key Finding**: You can't fix what you can't measure. Use RAGAS or LLM-as-judge to score faithfulness and relevance automatically.
+
+### RAGAS Metrics
+
+```typescript
+interface RAGASMetrics {
+  faithfulness: number        // 0-1: Answer is grounded in context
+  answerRelevance: number    // 0-1: Answer addresses question
+  contextPrecision: number   // 0-1: Retrieved chunks are relevant
+  contextRecall: number      // 0-1: All relevant info was retrieved
+}
+
+/**
+ * Evaluate RAG response using LLM-as-judge
+ */
+async function evaluateRAGResponse(
+  question: string,
+  answer: string,
+  retrievedChunks: string[],
+  groundTruth?: string
+): Promise<RAGASMetrics> {
+  // 1. Faithfulness: Is answer grounded in context?
+  const faithfulness = await evaluateFaithfulness(answer, retrievedChunks)
+
+  // 2. Answer Relevance: Does answer address question?
+  const answerRelevance = await evaluateAnswerRelevance(question, answer)
+
+  // 3. Context Precision: Are retrieved chunks relevant?
+  const contextPrecision = await evaluateContextPrecision(question, retrievedChunks)
+
+  // 4. Context Recall: Was all relevant info retrieved?
+  const contextRecall = groundTruth
+    ? await evaluateContextRecall(groundTruth, retrievedChunks)
+    : null
+
+  return {
+    faithfulness,
+    answerRelevance,
+    contextPrecision,
+    contextRecall: contextRecall || 0
+  }
+}
+
+/**
+ * Faithfulness: Check if answer is supported by context
+ */
+async function evaluateFaithfulness(
+  answer: string,
+  context: string[]
+): Promise<number> {
+  const prompt = `Evaluate if the answer is faithful to the context (no hallucinations).
+
+Context:
+${context.join('\n\n')}
+
+Answer:
+${answer}
+
+Score 0-1 (0 = hallucinated, 1 = fully grounded):
+Return only a number between 0 and 1.`
+
+  const response = await anthropic.messages.create({
+    model: 'claude-3-haiku-20240307',
+    max_tokens: 10,
+    messages: [{ role: 'user', content: prompt }]
+  })
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '0'
+  return parseFloat(text.trim())
+}
+
+/**
+ * Answer Relevance: Check if answer addresses question
+ */
+async function evaluateAnswerRelevance(
+  question: string,
+  answer: string
+): Promise<number> {
+  const prompt = `Evaluate if the answer relevantly addresses the question.
+
+Question: ${question}
+
+Answer: ${answer}
+
+Score 0-1 (0 = irrelevant, 1 = highly relevant):
+Return only a number between 0 and 1.`
+
+  const response = await anthropic.messages.create({
+    model: 'claude-3-haiku-20240307',
+    max_tokens: 10,
+    messages: [{ role: 'user', content: prompt }]
+  })
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '0'
+  return parseFloat(text.trim())
+}
+
+/**
+ * Context Precision: Check if retrieved chunks are relevant
+ */
+async function evaluateContextPrecision(
+  question: string,
+  chunks: string[]
+): Promise<number> {
+  let relevantCount = 0
+
+  for (const chunk of chunks) {
+    const prompt = `Is this context relevant to answering the question?
+
+Question: ${question}
+
+Context: ${chunk}
+
+Answer: yes or no`
+
+    const response = await anthropic.messages.create({
+      model: 'claude-3-haiku-20240307',
+      max_tokens: 5,
+      messages: [{ role: 'user', content: prompt }]
+    })
+
+    const text = response.content[0].type === 'text' ? response.content[0].text.toLowerCase() : 'no'
+    if (text.includes('yes')) {
+      relevantCount++
+    }
+  }
+
+  return relevantCount / chunks.length
+}
+```
+
+### Continuous Evaluation Pipeline
+
+```typescript
+/**
+ * Evaluate RAG system continuously in production
+ */
+class RAGEvaluator {
+  async evaluateQuery(
+    question: string,
+    answer: string,
+    retrievedChunks: string[]
+  ): Promise<void> {
+    // 1. Run evaluation
+    const metrics = await evaluateRAGResponse(question, answer, retrievedChunks)
+
+    // 2. Log metrics
+    await this.logMetrics(metrics)
+
+    // 3. Alert if quality drops
+    if (metrics.faithfulness < 0.7 || metrics.answerRelevance < 0.7) {
+      await this.alertQualityIssue(question, metrics)
+    }
+
+    // 4. Store for analytics
+    await prisma.ragMetrics.create({
+      data: {
+        question,
+        answer,
+        faithfulness: metrics.faithfulness,
+        answerRelevance: metrics.answerRelevance,
+        contextPrecision: metrics.contextPrecision,
+        timestamp: new Date()
+      }
+    })
+  }
+
+  /**
+   * Calculate aggregate metrics for monitoring
+   */
+  async getAggregateMetrics(
+    timeRange: { start: Date; end: Date }
+  ): Promise<RAGASMetrics> {
+    const metrics = await prisma.ragMetrics.findMany({
+      where: {
+        timestamp: {
+          gte: timeRange.start,
+          lte: timeRange.end
+        }
+      }
+    })
+
+    return {
+      faithfulness: average(metrics.map(m => m.faithfulness)),
+      answerRelevance: average(metrics.map(m => m.answerRelevance)),
+      contextPrecision: average(metrics.map(m => m.contextPrecision)),
+      contextRecall: average(metrics.map(m => m.contextRecall))
+    }
+  }
+
+  private async alertQualityIssue(
+    question: string,
+    metrics: RAGASMetrics
+  ): Promise<void> {
+    await sendSlackAlert({
+      channel: 'rag-quality',
+      severity: 'warning',
+      title: 'RAG Quality Issue Detected',
+      message: `Question: "${question}"\nFaithfulness: ${metrics.faithfulness}\nRelevance: ${metrics.answerRelevance}`,
+      action: 'Review retrieval and generation quality'
+    })
+  }
+}
+```
+
+**Quality Thresholds**:
+- **Faithfulness**: > 0.8 (no hallucinations)
+- **Answer Relevance**: > 0.8 (answers the question)
+- **Context Precision**: > 0.7 (good retrieval)
+- **Context Recall**: > 0.9 (comprehensive coverage)
+
+**Best Practices**:
+- **Sample evaluation**: Evaluate 1-5% of queries (not all, too expensive)
+- **Async evaluation**: Run evaluation in background, don't block user
+- **Track trends**: Monitor weekly averages, alert on degradation
+- **A/B testing**: Compare retrieval strategies using RAGAS scores
+
+---
+
+## 8. Production Readiness Checklist
+
+Use this table to evaluate your RAG system's readiness:
+
+| Concern | Prototype Level | Production/Architect Level |
+|---------|----------------|---------------------------|
+| **Search** | Simple vector search | Hybrid search (Vector + BM25) |
+| **Query Quality** | Use raw user query | Query transformation & expansion |
+| **Accuracy** | Top-K results only | Reranking with cross-encoder |
+| **Context Size** | Top-10 chunks | Top-3 high-quality (avoid "Lost in Middle") |
+| **Privacy** | Open access to all docs | Metadata filtering (ACL-based) |
+| **Cost** | Every query hits LLM | Semantic caching (Redis/Disk) |
+| **Scale** | One-off ingestion script | Async ingestion pipeline (queue-based) |
+| **Data Lifecycle** | Manual updates | Incremental sync with CDC |
+| **Security** | Basic auth | Row-level security, audit logs |
+| **Evaluation** | Manual testing | RAGAS metrics (faithfulness, relevance) |
+| **Monitoring** | None | Latency, cost, quality metrics dashboard |
+| **Error Handling** | Fail fast | Retry with exponential backoff |
+| **Multi-Tenancy** | Single tenant | ACL filtering, data isolation |
+
+### Implementation Checklist
+
+- [ ] **Hybrid Search**: Combine vector + BM25 keyword search
+- [ ] **Reranking**: Add cross-encoder for top-K refinement
+- [ ] **ACL Filtering**: Implement user permission checks
+- [ ] **Semantic Caching**: Cache similar queries to reduce cost
+- [ ] **Async Ingestion**: Queue-based pipeline for scalability
+- [ ] **Incremental Sync**: CDC or scheduled sync for data freshness
+- [ ] **Monitoring**: Track latency, cost, quality metrics
+- [ ] **Error Handling**: Retry logic with exponential backoff
+- [ ] **Audit Logs**: Log all queries and access for compliance
+- [ ] **Load Testing**: Test with 10x expected production load
+
+### Production Performance Checklist
+
+Before shipping, an AI Architect must verify these three **Stability Pillars**:
+
+| Metric | Target | Why It Matters |
+|--------|--------|----------------|
+| **Token Pressure** | < 80% Context Window | Avoids "Lost in the Middle" syndrome where LLMs ignore chunks in the middle of long contexts. Keep total prompt tokens (system + retrieved chunks + user query) under 80% of model's context limit (e.g., <160K for Claude Sonnet 4.5's 200K limit). |
+| **Index Choice** | HNSW for Speed | IVFFlat is easier to build and requires training, but HNSW (Hierarchical Navigable Small World) is faster for high-concurrency production apps. HNSW provides consistent low latency even under load. |
+| **Cold-Start Latency** | < 1 second | The first query after a period of inactivity often takes longer due to database "warming" (indexes not in memory, connections not pooled). Use connection pooling and warm up indexes on deployment. |
+
+**Implementation guidance**:
+
+```typescript
+interface PerformanceConfig {
+  maxContextTokens: number       // e.g., 160_000 for Claude Sonnet 4.5 (80% of 200K)
+  maxChunkCount: number         // Enforce top-K limit (e.g., 3-5 chunks)
+  vectorIndexType: 'hnsw' | 'ivfflat'
+  connectionPoolSize: number    // e.g., 20 for high-concurrency
+}
+
+/**
+ * Calculate token pressure before sending to LLM
+ */
+function checkTokenPressure(
+  systemPrompt: string,
+  retrievedChunks: string[],
+  userQuery: string,
+  config: PerformanceConfig
+): { withinBudget: boolean; tokenCount: number; pressurePercent: number } {
+  // Rough approximation: 1 token ≈ 4 characters
+  const systemTokens = systemPrompt.length / 4
+  const chunkTokens = retrievedChunks.reduce((sum, chunk) => sum + chunk.length / 4, 0)
+  const queryTokens = userQuery.length / 4
+
+  const totalTokens = systemTokens + chunkTokens + queryTokens
+  const pressurePercent = (totalTokens / config.maxContextTokens) * 100
+
+  return {
+    withinBudget: totalTokens < config.maxContextTokens,
+    tokenCount: Math.round(totalTokens),
+    pressurePercent: Math.round(pressurePercent)
+  }
+}
+
+/**
+ * Postgres HNSW index configuration (pgvector)
+ */
+async function createProductionIndex() {
+  await pool.query(`
+    -- Create HNSW index for production
+    CREATE INDEX idx_embedding_hnsw ON document_chunks
+    USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
+
+    -- m: Max connections per layer (higher = better recall, more memory)
+    -- ef_construction: Size of dynamic candidate list (higher = better index quality, slower build)
+  `)
+}
+
+/**
+ * Connection pooling to avoid cold-start
+ */
+import { Pool } from 'pg'
+
+const pool = new Pool({
+  host: 'localhost',
+  database: 'vectors',
+  max: 20,                    // Connection pool size
+  idleTimeoutMillis: 30000,   // Keep connections warm
+  connectionTimeoutMillis: 2000
+})
+
+// Warm up connection pool on startup
+async function warmupPool() {
+  const promises = []
+  for (let i = 0; i < 5; i++) {
+    promises.push(
+      pool.query('SELECT 1')  // Dummy query to establish connections
+    )
+  }
+  await Promise.all(promises)
+}
+```
+
+**Performance monitoring**:
+
+```typescript
+interface PerformanceMetrics {
+  queryLatency: number        // ms
+  retrievalLatency: number    // ms
+  llmLatency: number          // ms
+  tokenCount: number
+  tokenPressure: number       // percent
+  cacheHit: boolean
+}
+
+async function monitoredRAGQuery(query: string): Promise<{ result: string; metrics: PerformanceMetrics }> {
+  const startTime = Date.now()
+
+  // 1. Check cache
+  const cached = await checkCache(query)
+  if (cached) {
+    return {
+      result: cached,
+      metrics: {
+        queryLatency: Date.now() - startTime,
+        retrievalLatency: 0,
+        llmLatency: 0,
+        tokenCount: 0,
+        tokenPressure: 0,
+        cacheHit: true
+      }
+    }
+  }
+
+  // 2. Retrieve
+  const retrievalStart = Date.now()
+  const chunks = await hybridSearch(query)
+  const retrievalLatency = Date.now() - retrievalStart
+
+  // 3. Check token pressure
+  const pressure = checkTokenPressure(SYSTEM_PROMPT, chunks, query, performanceConfig)
+
+  if (!pressure.withinBudget) {
+    // Trim chunks to fit budget
+    console.warn(`Token pressure ${pressure.pressurePercent}% exceeds 80% threshold`)
+    chunks.splice(3)  // Keep only top-3
+  }
+
+  // 4. Generate
+  const llmStart = Date.now()
+  const result = await generateAnswer(query, chunks)
+  const llmLatency = Date.now() - llmStart
+
+  return {
+    result,
+    metrics: {
+      queryLatency: Date.now() - startTime,
+      retrievalLatency,
+      llmLatency,
+      tokenCount: pressure.tokenCount,
+      tokenPressure: pressure.pressurePercent,
+      cacheHit: false
+    }
+  }
+}
+```
+
+**Key insights**:
+- **Token Pressure**: Monitor and enforce < 80% to avoid "Lost in the Middle" degradation
+- **HNSW vs IVFFlat**: HNSW is almost always better for production (consistent latency, no training needed)
+- **Cold-Start**: Connection pooling + index warmup = consistent sub-second latency
+- **Monitoring**: Track all three pillars in production to catch regressions early
+
+---
+
+## Key Takeaways
+
+### Production vs. Prototype
+
+**Prototype RAG** (tutorials):
+- Simple vector search
+- No access control
+- Manual ingestion
+- No caching
+
+**Production RAG** (enterprise):
+- Hybrid search (vector + keyword)
+- ACL-based filtering
+- Async ingestion pipeline
+- Semantic caching
+- Incremental syncing
+- Monitoring and alerts
+
+### Critical Improvements
+
+1. **Hybrid Search**: 15-25% accuracy improvement
+2. **Semantic Caching**: 50-70% cost reduction
+3. **ACL Filtering**: Security and compliance
+4. **Incremental Sync**: Data freshness and consistency
+
+### Architecture Patterns
+
+- **Queue-based ingestion**: Handle high volumes, retry failures
+- **CDC for real-time**: Keep vector DB in sync with source data
+- **Defense in depth**: Filter at DB level + application level
+- **Over-fetch and rerank**: Retrieve 2x results, rerank to top-K
+
+---
+
+## Further Reading
+
+### Within Week 3
+- [RAG Memory Fundamentals](./rag-memory-fundamentals.mdx) - Three-phase RAG architecture basics
+- [RAG Pipelines](./rag-pipelines.mdx) - Basic RAG implementation
+- [Memory Systems](./memory-systems.mdx) - Context and conversation memory
+
+### Week 9: Advanced Retrieval
+- [Hybrid Search](../../week9/hybrid-search.mdx) - BM25, RRF, fusion techniques
+- [Query Optimization](../../week9/query-optimization.mdx) - Query rewriting, expansion
+- [Reranking Strategies](../../week9/reranking-strategies.mdx) - Cross-encoder, diversity filtering
+
+### Week 6: Monitoring
+- [Monitoring AI Systems](../../week6/monitoring-ai-systems.mdx) - Track RAG quality, latency, cost
+
+### Week 12: Enterprise
+- [Enterprise Architecture](../../week12/enterprise-architecture.mdx) - Multi-region, disaster recovery
+
+## Next Steps
+
+1. **Week 3**: Master production RAG patterns
+2. **Week 9**: Deep dive into advanced retrieval techniques
+3. **Week 6**: Implement monitoring and observability
+4. **Week 12**: Scale to enterprise multi-region deployment
