@@ -1,11 +1,11 @@
 #!/bin/sh
 set -e
 
-# Run migrations only if there are pending migrations
-# prisma migrate deploy is idempotent - it only applies unapplied migrations
-echo "🔄 Checking for pending database migrations..."
-npx prisma migrate deploy
+echo "🔄 Running database migrations..."
+# Use the local Prisma installation (from node_modules) to avoid downloading Prisma 7.x
+# The Prisma client is already generated during the Docker build
+node_modules/.bin/prisma migrate deploy
 
-echo "✅ Database is up to date!"
+echo "✅ Database migrations completed!"
 echo "🚀 Starting application..."
 exec node server.js
