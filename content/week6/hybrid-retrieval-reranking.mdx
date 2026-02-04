@@ -1,0 +1,299 @@
+---
+title: 'Hybrid Retrieval & Re-Ranking'
+description: 'Combine semantic (vector) and keyword (BM25) search with cross-encoder re-ranking for enterprise precision'
+---
+
+# Hybrid Retrieval & Re-Ranking
+
+## Moving Beyond "Vector Search Only"
+
+In production RAG systems—especially in regulated industries like healthcare and finance—**vector similarity alone is not enough**. An architect must combine "meaning" (semantic search) with "exactness" (keyword search).
+
+### The Enterprise Reality
+
+When a user searches for "HbA1c results from March 2022," pure vector search might return:
+- ❌ Documents about "glycemic control" (semantically related)
+- ❌ Results from "April 2022" (close embedding)
+- ✅ The exact HbA1c value from March 2022 (what we need)
+
+**Hybrid search solves this by combining both worlds.**
+
+---
+
+## 1. Hybrid Search Architecture
+
+### The Two-Stage Approach
+
+```typescript
+/**
+ * Hybrid Search: Semantic + Keyword
+ * Returns results that are both semantically relevant AND contain exact keywords
+ */
+async function hybridSearch(query: string, options: {
+  limit: number,
+  vectorWeight: number, // 0-1, typically 0.7
+  keywordWeight: number // 0-1, typically 0.3
+}) {
+  // Stage 1: Semantic search with pgvector
+  const vectorResults = await db.query(`
+    SELECT id, content,
+           1 - (embedding <=> $1) AS vector_score
+    FROM documents
+    ORDER BY embedding <=> $1
+    LIMIT 50
+  `, [queryEmbedding])
+
+  // Stage 2: Keyword search with BM25 (PostgreSQL full-text)
+  const keywordResults = await db.query(`
+    SELECT id, content,
+           ts_rank_cd(search_vector, plainto_tsquery($1)) AS keyword_score
+    FROM documents
+    WHERE search_vector @@ plainto_tsquery($1)
+    LIMIT 50
+  `, [query])
+
+  // Stage 3: Merge and re-score
+  const merged = mergeResults(vectorResults, keywordResults, {
+    vectorWeight: options.vectorWeight,
+    keywordWeight: options.keywordWeight
+  })
+
+  return merged.slice(0, options.limit)
+}
+```
+
+### When to Use Each Weight
+
+| Use Case | Vector Weight | Keyword Weight | Reason |
+|----------|--------------|----------------|--------|
+| Medical Code Search | 0.3 | **0.7** | Must find exact ICD-10 codes |
+| General Q&A | **0.7** | 0.3 | Meaning matters more than exact match |
+| Legal Document Retrieval | 0.5 | 0.5 | Balance precision and context |
+| Technical Documentation | **0.6** | 0.4 | Concepts + specific function names |
+
+---
+
+## 2. Re-Ranking: The Precision Multiplier
+
+After hybrid search gives you the top 50 candidates, a **re-ranker** narrows it down to the 5 most relevant.
+
+### Why Re-Ranking Matters
+
+**Problem:** Bi-encoders (standard embeddings) are fast but imprecise because they can't compare the query and document directly.
+
+**Solution:** Cross-encoders take the query + each candidate document and score them together.
+
+```typescript
+/**
+ * Two-Stage Retrieval with Re-Ranking
+ */
+async function retrieveAndRerank(query: string) {
+  // Stage 1: Fast hybrid search (top 50)
+  const candidates = await hybridSearch(query, { limit: 50, vectorWeight: 0.7, keywordWeight: 0.3 })
+
+  // Stage 2: Slow but precise re-ranking (top 5)
+  const reranked = await cohere.rerank({
+    query,
+    documents: candidates.map(c => c.content),
+    model: 'rerank-english-v3.0',
+    top_n: 5
+  })
+
+  return reranked.results
+}
+```
+
+### The Performance Trade-Off
+
+| Metric | Bi-Encoder (Hybrid Search) | Cross-Encoder (Re-Ranker) |
+|--------|---------------------------|--------------------------|
+| Latency | ~50ms | ~100ms |
+| Accuracy (MRR) | 0.65 | **0.82** (+26%) |
+| Cost | Low | Medium (API calls) |
+| Best Use | First-stage (wide net) | Second-stage (precision) |
+
+**Architect's Tip:** Re-ranking adds ~100ms of latency but increases **Mean Reciprocal Rank (MRR) by up to 20%**. For enterprise systems, this is non-negotiable.
+
+---
+
+## 3. Parent-Document Retrieval (Small-to-Big)
+
+### The Context Fragmentation Problem
+
+When you chunk a 10-page clinical note into 500-token pieces:
+- ❌ Chunk 17: "HbA1c: 7.2%" (missing: is this improving or worsening?)
+- ✅ Parent Document: Full clinical note showing trend from 8.1 → 7.2 (context!)
+
+### Decoupled Indexing Architecture
+
+Instead of a 1:1 relationship between chunks and the LLM, create a **1:Many** relationship:
+
+```typescript
+/**
+ * Parent-Document Retrieval
+ * Search small chunks (precision) → Retrieve large parents (context)
+ */
+
+// 1. Indexing Phase
+async function indexWithParents(document: Document) {
+  const parentId = document.id
+  const parent Text = document.content // Full 2000-token document
+
+  // Store parent in docstore
+  await redis.set(`parent:${parentId}`, parentText)
+
+  // Create small child chunks
+  const childChunks = chunkText(parentText, { size: 200, overlap: 50 })
+
+  // Index each child with parent reference
+  for (const [index, chunk] of childChunks.entries()) {
+    const embedding = await embed(chunk)
+    await vectorDb.insert({
+      id: `${parentId}_chunk_${index}`,
+      embedding,
+      metadata: {
+        parent_id: parentId,      // ← Key: Link to parent
+        chunk_text: chunk,
+        chunk_index: index
+      }
+    })
+  }
+}
+
+// 2. Retrieval Phase
+async function retrieveWithParentContext(queryVector: number[]) {
+  // Step 1: Search for best child chunks (high precision)
+  const childResults = await vectorDb.search(queryVector, { limit: 5 })
+
+  // Step 2: Extract unique parent IDs
+  const parentIds = [...new Set(childResults.map(r => r.metadata.parent_id))]
+
+  // Step 3: Fetch full parent documents from docstore
+  const contextBlocks = await redis.mget(
+    parentIds.map(id => `parent:${id}`)
+  )
+
+  return contextBlocks // LLM sees full context
+}
+```
+
+### The Goldilocks Strategy
+
+| Approach | Search Precision | Context Quality | Best For |
+|----------|-----------------|-----------------|----------|
+| Large Chunks (1000 tokens) | Low | Good | General Q&A |
+| Small Chunks (200 tokens) | **High** | ❌ Fragmented | Exact fact lookup |
+| **Parent-Document** | **High** | **Excellent** | Healthcare, Legal, Technical docs |
+
+**In Digital Health:** Small chunks find "Lab Value: 7.2" but the LLM needs the **parent** (full clinical note) to understand if this is improving or declining.
+
+---
+
+## 4. Implementation Guide
+
+### Step-by-Step: Hybrid Search with Parent Retrieval
+
+```typescript
+// 1. Configure hybrid search
+const searchConfig = {
+  vectorWeight: 0.7,
+  keywordWeight: 0.3,
+  rerankModel: 'cohere/rerank-english-v3.0',
+  parentRetrieval: true
+}
+
+// 2. Execute retrieval pipeline
+async function enterpriseRAG(userQuery: string) {
+  // Stage 1: Hybrid search (top 50 child chunks)
+  const candidates = await hybridSearch(userQuery, { limit: 50, ...searchConfig })
+
+  // Stage 2: Re-rank (top 5 child chunks)
+  const reranked = await rerank(userQuery, candidates, { top_n: 5 })
+
+  // Stage 3: Fetch parent documents
+  const parentIds = reranked.map(r => r.metadata.parent_id)
+  const contexts = await fetchParents(parentIds)
+
+  // Stage 4: Send to LLM
+  const prompt = `Context:\n${contexts.join('\n\n---\n\n')}\n\nQuestion: ${userQuery}`
+  return await llm.complete(prompt)
+}
+```
+
+### Production Checklist
+
+- [ ] **Hybrid Search:** Combine vector + BM25 with tuned weights
+- [ ] **Re-Ranking:** Add Cohere Rerank or BGE-Reranker for top-K
+- [ ] **Parent-Document:** Store `parent_id` in vector metadata
+- [ ] **Docstore:** Use Redis/MongoDB for fast parent retrieval
+- [ ] **Evaluation:** Track Recall@10, MRR, and NDCG metrics
+- [ ] **Latency Budget:** Hybrid (50ms) + Rerank (100ms) + LLM (500ms) = 650ms
+
+---
+
+## 5. Measuring Success
+
+### Key Metrics for Enterprise RAG
+
+```typescript
+/**
+ * Evaluation Suite
+ */
+interface RAGMetrics {
+  recall_at_10: number      // Did we retrieve the right doc in top 10?
+  mrr: number                // Mean Reciprocal Rank
+  precision_at_5: number     // How many of top 5 are relevant?
+  ttft_ms: number           // Time to First Token
+  context_relevance: number  // % of context used by LLM
+}
+
+async function evaluateRAG(testQueries: Query[], groundTruth: Document[]) {
+  const metrics = {
+    recall_at_10: 0,
+    mrr: 0,
+    precision_at_5: 0,
+    ttft_ms: 0,
+    context_relevance: 0
+  }
+
+  for (const query of testQueries) {
+    const start = Date.now()
+    const results = await enterpriseRAG(query.text)
+    const ttft = Date.now() - start
+
+    // Calculate metrics
+    metrics.ttft_ms += ttft
+    metrics.recall_at_10 += calculateRecall(results, groundTruth, 10)
+    metrics.mrr += calculateMRR(results, groundTruth)
+    metrics.precision_at_5 += calculatePrecision(results, groundTruth, 5)
+  }
+
+  return normalizeMetrics(metrics, testQueries.length)
+}
+```
+
+### Benchmark Targets
+
+| Metric | Baseline (Vector Only) | **Hybrid + Rerank** | Target |
+|--------|----------------------|-------------------|--------|
+| Recall@10 | 0.72 | **0.85** | >0.80 |
+| MRR | 0.65 | **0.82** | >0.75 |
+| Precision@5 | 0.68 | **0.88** | >0.80 |
+| TTFT | 120ms | 180ms | <200ms |
+
+---
+
+## Summary
+
+**Hybrid Retrieval + Re-Ranking + Parent-Document = Enterprise-Grade RAG**
+
+1. **Hybrid Search** combines semantic and keyword search for precision
+2. **Re-Ranking** with cross-encoders improves MRR by 20%+
+3. **Parent-Document Retrieval** solves context fragmentation
+4. **Evaluation** with Recall@10, MRR, Precision@5 ensures quality
+
+In the lab, you'll build a Medical Records Navigator that uses all three techniques to find "HbA1c result from March 2022" in 5,000 pages—accurately and in <200ms.
+
+---
+
+**Next:** Query Transformation Patterns (Multi-Query, HyDE, Decomposition)
