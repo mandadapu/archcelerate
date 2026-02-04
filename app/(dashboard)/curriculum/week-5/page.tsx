@@ -8,8 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 
 export const metadata: Metadata = {
-  title: 'Week 5: Agentic Frameworks (The Logic)',
-  description: 'Build autonomous AI agents that can use tools and complete complex tasks'
+  title: 'Week 5: Agentic Frameworks & Multi-Agent Orchestration (The Logic)',
+  description: 'Build systems that reason, plan, and execute using multi-agent architectures and reliability patterns'
 }
 
 export default async function Week6Page() {
