@@ -6,8 +6,8 @@ const prisma = new PrismaClient()
 const weekData = [
   {
     weekNumber: 1,
-    title: 'Foundations + Visual Builder Introduction',
-    description: 'Understand LLM fundamentals, master API integration, experience visual agent building, and build production-ready chat assistant',
+    title: 'LLM Fundamentals (The Engine)',
+    description: 'Master foundation LLM capabilities: tokens, models, prompting, API integration, and production-ready patterns',
     objectives: [
       'Understand LLM fundamentals and capabilities',
       'Master API integration patterns',
@@ -60,7 +60,7 @@ const weekData = [
   },
   {
     weekNumber: 2,
-    title: 'AI Governance & Responsible AI',
+    title: 'AI Safety & Governance (The Guardrails)',
     description: 'Build production AI with proper governance, fairness, compliance, and safety controls',
     objectives: [
       'Implement AI governance and content moderation',
@@ -116,7 +116,7 @@ const weekData = [
   },
   {
     weekNumber: 3,
-    title: 'RAG + Memory',
+    title: 'RAG & Memory Fundamentals (The Knowledge Base)',
     description: 'Build retrieval-augmented generation systems with vector databases',
     objectives: ['Implement vector search', 'Build RAG pipelines', 'Manage conversation memory'],
     concepts: [
@@ -159,7 +159,7 @@ const weekData = [
   },
   {
     weekNumber: 4,
-    title: 'Structured Intelligence & API Integration',
+    title: 'Structured Intelligence & API Integration (The Interface)',
     description: 'Transform LLMs from chatbots to system components with structured output and function calling',
     objectives: [
       'Master structured output and JSON mode',
@@ -208,7 +208,7 @@ const weekData = [
   },
   {
     weekNumber: 5,
-    title: 'AI Agents',
+    title: 'Agentic Frameworks (The Logic)',
     description: 'Build autonomous AI agents that can use tools and complete complex tasks',
     objectives: [
       'Understand agent architectures',
@@ -261,7 +261,7 @@ const weekData = [
   },
   {
     weekNumber: 6,
-    title: 'Observability + Production',
+    title: 'Advanced RAG (The Optimizer)',
     description: 'Deploy AI systems with monitoring, caching, and reliability',
     objectives: [
       'Deploy production systems',
@@ -314,7 +314,7 @@ const weekData = [
   },
   {
     weekNumber: 7,
-    title: 'Capstone Project',
+    title: 'Observability & Production (The Reliability)',
     description: 'Plan and build your capstone AI application from scratch',
     objectives: ['Design AI product', 'Implement end-to-end system', 'Deploy to production'],
     concepts: [
