@@ -47,32 +47,26 @@ const CACHE_KEY = 'diagnosis:quiz:questions'
 const CACHE_TTL = 60 * 60 * 24 * 7 // 7 days
 
 async function generateQuestionsWithClaude(): Promise<QuizQuestion[]> {
-  const prompt = `You are an AI educator creating a skill diagnosis quiz for software engineers learning to build AI products.
+  const prompt = `Generate 15 multiple-choice questions for a skill diagnosis quiz covering:
+1. LLM Fundamentals (5 questions) - tokens, context windows, temperature, models
+2. Prompt Engineering (3 questions) - techniques, best practices, optimization
+3. RAG Systems (3 questions) - embeddings, retrieval, chunking strategies
+4. AI Agents (2 questions) - tool use, planning, memory
+5. Production Deployment (2 questions) - costs, latency, monitoring
 
-Generate 15 multiple-choice questions covering these skill areas:
-1. LLM Fundamentals (5 questions)
-2. Prompt Engineering (3 questions)
-3. RAG Systems (3 questions)
-4. AI Agents (2 questions)
-5. Production Deployment (2 questions)
+CRITICAL: Your response must be ONLY a JSON array with NO markdown, NO explanations, NO text before or after.
 
-For each question, provide:
-- A clear, technical question
-- 4 options (a, b, c, d)
-- The correct answer(s)
-- Difficulty level (beginner/intermediate/advanced)
-
-Return ONLY a valid JSON array of questions in this exact format:
+Format (repeat for 15 questions):
 [
   {
     "id": "llm-1",
     "type": "single-choice",
-    "question": "What is a token in LLMs?",
+    "question": "What is a token in the context of Large Language Models?",
     "options": [
-      {"id": "a", "text": "Option A"},
-      {"id": "b", "text": "Option B"},
-      {"id": "c", "text": "Option C"},
-      {"id": "d", "text": "Option D"}
+      {"id": "a", "text": "A word in the input text"},
+      {"id": "b", "text": "A subword unit used by the model's tokenizer"},
+      {"id": "c", "text": "A single character"},
+      {"id": "d", "text": "A sentence"}
     ],
     "correctAnswers": ["b"],
     "skillArea": "llm_fundamentals",
@@ -80,17 +74,19 @@ Return ONLY a valid JSON array of questions in this exact format:
   }
 ]
 
-Make questions practical and relevant to building production AI systems. Focus on real-world scenarios.`
+Make questions practical for engineers building AI products. Start your response with [ and end with ]`
 
   const message = await anthropic.messages.create({
-    model: 'claude-3-haiku-20240307',
+    model: 'claude-opus-4-5-20251101',
     max_tokens: 4096,
+    temperature: 0.7,
     messages: [
       {
         role: 'user',
         content: prompt,
       },
     ],
+    system: 'You are a JSON generator. Return ONLY valid JSON with no explanations, markdown formatting, or additional text. Your entire response must be parseable as JSON.',
   })
 
   const content = message.content[0]
