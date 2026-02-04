@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -48,10 +49,12 @@ export function UserManagement({ users }: UserManagementProps) {
               <TableCell className="font-medium">
                 <div className="flex items-center gap-2">
                   {user.image && (
-                    <img
+                    <Image
                       src={user.image}
                       alt={user.name || 'User'}
-                      className="w-8 h-8 rounded-full"
+                      width={32}
+                      height={32}
+                      className="rounded-full"
                     />
                   )}
                   <span>{user.name || 'Anonymous'}</span>

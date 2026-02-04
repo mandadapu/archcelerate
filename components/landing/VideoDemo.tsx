@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import Image from 'next/image'
 
 /**
  * Video Demo Component for Landing Page
@@ -120,10 +121,11 @@ export function VideoDemo() {
               // YouTube thumbnail with play button
               <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-purple-500/20 to-cyan-500/20 backdrop-blur-sm">
                 {/* YouTube thumbnail image */}
-                <img
+                <Image
                   src={`https://img.youtube.com/vi/${VIDEO_CONFIG.youtubeVideoId}/maxresdefault.jpg`}
                   alt="Video thumbnail"
-                  className="absolute inset-0 w-full h-full object-cover"
+                  fill
+                  className="object-cover"
                 />
 
                 {/* Overlay gradient */}
