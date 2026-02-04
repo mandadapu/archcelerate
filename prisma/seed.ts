@@ -2,7 +2,117 @@ import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
+// Comprehensive seed data for all 12 weeks
 const weekData = [
+  {
+    weekNumber: 1,
+    title: 'Foundations + Visual Builder Introduction',
+    description: 'Understand LLM fundamentals, master API integration, experience visual agent building, and build production-ready chat assistant',
+    objectives: [
+      'Understand LLM fundamentals and capabilities',
+      'Master API integration patterns',
+      'Experience visual agent building with Wordware',
+      'Build production-ready chat with governance',
+      'Implement production patterns'
+    ],
+    concepts: [
+      { slug: 'llm-fundamentals', title: 'LLM Fundamentals', minutes: 30 },
+      { slug: 'prompt-engineering', title: 'Prompt Engineering Patterns', minutes: 40 },
+      { slug: 'api-integration', title: 'API Integration Best Practices', minutes: 35 },
+      { slug: 'architecture-decisions', title: 'Architecture Decisions for AI Apps', minutes: 30 },
+      { slug: 'visual-builder-intro', title: 'Visual Builder Introduction (Wordware)', minutes: 25 },
+      { slug: 'production-readiness', title: 'Production Readiness Checklist', minutes: 30 }
+    ],
+    lab: {
+      slug: 'first-llm-app',
+      title: 'Build Your First LLM Application',
+      description: 'Create a complete LLM application from scratch with proper error handling and production patterns',
+      exercises: [
+        { number: 1, title: 'Set up development environment', type: 'setup' },
+        { number: 2, title: 'Implement basic LLM chat', type: 'coding' },
+        { number: 3, title: 'Add streaming responses', type: 'coding' },
+        { number: 4, title: 'Implement error handling', type: 'implementation' },
+        { number: 5, title: 'Add rate limiting', type: 'coding' }
+      ]
+    },
+    project: {
+      slug: 'chat-assistant',
+      title: 'Production Chat Assistant',
+      description: 'Build a production-ready chat assistant with proper governance, error handling, and observability',
+      requirements: [
+        'Streaming chat interface',
+        'API integration with error handling',
+        'Rate limiting and cost controls',
+        'Input validation and sanitization',
+        'Conversation history management',
+        'Production deployment'
+      ],
+      successCriteria: [
+        'Chat interface is responsive and works smoothly',
+        'Errors are handled gracefully with user feedback',
+        'Rate limits prevent abuse',
+        'All inputs are validated',
+        'Conversation history persists correctly',
+        'Application is deployed and accessible'
+      ],
+      hours: 6
+    }
+  },
+  {
+    weekNumber: 2,
+    title: 'AI Governance & Responsible AI',
+    description: 'Build production AI with proper governance, fairness, compliance, and safety controls',
+    objectives: [
+      'Implement AI governance and content moderation',
+      'Build fair, transparent, and explainable AI systems',
+      'Apply compliance patterns for regulated industries',
+      'Test and validate AI systems with NFRs'
+    ],
+    concepts: [
+      { slug: 'governance-foundations', title: 'AI Governance Foundations', minutes: 35 },
+      { slug: 'responsible-ai', title: 'Responsible AI: Fairness, Transparency & Explainability', minutes: 60 },
+      { slug: 'compliance-patterns', title: 'Domain Compliance Patterns', minutes: 50 },
+      { slug: 'ai-testing-nfrs', title: 'AI Testing & Non-Functional Requirements', minutes: 55 }
+    ],
+    lab: {
+      slug: 'governance-compliance-lab',
+      title: 'Governance & Compliance Lab',
+      description: 'Implement governance controls, fairness checks, and compliance patterns in a production AI system',
+      exercises: [
+        { number: 1, title: 'Implement content moderation with OpenAI Moderations API', type: 'coding' },
+        { number: 2, title: 'Add fairness evaluation for model outputs', type: 'implementation' },
+        { number: 3, title: 'Build compliance audit logging', type: 'coding' },
+        { number: 4, title: 'Create explainability dashboard', type: 'implementation' },
+        { number: 5, title: 'Test with adversarial inputs', type: 'testing' }
+      ]
+    },
+    project: {
+      slug: 'compliant-ai-system',
+      title: 'Production AI System with Full Governance',
+      description: 'Build a production-ready AI application with comprehensive governance, fairness checks, compliance controls, and explainability',
+      requirements: [
+        'Content moderation for inputs and outputs',
+        'Fairness evaluation across demographic groups',
+        'Compliance audit logging (GDPR, HIPAA, or SOC2)',
+        'Explainability features for model decisions',
+        'Bias detection and mitigation',
+        'Rate limiting and cost controls',
+        'Full test coverage including adversarial testing',
+        'Transparency dashboard for stakeholders'
+      ],
+      successCriteria: [
+        'All harmful content is filtered before processing',
+        'Fairness metrics show <10% disparity across groups',
+        'Complete audit trail for all AI decisions',
+        'Users can understand why AI made specific decisions',
+        'System passes adversarial testing',
+        'Compliance requirements are met',
+        'Cost controls prevent budget overruns',
+        'Full documentation of governance controls'
+      ],
+      hours: 12
+    }
+  },
   {
     weekNumber: 3,
     title: 'RAG + Memory',
@@ -81,6 +191,112 @@ const weekData = [
         'Reviews are contextual and helpful',
         'False positive rate below 20%',
         'Review turnaround under 2 minutes'
+      ],
+      hours: 10
+    }
+  },
+  {
+    weekNumber: 5,
+    title: 'AI Agents',
+    description: 'Build autonomous AI agents that can use tools and complete complex tasks',
+    objectives: [
+      'Understand agent architectures',
+      'Build tool-using agents',
+      'Debug and optimize agents'
+    ],
+    concepts: [
+      { slug: 'agent-fundamentals', title: 'Agent Fundamentals', minutes: 35 },
+      { slug: 'building-tools', title: 'Building Tools for Agents', minutes: 40 },
+      { slug: 'agent-debugging', title: 'Agent Debugging & Optimization', minutes: 45 }
+    ],
+    lab: {
+      slug: 'build-research-agent',
+      title: 'Build a Research Agent',
+      description: 'Create an autonomous agent that can research topics using web search and document analysis',
+      exercises: [
+        { number: 1, title: 'Implement web search tool', type: 'coding' },
+        { number: 2, title: 'Build document summarization tool', type: 'coding' },
+        { number: 3, title: 'Create ReAct agent loop', type: 'implementation' },
+        { number: 4, title: 'Add error handling and retries', type: 'coding' },
+        { number: 5, title: 'Optimize token usage', type: 'optimization' }
+      ]
+    },
+    project: {
+      slug: 'autonomous-task-agent',
+      title: 'Autonomous Task Completion Agent',
+      description: 'Build an agent that can autonomously complete multi-step tasks using custom tools',
+      requirements: [
+        'Implement ReAct agent architecture',
+        'Build at least 3 custom tools (web search, calculator, file operations)',
+        'Add tool error handling and validation',
+        'Implement agent memory and context management',
+        'Create observable agent traces',
+        'Add safety controls (max iterations, cost limits)',
+        'Build a simple UI to interact with the agent',
+        'Write comprehensive tests for agent loops'
+      ],
+      successCriteria: [
+        'Agent can successfully complete multi-step tasks',
+        'Tools are called correctly with proper parameters',
+        'Agent handles tool errors gracefully',
+        'Agent stays within iteration and cost limits',
+        'Full trace of agent reasoning is available',
+        'UI clearly shows agent\'s thinking process',
+        'Agent does not loop infinitely',
+        'Test coverage above 80% for agent logic'
+      ],
+      hours: 10
+    }
+  },
+  {
+    weekNumber: 6,
+    title: 'Observability + Production',
+    description: 'Deploy AI systems with monitoring, caching, and reliability',
+    objectives: [
+      'Deploy production systems',
+      'Implement monitoring',
+      'Optimize performance'
+    ],
+    concepts: [
+      { slug: 'observability-basics', title: 'Observability Basics for AI Systems', minutes: 30 },
+      { slug: 'monitoring-ai-systems', title: 'Monitoring LLM Applications', minutes: 35 },
+      { slug: 'performance-optimization', title: 'Performance Optimization & Caching', minutes: 40 },
+      { slug: 'production-deployment', title: 'Production Deployment Best Practices', minutes: 35 }
+    ],
+    lab: {
+      slug: 'production-monitoring',
+      title: 'Production Monitoring Implementation',
+      description: 'Implement comprehensive monitoring and caching for your AI application',
+      exercises: [
+        { number: 1, title: 'Set up LangSmith or Helicone', type: 'setup' },
+        { number: 2, title: 'Implement cost tracking', type: 'coding' },
+        { number: 3, title: 'Add semantic caching', type: 'coding' },
+        { number: 4, title: 'Build alerting system', type: 'implementation' },
+        { number: 5, title: 'Deploy to Vercel/Railway', type: 'deployment' }
+      ]
+    },
+    project: {
+      slug: 'production-ai-app',
+      title: 'Production-Ready AI Application',
+      description: 'Deploy a fully monitored, optimized AI application with caching and observability',
+      requirements: [
+        'LLM observability integration (LangSmith/Helicone)',
+        'Cost tracking and budget alerts',
+        'Semantic caching for common queries',
+        'Performance monitoring dashboards',
+        'Error tracking and alerting',
+        'Production deployment (Vercel/Railway)',
+        'Load testing and optimization',
+        'Full documentation'
+      ],
+      successCriteria: [
+        'Application deployed and publicly accessible',
+        'All LLM calls are traced and monitored',
+        'Caching reduces costs by 30%+',
+        'Alerts trigger for errors and budget overruns',
+        'Response time p95 < 2 seconds',
+        'Application handles 100+ concurrent users',
+        'Documentation includes runbooks'
       ],
       hours: 10
     }
@@ -338,13 +554,13 @@ const weekData = [
 ]
 
 async function main() {
-  console.log('Seeding all remaining weeks...')
+  console.log('🌱 Seeding all 12 weeks of curriculum...\n')
 
   for (const week of weekData) {
-    console.log(`\nProcessing Week ${week.weekNumber}: ${week.title}`)
+    console.log(`Processing Week ${week.weekNumber}: ${week.title}`)
 
-    // Create or get week
-    let curriculumWeek = await prisma.curriculumWeek.upsert({
+    // Create or update week
+    const curriculumWeek = await prisma.curriculumWeek.upsert({
       where: { weekNumber: week.weekNumber },
       create: {
         weekNumber: week.weekNumber,
@@ -360,7 +576,7 @@ async function main() {
       }
     })
 
-    // Delete existing content
+    // Delete existing content to avoid duplicates
     await prisma.concept.deleteMany({ where: { weekId: curriculumWeek.id } })
     await prisma.lab.deleteMany({ where: { weekId: curriculumWeek.id } })
     await prisma.weekProject.deleteMany({ where: { weekId: curriculumWeek.id } })
@@ -405,15 +621,20 @@ async function main() {
         estimatedHours: week.project.hours
       }
     })
-    console.log(`  ✓ Created project`)
+    console.log(`  ✓ Created project\n`)
   }
 
-  console.log('\n✅ All weeks seeded successfully!')
+  console.log('✅ All 12 weeks seeded successfully!')
+  console.log('\nSummary:')
+  console.log('- 12 curriculum weeks')
+  console.log('- 41 concepts')
+  console.log('- 12 labs')
+  console.log('- 12 projects')
 }
 
 main()
   .catch((e) => {
-    console.error(e)
+    console.error('❌ Error seeding database:', e)
     process.exit(1)
   })
   .finally(async () => {
