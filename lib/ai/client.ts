@@ -10,6 +10,7 @@ export interface DiagnosisAnalysisInput {
     isCorrect: boolean
   }>
   totalQuestions: number
+  difficultyLevel?: 'beginner' | 'intermediate' | 'advanced'
 }
 
 export interface DiagnosisAnalysisOutput {
@@ -53,9 +54,34 @@ function createDiagnosisPrompt(input: DiagnosisAnalysisInput): string {
     `- ${a.skillArea}: ${a.isCorrect ? '✓' : '✗'} (${a.question})`
   ).join('\n')
 
+  const difficultyLevel = input.difficultyLevel || 'intermediate'
+  const correctCount = input.answers.filter(a => a.isCorrect).length
+  const scorePercentage = Math.round((correctCount / input.totalQuestions) * 100)
+
+  const pathRecommendationGuidelines = {
+    beginner: `
+For BEGINNER quiz (${scorePercentage}% correct):
+- >80% correct → "standard" path (ready for normal pace)
+- 50-80% correct → "standard" path (proceed with support)
+- <50% correct → "foundation-first" (needs more basics)`,
+    intermediate: `
+For INTERMEDIATE quiz (${scorePercentage}% correct):
+- >80% correct → "fast-track" (skip basics)
+- 60-80% correct → "standard" path (normal pace)
+- <60% correct → "foundation-first" (review fundamentals)`,
+    advanced: `
+For ADVANCED quiz (${scorePercentage}% correct):
+- >60% correct → "fast-track" (highly skilled, skip basics)
+- 40-60% correct → "standard" path (solid foundation)
+- <40% correct → "foundation-first" (strengthen fundamentals)`
+  }
+
   return `You are an AI learning path advisor. Analyze this skill diagnosis quiz results and provide personalized recommendations.
 
-Quiz Results (${input.answers.filter(a => a.isCorrect).length}/${input.totalQuestions} correct):
+Quiz Difficulty Level: ${difficultyLevel.toUpperCase()}
+Quiz Results: ${correctCount}/${input.totalQuestions} correct (${scorePercentage}%)
+
+Answer Breakdown:
 ${answerSummary}
 
 Provide analysis in this exact JSON format:
@@ -75,14 +101,14 @@ Provide analysis in this exact JSON format:
 }
 
 Scoring guidelines:
-- 0.0-0.3: Beginner (needs foundation)
-- 0.4-0.7: Intermediate (standard path)
-- 0.8-1.0: Advanced (can skip basics)
+- 0.0-0.3: Beginner level skills (needs foundation)
+- 0.4-0.7: Intermediate level skills (solid foundation)
+- 0.8-1.0: Advanced level skills (expert knowledge)
 
-Path recommendations:
-- "foundation-first": <50% overall, needs basics
-- "standard": 50-80% overall, normal pace
-- "fast-track": >80% overall, skip basics
+Path recommendations based on difficulty level:
+${pathRecommendationGuidelines[difficultyLevel]}
+
+IMPORTANT: Consider the quiz difficulty when recommending paths. A ${scorePercentage}% score on a ${difficultyLevel} quiz indicates different skill levels than the same score on a different difficulty.
 
 Respond ONLY with the JSON object, no additional text.`
 }
