@@ -156,7 +156,10 @@ async function executeStructuredOutput(): Promise<string> {
     output.push(`Input: "${sampleText}"`)
     output.push('')
     output.push('Extracted Data:')
-    output.push(response.content[0].text)
+    const firstBlock = response.content[0]
+    if (firstBlock.type === 'text') {
+      output.push(firstBlock.text)
+    }
     output.push('')
     output.push('Benefits of Structured Outputs:')
     output.push('  ✓ Consistent JSON format')
@@ -249,7 +252,8 @@ async function executeContentModeration(): Promise<string> {
         }]
       })
 
-      const text = response.content[0].text
+      const firstBlock = response.content[0]
+      const text = firstBlock.type === 'text' ? firstBlock.text : 'No text response'
       output.push(`Input: "${input}"`)
       output.push(`Analysis: ${text}`)
       output.push('')
