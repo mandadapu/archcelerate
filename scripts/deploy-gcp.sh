@@ -59,7 +59,8 @@ SERVICE_URL=$(gcloud run services describe $SERVICE_NAME \
   --project=$PROJECT_ID \
   --format 'value(status.url)' 2>/dev/null || echo "")
 
-# Use custom domain for NEXTAUTH_URL (for OAuth callbacks)
+# Set primary domain as NEXTAUTH_URL
+# trustHost: true in auth config allows www.archcelerate.com to work too
 NEXTAUTH_URL="https://archcelerate.com"
 
 # Step 5: Check for VPC connector
