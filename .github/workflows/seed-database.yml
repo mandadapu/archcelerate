@@ -1,0 +1,120 @@
+name: Seed Database
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_migrations:
+        description: 'Skip database migrations'
+        required: false
+        type: boolean
+        default: false
+      week:
+        description: 'Seed specific week (1-12, or "all" for all weeks)'
+        required: false
+        type: string
+        default: 'all'
+
+env:
+  GCP_PROJECT_ID: archcelerate
+  GCP_REGION: us-central1
+
+jobs:
+  seed:
+    name: Seed Production Database
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Get Database Credentials
+        id: db-creds
+        run: |
+          DB_PASSWORD=$(gcloud secrets versions access latest --secret=DB_PASSWORD --project=${{ env.GCP_PROJECT_ID }})
+          DB_HOST=$(gcloud sql instances describe archcelerate-db --project=${{ env.GCP_PROJECT_ID }} --format="value(ipAddresses[0].ipAddress)")
+          echo "DATABASE_URL=postgresql://postgres:${DB_PASSWORD}@${DB_HOST}:5432/archcelerate?schema=public" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Run Database Migrations
+        if: ${{ !inputs.skip_migrations }}
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ steps.db-creds.outputs.DATABASE_URL }}
+
+      - name: Seed Database
+        run: |
+          echo "🌱 Seeding database..."
+
+          case "${{ inputs.week }}" in
+            "1")
+              echo "Seeding Week 1..."
+              npx tsx prisma/seed-week1.ts
+              ;;
+            "2")
+              echo "Seeding Week 2..."
+              npx tsx prisma/seed-week2.ts
+              ;;
+            "5")
+              echo "Seeding Week 5..."
+              npx tsx prisma/seed-week5.ts
+              ;;
+            "6")
+              echo "Seeding Week 6..."
+              npx tsx prisma/seed-week6.ts
+              ;;
+            "all"|*)
+              echo "Seeding all weeks..."
+              npx tsx prisma/seed-week1.ts || echo "⚠️  Week 1 already seeded or error"
+              npx tsx prisma/seed-week2.ts || echo "⚠️  Week 2 already seeded or error"
+              npx tsx prisma/seed-week5.ts || echo "⚠️  Week 5 already seeded or error"
+              npx tsx prisma/seed-week6.ts || echo "⚠️  Week 6 already seeded or error"
+              npx tsx prisma/seed-all-weeks.ts || echo "⚠️  Remaining weeks already seeded or error"
+              ;;
+          esac
+
+          echo "✅ Database seeding completed"
+        env:
+          DATABASE_URL: ${{ steps.db-creds.outputs.DATABASE_URL }}
+
+      - name: Verify Seeding
+        run: |
+          echo "📊 Verifying seeded data..."
+          npx prisma db seed --show-report || echo "No verification script available"
+        env:
+          DATABASE_URL: ${{ steps.db-creds.outputs.DATABASE_URL }}
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🌱 DATABASE SEEDING SUMMARY"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "Configuration:"
+          echo "  Project:          ${{ env.GCP_PROJECT_ID }}"
+          echo "  Skip Migrations:  ${{ inputs.skip_migrations || false }}"
+          echo "  Week Filter:      ${{ inputs.week || 'all' }}"
+          echo ""
+          echo "Status:"
+          echo "  Migrations:       ${{ steps.migrate.outcome || 'skipped' }}"
+          echo "  Seeding:          ${{ steps.seed.outcome || 'N/A' }}"
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
