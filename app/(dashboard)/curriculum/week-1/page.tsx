@@ -74,29 +74,19 @@ export default async function Week1Page() {
       objectives: objectives.slice(4, 8)
     },
     {
-      title: "Security & Safety",
+      title: "Production Readiness",
       icon: "🔒",
-      objectives: objectives.slice(8, 12)
-    },
-    {
-      title: "Production Reliability",
-      icon: "⚡",
-      objectives: objectives.slice(12, 16)
+      objectives: objectives.slice(8, 14)
     },
     {
       title: "Cost & Performance",
       icon: "💰",
-      objectives: objectives.slice(16, 20)
+      objectives: objectives.slice(14, 18)
     },
     {
-      title: "Real-World Applications",
+      title: "Week 1 Capstone",
       icon: "🚀",
-      objectives: objectives.slice(20, 24)
-    },
-    {
-      title: "Production Deployment",
-      icon: "🌐",
-      objectives: objectives.slice(24)
+      objectives: objectives.slice(18)
     }
   ]
 
