@@ -12,47 +12,35 @@ async function main() {
       title: 'Foundations + Visual Builder Introduction',
       description: 'Understand LLM fundamentals, master API integration, experience visual agent building, and build production-ready chat assistant',
       objectives: [
-        // Core Technical Understanding
+        // Core Technical Understanding (4 objectives)
         'Understand LLM fundamentals: tokenization, context windows, and model capabilities',
         'Master prompt engineering patterns: zero-shot, few-shot, chain-of-thought reasoning',
         'Learn API integration patterns: streaming responses, error handling, retry logic',
         'Experience visual agent building before coding to understand abstraction layers',
 
-        // Architectural Decisions
+        // Architecture & Design (4 objectives)
         'Evaluate architecture choices: serverless vs long-running, synchronous vs streaming',
         'Design conversation state management: in-memory, database, or distributed cache',
         'Choose appropriate model tiers based on latency, cost, and quality trade-offs',
         'Implement rate limiting strategies to prevent abuse and control costs',
 
-        // Security & Safety
+        // Production Readiness (6 objectives)
         'Implement input validation and sanitization to prevent prompt injection attacks',
-        'Add content filtering and guardrails to detect harmful or inappropriate outputs',
         'Secure API keys using environment variables and secret management',
-        'Implement proper authentication and authorization for production deployments',
-
-        // Production Considerations
         'Handle token limits and implement context window management strategies',
-        'Implement error handling for API failures, rate limits, and timeouts',
-        'Add comprehensive logging and monitoring for debugging and analytics',
+        'Implement comprehensive error handling for API failures, rate limits, and timeouts',
+        'Add logging and monitoring for debugging production issues',
         'Design graceful degradation when AI services are unavailable',
 
-        // Cost & Performance
-        'Understand pricing models: per-token costs, caching strategies, batch processing',
+        // Cost & Performance (4 objectives)
+        'Understand pricing models: per-token costs, input vs output token pricing',
         'Optimize prompt design to reduce token usage without sacrificing quality',
         'Implement response caching for frequently asked questions',
-        'Monitor and set budget alerts to prevent unexpected costs',
+        'Monitor token usage and set budget alerts to prevent unexpected costs',
 
-        // Domain-Specific Use Cases
-        'Customer Support: Context-aware responses with conversation history',
-        'Technical Documentation: Code generation and explanation capabilities',
-        'Content Creation: SEO-friendly copy with brand voice consistency',
-        'Data Analysis: Natural language queries to structured data insights',
-
-        // Implementation Implications
-        'Understand latency implications: real-time chat vs batch processing',
-        'Consider compliance requirements: data retention, GDPR, user privacy',
-        'Plan for scaling: connection pooling, load balancing, distributed systems',
-        'Build production-ready chat assistant with all best practices integrated'
+        // Week 1 Capstone (2 objectives)
+        'Integrate security, architecture, and cost optimization into a single system',
+        'Build production-ready chat assistant demonstrating all Week 1 concepts'
       ],
       active: true,
     },
@@ -61,47 +49,35 @@ async function main() {
       title: 'Foundations + Visual Builder Introduction',
       description: 'Understand LLM fundamentals, master API integration, experience visual agent building, and build production-ready chat assistant',
       objectives: [
-        // Core Technical Understanding
+        // Core Technical Understanding (4 objectives)
         'Understand LLM fundamentals: tokenization, context windows, and model capabilities',
         'Master prompt engineering patterns: zero-shot, few-shot, chain-of-thought reasoning',
         'Learn API integration patterns: streaming responses, error handling, retry logic',
         'Experience visual agent building before coding to understand abstraction layers',
 
-        // Architectural Decisions
+        // Architecture & Design (4 objectives)
         'Evaluate architecture choices: serverless vs long-running, synchronous vs streaming',
         'Design conversation state management: in-memory, database, or distributed cache',
         'Choose appropriate model tiers based on latency, cost, and quality trade-offs',
         'Implement rate limiting strategies to prevent abuse and control costs',
 
-        // Security & Safety
+        // Production Readiness (6 objectives)
         'Implement input validation and sanitization to prevent prompt injection attacks',
-        'Add content filtering and guardrails to detect harmful or inappropriate outputs',
         'Secure API keys using environment variables and secret management',
-        'Implement proper authentication and authorization for production deployments',
-
-        // Production Considerations
         'Handle token limits and implement context window management strategies',
-        'Implement error handling for API failures, rate limits, and timeouts',
-        'Add comprehensive logging and monitoring for debugging and analytics',
+        'Implement comprehensive error handling for API failures, rate limits, and timeouts',
+        'Add logging and monitoring for debugging production issues',
         'Design graceful degradation when AI services are unavailable',
 
-        // Cost & Performance
-        'Understand pricing models: per-token costs, caching strategies, batch processing',
+        // Cost & Performance (4 objectives)
+        'Understand pricing models: per-token costs, input vs output token pricing',
         'Optimize prompt design to reduce token usage without sacrificing quality',
         'Implement response caching for frequently asked questions',
-        'Monitor and set budget alerts to prevent unexpected costs',
+        'Monitor token usage and set budget alerts to prevent unexpected costs',
 
-        // Domain-Specific Use Cases
-        'Customer Support: Context-aware responses with conversation history',
-        'Technical Documentation: Code generation and explanation capabilities',
-        'Content Creation: SEO-friendly copy with brand voice consistency',
-        'Data Analysis: Natural language queries to structured data insights',
-
-        // Implementation Implications
-        'Understand latency implications: real-time chat vs batch processing',
-        'Consider compliance requirements: data retention, GDPR, user privacy',
-        'Plan for scaling: connection pooling, load balancing, distributed systems',
-        'Build production-ready chat assistant with all best practices integrated'
+        // Week 1 Capstone (2 objectives)
+        'Integrate security, architecture, and cost optimization into a single system',
+        'Build production-ready chat assistant demonstrating all Week 1 concepts'
       ],
       active: true,
     }
@@ -190,7 +166,7 @@ async function main() {
         orderIndex: 5,
         title: 'AI Architecture & Design Patterns',
         contentPath: 'content/week1/architecture-decisions.mdx',
-        estimatedMinutes: 50,
+        estimatedMinutes: 40,
       },
       create: {
         weekId: week1.id,
@@ -198,60 +174,24 @@ async function main() {
         slug: 'architecture-decisions',
         title: 'AI Architecture & Design Patterns',
         contentPath: 'content/week1/architecture-decisions.mdx',
-        estimatedMinutes: 50,
-      }
-    }),
-    prisma.concept.upsert({
-      where: { slug: 'security-safety' },
-      update: {
-        weekId: week1.id,
-        orderIndex: 6,
-        title: 'Security & Safety in AI Systems',
-        contentPath: 'content/week1/security-safety.mdx',
-        estimatedMinutes: 40,
-      },
-      create: {
-        weekId: week1.id,
-        orderIndex: 6,
-        slug: 'security-safety',
-        title: 'Security & Safety in AI Systems',
-        contentPath: 'content/week1/security-safety.mdx',
         estimatedMinutes: 40,
       }
     }),
     prisma.concept.upsert({
-      where: { slug: 'production-deployment' },
+      where: { slug: 'production-readiness' },
       update: {
         weekId: week1.id,
-        orderIndex: 7,
-        title: 'Production Deployment & Operations',
-        contentPath: 'content/week1/production-deployment.mdx',
-        estimatedMinutes: 55,
-      },
-      create: {
-        weekId: week1.id,
-        orderIndex: 7,
-        slug: 'production-deployment',
-        title: 'Production Deployment & Operations',
-        contentPath: 'content/week1/production-deployment.mdx',
-        estimatedMinutes: 55,
-      }
-    }),
-    prisma.concept.upsert({
-      where: { slug: 'cost-performance' },
-      update: {
-        weekId: week1.id,
-        orderIndex: 8,
-        title: 'Cost Optimization & Performance',
-        contentPath: 'content/week1/cost-performance.mdx',
+        orderIndex: 6,
+        title: 'Production Readiness',
+        contentPath: 'content/week1/production-readiness.mdx',
         estimatedMinutes: 45,
       },
       create: {
         weekId: week1.id,
-        orderIndex: 8,
-        slug: 'cost-performance',
-        title: 'Cost Optimization & Performance',
-        contentPath: 'content/week1/cost-performance.mdx',
+        orderIndex: 6,
+        slug: 'production-readiness',
+        title: 'Production Readiness',
+        contentPath: 'content/week1/production-readiness.mdx',
         estimatedMinutes: 45,
       }
     }),
