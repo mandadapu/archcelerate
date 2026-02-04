@@ -38,11 +38,11 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 # Copy Prisma files and migrations
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
-COPY --from=builder /app/node_modules/.bin ./node_modules/.bin
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.bin ./node_modules/.bin
 
 # Copy built assets
 COPY --from=builder /app/public ./public
@@ -52,6 +52,9 @@ COPY --from=builder /app/.next/static ./.next/static
 # Copy entrypoint script
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
+
+# Ensure nextjs user owns everything
+RUN chown -R nextjs:nodejs /app
 
 USER nextjs
 
