@@ -23,14 +23,14 @@ export default async function DashboardPage() {
 
   const diagnosisCompleted = !!user?.skillDiagnosis
 
-  // Fetch Week 1 progress
-  let week1Progress = null
+  // Fetch Week 1 data and progress
+  let week1Data = null
   if (user) {
     const week1 = await prisma.curriculumWeek.findUnique({
       where: { weekNumber: 1 }
     })
     if (week1) {
-      week1Progress = await prisma.userWeekProgress.findUnique({
+      const week1Progress = await prisma.userWeekProgress.findUnique({
         where: {
           userId_weekId: {
             userId: user.id,
@@ -38,6 +38,7 @@ export default async function DashboardPage() {
           }
         }
       })
+      week1Data = { weekNumber: 1, week: week1, progress: week1Progress }
     }
   }
 
@@ -130,31 +131,32 @@ export default async function DashboardPage() {
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
 
-        <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50">
-          <CardHeader>
-            <CardTitle>Week 1</CardTitle>
-            <CardDescription>Foundations + Visual Builder</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-slate-600 mb-4">
-              Learn LLM fundamentals, prompt engineering, and build your first AI product
-            </p>
-            {week1Progress ? (
+        {week1Data?.week && (
+          <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50">
+            <CardHeader>
+              <CardTitle>Week 1</CardTitle>
+              <CardDescription>{week1Data.week.title}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-slate-600 mb-4">
+                {week1Data.week.description}
+              </p>
+            {week1Data.progress ? (
               <div className="space-y-3">
                 <div className="space-y-1">
                   <div className="text-xs text-slate-600 mb-1">
-                    Progress: {week1Progress.conceptsCompleted}/{week1Progress.conceptsTotal} concepts
-                    {week1Progress.labCompleted && ', Lab ✓'}
-                    {week1Progress.projectCompleted && ', Project ✓'}
+                    Progress: {week1Data.progress.conceptsCompleted}/{week1Data.progress.conceptsTotal} concepts
+                    {week1Data.progress.labCompleted && ', Lab ✓'}
+                    {week1Data.progress.projectCompleted && ', Project ✓'}
                   </div>
                   <div className="w-full bg-slate-200 rounded-full h-1.5">
                     <div
                       className="bg-purple-600 h-1.5 rounded-full transition-all"
                       style={{
                         width: `${Math.round(
-                          ((week1Progress.conceptsCompleted / week1Progress.conceptsTotal) * 0.6 +
-                           (week1Progress.labCompleted ? 0.2 : 0) +
-                           (week1Progress.projectCompleted ? 0.2 : 0)) * 100
+                          ((week1Data.progress.conceptsCompleted / week1Data.progress.conceptsTotal) * 0.6 +
+                           (week1Data.progress.labCompleted ? 0.2 : 0) +
+                           (week1Data.progress.projectCompleted ? 0.2 : 0)) * 100
                         )}%`
                       }}
                     />
@@ -175,6 +177,7 @@ export default async function DashboardPage() {
             )}
           </CardContent>
         </Card>
+      )}
 
         {week2Data?.week && (
           <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50">
