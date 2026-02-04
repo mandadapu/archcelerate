@@ -208,6 +208,114 @@ class HybridSearchEngine {
 }
 ```
 
+### Postgres-Native Hybrid Search with RRF
+
+For teams using **pgvector**, you can implement RRF directly in SQL for better performance:
+
+```sql
+-- Hybrid search combining pgvector (semantic) + tsvector (full-text)
+-- Using Reciprocal Rank Fusion (RRF) to combine rankings
+
+WITH vector_search AS (
+  -- Semantic search with pgvector
+  SELECT
+    id,
+    content,
+    metadata,
+    1.0 / (60 + row_number() OVER (ORDER BY embedding <=> $1::vector)) AS rrf_score
+  FROM document_chunks
+  ORDER BY embedding <=> $1::vector
+  LIMIT 20
+),
+keyword_search AS (
+  -- Full-text search with tsvector
+  SELECT
+    id,
+    content,
+    metadata,
+    1.0 / (60 + row_number() OVER (ORDER BY ts_rank(content_tsv, query) DESC)) AS rrf_score
+  FROM document_chunks,
+       to_tsquery('english', $2) query
+  WHERE content_tsv @@ query
+  ORDER BY ts_rank(content_tsv, query) DESC
+  LIMIT 20
+)
+-- Combine both rankings with RRF
+SELECT
+  d.id,
+  d.content,
+  d.metadata,
+  COALESCE(v.rrf_score, 0) + COALESCE(k.rrf_score, 0) AS combined_score
+FROM document_chunks d
+LEFT JOIN vector_search v ON d.id = v.id
+LEFT JOIN keyword_search k ON d.id = k.id
+WHERE v.id IS NOT NULL OR k.id IS NOT NULL
+ORDER BY combined_score DESC
+LIMIT 10;
+```
+
+**TypeScript wrapper**:
+
+```typescript
+interface HybridSearchParams {
+  queryEmbedding: number[]
+  queryText: string
+  topK?: number
+}
+
+async function hybridSearchPostgres(
+  params: HybridSearchParams
+): Promise<Document[]> {
+  const { queryEmbedding, queryText, topK = 10 } = params
+
+  // Convert query text to tsquery format
+  const tsQuery = queryText
+    .split(/\s+/)
+    .map(term => term + ':*')
+    .join(' & ')
+
+  const result = await pool.query(
+    `
+    WITH vector_search AS (
+      SELECT
+        id, content, metadata,
+        1.0 / (60 + row_number() OVER (ORDER BY embedding <=> $1::vector)) AS rrf_score
+      FROM document_chunks
+      ORDER BY embedding <=> $1::vector
+      LIMIT 20
+    ),
+    keyword_search AS (
+      SELECT
+        id, content, metadata,
+        1.0 / (60 + row_number() OVER (ORDER BY ts_rank(content_tsv, query) DESC)) AS rrf_score
+      FROM document_chunks, to_tsquery('english', $2) query
+      WHERE content_tsv @@ query
+      ORDER BY ts_rank(content_tsv, query) DESC
+      LIMIT 20
+    )
+    SELECT
+      d.id, d.content, d.metadata,
+      COALESCE(v.rrf_score, 0) + COALESCE(k.rrf_score, 0) AS combined_score
+    FROM document_chunks d
+    LEFT JOIN vector_search v ON d.id = v.id
+    LEFT JOIN keyword_search k ON d.id = k.id
+    WHERE v.id IS NOT NULL OR k.id IS NOT NULL
+    ORDER BY combined_score DESC
+    LIMIT $3
+    `,
+    [pgvector.toSql(queryEmbedding), tsQuery, topK]
+  )
+
+  return result.rows
+}
+```
+
+**Why RRF works**:
+- **No score normalization needed**: Vector similarity and BM25 scores are on different scales. RRF uses ranks, not raw scores.
+- **Robust**: Works even when one method returns no results
+- **Simple**: `1/(k + rank)` formula is easy to implement and understand
+- **k parameter** (typically 60): Controls how much weight to give lower-ranked results
+
 **When to use what**:
 - **Vector only**: Semantic queries, paraphrasing ("how to reset password" → "password recovery")
 - **Keyword only**: Exact matches, IDs, codes ("Part #9921")
@@ -222,6 +330,46 @@ class HybridSearchEngine {
 **Problem**: In multi-tenant systems, users must only see documents they have permission to access.
 
 **Solution**: Metadata filtering for Access Control Lists (ACLs) **before** the LLM sees results.
+
+### The Architect's Key Finding: Pre-filtering vs Post-filtering
+
+**❌ Post-filtering (Anti-pattern)**:
+```typescript
+// BAD: Retrieve first, filter later
+const allResults = await vectorDB.query({ vector: queryEmbedding, topK: 10 })
+const authorized = allResults.filter(doc => userHasAccess(user, doc))
+// Problem: You might be left with only 2 results after filtering 8!
+```
+
+**Why this fails**:
+- You retrieve top-10 most similar chunks across ALL documents
+- Then filter out the 8 chunks the user can't see
+- You're left with only 2 chunks, which might not be the most relevant authorized ones
+- The vector DB never searched within the user's authorized document set
+
+**✅ Pre-filtering (Best practice)**:
+```typescript
+// GOOD: Filter at query time
+const results = await vectorDB.query({
+  vector: queryEmbedding,
+  topK: 10,
+  filter: { teamId: user.teamId }  // Search ONLY authorized documents
+})
+// Result: Top-10 most similar chunks from documents user can access
+```
+
+**Why this works**:
+- The vector DB only searches within documents the user is authorized to see
+- You get the top-10 most relevant chunks from the authorized set
+- No information leakage, no incomplete results
+- Much better retrieval quality
+
+**Performance comparison**:
+
+| Approach | Search Space | Results Quality | Security Risk |
+|----------|-------------|-----------------|---------------|
+| Post-filtering | All documents (10M) | Poor (incomplete top-K) | High (leakage possible) |
+| Pre-filtering | Authorized only (100K) | Good (true top-K) | Low (never sees unauthorized) |
 
 ### ACL-Based Retrieval
 
@@ -335,6 +483,87 @@ function hasAccess(
 
   return false
 }
+```
+
+### Postgres-Native ACL Filtering
+
+If you're using **pgvector** with Postgres, you can push the filtering directly to the database:
+
+```typescript
+/**
+ * Secure search using Postgres + pgvector with SQL-level filtering
+ * Filter is applied at query time, not post-retrieval
+ */
+async function secureSearchPostgres(
+  queryEmbedding: number[],
+  userId: string,
+  userRoles: string[],
+  topK: number = 5
+): Promise<Document[]> {
+  const result = await pool.query(
+    `
+    SELECT
+      id,
+      content,
+      metadata,
+      embedding <=> $1::vector AS distance
+    FROM document_chunks
+    WHERE
+      -- Pre-filter: Only search documents user can access
+      (
+        -- User is in allowed roles
+        metadata->'allowed_roles' ?| $2
+        OR
+        -- User is the owner
+        metadata->>'owner_id' = $3
+        OR
+        -- Document is public
+        metadata->>'access_level' = 'public'
+      )
+    ORDER BY embedding <=> $1::vector
+    LIMIT $4
+    `,
+    [pgvector.toSql(queryEmbedding), userRoles, userId, topK]
+  )
+
+  return result.rows
+}
+```
+
+**Key advantages**:
+- **Filter happens at query time**: Postgres only searches authorized documents
+- **Leverages Postgres indexes**: Can use HNSW or IVFFlat indexes with filtered queries
+- **No over-fetching**: Don't retrieve unauthorized documents at all
+- **Audit-friendly**: Database logs capture access patterns
+
+**Metadata schema for ACL**:
+
+```sql
+-- Example metadata structure for ACL
+CREATE TABLE document_chunks (
+  id UUID PRIMARY KEY,
+  content TEXT NOT NULL,
+  embedding vector(1536) NOT NULL,
+  metadata JSONB NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Example metadata:
+-- {
+--   "owner_id": "user-123",
+--   "team_id": "team-456",
+--   "access_level": "team",
+--   "allowed_roles": ["engineer", "manager"],
+--   "allowed_users": ["user-789", "user-012"]
+-- }
+
+-- Indexes for fast filtering
+CREATE INDEX idx_owner ON document_chunks ((metadata->>'owner_id'));
+CREATE INDEX idx_access_level ON document_chunks ((metadata->>'access_level'));
+CREATE INDEX idx_allowed_roles ON document_chunks USING gin ((metadata->'allowed_roles'));
+
+-- HNSW index for vector similarity
+CREATE INDEX idx_embedding ON document_chunks USING hnsw (embedding vector_cosine_ops);
 ```
 
 ### Row-Level Security in Vector Database
