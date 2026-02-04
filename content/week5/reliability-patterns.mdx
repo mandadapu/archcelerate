@@ -1,0 +1,831 @@
+---
+title: "Reliability Patterns for Multi-Agent Systems"
+week: 5
+concept: 2
+description: "Prevent agent failures with Reflection, Planning, Human-in-the-Loop, and State Management"
+estimatedMinutes: 50
+objectives:
+  - Implement self-correction with Reflection
+  - Use Planning & Execution (ReWOO) to reduce costs
+  - Add Human-in-the-Loop for critical actions
+  - Master state management and checkpointing
+---
+
+# Design Patterns for Reliability
+
+Teach these "Architectural Guardrails" to prevent agents from going off the rails.
+
+## The Core Problem
+
+**Agents fail in three ways**:
+1. **Hallucination**: Agent confidently provides wrong information
+2. **Infinite loops**: Agent gets stuck in feedback cycles
+3. **Unintended actions**: Agent executes destructive operations
+
+**Solution**: Add architectural guardrails BEFORE deploying to production.
+
+---
+
+## Pattern 1: Reflection (Self-Correction)
+
+**Concept**: The agent reviews its own work before submitting.
+
+**Question**: "Did I actually answer the user's question accurately?"
+
+### When to Use
+
+- **High-stakes outputs** where errors are costly (legal docs, medical info)
+- **Complex reasoning** where initial answer may miss edge cases
+- **Quality assurance** before final delivery
+
+### Example: Reflection Loop
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+interface ReflectionResult {
+  initialAnswer: string
+  reflection: string
+  revisedAnswer: string
+  confidence: 'high' | 'medium' | 'low'
+}
+
+async function reflectiveAgent(question: string): Promise<ReflectionResult> {
+  // Step 1: Generate initial answer
+  const initialResponse = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 1024,
+    messages: [{
+      role: 'user',
+      content: question
+    }]
+  })
+  const initialAnswer = initialResponse.content[0].text
+
+  // Step 2: Reflect on the answer
+  const reflectionResponse = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 512,
+    messages: [{
+      role: 'user',
+      content: `Review this answer for accuracy and completeness:
+
+QUESTION: ${question}
+ANSWER: ${initialAnswer}
+
+Provide critique:
+1. Is the answer factually correct?
+2. Does it fully address the question?
+3. Are there any logical gaps?
+4. Confidence level (high/medium/low)
+
+Format as JSON: { "critique": "...", "confidence": "high" }`
+    }]
+  })
+
+  const reflectionText = reflectionResponse.content[0].text
+  const reflectionJson = JSON.parse(
+    reflectionText.match(/\{[\s\S]*\}/)?.[0] || '{"critique":"", "confidence":"low"}'
+  )
+
+  // Step 3: Revise if confidence is not high
+  if (reflectionJson.confidence !== 'high') {
+    const revisionResponse = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20240620',
+      max_tokens: 1024,
+      messages: [{
+        role: 'user',
+        content: `Improve this answer based on the critique:
+
+QUESTION: ${question}
+INITIAL ANSWER: ${initialAnswer}
+CRITIQUE: ${reflectionJson.critique}
+
+Provide a revised, more accurate answer.`
+      }]
+    })
+
+    return {
+      initialAnswer,
+      reflection: reflectionJson.critique,
+      revisedAnswer: revisionResponse.content[0].text,
+      confidence: reflectionJson.confidence
+    }
+  }
+
+  return {
+    initialAnswer,
+    reflection: reflectionJson.critique,
+    revisedAnswer: initialAnswer,
+    confidence: 'high'
+  }
+}
+
+// Usage
+const result = await reflectiveAgent(
+  'What are the three main differences between pgvector and Pinecone for production RAG?'
+)
+
+console.log('Initial:', result.initialAnswer)
+console.log('Reflection:', result.reflection)
+console.log('Revised:', result.revisedAnswer)
+```
+
+### Reflection: Cost vs Quality Trade-off
+
+| Approach | API Calls | Cost | Quality |
+|----------|-----------|------|---------|
+| No reflection | 1 | $0.02 | 70% accuracy |
+| Single reflection | 3 | $0.06 | 85% accuracy |
+| Iterative reflection (max 3) | 5-7 | $0.10-$0.14 | 92% accuracy |
+
+**Production advice**: Use reflection for outputs that impact business decisions. Skip for low-stakes tasks (chat responses, drafts).
+
+---
+
+## Pattern 2: Planning & Execution (ReWOO)
+
+**Concept**: The agent creates a **full step-by-step plan** before it starts using tools.
+
+**Why it matters**:
+- **Reduces cost**: Generate plan once (100 tokens), not after every tool call (500 tokens/iteration)
+- **Makes logic auditable**: Humans can review the plan before execution
+- **Prevents loops**: Plan has fixed steps, can't loop infinitely
+
+### ReWOO Architecture
+
+```
+Step 1: PLAN - Generate full plan with all tool calls
+Step 2: EXECUTE - Execute tools in order
+Step 3: SOLVE - Synthesize results
+```
+
+### Example: Research with Planning
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+interface Plan {
+  steps: {
+    id: string
+    tool: string
+    input: string
+    dependsOn: string[]
+  }[]
+}
+
+interface ReWOOResult {
+  plan: Plan
+  toolResults: Record<string, string>
+  finalAnswer: string
+}
+
+// Step 1: Generate plan
+async function planAgent(question: string): Promise<Plan> {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 1024,
+    messages: [{
+      role: 'user',
+      content: `Create a step-by-step plan to answer this question: ${question}
+
+Available tools:
+- web_search(query: string): Search the web
+- read_url(url: string): Read content from URL
+- calculator(expression: string): Calculate math
+
+Output JSON plan:
+{
+  "steps": [
+    { "id": "step1", "tool": "web_search", "input": "...", "dependsOn": [] },
+    { "id": "step2", "tool": "read_url", "input": "#step1.url", "dependsOn": ["step1"] }
+  ]
+}`
+    }]
+  })
+
+  const planText = response.content[0].text
+  const jsonMatch = planText.match(/\{[\s\S]*\}/)
+  return jsonMatch ? JSON.parse(jsonMatch[0]) : { steps: [] }
+}
+
+// Step 2: Execute tools (mock implementations)
+async function executePlan(plan: Plan): Promise<Record<string, string>> {
+  const results: Record<string, string> = {}
+
+  for (const step of plan.steps) {
+    console.log(`Executing ${step.id}: ${step.tool}(${step.input})`)
+
+    // Resolve dependencies
+    let input = step.input
+    for (const dep of step.dependsOn) {
+      const depResult = results[dep]
+      input = input.replace(`#${dep}`, depResult)
+    }
+
+    // Execute tool (mock)
+    switch (step.tool) {
+      case 'web_search':
+        results[step.id] = `[Mock search results for: ${input}]`
+        break
+      case 'read_url':
+        results[step.id] = `[Mock content from: ${input}]`
+        break
+      case 'calculator':
+        results[step.id] = eval(input).toString()
+        break
+    }
+  }
+
+  return results
+}
+
+// Step 3: Synthesize answer
+async function solveAgent(question: string, toolResults: Record<string, string>): Promise<string> {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 1024,
+    messages: [{
+      role: 'user',
+      content: `Answer this question using the tool results:
+
+QUESTION: ${question}
+
+TOOL RESULTS:
+${JSON.stringify(toolResults, null, 2)}
+
+Provide a comprehensive answer.`
+    }]
+  })
+
+  return response.content[0].text
+}
+
+// ReWOO Orchestrator
+async function rewooWorkflow(question: string): Promise<ReWOOResult> {
+  console.log('Phase 1: Planning...')
+  const plan = await planAgent(question)
+
+  console.log('Phase 2: Executing tools...')
+  const toolResults = await executePlan(plan)
+
+  console.log('Phase 3: Solving...')
+  const finalAnswer = await solveAgent(question, toolResults)
+
+  return { plan, toolResults, finalAnswer }
+}
+
+// Usage
+const result = await rewooWorkflow(
+  'What is the market cap of the top 3 AI companies, and what is their total?'
+)
+```
+
+### ReWOO vs ReAct: Cost Comparison
+
+| Approach | Pattern | API Calls (avg) | Cost | When to Use |
+|----------|---------|----------------|------|-------------|
+| **ReAct** | Think → Act → Observe (loop) | 5-10 | $0.10-$0.20 | Dynamic tasks where path is unknown |
+| **ReWOO** | Plan → Execute → Solve | 3 | $0.06 | Fixed tasks with predictable steps |
+
+**Production advice**: Use ReWOO when task has clear milestones (research, data gathering). Use ReAct when task is exploratory.
+
+---
+
+## Pattern 3: Human-in-the-Loop (HITL)
+
+**Concept**: For critical actions, the architecture **requires a human signature** before proceeding.
+
+### When to Use
+
+- **Financial transactions** (spending money, issuing refunds)
+- **Destructive operations** (deleting files, dropping databases)
+- **Legal/compliance** (signing contracts, submitting reports)
+
+### Example: Approval Workflow
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+interface ApprovalRequest {
+  action: string
+  impact: string
+  estimatedCost: number
+  approved: boolean
+}
+
+// Agent proposes an action
+async function proposeAction(userRequest: string): Promise<ApprovalRequest> {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 512,
+    messages: [{
+      role: 'user',
+      content: `Analyze this request and propose an action:
+
+REQUEST: ${userRequest}
+
+Output JSON:
+{
+  "action": "Brief description of what will happen",
+  "impact": "What systems/data will be affected",
+  "estimatedCost": 0.00
+}`
+    }]
+  })
+
+  const proposalText = response.content[0].text
+  const jsonMatch = proposalText.match(/\{[\s\S]*\}/)
+  const proposal = jsonMatch ? JSON.parse(jsonMatch[0]) : {}
+
+  return {
+    action: proposal.action || '',
+    impact: proposal.impact || '',
+    estimatedCost: proposal.estimatedCost || 0,
+    approved: false
+  }
+}
+
+// Human approval (mock - in production this would be UI)
+async function requestHumanApproval(request: ApprovalRequest): Promise<boolean> {
+  console.log('\n🚨 HUMAN APPROVAL REQUIRED 🚨')
+  console.log(`Action: ${request.action}`)
+  console.log(`Impact: ${request.impact}`)
+  console.log(`Estimated Cost: $${request.estimatedCost}`)
+
+  // In production: pause workflow, send to UI, wait for response
+  // Mock: auto-approve for demo
+  return true
+}
+
+// Execute only if approved
+async function executeAction(request: ApprovalRequest): Promise<string> {
+  if (!request.approved) {
+    return '❌ Action rejected by human reviewer'
+  }
+
+  // Execute the actual action
+  return `✅ Action executed: ${request.action}`
+}
+
+// HITL Workflow
+async function hitlWorkflow(userRequest: string): Promise<string> {
+  const proposal = await proposeAction(userRequest)
+  const approved = await requestHumanApproval(proposal)
+
+  proposal.approved = approved
+
+  return await executeAction(proposal)
+}
+
+// Usage
+const result = await hitlWorkflow(
+  'Process a $5,000 refund for customer ID 12345'
+)
+```
+
+### HITL Architecture: Checkpoints
+
+```typescript
+interface HITLCheckpoint {
+  stage: 'proposal' | 'approval' | 'execution' | 'complete'
+  data: any
+  timestamp: Date
+  approver?: string
+}
+
+// Save state between stages
+async function saveCheckpoint(checkpoint: HITLCheckpoint) {
+  // In production: save to Redis/Postgres
+  console.log(`Checkpoint saved: ${checkpoint.stage}`)
+}
+
+// Resume from checkpoint after approval
+async function resumeFromCheckpoint(checkpointId: string) {
+  // In production: load from database
+  console.log(`Resuming from checkpoint: ${checkpointId}`)
+}
+```
+
+---
+
+## Pattern 4: Multi-Agent State Management
+
+**The Golden Rule**: The State is the "Single Source of Truth."
+
+### 1. The State Schema
+
+Define what data needs to persist across the workflow.
+
+```typescript
+interface NewsletterState {
+  topic: string              // Original user request
+  raw_articles: string[]     // Output from 'The Hunter'
+  verified_data: string[]    // Output from 'The Fact-Checker'
+  final_newsletter: string   // Output from 'The Writer'
+  iteration_count: number    // Safety counter to prevent infinite loops
+  max_iterations: number     // Stop after N cycles
+}
+```
+
+### 2. The Node Logic (The Handoff)
+
+Each agent is a **function** that takes the State, performs an action, and returns an **update** to the state.
+
+```typescript
+// The Hunter: Searches for articles
+async function hunterNode(state: NewsletterState): Promise<Partial<NewsletterState>> {
+  console.log(`Hunter: Searching for articles on "${state.topic}"`)
+
+  // Call search API (mock)
+  const articles = [
+    'Article 1: AI Safety in Production Systems',
+    'Article 2: Cost Optimization for LLMs',
+    'Article 3: RAG Architecture Patterns'
+  ]
+
+  return {
+    raw_articles: articles
+  }
+}
+
+// The Fact-Checker: Verifies articles
+async function factCheckerNode(state: NewsletterState): Promise<Partial<NewsletterState>> {
+  console.log(`Fact-Checker: Verifying ${state.raw_articles.length} articles`)
+
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 1024,
+    messages: [{
+      role: 'user',
+      content: `Verify these articles for quality and accuracy:
+
+${state.raw_articles.join('\n\n')}
+
+Output JSON:
+{
+  "verified": ["Article 1", "Article 2"],
+  "rejected": ["Article 3"],
+  "feedback": "Article 3 lacks sources"
+}`
+    }]
+  })
+
+  const result = JSON.parse(response.content[0].text.match(/\{[\s\S]*\}/)?.[0] || '{}')
+
+  if (result.verified.length === 0) {
+    // No good articles - need to search again
+    return {
+      verified_data: [],
+      iteration_count: state.iteration_count + 1,
+      // Provide feedback to Hunter for next iteration
+      hunter_feedback: result.feedback
+    }
+  }
+
+  return {
+    verified_data: result.verified
+  }
+}
+
+// The Writer: Generates newsletter
+async function writerNode(state: NewsletterState): Promise<Partial<NewsletterState>> {
+  console.log(`Writer: Creating newsletter from ${state.verified_data.length} verified articles`)
+
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 2048,
+    messages: [{
+      role: 'user',
+      content: `Write a professional newsletter from these verified articles:
+
+${state.verified_data.join('\n\n')}
+
+Format as Markdown with sections for each article.`
+    }]
+  })
+
+  return {
+    final_newsletter: response.content[0].text
+  }
+}
+```
+
+### 3. The Supervisor (The Router)
+
+The Architect must decide how to handle failures.
+
+```typescript
+type NodeFunction = (state: NewsletterState) => Promise<Partial<NewsletterState>>
+
+interface WorkflowConfig {
+  initialState: NewsletterState
+  nodes: {
+    hunter: NodeFunction
+    factChecker: NodeFunction
+    writer: NodeFunction
+  }
+  maxIterations: number
+}
+
+async function supervisorWorkflow(config: WorkflowConfig): Promise<NewsletterState> {
+  let state = config.initialState
+
+  while (state.iteration_count < config.maxIterations) {
+    // Step 1: Hunter searches
+    const hunterUpdate = await config.nodes.hunter(state)
+    state = { ...state, ...hunterUpdate }
+
+    // Step 2: Fact-Checker verifies
+    const factCheckUpdate = await config.nodes.factChecker(state)
+    state = { ...state, ...factCheckUpdate }
+
+    // Decision: Are we done or do we need to search again?
+    if (state.verified_data.length > 0) {
+      // We have good data - proceed to Writer
+      break
+    } else {
+      // No good data - loop back to Hunter with feedback
+      console.log(`⚠️ Iteration ${state.iteration_count}: No verified data. Searching again...`)
+      continue
+    }
+  }
+
+  // Safety check
+  if (state.verified_data.length === 0) {
+    throw new Error('Max iterations reached without finding verified articles')
+  }
+
+  // Step 3: Writer generates newsletter
+  const writerUpdate = await config.nodes.writer(state)
+  state = { ...state, ...writerUpdate }
+
+  return state
+}
+
+// Usage
+const result = await supervisorWorkflow({
+  initialState: {
+    topic: 'AI Architecture Best Practices',
+    raw_articles: [],
+    verified_data: [],
+    final_newsletter: '',
+    iteration_count: 0,
+    max_iterations: 3
+  },
+  nodes: {
+    hunter: hunterNode,
+    factChecker: factCheckerNode,
+    writer: writerNode
+  },
+  maxIterations: 3
+})
+
+console.log('Final Newsletter:', result.final_newsletter)
+```
+
+---
+
+## Architectural Key Findings
+
+### 1. Token Trimming
+
+**Don't pass unnecessary data between agents.**
+
+```typescript
+// ❌ BAD: Passing raw_articles to Writer (already processed)
+const writerInput = {
+  raw_articles: state.raw_articles,      // 5,000 tokens (unnecessary!)
+  verified_data: state.verified_data     // 2,000 tokens (needed)
+}
+
+// ✅ GOOD: Only pass verified_data
+const writerInput = {
+  verified_data: state.verified_data     // 2,000 tokens
+}
+// Savings: 60% token reduction
+```
+
+### 2. Cycle Detection
+
+**Always implement a `max_iterations` check.**
+
+```typescript
+if (state.iteration_count >= state.max_iterations) {
+  console.log('⚠️ Max iterations reached. Escalating to human.')
+  await notifyHuman({
+    issue: 'Fact-Checker rejected Hunter results 3 times',
+    state: state
+  })
+  throw new Error('Max iterations exceeded')
+}
+```
+
+### 3. Persistence (Checkpointing)
+
+**Save state to database between steps.** If the Fact-Checker fails, you can resume from that point without re-running the Hunter.
+
+```typescript
+interface Checkpoint {
+  workflowId: string
+  step: 'hunter' | 'factChecker' | 'writer'
+  state: NewsletterState
+  timestamp: Date
+}
+
+async function saveCheckpoint(checkpoint: Checkpoint) {
+  await prisma.checkpoint.create({
+    data: {
+      workflowId: checkpoint.workflowId,
+      step: checkpoint.step,
+      state: checkpoint.state as any,
+      timestamp: checkpoint.timestamp
+    }
+  })
+}
+
+// Resume from checkpoint
+async function resumeWorkflow(workflowId: string): Promise<NewsletterState> {
+  const checkpoint = await prisma.checkpoint.findFirst({
+    where: { workflowId },
+    orderBy: { timestamp: 'desc' }
+  })
+
+  if (!checkpoint) {
+    throw new Error('No checkpoint found')
+  }
+
+  console.log(`Resuming from step: ${checkpoint.step}`)
+  return checkpoint.state as NewsletterState
+}
+```
+
+---
+
+## The State Reset Architecture
+
+To handle errors without a full restart, implement **Checkpointing and Conditional Routing**.
+
+### 1. The Checkpoint Mechanism
+
+**Atomic Updates**: Each agent only modifies its specific key in the State object.
+
+```typescript
+// ✅ Atomic update pattern
+async function factCheckerNode(state: NewsletterState): Promise<Partial<NewsletterState>> {
+  // Only update verified_data, don't touch raw_articles or final_newsletter
+  return {
+    verified_data: ['Article 1', 'Article 2']
+  }
+}
+```
+
+### 2. The "Back-to-Search" Pattern
+
+If the Fact-Checker identifies a hallucination, **reset only the failing node's data**.
+
+```typescript
+function handleFactCheckFailure(state: NewsletterState): Partial<NewsletterState> {
+  return {
+    verified_data: [],  // Reset the failing node's data
+    hunter_feedback: 'The previous articles were biased. Find more academic sources.',
+    iteration_count: state.iteration_count + 1
+  }
+}
+```
+
+---
+
+## Implementation: "Time Travel" Debugging
+
+### Snapshots
+
+Save state to Redis/Postgres after each node completion.
+
+```typescript
+async function runWithSnapshots(workflow: WorkflowConfig) {
+  let state = workflow.initialState
+
+  for (const [nodeName, nodeFunc] of Object.entries(workflow.nodes)) {
+    // Execute node
+    const update = await nodeFunc(state)
+    state = { ...state, ...update }
+
+    // Save snapshot
+    await saveCheckpoint({
+      workflowId: crypto.randomUUID(),
+      step: nodeName as any,
+      state,
+      timestamp: new Date()
+    })
+  }
+
+  return state
+}
+```
+
+### Forking
+
+Create a "Branch" when an agent is uncertain.
+
+```typescript
+// Test two different Writer styles
+const casualNewsletter = await writerNode({ ...state, style: 'casual' })
+const formalNewsletter = await writerNode({ ...state, style: 'formal' })
+
+// Supervisor picks the winner
+const winner = await supervisorAgent({
+  options: [casualNewsletter, formalNewsletter],
+  criteria: 'Professional tone for enterprise audience'
+})
+```
+
+### Manual Override
+
+Pause the state and wait for human approval.
+
+```typescript
+if (state.iteration_count >= 2) {
+  // Pause workflow
+  const approved = await requestHumanApproval({
+    action: 'Continue searching for articles',
+    impact: `Already tried ${state.iteration_count} times`,
+    estimatedCost: 0.12
+  })
+
+  if (!approved) {
+    throw new Error('Human rejected continuation')
+  }
+}
+```
+
+---
+
+## The "Poison Pill" Pattern
+
+Some errors are **recoverable**, some are **poison pills**.
+
+| Error Type | Example | Action |
+|-----------|---------|--------|
+| **Recoverable** | Tool timeout, API rate limit | Use State Reset to retry |
+| **Poison Pill** | User requested illegal content | Terminal Node - shut down immediately |
+
+```typescript
+function isRecoverableError(error: Error): boolean {
+  const recoverableErrors = [
+    'TIMEOUT',
+    'RATE_LIMIT',
+    'NETWORK_ERROR'
+  ]
+
+  return recoverableErrors.some(msg => error.message.includes(msg))
+}
+
+async function handleError(error: Error, state: NewsletterState) {
+  if (isRecoverableError(error)) {
+    console.log('Recoverable error - retrying...')
+    return { ...state, iteration_count: state.iteration_count + 1 }
+  } else {
+    console.log('Poison pill detected - shutting down')
+    await alertUser({
+      error: error.message,
+      state
+    })
+    throw error
+  }
+}
+```
+
+---
+
+## Key Takeaways
+
+1. **Reflection**: Agent reviews its own work before submitting (85% → 92% accuracy)
+2. **Planning (ReWOO)**: Generate full plan before executing tools (50% cost reduction)
+3. **Human-in-the-Loop**: Require approval for critical actions (prevent destructive ops)
+4. **State Management**: Single source of truth with atomic updates and checkpointing
+5. **Cycle Detection**: Max iterations to prevent infinite loops (save costs)
+6. **Token Trimming**: Only pass necessary data between agents (60% reduction)
+7. **Poison Pill Detection**: Shut down immediately for unrecoverable errors
+
+---
+
+## Next Steps
+
+- **Week 5 Concept 3**: Compare frameworks (LangGraph, CrewAI, AutoGen)
+- **Week 5 Lab**: Build the Auto-Research & Newsletter Team with all patterns
+- **Production tip**: Use LangGraph's checkpointing system for state persistence
+
+---
+
+## Further Reading
+
+- [ReWOO: Reasoning WithOut Observation](https://arxiv.org/abs/2305.18323)
+- [Self-Refine: Iterative Refinement with Self-Feedback](https://arxiv.org/abs/2303.17651)
+- [LangGraph Checkpointing](https://langchain-ai.github.io/langgraph/concepts/#checkpointing)
