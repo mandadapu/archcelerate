@@ -8,8 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 
 export const metadata: Metadata = {
-  title: 'Week 1: Foundations + Visual Builder Introduction',
-  description: 'Learn LLM fundamentals, prompt engineering, API integration, and visual agent builders'
+  title: 'Week 1: LLM Fundamentals (The Engine)',
+  description: 'Master foundation LLM capabilities: tokens, models, prompting, API integration, and production patterns'
 }
 
 export default async function Week1Page() {
