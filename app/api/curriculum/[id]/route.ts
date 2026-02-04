@@ -173,7 +173,7 @@ export async function PUT(
           data: {
             contentId: params.id,
             content: chunk,
-            embedding: `[${embedding.join(',')}]` as any,
+            embedding: `[${embedding.join(',')}]`,
             chunkIndex: i,
             heading,
             codeBlock: isCodeBlock,

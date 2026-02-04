@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
         data: {
           contentId: curriculumContent.id,
           content: chunk,
-          embedding: `[${embedding.join(',')}]` as any,
+          embedding: `[${embedding.join(',')}]`,
           chunkIndex: i,
           heading,
           codeBlock: isCodeBlock,
