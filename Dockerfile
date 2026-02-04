@@ -53,6 +53,9 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
 
+# Ensure Prisma binaries are executable
+RUN chmod +x node_modules/.bin/* || true
+
 # Ensure nextjs user owns everything
 RUN chown -R nextjs:nodejs /app
 
