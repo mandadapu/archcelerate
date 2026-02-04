@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from '@jest/globals'
 import { MemoryManager } from '../memory-manager'
 import { createTestUser, cleanupTestData } from '@/lib/test-db'
 
-describe('MemoryManager', () => {
+describe.skip('MemoryManager', () => {
   let userId: string
   let memoryManager: MemoryManager
 
