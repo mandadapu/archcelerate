@@ -466,6 +466,61 @@ async function executeAccuracyTesting(): Promise<string> {
   return output.join('\n')
 }
 
+// Execute model comparison example
+async function executeModelComparison(): Promise<string> {
+  const output: string[] = []
+  output.push('Model Comparison Demo:\n')
+  output.push('Comparing Claude models on the same task\n')
+
+  const testPrompt = 'Explain the concept of API rate limiting in 2 sentences.'
+
+  // Compare Haiku vs Sonnet
+  const models = [
+    { name: 'Claude Haiku 4.5', model: 'claude-3-haiku-20240307', inputPrice: 1, outputPrice: 5 },
+    { name: 'Claude Sonnet 4.5', model: 'claude-3-5-sonnet-20240620', inputPrice: 3, outputPrice: 15 }
+  ]
+
+  output.push(`Test Prompt: "${testPrompt}"\n`)
+  output.push('Results:')
+  output.push('─'.repeat(80))
+
+  for (const modelConfig of models) {
+    try {
+      const start = Date.now()
+      const response = await anthropic.messages.create({
+        model: modelConfig.model,
+        max_tokens: 150,
+        messages: [{ role: 'user', content: testPrompt }]
+      })
+
+      const latency = Date.now() - start
+      const cost = (response.usage.input_tokens * modelConfig.inputPrice +
+                   response.usage.output_tokens * modelConfig.outputPrice) / 1_000_000
+
+      output.push(`\n${modelConfig.name}:`)
+      output.push(`  Latency: ${latency}ms`)
+      output.push(`  Input tokens: ${response.usage.input_tokens}`)
+      output.push(`  Output tokens: ${response.usage.output_tokens}`)
+      output.push(`  Cost: $${cost.toFixed(6)}`)
+
+      const responseText = response.content[0].type === 'text' ? response.content[0].text : ''
+      output.push(`  Response: ${responseText.slice(0, 120)}...`)
+
+    } catch (error) {
+      output.push(`\n${modelConfig.name}: Error - ${error}`)
+    }
+  }
+
+  output.push('\n' + '─'.repeat(80))
+  output.push('\n💡 Key Insights:')
+  output.push('  • Haiku is faster and cheaper for simple tasks')
+  output.push('  • Sonnet provides more detailed, nuanced responses')
+  output.push('  • Cost difference: Sonnet is ~3x more expensive')
+  output.push('  • Choose based on your quality/speed/cost priorities')
+
+  return output.join('\n')
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Check authentication
@@ -512,6 +567,9 @@ export async function POST(request: NextRequest) {
         break
       case 'accuracy-testing':
         output = await executeAccuracyTesting()
+        break
+      case 'model-comparison':
+        output = await executeModelComparison()
         break
       default:
         return NextResponse.json(
