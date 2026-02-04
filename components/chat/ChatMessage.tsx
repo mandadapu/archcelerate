@@ -1,14 +1,16 @@
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
+import { Citations, Citation } from '@/components/mentor/Citations'
 
 interface ChatMessageProps {
   role: 'user' | 'assistant'
   content: string
   timestamp?: string
   userName?: string
+  citations?: Citation[]
 }
 
-export function ChatMessage({ role, content, timestamp, userName }: ChatMessageProps) {
+export function ChatMessage({ role, content, timestamp, userName, citations }: ChatMessageProps) {
   const isUser = role === 'user'
 
   return (
@@ -36,6 +38,14 @@ export function ChatMessage({ role, content, timestamp, userName }: ChatMessageP
             ))}
           </div>
         </div>
+
+        {/* Show citations for assistant messages */}
+        {!isUser && citations && citations.length > 0 && (
+          <div className="mt-2 w-full">
+            <Citations citations={citations} />
+          </div>
+        )}
+
         {timestamp && (
           <span className="text-xs text-slate-500 mt-1">
             {new Date(timestamp).toLocaleTimeString()}

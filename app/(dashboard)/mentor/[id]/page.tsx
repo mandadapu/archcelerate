@@ -7,10 +7,25 @@ import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { QuickHelpSuggestions } from '@/components/mentor/QuickHelpSuggestions'
 
+interface Citation {
+  id: number
+  title: string
+  type: string
+  weekNumber: number | null
+  heading: string | null
+  isUserContent: boolean
+  author?: {
+    name: string | null
+    email: string | null
+  }
+  similarity: number
+}
+
 interface Message {
   role: 'user' | 'assistant'
   content: string
   timestamp: string
+  citations?: Citation[]
 }
 
 interface MentorContext {

@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { SkillRadar } from '@/components/diagnosis/SkillRadar'
 import { LearningPathCard } from '@/components/diagnosis/LearningPathCard'
 import Link from 'next/link'
@@ -32,15 +33,27 @@ export default async function DiagnosisResultsPage() {
   const correctAnswers = quizAnswers.filter(a => a.isCorrect).length
   const totalQuestions = quizAnswers.length
   const percentCorrect = Math.round((correctAnswers / totalQuestions) * 100)
+  const difficultyLevel = (diagnosis.difficultyLevel as string) || 'intermediate'
+
+  const levelBadgeColor = {
+    beginner: 'bg-green-100 text-green-800',
+    intermediate: 'bg-blue-100 text-blue-800',
+    advanced: 'bg-purple-100 text-purple-800',
+  }[difficultyLevel] || 'bg-blue-100 text-blue-800'
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-slate-900 mb-2">
-          Your Diagnosis Results
-        </h1>
+        <div className="flex items-center gap-3 mb-2">
+          <h1 className="text-3xl font-bold text-slate-900">
+            Your Diagnosis Results
+          </h1>
+          <Badge className={`${levelBadgeColor} capitalize`}>
+            {difficultyLevel} Level
+          </Badge>
+        </div>
         <p className="text-slate-600">
-          Based on your quiz performance, here&apos;s your personalized learning path
+          You scored {percentCorrect}% on the {difficultyLevel} difficulty quiz
         </p>
       </div>
 
