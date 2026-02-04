@@ -123,6 +123,7 @@ const weekData = [
       { slug: 'rag-memory-fundamentals', title: 'RAG + Memory Fundamentals', minutes: 40 },
       { slug: 'vector-embeddings', title: 'Vector Embeddings & Similarity Search', minutes: 35 },
       { slug: 'rag-pipelines', title: 'Building RAG Pipelines', minutes: 40 },
+      { slug: 'production-rag-architecture', title: 'Production RAG Architecture', minutes: 50 },
       { slug: 'memory-systems', title: 'Conversation Memory Systems', minutes: 35 }
     ],
     lab: {
@@ -629,7 +630,7 @@ async function main() {
   console.log('✅ All 12 weeks seeded successfully!')
   console.log('\nSummary:')
   console.log('- 12 curriculum weeks')
-  console.log('- 44 concepts')
+  console.log('- 45 concepts')
   console.log('- 12 labs')
   console.log('- 12 projects')
 }
