@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Loader2, CheckCircle, XCircle, RefreshCw } from 'lucide-react'
@@ -27,11 +27,7 @@ export function ConceptQuiz({ conceptSlug, conceptTitle }: ConceptQuizProps) {
   const [showResults, setShowResults] = useState(false)
   const [score, setScore] = useState(0)
 
-  useEffect(() => {
-    fetchQuestions()
-  }, [conceptSlug, conceptTitle])
-
-  const fetchQuestions = async () => {
+  const fetchQuestions = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -54,7 +50,11 @@ export function ConceptQuiz({ conceptSlug, conceptTitle }: ConceptQuizProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [conceptSlug, conceptTitle])
+
+  useEffect(() => {
+    fetchQuestions()
+  }, [fetchQuestions])
 
   const handleAnswerSelect = (questionId: string, answerId: string) => {
     setSelectedAnswers(prev => ({

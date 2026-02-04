@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { prisma } from '@/lib/db'
 import Link from 'next/link'
+import Image from 'next/image'
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions)
@@ -455,11 +456,12 @@ export default async function DashboardPage() {
               <CardDescription>Automate anything with visual builder</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="aspect-video rounded-lg mb-4 overflow-hidden">
-                <img
+              <div className="aspect-video rounded-lg mb-4 overflow-hidden relative">
+                <Image
                   src="/images/cards/workflows.svg"
                   alt="AI Workflows"
-                  className="w-full h-full object-cover"
+                  fill
+                  className="object-cover"
                 />
               </div>
               <p className="text-sm text-slate-600 mb-4">
@@ -490,18 +492,22 @@ export default async function DashboardPage() {
             <CardContent>
               {/* Framework Overview Diagram */}
               <div className="rounded-lg mb-4 overflow-hidden bg-slate-900 border border-green-200">
-                <img
+                <Image
                   src="/images/security/framework-overview.svg"
                   alt="AI Security Framework: DATA → MODEL → USE with INFRA and GOV layers"
+                  width={800}
+                  height={400}
                   className="w-full h-auto"
                 />
               </div>
 
               {/* Detailed Threats & Defenses Diagram */}
               <div className="rounded-lg mb-4 overflow-hidden bg-slate-900 border border-green-200">
-                <img
+                <Image
                   src="/images/security/threats-defenses.svg"
                   alt="Security threats and defenses for DATA, MODEL, and USAGE layers"
+                  width={800}
+                  height={400}
                   className="w-full h-auto"
                 />
               </div>
