@@ -13,12 +13,13 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       allowDangerousEmailAccountLinking: true,
     }),
-    FacebookProvider({
-      clientId: process.env.FACEBOOK_CLIENT_ID!,
-      clientSecret: process.env.FACEBOOK_CLIENT_SECRET!,
-      allowDangerousEmailAccountLinking: true,
-    }),
-    // Uncomment when you have credentials:
+    // Uncomment when you have Facebook credentials:
+    // FacebookProvider({
+    //   clientId: process.env.FACEBOOK_CLIENT_ID!,
+    //   clientSecret: process.env.FACEBOOK_CLIENT_SECRET!,
+    //   allowDangerousEmailAccountLinking: true,
+    // }),
+    // Uncomment when you have LinkedIn credentials:
     // LinkedInProvider({
     //   clientId: process.env.LINKEDIN_CLIENT_ID!,
     //   clientSecret: process.env.LINKEDIN_CLIENT_SECRET!,

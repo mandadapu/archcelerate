@@ -59,11 +59,8 @@ SERVICE_URL=$(gcloud run services describe $SERVICE_NAME \
   --project=$PROJECT_ID \
   --format 'value(status.url)' 2>/dev/null || echo "")
 
-if [ -z "$SERVICE_URL" ]; then
-  NEXTAUTH_URL="https://${SERVICE_NAME}-${PROJECT_ID}.run.app"
-else
-  NEXTAUTH_URL=$SERVICE_URL
-fi
+# Use custom domain for NEXTAUTH_URL (for OAuth callbacks)
+NEXTAUTH_URL="https://archcelerate.com"
 
 # Step 5: Check for VPC connector
 echo -e "${GREEN}Step 5: Checking VPC connector...${NC}"
