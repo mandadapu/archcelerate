@@ -1,4 +1,4 @@
-import { QuizQuestion } from '@/types/diagnosis'
+import { QuizQuestion, DifficultyLevel, SkillArea } from '@/types/diagnosis'
 
 export const quizQuestions: QuizQuestion[] = [
   // LLM Fundamentals (5 questions)
@@ -311,4 +311,68 @@ export function getQuestionsByDifficulty(difficulty: 'beginner' | 'intermediate'
 // Utility to get questions by skill area
 export function getQuestionsBySkill(skill: string) {
   return quizQuestions.filter(q => q.skillArea === skill)
+}
+
+// Shuffle array using Fisher-Yates algorithm
+function shuffle<T>(array: T[]): T[] {
+  const shuffled = [...array]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+  }
+  return shuffled
+}
+
+// Group questions by skill area
+function groupBySkill(questions: QuizQuestion[]): Record<SkillArea, QuizQuestion[]> {
+  return questions.reduce((acc, question) => {
+    if (!acc[question.skillArea]) {
+      acc[question.skillArea] = []
+    }
+    acc[question.skillArea].push(question)
+    return acc
+  }, {} as Record<SkillArea, QuizQuestion[]>)
+}
+
+/**
+ * Select random questions from a pool, optionally ensuring even distribution across skill areas
+ * @param pool - Array of questions to select from
+ * @param count - Number of questions to select (default: 25)
+ * @param ensureDistribution - Whether to ensure even distribution across skill areas (default: true)
+ * @returns Array of randomly selected questions
+ */
+export function selectRandomQuestions(
+  pool: QuizQuestion[],
+  count: number = 25,
+  ensureDistribution: boolean = true
+): QuizQuestion[] {
+  if (pool.length === 0) {
+    return []
+  }
+
+  if (pool.length <= count) {
+    return shuffle(pool)
+  }
+
+  if (ensureDistribution) {
+    // Get all unique skill areas in the pool
+    const skillAreas = Array.from(new Set(pool.map(q => q.skillArea)))
+    const perArea = Math.ceil(count / skillAreas.length)
+
+    const bySkill = groupBySkill(pool)
+    const selected: QuizQuestion[] = []
+
+    // Select roughly equal number of questions from each skill area
+    for (const skill of skillAreas) {
+      const skillQuestions = bySkill[skill] || []
+      const shuffled = shuffle(skillQuestions)
+      selected.push(...shuffled.slice(0, Math.min(perArea, skillQuestions.length)))
+    }
+
+    // Shuffle and trim to exact count
+    return shuffle(selected).slice(0, count)
+  } else {
+    // Simple random selection without distribution constraints
+    return shuffle(pool).slice(0, count)
+  }
 }
