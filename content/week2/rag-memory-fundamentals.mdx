@@ -1,0 +1,694 @@
+---
+title: "RAG + Memory Fundamentals"
+description: "Introduction to Retrieval-Augmented Generation and vector-based memory systems"
+estimatedMinutes: 40
+---
+
+import { CodePlayground } from '@/components/curriculum/CodePlayground'
+
+# RAG + Memory Fundamentals
+
+Build AI systems with external memory using Retrieval-Augmented Generation (RAG) and vector databases.
+
+## Why RAG Matters
+
+**Without RAG**:
+- 🤷 LLMs limited to training data cutoff
+- 📉 Hallucinations when facts are uncertain
+- 🚫 Can't access private/proprietary data
+- 💸 Expensive to retrain for new information
+
+**With RAG**:
+- ✅ Ground responses in real, up-to-date data
+- ✅ Access private documents and knowledge bases
+- ✅ Reduce hallucinations with factual context
+- ✅ Update knowledge without retraining
+
+## The Three-Phase RAG Architecture
+
+RAG systems operate in three distinct phases: **Ingestion**, **Retrieval**, and **Generation**.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Phase 1: INGESTION                        │
+│  Documents → Chunks → Embeddings → Vector Database           │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│                    Phase 2: RETRIEVAL                        │
+│  Query → Embedding → Similarity Search → Top-K Results       │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│                    Phase 3: GENERATION                       │
+│  Context + Query → LLM → Grounded Response                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Phase 1: Ingestion/Extraction
+
+Convert your documents into searchable vectors and store them in a vector database.
+
+### Step 1: Data Collection & Chunking
+
+Break documents into semantically coherent chunks for better retrieval.
+
+```typescript
+interface Document {
+  id: string
+  content: string
+  metadata: {
+    source: string
+    title?: string
+    author?: string
+    createdAt: Date
+  }
+}
+
+interface Chunk {
+  id: string
+  documentId: string
+  content: string
+  metadata: Record<string, any>
+  startIndex: number
+  endIndex: number
+}
+
+/**
+ * Chunk documents using sliding window approach
+ * Overlap ensures context isn't lost at chunk boundaries
+ */
+function chunkDocument(
+  document: Document,
+  chunkSize: number = 500,    // tokens
+  overlapSize: number = 50    // tokens
+): Chunk[] {
+  const chunks: Chunk[] = []
+  const text = document.content
+
+  // Simple approximation: 1 token ≈ 4 characters
+  const chunkChars = chunkSize * 4
+  const overlapChars = overlapSize * 4
+
+  let startIndex = 0
+  let chunkIndex = 0
+
+  while (startIndex < text.length) {
+    const endIndex = Math.min(startIndex + chunkChars, text.length)
+
+    // Try to break at sentence boundary
+    let actualEndIndex = endIndex
+    if (endIndex < text.length) {
+      const sentenceEnd = text.lastIndexOf('.', endIndex)
+      if (sentenceEnd > startIndex + chunkChars / 2) {
+        actualEndIndex = sentenceEnd + 1
+      }
+    }
+
+    chunks.push({
+      id: `${document.id}-chunk-${chunkIndex}`,
+      documentId: document.id,
+      content: text.slice(startIndex, actualEndIndex).trim(),
+      metadata: {
+        ...document.metadata,
+        chunkIndex,
+        totalChunks: -1  // Will update after
+      },
+      startIndex,
+      endIndex: actualEndIndex
+    })
+
+    startIndex = actualEndIndex - overlapChars
+    chunkIndex++
+  }
+
+  // Update total chunks count
+  chunks.forEach(chunk => {
+    chunk.metadata.totalChunks = chunks.length
+  })
+
+  return chunks
+}
+```
+
+**Chunking Strategies**:
+
+| Strategy | Best For | Pros | Cons |
+|----------|----------|------|------|
+| **Fixed-size** | General purpose | Simple, predictable | May split sentences |
+| **Sentence-based** | Q&A systems | Semantic coherence | Variable size |
+| **Paragraph-based** | Long-form content | Natural boundaries | Large variance |
+| **Semantic** | Complex documents | Context-aware | Computationally expensive |
+
+### Step 2: Generate Embeddings
+
+Convert text chunks into high-dimensional vectors that capture semantic meaning.
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+
+interface Embedding {
+  chunkId: string
+  vector: number[]
+  model: string
+  dimensions: number
+}
+
+/**
+ * Generate embeddings using different providers
+ */
+async function generateEmbeddings(
+  chunks: Chunk[],
+  provider: 'openai' | 'anthropic' = 'openai'
+): Promise<Embedding[]> {
+  const embeddings: Embedding[] = []
+
+  if (provider === 'openai') {
+    // OpenAI embeddings: text-embedding-3-large (3072 dims)
+    const response = await openai.embeddings.create({
+      model: 'text-embedding-3-large',
+      input: chunks.map(c => c.content),
+      encoding_format: 'float'
+    })
+
+    response.data.forEach((embedding, i) => {
+      embeddings.push({
+        chunkId: chunks[i].id,
+        vector: embedding.embedding,
+        model: 'text-embedding-3-large',
+        dimensions: embedding.embedding.length
+      })
+    })
+  } else {
+    // Anthropic: Use Claude to generate semantic embeddings
+    // (Note: As of 2026, use dedicated embedding models in production)
+    for (const chunk of chunks) {
+      const response = await anthropic.messages.create({
+        model: 'claude-3-haiku-20240307',
+        max_tokens: 100,
+        messages: [{
+          role: 'user',
+          content: `Generate a semantic summary vector for: "${chunk.content}"`
+        }]
+      })
+
+      // In practice, use proper embedding models
+      // This is simplified for demonstration
+      const vector = new Array(1536).fill(0).map(() => Math.random())
+
+      embeddings.push({
+        chunkId: chunk.id,
+        vector,
+        model: 'claude-semantic',
+        dimensions: vector.length
+      })
+    }
+  }
+
+  return embeddings
+}
+```
+
+**Embedding Model Comparison** (2026):
+
+| Model | Provider | Dimensions | Cost (per 1M tokens) | Best For |
+|-------|----------|------------|---------------------|----------|
+| text-embedding-3-large | OpenAI | 3072 | $0.13 | High accuracy, semantic search |
+| text-embedding-3-small | OpenAI | 1536 | $0.02 | Cost-effective, general purpose |
+| voyage-large-2 | Voyage AI | 1536 | $0.12 | Code search, technical docs |
+| cohere-embed-v3 | Cohere | 1024 | $0.10 | Multilingual, clustering |
+
+### Step 3: Index & Store in Vector Database
+
+Store embeddings in a vector database for efficient similarity search.
+
+```typescript
+import { pgvector } from 'pgvector/pg'
+import { Pool } from 'pg'
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL
+})
+
+/**
+ * Setup pgvector extension and create tables
+ */
+async function setupVectorDatabase() {
+  const client = await pool.connect()
+
+  try {
+    // Enable pgvector extension
+    await client.query('CREATE EXTENSION IF NOT EXISTS vector')
+
+    // Create chunks table with vector column
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS document_chunks (
+        id TEXT PRIMARY KEY,
+        document_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        metadata JSONB,
+        embedding vector(1536),  -- Adjust dimensions to match your model
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `)
+
+    // Create index for similarity search (HNSW algorithm)
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS chunks_embedding_idx
+      ON document_chunks
+      USING hnsw (embedding vector_cosine_ops)
+    `)
+
+    // Create index for metadata filtering
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS chunks_metadata_idx
+      ON document_chunks
+      USING gin (metadata)
+    `)
+
+  } finally {
+    client.release()
+  }
+}
+
+/**
+ * Insert chunks with embeddings into vector database
+ */
+async function insertChunks(
+  chunks: Chunk[],
+  embeddings: Embedding[]
+): Promise<void> {
+  const client = await pool.connect()
+
+  try {
+    await client.query('BEGIN')
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i]
+      const embedding = embeddings[i]
+
+      await client.query(
+        `INSERT INTO document_chunks
+         (id, document_id, content, metadata, embedding)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (id) DO UPDATE SET
+           content = EXCLUDED.content,
+           metadata = EXCLUDED.metadata,
+           embedding = EXCLUDED.embedding`,
+        [
+          chunk.id,
+          chunk.documentId,
+          chunk.content,
+          JSON.stringify(chunk.metadata),
+          pgvector.toSql(embedding.vector)
+        ]
+      )
+    }
+
+    await client.query('COMMIT')
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
+  }
+}
+```
+
+**Vector Database Options**:
+
+| Database | Type | Best For | Pros | Cons |
+|----------|------|----------|------|------|
+| **pgvector** | Postgres extension | Existing Postgres apps | SQL integration, ACID | Slower than specialized |
+| **Pinecone** | Managed service | Rapid prototyping | Serverless, easy setup | Vendor lock-in |
+| **Milvus** | Open source | Self-hosted production | High performance, flexible | Complex setup |
+| **Qdrant** | Open source | Privacy-sensitive | On-premise, fast | Self-managed |
+| **Weaviate** | Open source | Semantic search | Built-in ML, GraphQL | Learning curve |
+
+---
+
+## Phase 2: Retrieval
+
+Find the most relevant chunks for a user's query using semantic similarity.
+
+### Step 1: Query Embedding
+
+Convert the user's query into a vector using the same embedding model.
+
+```typescript
+async function embedQuery(query: string): Promise<number[]> {
+  const response = await openai.embeddings.create({
+    model: 'text-embedding-3-large',
+    input: [query],
+    encoding_format: 'float'
+  })
+
+  return response.data[0].embedding
+}
+```
+
+### Step 2: Similarity Search
+
+Perform vector similarity search to find the most relevant chunks.
+
+```typescript
+interface SearchResult {
+  chunkId: string
+  content: string
+  metadata: Record<string, any>
+  similarity: number
+}
+
+/**
+ * Search for similar chunks using cosine similarity
+ */
+async function searchSimilarChunks(
+  queryEmbedding: number[],
+  topK: number = 5,
+  minSimilarity: number = 0.7,
+  filters?: Record<string, any>
+): Promise<SearchResult[]> {
+  const client = await pool.connect()
+
+  try {
+    let query = `
+      SELECT
+        id as chunk_id,
+        content,
+        metadata,
+        1 - (embedding <=> $1::vector) as similarity
+      FROM document_chunks
+    `
+
+    const params: any[] = [pgvector.toSql(queryEmbedding)]
+
+    // Add metadata filters if provided
+    if (filters) {
+      const filterConditions = Object.entries(filters).map(([key, value], i) => {
+        params.push(JSON.stringify(value))
+        return `metadata->>'${key}' = $${i + 2}`
+      })
+
+      if (filterConditions.length > 0) {
+        query += ` WHERE ${filterConditions.join(' AND ')}`
+      }
+    }
+
+    query += `
+      ORDER BY embedding <=> $1::vector
+      LIMIT $${params.length + 1}
+    `
+    params.push(topK)
+
+    const result = await client.query(query, params)
+
+    return result.rows
+      .filter(row => row.similarity >= minSimilarity)
+      .map(row => ({
+        chunkId: row.chunk_id,
+        content: row.content,
+        metadata: row.metadata,
+        similarity: row.similarity
+      }))
+
+  } finally {
+    client.release()
+  }
+}
+```
+
+**Similarity Metrics**:
+
+| Metric | Formula | Range | Best For |
+|--------|---------|-------|----------|
+| **Cosine** | `1 - (a·b)/(‖a‖‖b‖)` | 0-2 | Most common, normalized |
+| **Euclidean** | `√Σ(ai-bi)²` | 0-∞ | Absolute distance |
+| **Dot Product** | `a·b` | -∞ to ∞ | When magnitude matters |
+
+### Step 3: Re-ranking (Optional)
+
+Use a re-ranking model to refine results and improve relevance.
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+
+/**
+ * Re-rank retrieved chunks using LLM-based relevance scoring
+ */
+async function rerankResults(
+  query: string,
+  results: SearchResult[],
+  topK: number = 3
+): Promise<SearchResult[]> {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+  // Ask Claude to score relevance
+  const prompt = `
+Given this query: "${query}"
+
+Score the relevance of each passage (0-10, where 10 is most relevant):
+
+${results.map((r, i) => `
+Passage ${i + 1}:
+${r.content}
+`).join('\n')}
+
+Return only JSON: { "scores": [score1, score2, ...] }
+`
+
+  const response = await anthropic.messages.create({
+    model: 'claude-3-haiku-20240307',
+    max_tokens: 200,
+    messages: [{ role: 'user', content: prompt }]
+  })
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '{}'
+  const { scores } = JSON.parse(text)
+
+  // Add LLM-based relevance scores
+  const reranked = results.map((result, i) => ({
+    ...result,
+    rerankScore: scores[i] || 0
+  }))
+
+  // Sort by rerank score and return top-K
+  return reranked
+    .sort((a, b) => b.rerankScore - a.rerankScore)
+    .slice(0, topK)
+}
+```
+
+---
+
+## Phase 3: Generation
+
+Augment the LLM prompt with retrieved context to generate grounded responses.
+
+### Step 1: Context Augmentation
+
+Build an augmented prompt with retrieved chunks.
+
+```typescript
+interface RAGPrompt {
+  systemPrompt: string
+  userPrompt: string
+  context: string
+}
+
+/**
+ * Build augmented prompt with retrieved context
+ */
+function buildRAGPrompt(
+  query: string,
+  results: SearchResult[]
+): RAGPrompt {
+  // Format retrieved chunks as context
+  const context = results.map((result, i) => `
+[Source ${i + 1}] ${result.metadata.source || 'Unknown'}
+${result.content}
+`).join('\n\n')
+
+  const systemPrompt = `You are a helpful AI assistant. Answer questions based on the provided context.
+
+IMPORTANT:
+- Only use information from the provided context
+- If the context doesn't contain relevant information, say "I don't have enough information to answer that"
+- Cite sources using [Source N] notation
+- Be concise and factual`
+
+  const userPrompt = `Context:
+${context}
+
+Question: ${query}
+
+Answer:`
+
+  return {
+    systemPrompt,
+    userPrompt,
+    context
+  }
+}
+```
+
+### Step 2: Generate Response
+
+Send the augmented prompt to the LLM.
+
+```typescript
+interface RAGResponse {
+  answer: string
+  sources: SearchResult[]
+  confidence: 'high' | 'medium' | 'low'
+}
+
+/**
+ * Generate response using RAG pipeline
+ */
+async function generateRAGResponse(
+  query: string,
+  results: SearchResult[]
+): Promise<RAGResponse> {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+  const { systemPrompt, userPrompt } = buildRAGPrompt(query, results)
+
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 1024,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userPrompt }]
+  })
+
+  const answer = response.content[0].type === 'text' ? response.content[0].text : ''
+
+  // Determine confidence based on similarity scores
+  const avgSimilarity = results.reduce((sum, r) => sum + r.similarity, 0) / results.length
+  const confidence = avgSimilarity > 0.85 ? 'high' : avgSimilarity > 0.7 ? 'medium' : 'low'
+
+  return {
+    answer,
+    sources: results,
+    confidence
+  }
+}
+```
+
+### Complete RAG Pipeline
+
+Putting it all together:
+
+```typescript
+/**
+ * Full RAG pipeline: Query → Retrieval → Generation
+ */
+async function queryRAG(
+  query: string,
+  options?: {
+    topK?: number
+    minSimilarity?: number
+    useReranking?: boolean
+    filters?: Record<string, any>
+  }
+): Promise<RAGResponse> {
+  // Phase 2: Retrieval
+  // Step 1: Embed query
+  const queryEmbedding = await embedQuery(query)
+
+  // Step 2: Search for similar chunks
+  let results = await searchSimilarChunks(
+    queryEmbedding,
+    options?.topK || 5,
+    options?.minSimilarity || 0.7,
+    options?.filters
+  )
+
+  if (results.length === 0) {
+    return {
+      answer: "I don't have any relevant information to answer that question.",
+      sources: [],
+      confidence: 'low'
+    }
+  }
+
+  // Step 3: Optional re-ranking
+  if (options?.useReranking) {
+    results = await rerankResults(query, results, 3)
+  }
+
+  // Phase 3: Generation
+  const response = await generateRAGResponse(query, results)
+
+  return response
+}
+```
+
+---
+
+## Key Takeaways
+
+### When to Use RAG
+
+✅ **Use RAG when:**
+- You need up-to-date information beyond LLM training data
+- Working with private/proprietary documents
+- Facts and accuracy are critical (legal, medical, financial)
+- You want to reduce hallucinations
+- Knowledge base changes frequently
+
+❌ **Don't use RAG when:**
+- General knowledge questions LLM can answer
+- Low-latency requirements (retrieval adds ~200-500ms)
+- Simple tasks not requiring external knowledge
+- Budget is extremely constrained
+
+### Architecture Best Practices
+
+1. **Chunking**: Use 500-1000 tokens with 10-20% overlap
+2. **Embeddings**: text-embedding-3-large for quality, text-embedding-3-small for cost
+3. **Vector DB**: pgvector for Postgres users, Pinecone for rapid prototyping
+4. **Retrieval**: Start with top-5, adjust based on quality
+5. **Re-ranking**: Use for critical applications where precision matters
+6. **Generation**: Claude Sonnet 4.5 for balanced cost/quality
+
+### Cost Considerations
+
+For 1000 queries/day with 5 retrieved chunks each:
+
+| Component | Cost/Month |
+|-----------|------------|
+| Embeddings (query) | $0.13 × 30M tokens = $4 |
+| Vector DB (pgvector) | Included in Postgres hosting |
+| LLM Generation | 1000 × $0.015 × 30 = $450 |
+| **Total** | **~$454/month** |
+
+### Performance Metrics
+
+| Metric | Target | How to Measure |
+|--------|--------|----------------|
+| **Retrieval Latency** | <200ms | Vector search time |
+| **End-to-End Latency** | <2s | Full pipeline time |
+| **Relevance** | >0.8 similarity | Average similarity score |
+| **Accuracy** | >90% | Human eval on sample queries |
+
+---
+
+## Further Reading
+
+- **Week 3**: Deep dive into RAG pipelines, memory systems, vector embeddings
+- **Pinecone Docs**: [Vector Database Fundamentals](https://www.pinecone.io/learn/vector-database/)
+- **OpenAI Embeddings**: [Embeddings Guide](https://platform.openai.com/docs/guides/embeddings)
+- **pgvector**: [GitHub Repository](https://github.com/pgvector/pgvector)
+- **LangChain**: [RAG Tutorial](https://python.langchain.com/docs/use_cases/question_answering/)
+
+## Next Steps
+
+- **Week 3**: Advanced RAG pipelines, hybrid search, memory systems
+- **Week 6**: Monitoring RAG quality with observability
+- **Week 12**: Enterprise RAG with compliance and governance
