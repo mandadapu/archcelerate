@@ -12,6 +12,7 @@ const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
   connectTimeout: 10000, // 10 second timeout for VPC connector
   commandTimeout: 5000, // 5 second timeout for commands
   retryStrategy: (times) => {
+    console.log(`🔄 Redis retry attempt ${times}`)
     // Retry up to 3 times with exponential backoff
     if (times > 3) return null
     return Math.min(times * 100, 3000)
@@ -19,6 +20,27 @@ const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
   lazyConnect: false, // Connect immediately on startup
   enableReadyCheck: true, // Wait for Redis to be ready
   maxRetriesPerRequest: 2, // Retry commands twice
+})
+
+// Add connection event handlers for debugging
+redis.on('connect', () => {
+  console.log('✅ Redis connection established')
+})
+
+redis.on('ready', () => {
+  console.log('✅ Redis ready to accept commands')
+})
+
+redis.on('error', (err) => {
+  console.error('❌ Redis connection error:', err.message)
+})
+
+redis.on('close', () => {
+  console.log('⚠️ Redis connection closed')
+})
+
+redis.on('reconnecting', () => {
+  console.log('🔄 Redis reconnecting...')
 })
 
 const CACHE_KEY = 'diagnosis:quiz:questions'
@@ -127,6 +149,7 @@ export async function GET(request: Request) {
     // Try to get from cache first (unless refresh requested)
     if (!refresh) {
       try {
+        console.log('🔍 Attempting to get cached questions from Redis...')
         // Add timeout wrapper for Redis operations
         const cached = await Promise.race([
           redis.get(CACHE_KEY),
@@ -140,9 +163,12 @@ export async function GET(request: Request) {
             questions: JSON.parse(cached as string),
             source: 'cache',
           })
+        } else {
+          console.log('ℹ️ No cached questions found in Redis')
         }
       } catch (redisError) {
-        console.log('⚠️ Redis unavailable, skipping cache:', redisError instanceof Error ? redisError.message : 'Unknown error')
+        console.error('❌ Redis error:', redisError instanceof Error ? redisError.message : 'Unknown error')
+        console.error('Redis error stack:', redisError)
         // Continue to generation
       }
     }
