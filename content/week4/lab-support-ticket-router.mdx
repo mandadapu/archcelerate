@@ -1,0 +1,1069 @@
+---
+title: 'Lab: Support Ticket Router'
+description: 'Build an enterprise support system comparing JSON Mode vs Structured Outputs'
+estimatedTime: 120
+difficulty: 'intermediate'
+---
+
+# Lab: Support Ticket Router
+
+## Overview
+
+In this lab, you'll build an enterprise support ticket routing system that extracts structured data from messy customer emails. You'll compare three approaches:
+1. **JSON Mode** (prompt-based)
+2. **Structured Outputs** (strict schema enforcement)
+3. **Function Calling** (orchestrated workflows)
+
+**Key Learning**: You'll see firsthand why JSON Mode hallucinates flexible values like `"very high"` for priority, while Structured Outputs enforces the integer `10` that your database expects.
+
+---
+
+## The Business Problem
+
+Your company receives hundreds of customer support emails daily:
+
+```
+From: angry.customer@example.com
+Subject: URGENT!!!
+
+Your app keeps crashing when I try to export data! This is the
+third time this week. I'm losing hours of work and my team is
+furious. We're on the Enterprise plan and this is unacceptable.
+
+Product: Dashboard Pro (SKU-12345)
+Account: enterprise-tier
+
+I need this fixed IMMEDIATELY or we're switching to a competitor.
+```
+
+**Your task**: Extract structured data to route tickets efficiently:
+- **Sentiment**: How frustrated is the customer?
+- **Category**: What type of issue? (technical, billing, feature_request)
+- **Priority**: How urgent? (1-10 scale)
+- **Product ID**: Which product? (must match SKU-##### format)
+- **Customer Tier**: Which plan? (free, pro, enterprise)
+
+---
+
+## Phase 1: JSON Mode (The Fragile Approach)
+
+### Exercise 1: Extract with JSON Mode
+
+**Goal**: Use prompt engineering to get JSON output.
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+async function extractTicketJsonMode(emailContent: string): Promise<any> {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 500,
+    messages: [{
+      role: 'user',
+      content: `Extract support ticket data from this email and return ONLY valid JSON.
+
+Schema:
+{
+  "sentiment": string ("frustrated" | "neutral" | "happy"),
+  "category": string ("technical" | "billing" | "feature_request"),
+  "priority": number (1-10, where 10 is most urgent),
+  "product_id": string (format: SKU-#####),
+  "customer_tier": string ("free" | "pro" | "enterprise"),
+  "urgency_keywords": array of strings (words that indicate urgency)
+}
+
+Email:
+${emailContent}
+
+Return only the JSON, no explanation.`
+    }]
+  })
+
+  const content = response.content[0]
+  if (content.type !== 'text') {
+    throw new Error('Unexpected response type')
+  }
+
+  return JSON.parse(content.text)
+}
+
+// Test
+const email = `From: angry.customer@example.com
+Subject: URGENT!!!
+
+Your app keeps crashing when I try to export data! This is the
+third time this week. I'm losing hours of work and my team is
+furious. We're on the Enterprise plan and this is unacceptable.
+
+Product: Dashboard Pro (SKU-12345)
+Account: enterprise-tier
+
+I need this fixed IMMEDIATELY or we're switching to a competitor.`
+
+const result = await extractTicketJsonMode(email)
+console.log(result)
+```
+
+**Run this code** and observe the output:
+
+```json
+{
+  "sentiment": "very frustrated",
+  "category": "technical issue",
+  "priority": "critical",
+  "product_id": "SKU-12345",
+  "customer_tier": "enterprise",
+  "urgency_keywords": ["URGENT", "IMMEDIATELY", "furious", "third time", "unacceptable"]
+}
+```
+
+### ❌ Problems with JSON Mode Output
+
+**Try inserting this into your database**:
+
+```typescript
+interface TicketRecord {
+  sentiment: 'frustrated' | 'neutral' | 'happy'
+  category: 'technical' | 'billing' | 'feature_request'
+  priority: number // 1-10
+  product_id: string
+  customer_tier: 'free' | 'pro' | 'enterprise'
+}
+
+// ❌ This will fail!
+const ticket: TicketRecord = result
+// Error: Type "very frustrated" is not assignable to type '"frustrated" | "neutral" | "happy"'
+// Error: Type "critical" is not assignable to type 'number'
+```
+
+**What went wrong?**
+
+1. **sentiment**: LLM returned `"very frustrated"` instead of `"frustrated"`
+2. **category**: LLM returned `"technical issue"` instead of `"technical"`
+3. **priority**: LLM returned `"critical"` (string) instead of `10` (number)
+
+**The fundamental problem**: JSON Mode only guarantees **syntactically valid JSON**. It does NOT guarantee the JSON matches your schema.
+
+---
+
+## Phase 2: Structured Outputs (The Reliable Approach)
+
+### Exercise 2: Enforce Schema with Zod + Structured Outputs
+
+**Goal**: Use Zod to define and enforce the exact schema.
+
+```typescript
+import { z } from 'zod'
+import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+// 1. Define strict schema with Zod
+const TicketSchema = z.object({
+  sentiment: z.enum(['frustrated', 'neutral', 'happy']),
+  category: z.enum(['technical', 'billing', 'feature_request']),
+  priority: z.number().int().min(1).max(10),
+  product_id: z.string().regex(/^SKU-[0-9]{5}$/),
+  customer_tier: z.enum(['free', 'pro', 'enterprise']),
+  urgency_keywords: z.array(z.string()).max(10)
+})
+
+type Ticket = z.infer<typeof TicketSchema>
+
+// 2. Extract with structured output
+async function extractTicketStructured(emailContent: string): Promise<Ticket> {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 500,
+    system: `You are a support ticket classifier. Extract data matching this schema:
+
+sentiment: MUST be exactly "frustrated", "neutral", or "happy" (lowercase, no variations)
+category: MUST be exactly "technical", "billing", or "feature_request"
+priority: MUST be an integer from 1-10 (10 = most urgent)
+product_id: MUST match format SKU-##### (5 digits)
+customer_tier: MUST be exactly "free", "pro", or "enterprise"
+urgency_keywords: List of words indicating urgency (max 10)
+
+Rules:
+- sentiment: Use "frustrated" for angry/upset customers, even if very frustrated
+- priority: 1-3=low, 4-6=medium, 7-9=high, 10=critical (based on keywords like URGENT, IMMEDIATELY)
+- If unclear, default to priority=5, sentiment="neutral"`,
+    messages: [{
+      role: 'user',
+      content: `Extract ticket data from:\n\n${emailContent}`
+    }]
+  })
+
+  const content = response.content[0]
+  if (content.type !== 'text') {
+    throw new Error('Unexpected response type')
+  }
+
+  // 3. Parse and validate
+  const parsed = JSON.parse(content.text)
+  const validated = TicketSchema.parse(parsed) // Throws if invalid
+
+  return validated
+}
+
+// Test
+const email = `From: angry.customer@example.com
+Subject: URGENT!!!
+
+Your app keeps crashing when I try to export data! This is the
+third time this week. I'm losing hours of work and my team is
+furious. We're on the Enterprise plan and this is unacceptable.
+
+Product: Dashboard Pro (SKU-12345)
+Account: enterprise-tier
+
+I need this fixed IMMEDIATELY or we're switching to a competitor.`
+
+const ticket = await extractTicketStructured(email)
+console.log(ticket)
+
+// ✅ This works! Type-safe and validated
+const dbRecord: Ticket = ticket
+await db.tickets.create({ data: ticket })
+```
+
+**Output**:
+
+```json
+{
+  "sentiment": "frustrated",
+  "category": "technical",
+  "priority": 10,
+  "product_id": "SKU-12345",
+  "customer_tier": "enterprise",
+  "urgency_keywords": ["URGENT", "IMMEDIATELY", "furious", "third time", "unacceptable", "crashing"]
+}
+```
+
+### ✅ Why This Works
+
+1. **Exact enum values**: `"frustrated"` not `"very frustrated"`
+2. **Correct types**: `priority: 10` (number) not `"critical"` (string)
+3. **Format validation**: `product_id` matches `SKU-#####` regex
+4. **Type safety**: TypeScript knows exact shape
+5. **Database ready**: Can insert directly without transformation
+
+### Exercise 3: Compare the Approaches
+
+**Create a comparison test**:
+
+```typescript
+const testEmails = [
+  {
+    name: 'Critical Bug',
+    email: `URGENT: App crashing on export! Enterprise customer, SKU-12345`
+  },
+  {
+    name: 'Billing Question',
+    email: `Hi, question about invoice #INV-789. Product: SKU-99999. Thanks!`
+  },
+  {
+    name: 'Feature Request',
+    email: `Would be nice if we could filter by date. Pro plan, SKU-11111`
+  }
+]
+
+async function compareApproaches() {
+  console.log('=== JSON Mode vs Structured Outputs Comparison ===\n')
+
+  for (const test of testEmails) {
+    console.log(`\nTest: ${test.name}`)
+    console.log('─'.repeat(60))
+
+    // JSON Mode
+    try {
+      const jsonResult = await extractTicketJsonMode(test.email)
+      console.log('JSON Mode Output:', jsonResult)
+      console.log('  ❌ priority type:', typeof jsonResult.priority)
+      console.log('  ❌ sentiment:', jsonResult.sentiment)
+    } catch (error) {
+      console.log('JSON Mode FAILED:', error.message)
+    }
+
+    // Structured Outputs
+    try {
+      const structuredResult = await extractTicketStructured(test.email)
+      console.log('\nStructured Output:', structuredResult)
+      console.log('  ✅ priority type:', typeof structuredResult.priority)
+      console.log('  ✅ sentiment:', structuredResult.sentiment)
+      console.log('  ✅ Database ready: YES')
+    } catch (error) {
+      console.log('Structured FAILED:', error.message)
+    }
+
+    console.log()
+  }
+}
+
+await compareApproaches()
+```
+
+**Expected Output**:
+
+```
+=== JSON Mode vs Structured Outputs Comparison ===
+
+Test: Critical Bug
+────────────────────────────────────────────────────────────────
+JSON Mode Output: {
+  sentiment: 'extremely frustrated',
+  priority: 'URGENT',
+  category: 'critical technical issue'
+}
+  ❌ priority type: string
+  ❌ sentiment: extremely frustrated
+
+Structured Output: {
+  sentiment: 'frustrated',
+  priority: 10,
+  category: 'technical',
+  product_id: 'SKU-12345',
+  customer_tier: 'enterprise'
+}
+  ✅ priority type: number
+  ✅ sentiment: frustrated
+  ✅ Database ready: YES
+```
+
+---
+
+## Phase 3: Function Calling (The Orchestration)
+
+### Exercise 4: Add Action Tools
+
+**Goal**: Let the LLM orchestrate actions based on ticket priority.
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+// Define tools
+const tools: Anthropic.Tool[] = [
+  {
+    name: 'lookup_inventory',
+    description: 'Check if a product is in stock. Use this when the ticket mentions a product issue.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        product_id: {
+          type: 'string',
+          pattern: '^SKU-[0-9]{5}$',
+          description: 'Product SKU (format: SKU-12345)'
+        }
+      },
+      required: ['product_id']
+    }
+  },
+  {
+    name: 'check_recent_outages',
+    description: 'Check if there have been recent service outages affecting this product. Use for technical issues.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        product_id: {
+          type: 'string',
+          pattern: '^SKU-[0-9]{5}$'
+        },
+        hours_back: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 168,
+          description: 'How many hours to look back (max 7 days)'
+        }
+      },
+      required: ['product_id', 'hours_back']
+    }
+  },
+  {
+    name: 'escalate_to_engineering',
+    description: 'Escalate ticket to engineering team. ONLY use for priority >= 8 with technical category.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ticket_id: { type: 'string' },
+        priority: {
+          type: 'integer',
+          minimum: 8,
+          maximum: 10
+        },
+        reason: { type: 'string' }
+      },
+      required: ['ticket_id', 'priority', 'reason']
+    }
+  },
+  {
+    name: 'send_automated_response',
+    description: 'Send templated response to customer. Use for low priority or common issues.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        customer_email: { type: 'string', format: 'email' },
+        template: {
+          type: 'string',
+          enum: ['acknowledge', 'known_issue', 'workaround_provided', 'escalated']
+        },
+        estimated_resolution_hours: { type: 'integer', minimum: 1 }
+      },
+      required: ['customer_email', 'template']
+    }
+  }
+]
+
+// Implement tool functions
+async function lookupInventory(product_id: string): Promise<any> {
+  // Simulated inventory check
+  return {
+    product_id,
+    in_stock: true,
+    quantity: 150,
+    status: 'active'
+  }
+}
+
+async function checkRecentOutages(product_id: string, hours_back: number): Promise<any> {
+  // Simulated outage check
+  return {
+    product_id,
+    outages: [
+      {
+        start: '2024-02-03T14:30:00Z',
+        end: '2024-02-03T15:15:00Z',
+        affected_features: ['export', 'data_sync'],
+        severity: 'high'
+      }
+    ],
+    total_downtime_minutes: 45
+  }
+}
+
+async function escalateToEngineering(ticket_id: string, priority: number, reason: string): Promise<any> {
+  console.log(`🚨 ESCALATED to Engineering: Ticket ${ticket_id} (Priority ${priority})`)
+  console.log(`   Reason: ${reason}`)
+  return { escalated: true, assigned_to: 'engineering-team', eta: '2 hours' }
+}
+
+async function sendAutomatedResponse(customer_email: string, template: string, estimated_resolution_hours?: number): Promise<any> {
+  console.log(`📧 Sent ${template} email to ${customer_email}`)
+  if (estimated_resolution_hours) {
+    console.log(`   ETA: ${estimated_resolution_hours} hours`)
+  }
+  return { sent: true, template }
+}
+
+// Orchestration loop
+async function processTicketWithTools(emailContent: string, ticket: Ticket): Promise<void> {
+  console.log('\n🎯 Processing ticket with AI orchestration...\n')
+
+  const messages: Anthropic.MessageParam[] = [
+    {
+      role: 'user',
+      content: `Process this support ticket and take appropriate actions:
+
+Ticket:
+  Priority: ${ticket.priority}/10
+  Category: ${ticket.category}
+  Sentiment: ${ticket.sentiment}
+  Product: ${ticket.product_id}
+  Customer: ${ticket.customer_tier}
+
+Email:
+${emailContent}
+
+Based on priority and category, decide what actions to take:
+- Priority 8-10 + technical: Check outages, escalate to engineering
+- Priority 1-5: Send automated response
+- Product issues: Check inventory
+
+Take the necessary actions using available tools.`
+    }
+  ]
+
+  let response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 2000,
+    tools,
+    messages
+  })
+
+  // Tool execution loop
+  while (response.stop_reason === 'tool_use') {
+    const toolUses = response.content.filter(
+      (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
+    )
+
+    const toolResults: Anthropic.ToolResultBlockParam[] = []
+
+    for (const toolUse of toolUses) {
+      console.log(`🔧 Tool: ${toolUse.name}`)
+      console.log(`   Args:`, toolUse.input)
+
+      let result: any
+
+      try {
+        switch (toolUse.name) {
+          case 'lookup_inventory':
+            result = await lookupInventory(toolUse.input.product_id)
+            break
+          case 'check_recent_outages':
+            result = await checkRecentOutages(toolUse.input.product_id, toolUse.input.hours_back)
+            break
+          case 'escalate_to_engineering':
+            result = await escalateToEngineering(toolUse.input.ticket_id, toolUse.input.priority, toolUse.input.reason)
+            break
+          case 'send_automated_response':
+            result = await sendAutomatedResponse(toolUse.input.customer_email, toolUse.input.template, toolUse.input.estimated_resolution_hours)
+            break
+          default:
+            throw new Error(`Unknown tool: ${toolUse.name}`)
+        }
+
+        console.log(`   ✅ Result:`, result)
+
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: toolUse.id,
+          content: JSON.stringify(result)
+        })
+      } catch (error) {
+        console.log(`   ❌ Error:`, error.message)
+
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: toolUse.id,
+          content: JSON.stringify({ error: error.message }),
+          is_error: true
+        })
+      }
+    }
+
+    // Continue conversation
+    messages.push(
+      { role: 'assistant', content: response.content },
+      { role: 'user', content: toolResults }
+    )
+
+    response = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20240620',
+      max_tokens: 2000,
+      tools,
+      messages
+    })
+  }
+
+  // Final response
+  const textBlock = response.content.find(
+    (block): block is Anthropic.TextBlock => block.type === 'text'
+  )
+
+  console.log('\n📋 Summary:', textBlock?.text)
+}
+
+// Test
+const email = `From: angry.customer@example.com
+Subject: URGENT!!!
+
+Your app keeps crashing when I try to export data! This is the
+third time this week. I'm losing hours of work and my team is
+furious. We're on the Enterprise plan and this is unacceptable.
+
+Product: Dashboard Pro (SKU-12345)
+
+I need this fixed IMMEDIATELY or we're switching to a competitor.`
+
+const ticket = await extractTicketStructured(email)
+await processTicketWithTools(email, ticket)
+```
+
+**Expected Output**:
+
+```
+🎯 Processing ticket with AI orchestration...
+
+🔧 Tool: check_recent_outages
+   Args: { product_id: 'SKU-12345', hours_back: 72 }
+   ✅ Result: {
+     outages: [{ start: '2024-02-03T14:30:00Z', affected_features: ['export'] }],
+     total_downtime_minutes: 45
+   }
+
+🔧 Tool: escalate_to_engineering
+   Args: { ticket_id: 'TKT-001', priority: 10, reason: 'Critical export bug affecting enterprise customer, recent outage detected' }
+   🚨 ESCALATED to Engineering: Ticket TKT-001 (Priority 10)
+      Reason: Critical export bug affecting enterprise customer, recent outage detected
+   ✅ Result: { escalated: true, assigned_to: 'engineering-team', eta: '2 hours' }
+
+📧 Sent escalated email to angry.customer@example.com
+   ETA: 2 hours
+
+📋 Summary: I've identified this as a critical issue (Priority 10). Recent outages
+affecting the export feature were detected in the past 72 hours. I've escalated
+this to our engineering team with a 2-hour ETA and notified the customer that
+we're treating this as top priority.
+```
+
+---
+
+## Phase 4: Add Validation Layer (Prevent Hallucinations)
+
+### Exercise 5: Validate Tool Arguments with Zod
+
+**Problem**: LLM might hallucinate tool arguments that don't exist in your database.
+
+```typescript
+// ❌ Bad: LLM invents user_id
+{
+  tool: 'escalate_to_engineering',
+  args: {
+    ticket_id: 'TKT-99999',  // Doesn't exist!
+    priority: 10,
+    reason: 'Critical issue'
+  }
+}
+```
+
+**Solution**: Validate all tool inputs before execution.
+
+```typescript
+import { z } from 'zod'
+
+// Define schemas for tool inputs
+const LookupInventoryArgsSchema = z.object({
+  product_id: z.string().regex(/^SKU-[0-9]{5}$/)
+})
+
+const EscalateArgsSchema = z.object({
+  ticket_id: z.string().regex(/^TKT-[0-9]{3,6}$/),
+  priority: z.number().int().min(8).max(10),
+  reason: z.string().min(10).max(500)
+})
+
+// Validated tool executor
+async function executeToolSafely(
+  toolName: string,
+  args: unknown
+): Promise<any> {
+  console.log(`\n🔍 Validating tool: ${toolName}`)
+
+  try {
+    switch (toolName) {
+      case 'lookup_inventory': {
+        const validated = LookupInventoryArgsSchema.parse(args)
+        return await lookupInventory(validated.product_id)
+      }
+
+      case 'escalate_to_engineering': {
+        const validated = EscalateArgsSchema.parse(args)
+
+        // Additional business logic validation
+        const ticketExists = await db.tickets.findUnique({
+          where: { id: validated.ticket_id }
+        })
+
+        if (!ticketExists) {
+          throw new Error(`Ticket ${validated.ticket_id} does not exist`)
+        }
+
+        return await escalateToEngineering(
+          validated.ticket_id,
+          validated.priority,
+          validated.reason
+        )
+      }
+
+      default:
+        throw new Error(`Unknown tool: ${toolName}`)
+    }
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      console.log(`❌ Validation failed:`, error.errors)
+      return {
+        error: 'Invalid arguments',
+        details: error.errors.map(e => ({
+          field: e.path.join('.'),
+          message: e.message
+        }))
+      }
+    }
+
+    throw error
+  }
+}
+
+// Test validation
+const validArgs = {
+  product_id: 'SKU-12345'
+}
+
+const invalidArgs = {
+  product_id: 'INVALID-ID'  // Wrong format
+}
+
+await executeToolSafely('lookup_inventory', validArgs)   // ✅ Works
+await executeToolSafely('lookup_inventory', invalidArgs) // ❌ Returns error
+```
+
+---
+
+## Deliverables
+
+### Part 1: Comparison Report
+
+Create a markdown file comparing the three approaches:
+
+```markdown
+# Support Ticket Router: Approach Comparison
+
+## Test Results
+
+| Approach | Priority Type | Valid Enums | Database Ready | Reliability |
+|----------|--------------|-------------|----------------|-------------|
+| JSON Mode | ❌ String | ❌ Flexible values | ❌ No | ~70% |
+| Structured Outputs | ✅ Number | ✅ Exact values | ✅ Yes | ~98% |
+| Function Calling | ✅ Number | ✅ Exact values | ✅ Yes | ~98% |
+
+## Key Findings
+
+1. **JSON Mode Hallucinations**: Returned "very high" instead of 10, "extremely frustrated" instead of "frustrated"
+2. **Structured Outputs Enforcement**: Forced exact schema match, type-safe
+3. **Function Calling Orchestration**: Correctly escalated priority 10 tickets, checked outages first
+4. **Validation Layer**: Caught hallucinated ticket IDs before database errors
+
+## Recommendation
+
+Use Structured Outputs for all production data extraction. Add Zod validation for function calling arguments.
+```
+
+### Part 2: Production Implementation
+
+Implement a complete support ticket processor:
+
+```typescript
+async function processCustomerEmail(
+  emailContent: string,
+  customerEmail: string
+): Promise<ProcessingResult> {
+  // 1. Extract structured data
+  const ticket = await extractTicketStructured(emailContent)
+
+  // 2. Save to database
+  const dbTicket = await db.tickets.create({
+    data: {
+      ...ticket,
+      customerEmail,
+      status: 'open',
+      createdAt: new Date()
+    }
+  })
+
+  // 3. Orchestrate actions
+  await processTicketWithTools(emailContent, ticket)
+
+  // 4. Return summary
+  return {
+    ticketId: dbTicket.id,
+    priority: ticket.priority,
+    estimatedResolution: calculateETA(ticket.priority),
+    actionsToken: ['checked_outages', 'escalated_to_engineering']
+  }
+}
+```
+
+---
+
+## Bonus Challenges
+
+1. **Multi-Language Support**: Handle emails in Spanish, French, German
+2. **Attachment Processing**: Extract data from attached screenshots
+3. **Thread Handling**: Process email threads, not just single emails
+4. **Sentiment Trends**: Track sentiment changes across multiple tickets from same customer
+5. **Smart Routing**: Use embeddings to find similar resolved tickets
+
+---
+
+## Key Takeaways
+
+1. **JSON Mode** only guarantees syntactically valid JSON, not schema adherence
+2. **Structured Outputs** with Zod enforces exact types and formats
+3. **Function Calling** enables multi-step orchestration
+4. **Always validate** tool arguments to prevent hallucinated data
+5. **Type safety** catches errors at compile time, not runtime
+
+**Production Rule**: Never use JSON Mode for mission-critical data extraction. Always use Structured Outputs with validation.
+
+---
+
+## Lab Rubric: Support Ticket Router
+
+### Total Points: 100
+
+Your submission will be evaluated on four key criteria that reflect real-world production requirements.
+
+---
+
+### 1. Schema Design & Extraction (30 points)
+
+**Target**: How well did you define the "Contract" between the user and the system?
+
+**Criteria**:
+
+**Pydantic/Zod Usage (10 points)**
+- [ ] **10pts**: Schemas clearly defined with appropriate data types (enums for categories, integers for priority, regex patterns for IDs)
+- [ ] **7pts**: Schemas defined but missing constraints (e.g., no min/max on priority, no regex on product_id)
+- [ ] **4pts**: Basic types defined (string, number) but no enums or validation
+- [ ] **0pts**: No schema definition, relying on prompt engineering only
+
+**Extraction Accuracy (10 points)**
+- [ ] **10pts**: Consistently extracts correct priority, category, product_id from noisy emails (>90% accuracy on test set)
+- [ ] **7pts**: Mostly accurate but occasional mistakes on edge cases
+- [ ] **4pts**: Works for clean emails, fails on ambiguous cases
+- [ ] **0pts**: Frequent extraction errors or wrong types
+
+**Constraint Usage (10 points)**
+- [ ] **10pts**: Uses Structured Outputs (strict mode) or constrained decoding to enforce schema 100%
+- [ ] **7pts**: Uses JSON Mode with explicit instructions
+- [ ] **4pts**: Relies on prompt engineering without schema enforcement
+- [ ] **0pts**: No constraints, accepts any JSON structure
+
+**Common Issues**:
+- ❌ Using `priority: string` instead of `priority: number`
+- ❌ Allowing free-form sentiment like "extremely frustrated" instead of enum
+- ❌ No validation on product_id format (allows "Product 123" instead of "SKU-12345")
+
+**Gold Standard**:
+```typescript
+const TicketSchema = z.object({
+  sentiment: z.enum(['frustrated', 'neutral', 'happy']),
+  category: z.enum(['technical', 'billing', 'feature_request']),
+  priority: z.number().int().min(1).max(10),
+  product_id: z.string().regex(/^SKU-[0-9]{5}$/),
+  customer_tier: z.enum(['free', 'pro', 'enterprise'])
+})
+```
+
+---
+
+### 2. Tool Logic & Reliability (30 points)
+
+**Target**: Assessing the reliability of the Function Calling implementation.
+
+**Criteria**:
+
+**Tool Descriptions (10 points)**
+- [ ] **10pts**: Function and parameter descriptions are clear, specific, include when to use AND when NOT to use
+- [ ] **7pts**: Descriptions present but vague ("process ticket" vs "escalate to engineering for priority >= 8")
+- [ ] **4pts**: Minimal descriptions, LLM must guess when to use
+- [ ] **0pts**: No descriptions or incorrect function definitions
+
+**Input Validation (10 points)**
+- [ ] **10pts**: Validates LLM's tool arguments with Zod/Pydantic BEFORE execution, includes business logic checks (e.g., ticket exists in DB)
+- [ ] **7pts**: Basic type validation but no business logic checks
+- [ ] **4pts**: Trusts LLM output without validation
+- [ ] **0pts**: No validation, directly executes with LLM-provided args
+
+**Handling No-Tool Scenarios (10 points)**
+- [ ] **10pts**: Gracefully handles emails that don't require tools (thank you notes, general questions), doesn't force tool calls
+- [ ] **7pts**: Handles simple cases but sometimes calls tools unnecessarily
+- [ ] **4pts**: Assumes every email needs a tool call
+- [ ] **0pts**: Crashes or errors when no tool is needed
+
+**Common Issues**:
+- ❌ Vague tool description: `"process_refund"` → What if user not eligible?
+- ❌ No validation: LLM invents `ticket_id: "TKT-99999"` that doesn't exist
+- ❌ Force tool use: Sets `tool_choice: "required"` for all messages
+
+**Gold Standard**:
+```typescript
+{
+  name: 'escalate_to_engineering',
+  description: 'Escalate ticket to engineering team. ONLY use for priority >= 8 with technical category. Do NOT use for billing or feature requests.',
+  input_schema: {
+    properties: {
+      priority: { type: 'integer', minimum: 8, maximum: 10 }
+    }
+  }
+}
+
+// Validate before execution
+const validated = EscalateArgsSchema.parse(args)
+const ticketExists = await db.tickets.findUnique({ where: { id: validated.ticket_id } })
+if (!ticketExists) throw new Error('Ticket not found')
+```
+
+---
+
+### 3. Error Handling & Edge Cases (25 points)
+
+**Target**: Architectural resilience.
+
+**Criteria**:
+
+**Truncated JSON (8 points)**
+- [ ] **8pts**: Handles token limit errors, uses fallback parser (partial-json-parser), calculates appropriate max_tokens
+- [ ] **5pts**: Detects truncation but only logs error
+- [ ] **2pts**: Crashes on truncated JSON
+- [ ] **0pts**: No handling for max_tokens issues
+
+**Hallucination Recovery (9 points)**
+- [ ] **9pts**: Catches invalid LLM arguments, provides helpful error message back to LLM for retry with corrected data
+- [ ] **6pts**: Catches errors but doesn't feed back to LLM for correction
+- [ ] **3pts**: Logs error but continues with bad data
+- [ ] **0pts**: No hallucination detection
+
+**Retry Logic (8 points)**
+- [ ] **8pts**: Implements retry mechanism for malformed outputs with exponential backoff (max 3 retries)
+- [ ] **5pts**: Basic retry (fixed delay, no backoff)
+- [ ] **2pts**: No retry, but catches errors
+- [ ] **0pts**: Crashes on first failure
+
+**Common Issues**:
+- ❌ No max_tokens calculation → truncated JSON `{ "priority": 10, "cat...`
+- ❌ LLM invents `user_id` → inserted into DB → FK constraint error
+- ❌ No retry → single JSON parse error fails entire pipeline
+
+**Gold Standard**:
+```typescript
+// Truncation handling
+const estimatedTokens = calculateEstimatedTokens(schema)
+const maxTokens = Math.ceil(estimatedTokens * 1.5)
+
+try {
+  return JSON.parse(content)
+} catch (error) {
+  const repaired = parsePartialJson(content)
+  if (repaired) return repaired
+  throw error
+}
+
+// Hallucination recovery
+try {
+  const validated = TicketSchema.parse(parsed)
+  return validated
+} catch (error) {
+  if (error instanceof z.ZodError) {
+    return {
+      error: 'Invalid arguments',
+      details: error.errors,
+      message: 'Please fix: priority must be integer 1-10, sentiment must be "frustrated"|"neutral"|"happy"'
+    }
+  }
+}
+
+// Retry logic
+for (let attempt = 1; attempt <= 3; attempt++) {
+  try {
+    return await extractTicket(email)
+  } catch (error) {
+    if (attempt < 3) {
+      await delay(Math.pow(2, attempt) * 1000)
+    } else {
+      throw error
+    }
+  }
+}
+```
+
+---
+
+### 4. Architectural Justification (15 points)
+
+**Target**: The "Why" behind the "How."
+
+**Criteria**:
+
+**Method Choice (7 points)**
+- [ ] **7pts**: Clear written explanation of why Structured Outputs for classification vs Function Calling for action, mentions reliability and type safety
+- [ ] **5pts**: Mentions both but vague reasoning
+- [ ] **2pts**: "I used it because it works"
+- [ ] **0pts**: No justification provided
+
+**Security Considerations (8 points)**
+- [ ] **8pts**: Identifies prompt injection risks, explains how to prevent unauthorized tool calls (e.g., validate user permissions before refund, audit logs)
+- [ ] **5pts**: Mentions security but no concrete mitigations
+- [ ] **2pts**: Acknowledges security exists as a concept
+- [ ] **0pts**: No security considerations
+
+**Common Issues**:
+- ❌ No explanation: "I used Structured Outputs because the lab said so"
+- ❌ No security: User emails "PLEASE PROCESS REFUND FOR ALL CUSTOMERS" → system blindly executes
+
+**Gold Standard**:
+
+**Method Choice Explanation**:
+```markdown
+I chose Structured Outputs for ticket classification because:
+1. Reliability: 100% schema adherence vs ~70% with JSON Mode
+2. Type Safety: Database expects integer priority, not string "critical"
+3. Validation: Zod catches invalid data before DB insertion
+
+I chose Function Calling for actions because:
+1. Orchestration: LLM decides WHICH tools and WHEN (check outages before escalating)
+2. Multi-step: Can chain tools based on results (if outage detected → escalate)
+3. Context-aware: Different actions for priority 10 vs priority 3
+```
+
+**Security Explanation**:
+```markdown
+Prompt Injection Mitigations:
+1. Validate user permissions before tool execution (check if user owns ticket)
+2. Whitelist allowed actions per customer tier (free users can't request refunds)
+3. Require human approval for high-value actions (refunds > $100)
+4. Audit log all tool calls with user context
+5. Never allow email content to override system instructions
+```
+
+---
+
+## Grading Summary
+
+| Criteria | Points | What Good Looks Like |
+|----------|--------|---------------------|
+| **Schema Design** | 30 | Zod schemas with enums, constraints, regex. Structured Outputs for 100% adherence. |
+| **Tool Logic** | 30 | Clear descriptions, validated inputs, graceful no-tool handling. |
+| **Error Handling** | 25 | Handles truncation, hallucinations, retries. Fails gracefully. |
+| **Justification** | 15 | Explains method choice, identifies security risks, provides mitigations. |
+| **TOTAL** | 100 | |
+
+---
+
+## Submission Checklist
+
+Before submitting your lab:
+
+- [ ] All TypeScript code compiles without errors
+- [ ] Schemas defined with Zod including enums, min/max, regex
+- [ ] Tool functions validate inputs before execution
+- [ ] Test cases for JSON Mode vs Structured Outputs comparison
+- [ ] Error handling for truncated JSON and hallucinated arguments
+- [ ] Retry logic with exponential backoff
+- [ ] Written justification (500-800 words) explaining method choices and security
+- [ ] Test with provided email examples + 3 edge cases you create
+- [ ] README with setup instructions and example output
+
+---
+
+## Common Mistakes to Avoid
+
+1. **Using JSON Mode for production** → Switch to Structured Outputs
+2. **No schema validation** → Add Zod schemas with constraints
+3. **Trusting LLM tool arguments** → Validate before execution
+4. **Vague tool descriptions** → Be specific about when to use AND when NOT to use
+5. **No error handling** → Add try/catch, retries, partial JSON parsing
+6. **Ignoring security** → Validate permissions, audit logs, prevent injection
+7. **No comparison** → Must compare JSON Mode vs Structured Outputs with evidence
+
+---
+
+## Resources
+
+- [Zod Documentation](https://zod.dev/)
+- [Anthropic: Structured Outputs](https://docs.anthropic.com/en/docs/build-with-claude/structured-outputs)
+- [Anthropic: Tool Use Best Practices](https://docs.anthropic.com/en/docs/build-with-claude/tool-use)
+- Week 4 Concept Guides: structured-output.mdx, function-calling.mdx, schema-design.mdx
