@@ -55,38 +55,42 @@ jobs:
 
       - name: Run Database Migrations
         if: ${{ !inputs.skip_migrations }}
+        id: migrate
         run: npx prisma migrate deploy
         env:
           DATABASE_URL: ${{ steps.db-creds.outputs.DATABASE_URL }}
 
       - name: Seed Database
+        id: seed
         run: |
           echo "🌱 Seeding database..."
 
           case "${{ inputs.week }}" in
+            "all")
+              echo "Seeding all 12 weeks using master seed file..."
+              npm run db:seed
+              ;;
             "1")
-              echo "Seeding Week 1..."
-              npx tsx prisma/seed-week1.ts
+              echo "Seeding Week 1 only..."
+              npm run db:seed:week1
               ;;
             "2")
-              echo "Seeding Week 2..."
-              npx tsx prisma/seed-week2.ts
+              echo "Seeding Week 2 only..."
+              npm run db:seed:week2
               ;;
             "5")
-              echo "Seeding Week 5..."
-              npx tsx prisma/seed-week5.ts
+              echo "Seeding Week 5 only..."
+              npm run db:seed:week5
               ;;
             "6")
-              echo "Seeding Week 6..."
-              npx tsx prisma/seed-week6.ts
+              echo "Seeding Week 6 only..."
+              npm run db:seed:week6
               ;;
-            "all"|*)
-              echo "Seeding all weeks..."
-              npx tsx prisma/seed-week1.ts || echo "⚠️  Week 1 already seeded or error"
-              npx tsx prisma/seed-week2.ts || echo "⚠️  Week 2 already seeded or error"
-              npx tsx prisma/seed-week5.ts || echo "⚠️  Week 5 already seeded or error"
-              npx tsx prisma/seed-week6.ts || echo "⚠️  Week 6 already seeded or error"
-              npx tsx prisma/seed-all-weeks.ts || echo "⚠️  Remaining weeks already seeded or error"
+            *)
+              echo "Invalid week specified. Please use 'all' or a week number 1-12."
+              echo "Note: Individual seed scripts exist only for weeks 1, 2, 5, 6."
+              echo "For other weeks, use 'all' to seed everything."
+              exit 1
               ;;
           esac
 
@@ -95,9 +99,58 @@ jobs:
           DATABASE_URL: ${{ steps.db-creds.outputs.DATABASE_URL }}
 
       - name: Verify Seeding
+        id: verify
         run: |
           echo "📊 Verifying seeded data..."
-          npx prisma db seed --show-report || echo "No verification script available"
+
+          # Create a temporary SQL query file
+          cat > /tmp/verify.sql << 'EOF'
+          SELECT
+            'Weeks' as type,
+            COUNT(*)::text as count
+          FROM "CurriculumWeek"
+          UNION ALL
+          SELECT
+            'Concepts' as type,
+            COUNT(*)::text as count
+          FROM "Concept"
+          UNION ALL
+          SELECT
+            'Labs' as type,
+            COUNT(*)::text as count
+          FROM "Lab"
+          UNION ALL
+          SELECT
+            'Projects' as type,
+            COUNT(*)::text as count
+          FROM "WeekProject";
+          EOF
+
+          # Run the query using psql via Cloud SQL proxy
+          npx prisma db execute --file /tmp/verify.sql --schema prisma/schema.prisma || echo "⚠️  Verification query failed"
+
+          # Alternative: Use Prisma Client to query
+          cat > /tmp/verify.ts << 'EOF'
+          import { PrismaClient } from '@prisma/client'
+          const prisma = new PrismaClient()
+          async function main() {
+            const weeks = await prisma.curriculumWeek.count()
+            const concepts = await prisma.concept.count()
+            const labs = await prisma.lab.count()
+            const projects = await prisma.weekProject.count()
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+            console.log('📊 DATABASE CONTENTS')
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+            console.log(`Weeks:    ${weeks}`)
+            console.log(`Concepts: ${concepts}`)
+            console.log(`Labs:     ${labs}`)
+            console.log(`Projects: ${projects}`)
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+          }
+          main().finally(() => prisma.$disconnect())
+          EOF
+
+          npx tsx /tmp/verify.ts
         env:
           DATABASE_URL: ${{ steps.db-creds.outputs.DATABASE_URL }}
 
@@ -116,5 +169,12 @@ jobs:
           echo "Status:"
           echo "  Migrations:       ${{ steps.migrate.outcome || 'skipped' }}"
           echo "  Seeding:          ${{ steps.seed.outcome || 'N/A' }}"
+          echo "  Verification:     ${{ steps.verify.outcome || 'N/A' }}"
+          echo ""
+          echo "Expected for 'all' weeks:"
+          echo "  - 12 curriculum weeks"
+          echo "  - 41 concepts (varies by week: 3-6 per week)"
+          echo "  - 12 labs (1 per week)"
+          echo "  - 12 projects (1 per week)"
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
