@@ -7,6 +7,7 @@ import { parseJSONFromLLM, sanitizeForPrompt, getTokenUsage } from './utils'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
+  dangerouslyAllowBrowser: process.env.NODE_ENV === 'test'
 })
 
 export async function synthesizeFromMultipleSources(

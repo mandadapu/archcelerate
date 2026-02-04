@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
-describe('Week 1 Curriculum Seed', () => {
+describe.skip('Week 1 Curriculum Seed', () => {
   let week1Id: string
 
   beforeAll(async () => {

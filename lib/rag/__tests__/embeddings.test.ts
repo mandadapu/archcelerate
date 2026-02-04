@@ -1,16 +1,10 @@
 import { describe, it, expect, jest, beforeEach } from '@jest/globals'
+
+// Use manual mock from __mocks__/voyageai.ts
+jest.mock('voyageai')
+
+import { mockEmbed } from '__mocks__/voyageai'
 import { generateEmbedding, generateEmbeddings, cosineSimilarity } from '../embeddings'
-
-// Mock VoyageAI client
-const mockEmbed = jest.fn()
-
-jest.mock('voyageai', () => {
-  return {
-    VoyageAIClient: jest.fn().mockImplementation(() => ({
-      embed: mockEmbed
-    }))
-  }
-})
 
 describe('Embeddings', () => {
   beforeEach(() => {

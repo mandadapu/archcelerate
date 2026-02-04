@@ -9,7 +9,8 @@ import { checkBudget, trackCost } from '@/lib/governance/cost-tracker'
 import { logLLMRequest, logAuditEvent, calculateCost } from '@/lib/governance/logger'
 
 const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!
+  apiKey: process.env.ANTHROPIC_API_KEY!,
+  dangerouslyAllowBrowser: process.env.NODE_ENV === 'test'
 })
 
 export async function POST(request: NextRequest) {

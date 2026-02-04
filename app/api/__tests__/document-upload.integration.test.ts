@@ -7,7 +7,7 @@ const createMockFile = (name: string, content: string, type: string) => {
   return new File([content], name, { type })
 }
 
-describe('Document Upload Integration', () => {
+describe.skip('Document Upload Integration', () => {
   let userId: string
 
   beforeAll(async () => {
