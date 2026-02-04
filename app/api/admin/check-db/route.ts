@@ -15,7 +15,7 @@ export async function GET() {
           select: {
             concepts: true,
             labs: true,
-            projects: true
+            weekProjects: true
           }
         }
       }
