@@ -62,6 +62,13 @@ jobs:
           docker push \${{ env.REGION }}-docker.pkg.dev/\${{ env.PROJECT_ID }}/\${{ env.SERVICE_NAME }}-repo/\${{ env.SERVICE_NAME }}:\${{ github.sha }}
           docker push \${{ env.REGION }}-docker.pkg.dev/\${{ env.PROJECT_ID }}/\${{ env.SERVICE_NAME }}-repo/\${{ env.SERVICE_NAME }}:latest
 
+      - name: Run Database Migrations
+        run: |
+          echo "📦 Running Prisma migrations..."
+          npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy \${{ env.SERVICE_NAME }} \
