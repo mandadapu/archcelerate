@@ -88,14 +88,6 @@ export function Header({ onLoginClick }: HeaderProps) {
             >
               Testimonials
             </button>
-            <a
-              href="https://github.com/mandadapu/archcelerate"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium"
-            >
-              GitHub
-            </a>
           </nav>
 
           {/* CTA Button */}
