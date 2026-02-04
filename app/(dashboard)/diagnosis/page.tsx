@@ -3,43 +3,91 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { quizQuestions as fallbackQuestions } from '@/lib/quiz/questions'
+import { getQuestionsByDifficulty } from '@/lib/quiz/questions'
 import { QuizQuestion as QuizQuestionComponent } from '@/components/quiz/QuizQuestion'
 import { QuizProgress } from '@/components/quiz/QuizProgress'
 import { QuizNavigation } from '@/components/quiz/QuizNavigation'
-import { QuizAnswer, QuizQuestion } from '@/types/diagnosis'
+import { LevelSelector } from '@/components/quiz/LevelSelector'
+import { QuizAnswer, QuizQuestion, DifficultyLevel } from '@/types/diagnosis'
+import { Button } from '@/components/ui/button'
 
 export default function DiagnosisPage() {
   const router = useRouter()
-  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>(fallbackQuestions)
-  const [isLoading, setIsLoading] = useState(true)
+  const [showLevelSelector, setShowLevelSelector] = useState(true)
+  const [selectedLevel, setSelectedLevel] = useState<DifficultyLevel | null>(null)
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([])
+  const [isLoading, setIsLoading] = useState(false)
   const [questionSource, setQuestionSource] = useState<'cache' | 'generated' | 'fallback'>('fallback')
   const [currentIndex, setCurrentIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<string, string[]>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Fetch questions from API on mount
-  useEffect(() => {
-    const fetchQuestions = async () => {
-      try {
-        const response = await fetch('/api/diagnosis/questions')
-        const data = await response.json()
+  // Fetch questions based on selected level
+  const fetchQuestions = async (level: DifficultyLevel) => {
+    setIsLoading(true)
+    try {
+      const response = await fetch(`/api/diagnosis/questions?level=${level}`)
+      const data = await response.json()
 
-        if (data.questions && data.questions.length > 0) {
-          setQuizQuestions(data.questions)
-          setQuestionSource(data.source)
-          console.log(`📝 Loaded ${data.questions.length} questions from ${data.source}`)
-        }
-      } catch (error) {
-        console.error('Failed to fetch questions:', error)
-        toast.error('Using fallback questions')
-      } finally {
-        setIsLoading(false)
+      if (data.questions && data.questions.length > 0) {
+        setQuizQuestions(data.questions)
+        setQuestionSource(data.source)
+        console.log(`📝 Loaded ${data.questions.length} ${level} questions from ${data.source}`)
       }
+    } catch (error) {
+      console.error('Failed to fetch questions:', error)
+      toast.error('Using fallback questions')
+      // Use fallback questions for the selected level
+      const fallbackQuestions = getQuestionsByDifficulty(level)
+      setQuizQuestions(fallbackQuestions.slice(0, 25))
+      setQuestionSource('fallback')
+    } finally {
+      setIsLoading(false)
     }
+  }
 
-    fetchQuestions()
-  }, [])
+  const handleQuickStart = () => {
+    setSelectedLevel('intermediate')
+    setShowLevelSelector(false)
+    fetchQuestions('intermediate')
+  }
+
+  const handleLevelSelect = (level: DifficultyLevel) => {
+    setSelectedLevel(level)
+    setShowLevelSelector(false)
+    fetchQuestions(level)
+  }
+
+  const handleChangeLevel = () => {
+    if (Object.keys(answers).length > 0) {
+      const confirmed = window.confirm(
+        'Are you sure? Your current progress will be lost.'
+      )
+      if (!confirmed) return
+    }
+    setShowLevelSelector(true)
+    setSelectedLevel(null)
+    setAnswers({})
+    setCurrentIndex(0)
+    setQuizQuestions([])
+  }
+
+  // Show level selector on initial load
+  if (showLevelSelector) {
+    return (
+      <div className="max-w-7xl mx-auto space-y-6 p-6">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-slate-900 mb-3">
+            Skill Diagnosis Quiz
+          </h1>
+          <p className="text-lg text-slate-600">
+            Choose your difficulty level to get a personalized assessment of your AI skills
+          </p>
+        </div>
+        <LevelSelector onLevelSelect={handleLevelSelect} onQuickStart={handleQuickStart} />
+      </div>
+    )
+  }
 
   if (isLoading) {
     return (
@@ -47,7 +95,7 @@ export default function DiagnosisPage() {
         <div className="flex items-center justify-center py-12">
           <div className="text-center space-y-4">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
-            <p className="text-slate-600">Loading your skill diagnosis...</p>
+            <p className="text-slate-600">Loading your {selectedLevel} quiz...</p>
           </div>
         </div>
       </div>
@@ -105,13 +153,14 @@ export default function DiagnosisPage() {
         }
       })
 
-      // Send to API for analysis (include questions for dynamic quiz)
+      // Send to API for analysis (include questions and difficulty level)
       const response = await fetch('/api/diagnosis/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           answers: quizAnswers,
-          questions: quizQuestions // Include the questions used
+          questions: quizQuestions, // Include the questions used
+          difficultyLevel: selectedLevel, // Include selected difficulty level
         }),
       })
 
@@ -139,21 +188,35 @@ export default function DiagnosisPage() {
     <div className="max-w-3xl mx-auto space-y-6">
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h1 className="text-3xl font-bold text-slate-900">
-            Skill Diagnosis
-          </h1>
-          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-            questionSource === 'generated' ? 'bg-green-100 text-green-800' :
-            questionSource === 'cache' ? 'bg-blue-100 text-blue-800' :
-            'bg-gray-100 text-gray-800'
-          }`}>
-            {questionSource === 'generated' ? '🤖 AI Generated' :
-             questionSource === 'cache' ? '⚡ Cached' :
-             '📋 Fallback'}
-          </span>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold text-slate-900">
+              Skill Diagnosis
+            </h1>
+            <span className={`px-3 py-1 rounded-full text-xs font-medium capitalize ${
+              selectedLevel === 'beginner' ? 'bg-green-100 text-green-800' :
+              selectedLevel === 'intermediate' ? 'bg-blue-100 text-blue-800' :
+              'bg-purple-100 text-purple-800'
+            }`}>
+              {selectedLevel}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+              questionSource === 'generated' ? 'bg-green-100 text-green-800' :
+              questionSource === 'cache' ? 'bg-blue-100 text-blue-800' :
+              'bg-gray-100 text-gray-800'
+            }`}>
+              {questionSource === 'generated' ? '🤖 AI Generated' :
+               questionSource === 'cache' ? '⚡ Cached' :
+               '📋 Fallback'}
+            </span>
+            <Button variant="outline" size="sm" onClick={handleChangeLevel}>
+              Change Level
+            </Button>
+          </div>
         </div>
         <p className="text-slate-600">
-          Answer these questions to get your personalized learning path
+          Answer these {quizQuestions.length} questions to get your personalized learning path
         </p>
       </div>
 

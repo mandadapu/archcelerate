@@ -1,5 +1,7 @@
 export type QuestionType = 'single-choice' | 'multiple-choice' | 'code-evaluation'
 
+export type DifficultyLevel = 'beginner' | 'intermediate' | 'advanced'
+
 export interface QuizQuestion {
   id: string
   type: QuestionType
@@ -11,7 +13,7 @@ export interface QuizQuestion {
   }[]
   correctAnswers: string[]
   skillArea: SkillArea
-  difficulty: 'beginner' | 'intermediate' | 'advanced'
+  difficulty: DifficultyLevel
 }
 
 export type SkillArea =
@@ -41,6 +43,7 @@ export type LearningPath = 'standard' | 'fast-track' | 'foundation-first'
 
 export interface DiagnosisResult {
   userId: string
+  difficultyLevel?: DifficultyLevel
   answers: QuizAnswer[]
   skillScores: SkillScores
   recommendedPath: LearningPath
