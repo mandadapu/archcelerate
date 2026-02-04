@@ -10,6 +10,7 @@ import OpenAI from 'openai'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
+  dangerouslyAllowBrowser: process.env.NODE_ENV === 'test'
 })
 
 function getOpenAIClient() {
