@@ -119,6 +119,7 @@ const weekData = [
     description: 'Build retrieval-augmented generation systems with vector databases',
     objectives: ['Implement vector search', 'Build RAG pipelines', 'Manage conversation memory'],
     concepts: [
+      { slug: 'rag-memory-fundamentals', title: 'RAG + Memory Fundamentals', minutes: 40 },
       { slug: 'vector-embeddings', title: 'Vector Embeddings & Similarity Search', minutes: 35 },
       { slug: 'rag-pipelines', title: 'Building RAG Pipelines', minutes: 40 },
       { slug: 'memory-systems', title: 'Conversation Memory Systems', minutes: 35 }
