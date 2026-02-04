@@ -1,0 +1,629 @@
+---
+title: 'Function Calling & Tool Use'
+description: 'Transform LLMs from text generators to orchestrators that call your APIs'
+estimatedTime: 45
+difficulty: 'intermediate'
+objectives:
+  - Understand the function calling loop (request → intent → execution → response)
+  - Define tools that LLMs can reliably invoke
+  - Handle tool execution and error cases
+  - Build multi-step tool orchestration
+---
+
+# Function Calling & Tool Use
+
+## The Fundamental Insight
+
+**Critical misunderstanding**: The LLM does NOT execute functions. It **requests** function calls.
+
+Your code executes the function, then feeds the result back to the LLM.
+
+---
+
+## The Architecture: The Function Calling Loop
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 1. USER REQUEST                                             │
+│    "What's the weather in London and should I bring an      │
+│     umbrella?"                                              │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 2. LLM INTENT (Tool Call Request)                           │
+│    {                                                        │
+│      "tool": "get_weather",                                 │
+│      "arguments": {                                         │
+│        "location": "London",                                │
+│        "unit": "celsius"                                    │
+│      }                                                      │
+│    }                                                        │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 3. YOUR CODE EXECUTES (Not the LLM!)                        │
+│    const result = await getWeather('London', 'celsius')     │
+│    // Returns: { temp: 12, conditions: 'rainy',            │
+│    //            humidity: 85 }                             │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 4. FEED RESULT BACK TO LLM                                  │
+│    Tool result: { temp: 12, conditions: 'rainy',           │
+│                   humidity: 85 }                            │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 5. FINAL RESPONSE (LLM synthesizes answer)                  │
+│    "It's 12°C and rainy in London with 85% humidity.       │
+│     Yes, you should definitely bring an umbrella!"         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key insight**: The LLM is the **orchestrator**, not the executor. It decides WHAT to call and WHEN, but your code does the execution.
+
+---
+
+## Basic Function Calling Pattern
+
+### Step 1: Define Your Tools
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+// Define available tools (functions LLM can request)
+const tools: Anthropic.Tool[] = [
+  {
+    name: 'get_weather',
+    description: 'Get current weather for a specific location. Use this whenever the user asks about weather, temperature, or conditions.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        location: {
+          type: 'string',
+          description: 'City name, e.g. "London", "San Francisco", "Tokyo"'
+        },
+        unit: {
+          type: 'string',
+          enum: ['celsius', 'fahrenheit'],
+          description: 'Temperature unit. Use celsius for international cities, fahrenheit for US cities.'
+        }
+      },
+      required: ['location', 'unit']
+    }
+  }
+]
+```
+
+**Critical elements**:
+- **name**: Function identifier (snake_case)
+- **description**: When to use this tool (be specific!)
+- **input_schema**: JSON Schema defining parameters
+- **required**: Which parameters are mandatory
+
+### Step 2: Implement the Tool Function
+
+```typescript
+interface WeatherResult {
+  temperature: number
+  unit: string
+  conditions: string
+  humidity: number
+  location: string
+}
+
+// Your actual implementation (calls weather API, database, etc.)
+async function getWeather(location: string, unit: 'celsius' | 'fahrenheit'): Promise<WeatherResult> {
+  // In production, this would call a real weather API
+  const response = await fetch(
+    `https://api.weatherapi.com/v1/current.json?key=${process.env.WEATHER_API_KEY}&q=${location}`
+  )
+
+  if (!response.ok) {
+    throw new Error(`Weather API error: ${response.statusText}`)
+  }
+
+  const data = await response.json()
+
+  return {
+    temperature: unit === 'celsius' ? data.current.temp_c : data.current.temp_f,
+    unit,
+    conditions: data.current.condition.text,
+    humidity: data.current.humidity,
+    location: data.location.name
+  }
+}
+```
+
+### Step 3: The Orchestration Loop
+
+```typescript
+async function chat(userMessage: string): Promise<string> {
+  const messages: Anthropic.MessageParam[] = [
+    { role: 'user', content: userMessage }
+  ]
+
+  let response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 1024,
+    tools,
+    messages
+  })
+
+  // Loop until LLM stops requesting tools
+  while (response.stop_reason === 'tool_use') {
+    // Extract tool use requests
+    const toolUses = response.content.filter(
+      (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
+    )
+
+    // Execute each tool
+    const toolResults: Anthropic.ToolResultBlockParam[] = []
+
+    for (const toolUse of toolUses) {
+      console.log(`🔧 LLM requested tool: ${toolUse.name}`)
+      console.log(`   Arguments:`, toolUse.input)
+
+      try {
+        let result: any
+
+        // Route to appropriate function
+        if (toolUse.name === 'get_weather') {
+          result = await getWeather(
+            toolUse.input.location,
+            toolUse.input.unit
+          )
+        } else {
+          throw new Error(`Unknown tool: ${toolUse.name}`)
+        }
+
+        console.log(`✅ Tool result:`, result)
+
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: toolUse.id,
+          content: JSON.stringify(result)
+        })
+      } catch (error) {
+        console.error(`❌ Tool execution failed:`, error)
+
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: toolUse.id,
+          content: JSON.stringify({
+            error: error instanceof Error ? error.message : 'Unknown error'
+          }),
+          is_error: true
+        })
+      }
+    }
+
+    // Add assistant's response and tool results to conversation
+    messages.push(
+      { role: 'assistant', content: response.content },
+      { role: 'user', content: toolResults }
+    )
+
+    // Continue conversation with tool results
+    response = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20240620',
+      max_tokens: 1024,
+      tools,
+      messages
+    })
+  }
+
+  // Extract final text response
+  const textBlock = response.content.find(
+    (block): block is Anthropic.TextBlock => block.type === 'text'
+  )
+
+  return textBlock?.text || 'No response generated'
+}
+
+// Usage
+const answer = await chat('What\'s the weather in London? Should I bring an umbrella?')
+console.log(answer)
+// "It's 12°C and rainy in London with 85% humidity. Yes, you should definitely bring an umbrella!"
+```
+
+---
+
+## Multi-Tool Orchestration
+
+The real power: LLMs can chain multiple tools to accomplish complex tasks.
+
+```typescript
+const tools: Anthropic.Tool[] = [
+  {
+    name: 'check_inventory',
+    description: 'Check if a product is in stock at a specific warehouse',
+    input_schema: {
+      type: 'object',
+      properties: {
+        product_id: {
+          type: 'string',
+          description: 'Product SKU or ID'
+        },
+        warehouse: {
+          type: 'string',
+          enum: ['US_WEST', 'US_EAST', 'EU', 'ASIA'],
+          description: 'Warehouse location code'
+        }
+      },
+      required: ['product_id', 'warehouse']
+    }
+  },
+  {
+    name: 'create_shipment',
+    description: 'Create a shipment order for a product. Only call this AFTER checking inventory.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        product_id: { type: 'string' },
+        quantity: { type: 'integer', minimum: 1 },
+        warehouse: { type: 'string', enum: ['US_WEST', 'US_EAST', 'EU', 'ASIA'] },
+        destination: { type: 'string', description: 'Shipping address' },
+        priority: { type: 'string', enum: ['standard', 'express', 'overnight'] }
+      },
+      required: ['product_id', 'quantity', 'warehouse', 'destination', 'priority']
+    }
+  },
+  {
+    name: 'notify_customer',
+    description: 'Send email notification to customer about order status',
+    input_schema: {
+      type: 'object',
+      properties: {
+        customer_email: { type: 'string', format: 'email' },
+        message: { type: 'string' },
+        order_id: { type: 'string' }
+      },
+      required: ['customer_email', 'message']
+    }
+  }
+]
+
+// User: "Ship 5 units of SKU-12345 from US_WEST to 123 Main St, express, and notify john@example.com"
+
+// LLM will automatically:
+// 1. Call check_inventory(product_id='SKU-12345', warehouse='US_WEST')
+// 2. If in stock, call create_shipment(...)
+// 3. Then call notify_customer(customer_email='john@example.com', ...)
+// 4. Summarize: "I've checked inventory (5 units available), created an express shipment, and notified John."
+```
+
+**The LLM orchestrates the sequence** based on the tool descriptions and conversation context.
+
+---
+
+## Designing LLM-Ready Tool Specs
+
+### Rule: If an intern can't understand it, the LLM can't either
+
+**❌ Bad tool description**:
+```typescript
+{
+  name: 'process',
+  description: 'Processes data',
+  input_schema: {
+    type: 'object',
+    properties: {
+      data: { type: 'string' },
+      mode: { type: 'string' }
+    }
+  }
+}
+```
+
+**Problems**:
+- "process" is vague - process how?
+- "data" could be anything
+- "mode" has no constraints - LLM will hallucinate values
+
+**✅ Good tool description**:
+```typescript
+{
+  name: 'calculate_shipping_cost',
+  description: 'Calculate shipping cost for a package based on weight, dimensions, and destination. Use this when the user asks about shipping rates, delivery costs, or wants a quote.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      weight_kg: {
+        type: 'number',
+        description: 'Package weight in kilograms',
+        minimum: 0.1,
+        maximum: 500
+      },
+      destination_country: {
+        type: 'string',
+        enum: ['US', 'CA', 'UK', 'DE', 'FR', 'JP', 'AU'],
+        description: 'Two-letter ISO country code for destination'
+      },
+      service_level: {
+        type: 'string',
+        enum: ['standard', 'express', 'overnight'],
+        description: 'Shipping speed. standard = 5-7 days, express = 2-3 days, overnight = next day'
+      }
+    },
+    required: ['weight_kg', 'destination_country', 'service_level']
+  }
+}
+```
+
+**Why this works**:
+- ✅ Specific name describes exactly what it does
+- ✅ Description explains WHEN to use it
+- ✅ Enums prevent hallucinated values
+- ✅ Constraints (min/max) prevent invalid inputs
+- ✅ Units are explicit (kg, not "weight")
+
+### Best Practices for Tool Definitions
+
+| Do | Don't |
+|----|-------|
+| Use **enums** for categorical parameters | Use free-form strings ("any color") |
+| Add **min/max** constraints to numbers | Leave numbers unbounded |
+| Specify **units** (kg, USD, meters) | Assume units ("weight", "price") |
+| Explain **when to use** the tool | Just describe what it does |
+| Use **descriptive names** (calculate_tax) | Use generic names (process, handle) |
+| Mark parameters as **required** | Make everything optional |
+| Provide **examples** in descriptions | Leave descriptions vague |
+
+---
+
+## Production Patterns
+
+### Pattern 1: Tool Execution with Retry
+
+```typescript
+async function executeToolWithRetry(
+  toolName: string,
+  args: any,
+  maxRetries: number = 3
+): Promise<any> {
+  let lastError: Error | null = null
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Attempt ${attempt}/${maxRetries} for ${toolName}`)
+
+      // Route to function
+      switch (toolName) {
+        case 'get_weather':
+          return await getWeather(args.location, args.unit)
+
+        case 'check_inventory':
+          return await checkInventory(args.product_id, args.warehouse)
+
+        default:
+          throw new Error(`Unknown tool: ${toolName}`)
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+      console.error(`Attempt ${attempt} failed:`, lastError.message)
+
+      if (attempt < maxRetries) {
+        // Exponential backoff
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000))
+      }
+    }
+  }
+
+  throw lastError
+}
+```
+
+### Pattern 2: Tool Authorization
+
+```typescript
+interface ToolContext {
+  userId: string
+  permissions: string[]
+}
+
+function checkToolAuthorization(toolName: string, context: ToolContext): void {
+  const requiredPermissions: Record<string, string> = {
+    'create_shipment': 'shipments.create',
+    'refund_customer': 'refunds.create',
+    'delete_data': 'data.delete'
+  }
+
+  const required = requiredPermissions[toolName]
+
+  if (required && !context.permissions.includes(required)) {
+    throw new Error(`Unauthorized: User ${context.userId} lacks permission ${required}`)
+  }
+}
+
+// Usage in tool execution
+async function executeToolSafely(
+  toolName: string,
+  args: any,
+  context: ToolContext
+): Promise<any> {
+  // 1. Authorization check
+  checkToolAuthorization(toolName, context)
+
+  // 2. Input validation
+  const validator = toolValidators[toolName]
+  const validatedArgs = validator.parse(args) // Zod validation
+
+  // 3. Execute
+  return await executeTool(toolName, validatedArgs)
+}
+```
+
+### Pattern 3: Tool Observability
+
+```typescript
+interface ToolMetrics {
+  toolName: string
+  duration: number
+  success: boolean
+  error?: string
+  timestamp: Date
+}
+
+async function executeToolWithMetrics(
+  toolName: string,
+  args: any
+): Promise<any> {
+  const startTime = Date.now()
+  let success = false
+  let error: string | undefined
+
+  try {
+    const result = await executeTool(toolName, args)
+    success = true
+    return result
+  } catch (e) {
+    error = e instanceof Error ? e.message : String(e)
+    throw e
+  } finally {
+    const duration = Date.now() - startTime
+
+    // Log metrics
+    await logMetrics({
+      toolName,
+      duration,
+      success,
+      error,
+      timestamp: new Date()
+    })
+
+    // Alert on failures
+    if (!success && duration > 5000) {
+      await sendAlert({
+        type: 'tool_failure',
+        message: `Tool ${toolName} failed after ${duration}ms: ${error}`
+      })
+    }
+  }
+}
+```
+
+---
+
+## Common Pitfalls
+
+### Pitfall 1: Assuming the LLM executes code
+
+```typescript
+// ❌ WRONG MENTAL MODEL
+// "The LLM will call my function"
+
+// ✅ CORRECT MENTAL MODEL
+// "The LLM requests a function call with JSON parameters.
+//  My code parses that JSON and executes the function.
+//  I feed the result back to the LLM."
+```
+
+### Pitfall 2: Vague function descriptions
+
+```typescript
+// ❌ BAD
+{
+  name: 'search',
+  description: 'Search for things'
+}
+
+// LLM: "Should I use this for web search? Database search? File search?"
+```
+
+```typescript
+// ✅ GOOD
+{
+  name: 'search_products',
+  description: 'Search the product catalog by name, SKU, or category. Use this when user asks to find, look up, or search for products in inventory.'
+}
+```
+
+### Pitfall 3: No parameter constraints
+
+```typescript
+// ❌ BAD: LLM can make up any value
+{
+  priority: { type: 'string' }
+}
+
+// LLM might return: "very urgent", "ASAP!!!", "high priority", etc.
+```
+
+```typescript
+// ✅ GOOD: Enum forces specific values
+{
+  priority: {
+    type: 'string',
+    enum: ['low', 'medium', 'high', 'urgent']
+  }
+}
+```
+
+---
+
+## Key Takeaways
+
+### The Orchestration Model
+
+> "The LLM is the brain that decides WHAT to do and WHEN. Your code is the hands that DO it."
+
+**Roles**:
+- **LLM**: Understands intent, plans action sequence, synthesizes results
+- **Your code**: Executes functions, validates inputs, handles errors
+
+### Function Calling vs. Prompting
+
+| Approach | Reliability | Type Safety | Production-Ready |
+|----------|-------------|-------------|------------------|
+| Prompt: "Call get_weather()" | Low (parsing errors) | No | ❌ |
+| Function calling | High (structured) | Yes (JSON Schema) | ✅ |
+
+### Three Rules for Good Tools
+
+1. **Specific descriptions** - Explain when to use, not just what it does
+2. **Constrained parameters** - Use enums, min/max, required fields
+3. **Error handling** - Return useful error messages to LLM
+
+### Why This Matters
+
+Without function calling:
+- LLM can only return text
+- No integration with existing systems
+- Manual parsing required
+- Unreliable and error-prone
+
+With function calling:
+- LLM becomes an **orchestration layer**
+- Integrates with databases, APIs, services
+- Type-safe and validated
+- Production-ready
+
+**Function calling transforms LLMs from chatbots into system components.**
+
+---
+
+## Next Steps
+
+- [Schema Design](./schema-design.mdx) - Design robust tool specifications
+- [Week 4 Lab](../lab/support-ticket-router) - Build a Support Ticket Router with multi-tool orchestration
+- [Week 5: AI Agents](../../week5/) - Build autonomous agents that chain tools
+
+---
+
+## Further Reading
+
+### Official Documentation
+- [Anthropic: Tool Use (Function Calling)](https://docs.anthropic.com/en/docs/build-with-claude/tool-use)
+- [OpenAI: Function Calling](https://platform.openai.com/docs/guides/function-calling)
+- [Google: Function Calling with Gemini](https://ai.google.dev/docs/function_calling)
+
+### Best Practices
+- [Designing Effective AI Functions](https://simonwillison.net/2023/Jun/5/function-calling/)
+- [Function Calling Patterns in Production](https://www.anthropic.com/research/tool-use)

@@ -46,43 +46,51 @@ const weekData = [
   },
   {
     weekNumber: 4,
-    title: 'Code Review Assistant',
-    description: 'Build an AI-powered code review and analysis system',
-    objectives: ['Analyze code with AI', 'Automate code reviews', 'Integrate with development workflow'],
+    title: 'Structured Intelligence & API Integration',
+    description: 'Transform LLMs from chatbots to system components with structured output and function calling',
+    objectives: [
+      'Master structured output and JSON mode',
+      'Design and implement function calling patterns',
+      'Build schema-driven tool specifications',
+      'Validate LLM outputs with type safety'
+    ],
     concepts: [
-      { slug: 'code-analysis', title: 'AI-Powered Code Analysis', minutes: 35 },
-      { slug: 'review-automation', title: 'Automated Code Review Patterns', minutes: 40 },
-      { slug: 'dev-integration', title: 'Development Workflow Integration', minutes: 30 }
+      { slug: 'structured-output', title: 'Structured Output & JSON Mode', minutes: 40 },
+      { slug: 'function-calling', title: 'Function Calling & Tool Use', minutes: 45 },
+      { slug: 'schema-design', title: 'Schema Design & API Contracts', minutes: 45 }
     ],
     lab: {
-      slug: 'code-reviewer',
-      title: 'Build a Code Review Agent',
-      description: 'Create an agent that can analyze code and provide constructive feedback',
+      slug: 'support-ticket-router',
+      title: 'Support Ticket Router',
+      description: 'Build an enterprise support system that extracts structured data from messy emails and orchestrates actions with function calling',
       exercises: [
-        { number: 1, title: 'Parse and analyze code structure', type: 'coding' },
-        { number: 2, title: 'Implement review prompt engineering', type: 'implementation' },
-        { number: 3, title: 'Add multi-file analysis', type: 'coding' },
-        { number: 4, title: 'Generate actionable feedback', type: 'coding' }
+        { number: 1, title: 'Extract ticket data with structured output', type: 'coding' },
+        { number: 2, title: 'Implement sentiment analysis and categorization', type: 'implementation' },
+        { number: 3, title: 'Add function calling for inventory lookup', type: 'coding' },
+        { number: 4, title: 'Orchestrate multi-tool workflows (inventory + refund)', type: 'coding' },
+        { number: 5, title: 'Validate all inputs with Zod schemas', type: 'implementation' }
       ]
     },
     project: {
-      slug: 'ai-code-reviewer',
-      title: 'AI Code Review System',
-      description: 'Build a complete code review system with GitHub integration',
+      slug: 'enterprise-orchestrator',
+      title: 'Enterprise Support Orchestrator',
+      description: 'Build a complete customer support system that routes tickets, checks inventory, processes refunds, and notifies customers - all orchestrated by an LLM',
       requirements: [
-        'GitHub webhook integration',
-        'Pull request analysis',
-        'Automated review comments',
-        'Code quality scoring',
-        'Learning from feedback'
+        'Structured ticket extraction (sentiment, category, urgency, product_id)',
+        'Function calling for inventory_lookup, process_refund, notify_customer',
+        'Zod validation for all tool inputs (prevent hallucinated arguments)',
+        'Multi-step orchestration (check inventory before refund)',
+        'Error handling for failed tool executions',
+        'Schema-first design with TypeScript types'
       ],
       successCriteria: [
-        'System integrates with GitHub PRs',
-        'Reviews are contextual and helpful',
-        'False positive rate below 20%',
-        'Review turnaround under 2 minutes'
+        'Extracts structured data from 90%+ of test emails',
+        'Never calls tools with invalid arguments (Zod validation)',
+        'Correctly orchestrates multi-step workflows',
+        'Handles edge cases (out of stock, invalid product IDs)',
+        'Type-safe throughout (TypeScript + Zod)'
       ],
-      hours: 10
+      hours: 8
     }
   },
   {
