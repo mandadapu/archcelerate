@@ -9,10 +9,16 @@ const anthropic = new Anthropic({
 })
 
 const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-  connectTimeout: 2000, // 2 second timeout
-  commandTimeout: 2000, // 2 second timeout for commands
-  retryStrategy: () => null, // Don't retry, fail fast
-  lazyConnect: true, // Don't connect until first command
+  connectTimeout: 10000, // 10 second timeout for VPC connector
+  commandTimeout: 5000, // 5 second timeout for commands
+  retryStrategy: (times) => {
+    // Retry up to 3 times with exponential backoff
+    if (times > 3) return null
+    return Math.min(times * 100, 3000)
+  },
+  lazyConnect: false, // Connect immediately on startup
+  enableReadyCheck: true, // Wait for Redis to be ready
+  maxRetriesPerRequest: 2, // Retry commands twice
 })
 
 const CACHE_KEY = 'diagnosis:quiz:questions'
