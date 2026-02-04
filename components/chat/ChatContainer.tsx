@@ -5,10 +5,25 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { ChatMessage } from './ChatMessage'
 import { ChatInput } from './ChatInput'
 
+export interface Citation {
+  id: number
+  title: string
+  type: string
+  weekNumber: number | null
+  heading: string | null
+  isUserContent: boolean
+  author?: {
+    name: string | null
+    email: string | null
+  }
+  similarity: number
+}
+
 interface Message {
   role: 'user' | 'assistant'
   content: string
   timestamp: string
+  citations?: Citation[]
 }
 
 interface ChatContainerProps {
@@ -51,6 +66,7 @@ export function ChatContainer({
                 content={message.content}
                 timestamp={message.timestamp}
                 userName={userName}
+                citations={message.citations}
               />
             ))
           )}
