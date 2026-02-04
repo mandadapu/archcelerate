@@ -4,6 +4,7 @@ import { compileMDX } from 'next-mdx-remote/rsc'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeSlug from 'rehype-slug'
 import remarkGfm from 'remark-gfm'
+import { CodePlayground } from '@/components/curriculum/CodePlayground'
 
 export async function loadMDXContent(contentPath: string) {
   const filePath = path.join(process.cwd(), contentPath)
@@ -19,6 +20,9 @@ export async function loadMDXContent(contentPath: string) {
           remarkPlugins: [remarkGfm],
           rehypePlugins: [rehypeHighlight, rehypeSlug]
         }
+      },
+      components: {
+        CodePlayground
       }
     })
 
