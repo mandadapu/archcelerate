@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 
 export const metadata: Metadata = {
-  title: 'Week 1: Foundations + Visual Builder Introduction',
+  title: 'Week 1: LLM Fundamentals (The Engine)',
   description: 'Learn LLM fundamentals, prompt engineering, API integration, and visual agent builders'
 }
 

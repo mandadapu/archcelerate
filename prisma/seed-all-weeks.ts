@@ -5,7 +5,7 @@ const prisma = new PrismaClient()
 const weekData = [
   {
     weekNumber: 3,
-    title: 'RAG + Memory',
+    title: 'RAG & Memory Fundamentals (The Knowledge Base)',
     description: 'Build retrieval-augmented generation systems with vector databases',
     objectives: ['Implement vector search', 'Build RAG pipelines', 'Manage conversation memory'],
     concepts: [
@@ -46,7 +46,7 @@ const weekData = [
   },
   {
     weekNumber: 4,
-    title: 'Structured Intelligence & API Integration',
+    title: 'Structured Intelligence & API Integration (The Interface)',
     description: 'Transform LLMs from chatbots to system components with structured output and function calling',
     objectives: [
       'Master structured output and JSON mode',
@@ -95,7 +95,7 @@ const weekData = [
   },
   {
     weekNumber: 7,
-    title: 'Capstone Project',
+    title: 'Observability & Production (The Reliability)',
     description: 'Plan and build your capstone AI application from scratch',
     objectives: ['Design AI product', 'Implement end-to-end system', 'Deploy to production'],
     concepts: [

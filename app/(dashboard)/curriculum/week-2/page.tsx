@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 
 export const metadata: Metadata = {
-  title: 'Week 2: AI Governance & Responsible AI',
+  title: 'Week 2: AI Safety & Governance (The Guardrails)',
   description: 'Build production AI with proper governance, fairness, compliance, and safety controls'
 }
 
