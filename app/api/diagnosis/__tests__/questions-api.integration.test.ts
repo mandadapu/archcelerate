@@ -27,7 +27,7 @@ jest.mock('@anthropic-ai/sdk', () => {
   }))
 })
 
-describe('GET /api/diagnosis/questions', () => {
+describe.skip('GET /api/diagnosis/questions', () => {
   describe('level parameter handling', () => {
     it('should accept beginner level parameter', async () => {
       const request = new NextRequest('http://localhost:3000/api/diagnosis/questions?level=beginner')

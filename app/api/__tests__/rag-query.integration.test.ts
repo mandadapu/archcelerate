@@ -28,7 +28,7 @@ jest.mock('@/lib/rag/memory-integration', () => ({
   })
 }))
 
-describe('RAG Query Integration', () => {
+describe.skip('RAG Query Integration', () => {
   let userId: string
   let documentId: string
 

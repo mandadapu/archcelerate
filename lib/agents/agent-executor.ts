@@ -41,7 +41,10 @@ export class AgentExecutor {
       throw new Error('ANTHROPIC_API_KEY not configured')
     }
 
-    this.anthropic = new Anthropic({ apiKey })
+    this.anthropic = new Anthropic({
+      apiKey,
+      dangerouslyAllowBrowser: process.env.NODE_ENV === 'test'
+    })
   }
 
   async execute(input: string): Promise<AgentExecutionResult> {

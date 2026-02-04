@@ -3,7 +3,9 @@ import Anthropic from '@anthropic-ai/sdk'
 import { prisma } from '@/lib/db'
 
 const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!
+  apiKey: process.env.ANTHROPIC_API_KEY!,
+  // Allow in test environment (Jest runs in jsdom which is browser-like)
+  dangerouslyAllowBrowser: process.env.NODE_ENV === 'test'
 })
 
 export interface ModerationResult {
