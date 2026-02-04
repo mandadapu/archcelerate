@@ -59,8 +59,9 @@ SERVICE_URL=$(gcloud run services describe $SERVICE_NAME \
   --project=$PROJECT_ID \
   --format 'value(status.url)' 2>/dev/null || echo "")
 
-# Don't set NEXTAUTH_URL - let NextAuth auto-detect from request headers
-# This allows both archcelerate.com and www.archcelerate.com to work
+# Set primary domain as NEXTAUTH_URL
+# trustHost: true in auth config allows www.archcelerate.com to work too
+NEXTAUTH_URL="https://archcelerate.com"
 
 # Step 5: Check for VPC connector
 echo -e "${GREEN}Step 5: Checking VPC connector...${NC}"
@@ -143,7 +144,7 @@ DEPLOY_CMD="gcloud run deploy $SERVICE_NAME \
   --min-instances 0 \
   --port 3000 \
   --project=$PROJECT_ID \
-  --set-env-vars \"NODE_ENV=production,NEXT_PUBLIC_ENABLE_AI_AGENTS=true,NEXT_PUBLIC_ENABLE_MULTIMODAL=false\" \
+  --set-env-vars \"NODE_ENV=production,NEXTAUTH_URL=$NEXTAUTH_URL,NEXT_PUBLIC_ENABLE_AI_AGENTS=true,NEXT_PUBLIC_ENABLE_MULTIMODAL=false\" \
   --set-secrets \"$SECRETS_LIST\""
 
 # Add VPC connector if available

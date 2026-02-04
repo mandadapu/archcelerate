@@ -41,5 +41,7 @@ export const authOptions: NextAuthOptions = {
     strategy: 'database',
   },
   secret: process.env.NEXTAUTH_SECRET,
+  // Allow both archcelerate.com and www.archcelerate.com
+  trustHost: true,
   debug: process.env.NODE_ENV === 'development',
 }
