@@ -629,7 +629,7 @@ async function main() {
   console.log('✅ All 12 weeks seeded successfully!')
   console.log('\nSummary:')
   console.log('- 12 curriculum weeks')
-  console.log('- 41 concepts')
+  console.log('- 44 concepts')
   console.log('- 12 labs')
   console.log('- 12 projects')
 }
