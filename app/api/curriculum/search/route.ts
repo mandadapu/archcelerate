@@ -4,11 +4,17 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import OpenAI from 'openai'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+function getOpenAIClient() {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY not configured')
+  }
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  })
+}
 
 async function generateEmbedding(text: string): Promise<number[]> {
+  const openai = getOpenAIClient()
   const response = await openai.embeddings.create({
     model: 'text-embedding-3-small',
     input: text,

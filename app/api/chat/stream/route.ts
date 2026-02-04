@@ -12,9 +12,14 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 })
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-})
+function getOpenAIClient() {
+  if (!process.env.OPENAI_API_KEY) {
+    return null // OpenAI is optional for chat - only needed for curriculum search
+  }
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  })
+}
 
 interface CurriculumSearchResult {
   chunkId: string
@@ -46,6 +51,13 @@ async function searchCurriculum(
   limit: number = 5
 ): Promise<CurriculumSearchResult[]> {
   try {
+    // Check if OpenAI is configured
+    const openai = getOpenAIClient()
+    if (!openai) {
+      console.log('OpenAI not configured, skipping curriculum search')
+      return []
+    }
+
     // Generate embedding for search query
     const embedding = await openai.embeddings.create({
       model: 'text-embedding-3-small',
