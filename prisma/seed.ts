@@ -208,55 +208,68 @@ const weekData = [
   },
   {
     weekNumber: 5,
-    title: 'Agentic Frameworks (The Logic)',
-    description: 'Build autonomous AI agents that can use tools and complete complex tasks',
+    title: 'Agentic Frameworks & Multi-Agent Orchestration (The Logic)',
+    description: 'Build systems that reason, plan, and execute using multi-agent architectures and reliability patterns',
     objectives: [
-      'Understand agent architectures',
-      'Build tool-using agents',
-      'Debug and optimize agents'
+      'Master the three core agent architectures (Sequential, Supervisor, Collaborative)',
+      'Implement reliability patterns (Reflection, Planning, Human-in-the-Loop)',
+      'Choose the right framework (LangGraph, CrewAI, AutoGen) based on requirements',
+      'Build production-grade multi-agent systems with state management',
+      'Implement error routing and self-healing workflows',
+      'Use the Model Context Protocol (MCP) for unified tool integration',
+      'Achieve "zero-waste" execution with cycle detection and token trimming',
+      'Deploy multi-agent systems with checkpointing and observability'
     ],
     concepts: [
-      { slug: 'agent-fundamentals', title: 'Agent Fundamentals', minutes: 35 },
-      { slug: 'building-tools', title: 'Building Tools for Agents', minutes: 40 },
-      { slug: 'agent-debugging', title: 'Agent Debugging & Optimization', minutes: 45 }
+      { slug: 'agent-architectures', title: 'Agent Architectures: Sequential, Supervisor, Collaborative', minutes: 45 },
+      { slug: 'reliability-patterns', title: 'Reliability Patterns: Reflection, Planning, HITL', minutes: 50 },
+      { slug: 'framework-comparison', title: 'Framework Face-Off: LangGraph vs CrewAI vs AutoGen', minutes: 40 }
     ],
     lab: {
-      slug: 'build-research-agent',
-      title: 'Build a Research Agent',
-      description: 'Create an autonomous agent that can research topics using web search and document analysis',
+      slug: 'newsletter-team',
+      title: 'Auto-Research & Newsletter Team',
+      description: 'Build a multi-agent newsroom with Hunter, Fact-Checker, and Writer agents using Supervisor pattern with state management, error routing, and self-healing',
       exercises: [
-        { number: 1, title: 'Implement web search tool', type: 'coding' },
-        { number: 2, title: 'Build document summarization tool', type: 'coding' },
-        { number: 3, title: 'Create ReAct agent loop', type: 'implementation' },
-        { number: 4, title: 'Add error handling and retries', type: 'coding' },
-        { number: 5, title: 'Optimize token usage', type: 'optimization' }
+        { number: 1, title: 'Define state schema with atomic updates', type: 'setup' },
+        { number: 2, title: 'Implement the Hunter agent with feedback handling', type: 'coding' },
+        { number: 3, title: 'Build Fact-Checker with quality scoring', type: 'coding' },
+        { number: 4, title: 'Create Writer with token-optimized input', type: 'coding' },
+        { number: 5, title: 'Implement Supervisor with error routing table', type: 'implementation' },
+        { number: 6, title: 'Add checkpointing and state persistence', type: 'coding' },
+        { number: 7, title: 'Test self-healing workflow end-to-end', type: 'testing' }
       ]
     },
     project: {
-      slug: 'autonomous-task-agent',
-      title: 'Autonomous Task Completion Agent',
-      description: 'Build an agent that can autonomously complete multi-step tasks using custom tools',
+      slug: 'full-stack-dev-team',
+      title: 'Multi-Agent Full-Stack Development Team',
+      description: 'Build a supervisor-orchestrated team of specialist agents (Frontend, Backend, Database) that collaboratively develop full-stack applications',
       requirements: [
-        'Implement ReAct agent architecture',
-        'Build at least 3 custom tools (web search, calculator, file operations)',
-        'Add tool error handling and validation',
-        'Implement agent memory and context management',
-        'Create observable agent traces',
-        'Add safety controls (max iterations, cost limits)',
-        'Build a simple UI to interact with the agent',
-        'Write comprehensive tests for agent loops'
+        'Implement Supervisor pattern with Manager + 3 Specialists (Frontend, Backend, Database)',
+        'State schema with task planning, execution tracking, and integration',
+        'Error routing table with transient/logic/budget/input error categories',
+        'Self-healing prompts when specialists produce incompatible outputs',
+        'Reflection pattern on each specialist output before integration',
+        'Checkpointing to database after each specialist completes their work',
+        'Token trimming (specialists only receive relevant context, not full history)',
+        'Cycle detection with max 5 iterations across all specialists',
+        'Human-in-the-loop approval before deploying generated code',
+        'Cost tracking with $0.50 budget limit',
+        'Complete audit trail of all agent decisions and routing',
+        'MCP integration for external tools (GitHub, database, deployment)'
       ],
       successCriteria: [
-        'Agent can successfully complete multi-step tasks',
-        'Tools are called correctly with proper parameters',
-        'Agent handles tool errors gracefully',
-        'Agent stays within iteration and cost limits',
-        'Full trace of agent reasoning is available',
-        'UI clearly shows agent\'s thinking process',
-        'Agent does not loop infinitely',
-        'Test coverage above 80% for agent logic'
+        'Manager correctly routes tasks to appropriate specialists',
+        'Specialists produce compatible outputs (e.g., Frontend calls Backend APIs correctly)',
+        'Self-healing: Manager detects integration issues and re-assigns work with feedback',
+        'Stays under $0.50 budget and 5 iterations',
+        'Reflection catches errors before integration (> 80% accuracy)',
+        'Checkpoints allow resume from any specialist failure',
+        'Token usage reduced by 60%+ through proper state management',
+        'No infinite loops (cycle detection working)',
+        'Human approval required for final deployment',
+        'Full audit trail shows decision rationale at each routing point'
       ],
-      hours: 10
+      hours: 12
     }
   },
   {

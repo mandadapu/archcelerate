@@ -1,0 +1,579 @@
+---
+title: "Agent Architectures"
+week: 5
+concept: 1
+description: "Master the three dominant patterns for organizing multi-agent systems in production"
+estimatedMinutes: 45
+objectives:
+  - Understand Sequential, Supervisor, and Collaborative architectures
+  - Choose the right pattern for your use case
+  - Implement state management across agent handoffs
+---
+
+# Agent Architectures
+
+Building systems that reason, plan, and execute.
+
+## The Core Question
+
+**When do you need multiple agents?**
+
+- ❌ **Don't use agents** if: A single LLM call with structured output solves it
+- ✅ **Use a single agent** if: You need tool calling with a ReAct loop (like Week 4)
+- ✅ **Use multiple agents** if: The task requires distinct specialized skills or complex orchestration
+
+**Architecture principle**: Start with the simplest pattern that works. Agent complexity = operational cost.
+
+---
+
+## 1. The Three Core Architectures
+
+There are three dominant ways to organize agents in 2026. An architect must choose the right "management style" for the task.
+
+### Comparison Table
+
+| Pattern | Structure | Best For | Example Use Case |
+|---------|-----------|----------|------------------|
+| **Sequential** | Agent A → Agent B → Agent C | Fixed workflows | Content Approval Pipeline |
+| **Supervisor** | Manager Agent ↔ Specialists | Complex projects with multiple skills | Full-Stack App Development |
+| **Collaborative** | Decentralized Mesh | Creative brainstorming | Research Paper Analysis |
+
+---
+
+## Pattern 1: Sequential (The Assembly Line)
+
+**Structure**: Each agent completes one step, then passes output to the next agent.
+
+```
+User Request → Agent A (Draft) → Agent B (Review) → Agent C (Polish) → Final Output
+```
+
+### When to Use
+
+- **Fixed workflow** where every task follows the same steps
+- **Clear handoff points** between stages
+- **Quality gates** where each stage validates the previous
+
+### Example: Content Approval Workflow
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+interface WorkflowState {
+  userRequest: string
+  draft: string
+  reviewFeedback: string
+  finalContent: string
+}
+
+// Agent 1: The Drafter
+async function draftAgent(request: string): Promise<string> {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 2048,
+    messages: [{
+      role: 'user',
+      content: `Write a first draft for: ${request}
+
+Focus on getting ideas down. Don't worry about perfection.`
+    }]
+  })
+
+  return response.content[0].text
+}
+
+// Agent 2: The Reviewer
+async function reviewAgent(draft: string): Promise<string> {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 1024,
+    messages: [{
+      role: 'user',
+      content: `Review this draft and provide specific feedback:
+
+${draft}
+
+Focus on: clarity, accuracy, and tone. Format as bullet points.`
+    }]
+  })
+
+  return response.content[0].text
+}
+
+// Agent 3: The Polisher
+async function polishAgent(draft: string, feedback: string): Promise<string> {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 2048,
+    messages: [{
+      role: 'user',
+      content: `Revise this draft based on the feedback:
+
+DRAFT:
+${draft}
+
+FEEDBACK:
+${feedback}
+
+Produce the final polished version.`
+    }]
+  })
+
+  return response.content[0].text
+}
+
+// Sequential Orchestrator
+async function sequentialWorkflow(userRequest: string): Promise<WorkflowState> {
+  console.log('Step 1: Drafting...')
+  const draft = await draftAgent(userRequest)
+
+  console.log('Step 2: Reviewing...')
+  const reviewFeedback = await reviewAgent(draft)
+
+  console.log('Step 3: Polishing...')
+  const finalContent = await polishAgent(draft, reviewFeedback)
+
+  return {
+    userRequest,
+    draft,
+    reviewFeedback,
+    finalContent
+  }
+}
+
+// Usage
+const result = await sequentialWorkflow(
+  'Write a technical blog post about vector databases'
+)
+console.log('FINAL OUTPUT:', result.finalContent)
+```
+
+### Sequential Architecture: Pros & Cons
+
+| ✅ Pros | ❌ Cons |
+|---------|---------|
+| Predictable execution order | Rigid - can't skip steps |
+| Easy to debug (linear flow) | Wastes tokens if early step fails |
+| Clear audit trail | Can't parallelize stages |
+
+---
+
+## Pattern 2: Supervisor (The Manager)
+
+**Structure**: A manager agent coordinates specialist agents, deciding who works on what.
+
+```
+                    Manager Agent
+                    /    |    \
+                   /     |     \
+          Frontend     Backend    Database
+          Specialist  Specialist  Specialist
+```
+
+### When to Use
+
+- **Complex projects** requiring multiple specialized skills
+- **Dynamic workflows** where the path depends on intermediate results
+- **Parallel execution** of independent subtasks
+
+### Example: Full-Stack App Development
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+interface Task {
+  specialist: 'frontend' | 'backend' | 'database'
+  description: string
+}
+
+interface SupervisorState {
+  userRequest: string
+  plan: Task[]
+  results: Record<string, string>
+  finalIntegration: string
+}
+
+// Manager Agent: Decides which specialists to call
+async function managerAgent(userRequest: string): Promise<Task[]> {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 1024,
+    messages: [{
+      role: 'user',
+      content: `You are a project manager. Break down this request into tasks for specialists:
+
+REQUEST: ${userRequest}
+
+Available specialists:
+- frontend: React components, UI/UX
+- backend: API routes, business logic
+- database: Schema design, queries
+
+Output JSON array of tasks:
+[
+  { "specialist": "database", "description": "Design user schema" },
+  { "specialist": "backend", "description": "Create auth API" },
+  ...
+]`
+    }]
+  })
+
+  const planText = response.content[0].text
+  const jsonMatch = planText.match(/\[[\s\S]*\]/)
+  return jsonMatch ? JSON.parse(jsonMatch[0]) : []
+}
+
+// Specialist Agents
+async function frontendSpecialist(task: string): Promise<string> {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 2048,
+    system: 'You are a senior frontend developer specializing in React and TypeScript.',
+    messages: [{ role: 'user', content: task }]
+  })
+  return response.content[0].text
+}
+
+async function backendSpecialist(task: string): Promise<string> {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 2048,
+    system: 'You are a senior backend developer specializing in Node.js and API design.',
+    messages: [{ role: 'user', content: task }]
+  })
+  return response.content[0].text
+}
+
+async function databaseSpecialist(task: string): Promise<string> {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 2048,
+    system: 'You are a database architect specializing in PostgreSQL and schema design.',
+    messages: [{ role: 'user', content: task }]
+  })
+  return response.content[0].text
+}
+
+// Supervisor Orchestrator
+async function supervisorWorkflow(userRequest: string): Promise<SupervisorState> {
+  console.log('Manager: Planning tasks...')
+  const plan = await managerAgent(userRequest)
+
+  console.log(`Manager: Assigned ${plan.length} tasks`)
+  const results: Record<string, string> = {}
+
+  // Execute specialist tasks (could be parallelized)
+  for (const task of plan) {
+    console.log(`Executing: ${task.specialist} - ${task.description}`)
+
+    let result: string
+    switch (task.specialist) {
+      case 'frontend':
+        result = await frontendSpecialist(task.description)
+        break
+      case 'backend':
+        result = await backendSpecialist(task.description)
+        break
+      case 'database':
+        result = await databaseSpecialist(task.description)
+        break
+    }
+
+    results[task.specialist] = result
+  }
+
+  // Manager integrates all results
+  console.log('Manager: Integrating results...')
+  const integration = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 2048,
+    messages: [{
+      role: 'user',
+      content: `Integrate these specialist outputs into a cohesive solution:
+
+${JSON.stringify(results, null, 2)}
+
+Original request: ${userRequest}`
+    }]
+  })
+
+  return {
+    userRequest,
+    plan,
+    results,
+    finalIntegration: integration.content[0].text
+  }
+}
+
+// Usage
+const result = await supervisorWorkflow(
+  'Build a user authentication system with login, signup, and password reset'
+)
+```
+
+### Supervisor Architecture: Pros & Cons
+
+| ✅ Pros | ❌ Cons |
+|---------|---------|
+| Flexible routing based on needs | Manager can make poor routing decisions |
+| Can parallelize independent tasks | More complex state management |
+| Specialists can be reused across projects | Higher token cost (manager overhead) |
+
+---
+
+## Pattern 3: Collaborative (The Mesh)
+
+**Structure**: Agents communicate directly with each other in a decentralized way.
+
+```
+  Agent A ←→ Agent B
+     ↕         ↕
+  Agent C ←→ Agent D
+```
+
+### When to Use
+
+- **Creative brainstorming** where multiple perspectives are valuable
+- **Open-ended research** without a clear final answer
+- **Debate and consensus** building
+
+### Example: Research Paper Analysis
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+interface Message {
+  from: string
+  to: string
+  content: string
+}
+
+interface CollaborativeState {
+  topic: string
+  conversation: Message[]
+  consensus: string
+}
+
+// Generic agent that can respond to messages
+async function agent(
+  name: string,
+  expertise: string,
+  conversationHistory: Message[],
+  currentMessage: string
+): Promise<string> {
+  const history = conversationHistory
+    .map(msg => `${msg.from}: ${msg.content}`)
+    .join('\n\n')
+
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 1024,
+    system: `You are ${name}, an expert in ${expertise}. You are participating in a collaborative discussion.`,
+    messages: [{
+      role: 'user',
+      content: `CONVERSATION SO FAR:
+${history}
+
+LATEST MESSAGE:
+${currentMessage}
+
+Respond with your perspective based on your expertise in ${expertise}.`
+    }]
+  })
+
+  return response.content[0].text
+}
+
+// Collaborative Orchestrator
+async function collaborativeWorkflow(topic: string): Promise<CollaborativeState> {
+  const conversation: Message[] = []
+
+  // Initial prompt to all agents
+  const initialPrompt = `Analyze this research topic: ${topic}`
+
+  // Round 1: Each agent provides initial thoughts
+  console.log('Round 1: Initial perspectives')
+  const perspectiveA = await agent('Alice', 'machine learning', conversation, initialPrompt)
+  conversation.push({ from: 'Alice', to: 'All', content: perspectiveA })
+
+  const perspectiveB = await agent('Bob', 'systems architecture', conversation, initialPrompt)
+  conversation.push({ from: 'Bob', to: 'All', content: perspectiveB })
+
+  const perspectiveC = await agent('Carol', 'ethics and safety', conversation, initialPrompt)
+  conversation.push({ from: 'Carol', to: 'All', content: perspectiveC })
+
+  // Round 2: Agents respond to each other
+  console.log('Round 2: Cross-pollination')
+  const aliceResponse = await agent('Alice', 'machine learning', conversation,
+    `React to Bob and Carol's points`)
+  conversation.push({ from: 'Alice', to: 'All', content: aliceResponse })
+
+  const bobResponse = await agent('Bob', 'systems architecture', conversation,
+    `React to Alice and Carol's points`)
+  conversation.push({ from: 'Bob', to: 'All', content: bobResponse })
+
+  // Synthesize consensus
+  console.log('Synthesizing consensus...')
+  const consensusResponse = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 2048,
+    messages: [{
+      role: 'user',
+      content: `Synthesize this multi-agent discussion into key takeaways:
+
+${conversation.map(m => `${m.from}: ${m.content}`).join('\n\n')}
+
+Produce a balanced summary that captures the most important insights.`
+    }]
+  })
+
+  return {
+    topic,
+    conversation,
+    consensus: consensusResponse.content[0].text
+  }
+}
+
+// Usage
+const result = await collaborativeWorkflow(
+  'Impact of retrieval-augmented generation on enterprise AI systems'
+)
+```
+
+### Collaborative Architecture: Pros & Cons
+
+| ✅ Pros | ❌ Cons |
+|---------|---------|
+| Rich, diverse perspectives | Can be expensive (many LLM calls) |
+| Emergent insights from interaction | Hard to predict termination |
+| Good for creative/open-ended tasks | Difficult to debug (non-linear flow) |
+
+---
+
+## 2. State Management Across Agents
+
+**The Golden Rule**: Only pass necessary data between agents. Don't re-send the entire conversation history.
+
+### ❌ Anti-Pattern: Full History Pass-Through
+
+```typescript
+// DON'T DO THIS - Wastes tokens
+interface BadState {
+  fullConversationHistory: string[]  // Could be 50+ messages
+  allIntermediateResults: string[]   // Redundant data
+}
+
+async function badOrchestrator(state: BadState) {
+  // Agent B receives all of Agent A's context even if irrelevant
+  return await agentB(JSON.stringify(state))  // 10,000+ tokens wasted
+}
+```
+
+### ✅ Best Practice: Minimal State Objects
+
+```typescript
+interface GoodState {
+  currentTask: string          // Only what's needed now
+  relevantContext: string      // Filtered to 200-300 tokens
+  dependencies: string[]       // References, not full content
+}
+
+async function goodOrchestrator(state: GoodState) {
+  // Agent B only gets what it needs
+  return await agentB({
+    task: state.currentTask,
+    context: state.relevantContext  // 75% cost reduction
+  })
+}
+```
+
+---
+
+## 3. Choosing the Right Architecture
+
+### Decision Tree
+
+```
+Is workflow fixed and predictable?
+  ✅ YES → Sequential
+
+  ❌ NO → Does task require multiple specialized skills?
+    ✅ YES → Supervisor
+
+    ❌ NO → Is task open-ended or creative?
+      ✅ YES → Collaborative
+
+      ❌ NO → You probably don't need multiple agents!
+                Use single agent with tools (Week 4)
+```
+
+### Real-World Examples
+
+| Use Case | Architecture | Why |
+|----------|-------------|-----|
+| Blog post generation | Sequential | Draft → Review → Publish (fixed steps) |
+| Full-stack app development | Supervisor | Requires frontend, backend, database specialists |
+| Research synthesis | Collaborative | Benefits from multiple analytical perspectives |
+| Customer support ticket | **Single Agent** | Just needs tool calling (check_order, issue_refund) |
+
+---
+
+## 4. Production Considerations
+
+### Avoid "Agent Sprawl"
+
+**Anti-Pattern**: Using agents for everything because they're cool.
+
+```typescript
+// ❌ DON'T DO THIS
+const emailValidationAgent = await agent('Validate this email')
+// Just use: /^\S+@\S+\.\S+$/.test(email)
+
+const mathAgent = await agent('Calculate 2 + 2')
+// Just use: 2 + 2
+```
+
+**Rule**: If a task can be solved with a simple function, use the function.
+
+### Cost Comparison
+
+| Pattern | Average API Calls | Estimated Cost (per workflow) |
+|---------|------------------|------------------------------|
+| Sequential (3 agents) | 3 calls | $0.06 - $0.12 |
+| Supervisor (1 manager + 3 specialists) | 5 calls | $0.10 - $0.20 |
+| Collaborative (3 agents, 2 rounds) | 7 calls | $0.14 - $0.28 |
+| Single agent with tools | 1-3 calls | $0.02 - $0.06 |
+
+**Production advice**: Start with single agent. Add architecture only when complexity demands it.
+
+---
+
+## Key Takeaways
+
+1. **Three core architectures**: Sequential (assembly line), Supervisor (manager + specialists), Collaborative (mesh)
+2. **Choose based on workflow**: Fixed → Sequential, Complex → Supervisor, Creative → Collaborative
+3. **State management is critical**: Pass minimal data between agents (75% cost reduction)
+4. **Avoid agent sprawl**: Use simple functions when possible
+5. **Cost increases with complexity**: Monitor API usage per workflow
+
+---
+
+## Next Steps
+
+- **Week 5 Concept 2**: Learn reliability patterns (Reflection, Planning, Human-in-the-Loop)
+- **Week 5 Lab**: Build a multi-agent newsroom with Supervisor pattern
+- **Production tip**: Use LangGraph for visualizing and debugging multi-agent flows
+
+---
+
+## Further Reading
+
+- [LangGraph Multi-Agent Patterns](https://langchain-ai.github.io/langgraph/)
+- [CrewAI Collaboration Examples](https://docs.crewai.com/)
+- [AutoGen Conversation Patterns](https://microsoft.github.io/autogen/)

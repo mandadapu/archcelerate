@@ -1,0 +1,593 @@
+---
+title: "Framework Face-Off: LangGraph vs CrewAI vs AutoGen"
+week: 5
+concept: 3
+description: "Choose the right framework based on control vs. speed trade-offs"
+estimatedMinutes: 40
+objectives:
+  - Understand the three major agentic frameworks
+  - Choose framework based on use case requirements
+  - Implement the Model Context Protocol (MCP) for tool integration
+---
+
+# Framework Face-Off: Which to use?
+
+Architects choose frameworks based on **control vs. speed**.
+
+## The Three Major Frameworks
+
+| Framework | Best For | Core Abstraction | Production Ready |
+|-----------|----------|-----------------|------------------|
+| **LangGraph** | Deterministic, production-grade flows | State Machine (Nodes + Edges) | ✅ Yes |
+| **CrewAI** | Rapid prototyping of human-like teams | Role-Playing Agents | ⚠️ Limited |
+| **AutoGen** | Dynamic, multi-turn interactions | Conversational Agents | ⚠️ Experimental |
+
+---
+
+## Framework 1: LangGraph (The "State Machine")
+
+**Philosophy**: Make agent logic **explicit, visual, and debuggable**.
+
+### When to Use
+
+- **Production systems** where you need full control over agent behavior
+- **Complex workflows** that need to be visualized (compliance, audit trails)
+- **Deterministic execution** where you can't tolerate unexpected behavior
+
+### Core Concepts
+
+```
+Graph = Nodes + Edges + State
+- Node: An agent or tool (function that takes state, returns update)
+- Edge: Transition rule (when to move to next node)
+- State: Shared data structure (single source of truth)
+```
+
+### Example: Sequential Workflow with LangGraph
+
+```typescript
+import { StateGraph } from '@langchain/langgraph'
+import { ChatAnthropic } from '@langchain/anthropic'
+
+// Define state schema
+interface BlogState {
+  topic: string
+  outline: string
+  draft: string
+  final: string
+}
+
+// Initialize model
+const model = new ChatAnthropic({
+  modelName: 'claude-3-5-sonnet-20240620',
+  apiKey: process.env.ANTHROPIC_API_KEY
+})
+
+// Node 1: Create outline
+async function createOutline(state: BlogState): Promise<Partial<BlogState>> {
+  const response = await model.invoke([
+    { role: 'user', content: `Create a blog post outline for: ${state.topic}` }
+  ])
+  return { outline: response.content as string }
+}
+
+// Node 2: Write draft
+async function writeDraft(state: BlogState): Promise<Partial<BlogState>> {
+  const response = await model.invoke([
+    {
+      role: 'user',
+      content: `Write a draft blog post based on this outline:\n\n${state.outline}`
+    }
+  ])
+  return { draft: response.content as string }
+}
+
+// Node 3: Polish
+async function polish(state: BlogState): Promise<Partial<BlogState>> {
+  const response = await model.invoke([
+    { role: 'user', content: `Polish this draft:\n\n${state.draft}` }
+  ])
+  return { final: response.content as string }
+}
+
+// Build graph
+const workflow = new StateGraph<BlogState>({
+  channels: {
+    topic: null,
+    outline: null,
+    draft: null,
+    final: null
+  }
+})
+
+// Add nodes
+workflow.addNode('outline', createOutline)
+workflow.addNode('draft', writeDraft)
+workflow.addNode('polish', polish)
+
+// Add edges (define flow)
+workflow.addEdge('__start__', 'outline')
+workflow.addEdge('outline', 'draft')
+workflow.addEdge('draft', 'polish')
+workflow.addEdge('polish', '__end__')
+
+// Compile and run
+const app = workflow.compile()
+const result = await app.invoke({
+  topic: 'Vector Databases for Production RAG'
+})
+
+console.log('Final Blog Post:', result.final)
+```
+
+### LangGraph: Conditional Routing
+
+```typescript
+// Router function: Decides which node to visit next
+function router(state: BlogState): string {
+  if (state.outline.length < 100) {
+    return 'outline'  // Go back to outline if too short
+  }
+  if (state.draft.includes('[TODO]')) {
+    return 'draft'    // Re-draft if incomplete
+  }
+  return 'polish'     // Otherwise proceed to polish
+}
+
+// Add conditional edge
+workflow.addConditionalEdges('draft', router, {
+  'outline': 'outline',
+  'draft': 'draft',
+  'polish': 'polish'
+})
+```
+
+### LangGraph: Checkpointing (State Persistence)
+
+```typescript
+import { MemorySaver } from '@langchain/langgraph'
+
+// In-memory checkpointer (use Redis/Postgres in production)
+const checkpointer = new MemorySaver()
+
+const app = workflow.compile({ checkpointer })
+
+// Run with thread ID
+const result = await app.invoke(
+  { topic: 'RAG Systems' },
+  { configurable: { thread_id: 'blog-123' } }
+)
+
+// Resume from checkpoint
+const resumed = await app.invoke(
+  { /* empty input */ },
+  { configurable: { thread_id: 'blog-123' } }
+)
+```
+
+### LangGraph: Pros & Cons
+
+| ✅ Pros | ❌ Cons |
+|---------|---------|
+| Full control over agent logic | More verbose code |
+| Visual graph debugging | Steeper learning curve |
+| Production-ready checkpointing | Requires planning upfront |
+| Explicit error handling | Less "magic" than other frameworks |
+
+---
+
+## Framework 2: CrewAI (The "Role-Player")
+
+**Philosophy**: Agents are **human-like roles** (Researcher, Writer, Critic) that collaborate.
+
+### When to Use
+
+- **Rapid prototyping** of multi-agent ideas
+- **Non-critical applications** where hallucinations are acceptable
+- **Demos and MVPs** to validate agent architecture
+
+### Core Concepts
+
+```
+Crew = Agents + Tasks + Process
+- Agent: Has a role, goal, and backstory
+- Task: Work assigned to an agent
+- Process: Sequential or Hierarchical
+```
+
+### Example: Newsletter Team with CrewAI
+
+```python
+from crewai import Agent, Task, Crew, Process
+
+# Define agents with roles
+researcher = Agent(
+  role='Senior Research Analyst',
+  goal='Find trending AI architecture topics',
+  backstory='Expert in AI systems with 10 years of experience in production ML',
+  verbose=True
+)
+
+fact_checker = Agent(
+  role='Fact Verification Specialist',
+  goal='Verify claims and filter out hype',
+  backstory='Journalist with a keen eye for detecting misleading information',
+  verbose=True
+)
+
+writer = Agent(
+  role='Technical Content Writer',
+  goal='Write engaging newsletters for enterprise architects',
+  backstory='Former software architect turned technical writer',
+  verbose=True
+)
+
+# Define tasks
+research_task = Task(
+  description='Find the top 3 trending AI architecture topics this week',
+  agent=researcher,
+  expected_output='List of 3 topics with brief descriptions'
+)
+
+fact_check_task = Task(
+  description='Verify the research findings and filter out hype',
+  agent=fact_checker,
+  expected_output='Verified topics with source credibility ratings'
+)
+
+writing_task = Task(
+  description='Write a 500-word newsletter from the verified topics',
+  agent=writer,
+  expected_output='Professional newsletter in Markdown format'
+)
+
+# Create crew
+crew = Crew(
+  agents=[researcher, fact_checker, writer],
+  tasks=[research_task, fact_check_task, writing_task],
+  process=Process.sequential  # Or Process.hierarchical
+)
+
+# Execute
+result = crew.kickoff()
+print(result)
+```
+
+### CrewAI: Hierarchical Process
+
+```python
+# Manager agent coordinates specialists
+manager = Agent(
+  role='Project Manager',
+  goal='Coordinate the team to produce high-quality output',
+  backstory='Experienced manager with strong organizational skills'
+)
+
+crew = Crew(
+  agents=[researcher, fact_checker, writer],
+  tasks=[research_task, fact_check_task, writing_task],
+  process=Process.hierarchical,
+  manager_llm='claude-3-5-sonnet-20240620'
+)
+```
+
+### CrewAI: Pros & Cons
+
+| ✅ Pros | ❌ Cons |
+|---------|---------|
+| Fastest to prototype | Limited production reliability |
+| Intuitive role-based API | Less control over agent logic |
+| Good for demos | Hallucinations in "backstory" |
+| Built-in tools library | Harder to debug failures |
+
+---
+
+## Framework 3: AutoGen (The "Conversation")
+
+**Philosophy**: Agents are **conversational participants** that code their way out of problems.
+
+### When to Use
+
+- **Code generation** tasks where agents need to write and execute code
+- **Research/exploration** where the solution path is unknown
+- **Interactive debugging** with human-in-the-loop
+
+### Core Concepts
+
+```
+Conversation = User Proxy + Assistant + Code Executor
+- User Proxy: Represents human or system
+- Assistant: AI agent that generates code/responses
+- Code Executor: Runs generated code and feeds back results
+```
+
+### Example: Data Analysis with AutoGen
+
+```python
+import autogen
+
+# Configure LLM
+config_list = [{
+  'model': 'claude-3-5-sonnet-20240620',
+  'api_key': os.environ['ANTHROPIC_API_KEY'],
+  'api_type': 'anthropic'
+}]
+
+# Create assistant agent
+assistant = autogen.AssistantAgent(
+  name='data_analyst',
+  llm_config={'config_list': config_list}
+)
+
+# Create user proxy (executes code)
+user_proxy = autogen.UserProxyAgent(
+  name='user',
+  human_input_mode='NEVER',
+  code_execution_config={
+    'work_dir': 'coding',
+    'use_docker': False
+  }
+)
+
+# Start conversation
+user_proxy.initiate_chat(
+  assistant,
+  message='''
+  Analyze the CSV file 'sales_data.csv':
+  1. Calculate total revenue by product category
+  2. Find the top 3 selling products
+  3. Create a bar chart of monthly sales trends
+  '''
+)
+```
+
+### AutoGen: Multi-Agent Collaboration
+
+```python
+# Create multiple specialists
+data_engineer = autogen.AssistantAgent(
+  name='data_engineer',
+  system_message='You are a data engineer who writes pandas code'
+)
+
+data_scientist = autogen.AssistantAgent(
+  name='data_scientist',
+  system_message='You are a data scientist who builds ML models'
+)
+
+# Group chat with manager
+groupchat = autogen.GroupChat(
+  agents=[user_proxy, data_engineer, data_scientist],
+  messages=[],
+  max_round=10
+)
+
+manager = autogen.GroupChatManager(groupchat=groupchat)
+
+# Start multi-agent conversation
+user_proxy.initiate_chat(
+  manager,
+  message='Build a customer churn prediction model from users.csv'
+)
+```
+
+### AutoGen: Pros & Cons
+
+| ✅ Pros | ❌ Cons |
+|---------|---------|
+| Excellent for code generation | Unpredictable execution paths |
+| Self-correcting (runs code, sees error, fixes) | Security risk (executes arbitrary code) |
+| Multi-turn problem solving | Hard to enforce budgets |
+| Research-oriented | Not production-ready |
+
+---
+
+## Framework Comparison Table
+
+| Feature | LangGraph | CrewAI | AutoGen |
+|---------|-----------|--------|---------|
+| **Learning Curve** | Steep | Shallow | Medium |
+| **Production Ready** | ✅ Yes | ⚠️ Limited | ❌ No |
+| **Control** | High | Medium | Low |
+| **Speed to Prototype** | Slow | Fast | Medium |
+| **Debugging** | Excellent (visual graph) | Poor | Medium |
+| **Cost Predictability** | High | Low | Very Low |
+| **Best For** | Enterprise apps | Demos/MVPs | Code generation |
+
+---
+
+## The Model Context Protocol (MCP)
+
+**The new 2026 standard** for how agents talk to external tools.
+
+### What is MCP?
+
+**Problem**: Every framework has its own tool format:
+- LangGraph uses LangChain tools
+- CrewAI uses its own tool decorator
+- AutoGen uses function definitions
+
+**Solution**: MCP provides a **unified interface** for tools that works across all frameworks.
+
+### MCP Architecture
+
+```
+Agent ←→ MCP Client ←→ MCP Server ←→ External Tool
+                      (Standard Protocol)
+```
+
+### Example: MCP Server for Slack
+
+```typescript
+import { Server } from '@modelcontextprotocol/sdk/server/index.js'
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+
+// Create MCP server
+const server = new Server({
+  name: 'slack-mcp-server',
+  version: '1.0.0'
+})
+
+// Define tools
+server.setRequestHandler('tools/list', async () => ({
+  tools: [
+    {
+      name: 'send_message',
+      description: 'Send a message to a Slack channel',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          channel: { type: 'string' },
+          message: { type: 'string' }
+        },
+        required: ['channel', 'message']
+      }
+    },
+    {
+      name: 'get_channel_history',
+      description: 'Get recent messages from a channel',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          channel: { type: 'string' },
+          limit: { type: 'number' }
+        },
+        required: ['channel']
+      }
+    }
+  ]
+}))
+
+// Handle tool calls
+server.setRequestHandler('tools/call', async (request) => {
+  const { name, arguments: args } = request.params
+
+  switch (name) {
+    case 'send_message':
+      // Call Slack API
+      return {
+        content: [
+          { type: 'text', text: `Message sent to ${args.channel}` }
+        ]
+      }
+
+    case 'get_channel_history':
+      // Call Slack API
+      return {
+        content: [
+          { type: 'text', text: '[Recent messages...]' }
+        ]
+      }
+  }
+})
+
+// Start server
+const transport = new StdioServerTransport()
+await server.connect(transport)
+```
+
+### Using MCP in LangGraph
+
+```typescript
+import { MCPTool } from '@langchain/community/tools/mcp'
+
+// Connect to MCP server
+const slackTool = new MCPTool({
+  serverUrl: 'stdio://slack-mcp-server',
+  toolName: 'send_message'
+})
+
+// Use in agent
+const tools = [slackTool]
+
+const agent = createReactAgent({
+  llm: model,
+  tools
+})
+
+await agent.invoke({
+  input: 'Send a message to #general saying "Deploy complete"'
+})
+```
+
+### MCP Benefits
+
+| Benefit | Description |
+|---------|-------------|
+| **Unified Interface** | One tool definition works across all frameworks |
+| **Framework Agnostic** | Switch from CrewAI to LangGraph without rewriting tools |
+| **Reusable Servers** | Community-maintained MCP servers (Slack, Google Drive, SQL) |
+| **Security** | Standard authentication and permission model |
+
+### Available MCP Servers (2026)
+
+- **slack-mcp-server**: Send/receive Slack messages
+- **google-drive-mcp-server**: Access Google Drive files
+- **postgres-mcp-server**: Execute SQL queries
+- **github-mcp-server**: Manage repos, issues, PRs
+- **calendar-mcp-server**: Google Calendar integration
+
+---
+
+## Decision Framework
+
+### Use LangGraph if:
+- Building production system with compliance requirements
+- Need to visualize agent flow for stakeholders
+- Require checkpointing and state persistence
+- Budget predictability is critical
+
+### Use CrewAI if:
+- Prototyping multi-agent concept quickly
+- Building internal demo or MVP
+- Task has clear "roles" (researcher, writer, editor)
+- Production reliability is not required
+
+### Use AutoGen if:
+- Task involves code generation/execution
+- Research project with no production deadline
+- Interactive debugging with human-in-the-loop
+- Exploring open-ended problems
+
+### Use Plain Function Calling (Week 4) if:
+- Task is simple tool orchestration
+- Don't need multiple agents
+- Cost optimization is top priority
+
+---
+
+## Cost Comparison (Per Workflow)
+
+| Framework | Typical API Calls | Estimated Cost | Notes |
+|-----------|------------------|----------------|-------|
+| Plain Function Calling | 2-5 | $0.04-$0.10 | Most cost-effective |
+| LangGraph | 5-10 | $0.10-$0.20 | Predictable with checkpointing |
+| CrewAI | 8-15 | $0.16-$0.30 | "Backstory" adds token overhead |
+| AutoGen | 10-30 | $0.20-$0.60 | Self-correction loops expensive |
+
+---
+
+## Key Takeaways
+
+1. **LangGraph**: Production-ready state machine with full control (use for enterprise)
+2. **CrewAI**: Fast role-based prototyping (use for demos)
+3. **AutoGen**: Code generation with self-correction (use for research)
+4. **MCP**: Unified tool protocol across all frameworks (2026 standard)
+5. **Cost matters**: LangGraph provides best cost predictability
+
+---
+
+## Next Steps
+
+- **Week 5 Lab**: Build Auto-Research & Newsletter Team using LangGraph
+- **Production tip**: Start with plain function calling, upgrade to LangGraph only when needed
+- **MCP adoption**: Use community MCP servers instead of custom tool wrappers
+
+---
+
+## Further Reading
+
+- [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
+- [CrewAI Examples](https://docs.crewai.com/examples/)
+- [AutoGen Notebooks](https://microsoft.github.io/autogen/docs/notebooks/)
+- [Model Context Protocol Spec](https://modelcontextprotocol.io/)
