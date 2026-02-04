@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { signOut } from 'next-auth/react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 
 interface SignOutDialogProps {
   open: boolean
@@ -22,29 +23,32 @@ export function SignOutDialog({ open, onOpenChange }: SignOutDialogProps) {
       <DialogContent className="sm:max-w-sm">
         <DialogHeader className="text-center space-y-3">
           <DialogTitle className="text-2xl font-bold text-gray-900">
-            Logout Confirmation
+            Log Out
           </DialogTitle>
           <DialogDescription className="text-base text-gray-500">
-            Are you sure you want to do logout?
+            Are you sure you want to log out?
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex gap-3 pt-6 justify-center">
-          <button
+          <Button
             onClick={handleSignOut}
             disabled={isSigningOut}
-            className="px-8 py-2.5 bg-blue-600 text-white rounded-md text-sm font-medium transition-all duration-200 hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            size="lg"
+            className="min-w-[100px]"
           >
-            {isSigningOut ? 'Signing out...' : 'Confirm'}
-          </button>
+            {isSigningOut ? 'Logging out...' : 'Confirm'}
+          </Button>
 
-          <button
+          <Button
             onClick={() => onOpenChange(false)}
             disabled={isSigningOut}
-            className="px-8 py-2.5 bg-white border-2 border-blue-600 text-blue-600 rounded-md text-sm font-medium transition-all duration-200 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            variant="outline"
+            size="lg"
+            className="min-w-[100px]"
           >
             Cancel
-          </button>
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
