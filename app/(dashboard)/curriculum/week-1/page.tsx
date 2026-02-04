@@ -61,6 +61,45 @@ export default async function Week1Page() {
 
   const objectives = week.objectives as string[]
 
+  // Organize objectives by category
+  const objectiveCategories = [
+    {
+      title: "Core Technical Understanding",
+      icon: "🎯",
+      objectives: objectives.slice(0, 4)
+    },
+    {
+      title: "Architecture & Design",
+      icon: "🏗️",
+      objectives: objectives.slice(4, 8)
+    },
+    {
+      title: "Security & Safety",
+      icon: "🔒",
+      objectives: objectives.slice(8, 12)
+    },
+    {
+      title: "Production Reliability",
+      icon: "⚡",
+      objectives: objectives.slice(12, 16)
+    },
+    {
+      title: "Cost & Performance",
+      icon: "💰",
+      objectives: objectives.slice(16, 20)
+    },
+    {
+      title: "Real-World Applications",
+      icon: "🚀",
+      objectives: objectives.slice(20, 24)
+    },
+    {
+      title: "Production Deployment",
+      icon: "🌐",
+      objectives: objectives.slice(24)
+    }
+  ]
+
   return (
     <div className="container max-w-4xl py-8">
       <div className="space-y-8">
@@ -77,16 +116,29 @@ export default async function Week1Page() {
         <Card>
           <CardHeader>
             <CardTitle>Learning Objectives</CardTitle>
+            <CardDescription>
+              This week covers {objectives.length} key objectives across {objectiveCategories.length} focus areas
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <ul className="space-y-2">
-              {objectives.map((objective, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>{objective}</span>
-                </li>
+            <div className="space-y-6">
+              {objectiveCategories.map((category, categoryIndex) => (
+                <div key={categoryIndex}>
+                  <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                    <span className="text-lg">{category.icon}</span>
+                    {category.title}
+                  </h3>
+                  <ul className="space-y-2 ml-7">
+                    {category.objectives.map((objective, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm">
+                        <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                        <span className="text-muted-foreground">{objective}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           </CardContent>
         </Card>
 
