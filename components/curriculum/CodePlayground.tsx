@@ -20,6 +20,7 @@ interface CodePlaygroundProps {
     | 'input-validation'
     | 'bias-detection'
     | 'accuracy-testing'
+    | 'model-comparison'
     | 'custom'
 }
 
