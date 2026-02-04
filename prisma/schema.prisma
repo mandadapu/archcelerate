@@ -68,6 +68,7 @@ model User {
   labSubmissions          LabSubmission[]
   weekProjectSubmissions  WeekProjectSubmission[]
   userWeekProgress        UserWeekProgress[]
+  curriculumContent       CurriculumContent[] // User-created curriculum
 }
 
 model VerificationToken {
@@ -390,4 +391,47 @@ model UserWeekProgress {
 
   @@unique([userId, weekId])
   @@index([userId, weekId])
+}
+
+// AI Assist - Curriculum Search Models
+model CurriculumContent {
+  id          String   @id @default(cuid())
+  userId      String?  // NULL = system content, value = user-created
+  filePath    String?  // For system content: "content/week1/prompt-basics.mdx"
+  weekNumber  Int?     // Which week this belongs to (for organization)
+  title       String
+  content     String?  @db.Text // For user-created content
+  type        String   // 'lesson' | 'lab' | 'project' | 'code-example' | 'user-note' | 'user-guide'
+  slug        String   // URL-friendly identifier
+  isPublic    Boolean  @default(false) // Can other users search this?
+  metadata    Json?    // frontmatter data or user tags
+  lastIndexed DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user   User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks CurriculumChunk[]
+
+  @@unique([userId, slug]) // Each user can have unique slugs
+  @@index([userId])
+  @@index([weekNumber])
+  @@index([type])
+  @@index([isPublic])
+  @@index([lastIndexed])
+}
+
+model CurriculumChunk {
+  id          String                        @id @default(cuid())
+  contentId   String
+  content     String                        @db.Text
+  embedding   Unsupported("vector(1536)")?
+  chunkIndex  Int
+  heading     String?                       // Section heading if applicable
+  codeBlock   Boolean                       @default(false) // True if this chunk is a code example
+  metadata    Json?                         // Additional context
+  createdAt   DateTime                      @default(now())
+
+  curriculumContent CurriculumContent @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@index([contentId])
 }
