@@ -275,54 +275,68 @@ const weekData = [
   {
     weekNumber: 6,
     title: 'Advanced RAG (The Optimizer)',
-    description: 'Deploy AI systems with monitoring, caching, and reliability',
+    description: 'Master enterprise-grade retrieval systems with hybrid search, re-ranking, and query optimization for high-precision, low-latency RAG at scale',
     objectives: [
-      'Deploy production systems',
-      'Implement monitoring',
-      'Optimize performance'
+      'Implement hybrid retrieval combining semantic and keyword search for precision',
+      'Deploy re-ranking models to improve top-K accuracy by 20%+',
+      'Apply query transformation patterns (Multi-Query, HyDE, Decomposition)',
+      'Optimize context windows and prevent "Lost in the Middle" degradation',
+      'Build production RAG with sub-200ms latency and enterprise hardening'
     ],
     concepts: [
-      { slug: 'observability-basics', title: 'Observability Basics for AI Systems', minutes: 30 },
-      { slug: 'monitoring-ai-systems', title: 'Monitoring LLM Applications', minutes: 35 },
-      { slug: 'performance-optimization', title: 'Performance Optimization & Caching', minutes: 40 },
-      { slug: 'production-deployment', title: 'Production Deployment Best Practices', minutes: 35 }
+      { slug: 'hybrid-retrieval-reranking', title: 'Hybrid Retrieval & Re-Ranking', minutes: 50 },
+      { slug: 'query-transformation-patterns', title: 'Query Transformation Patterns', minutes: 45 },
+      { slug: 'context-window-optimization', title: 'Context Window Management & Optimization', minutes: 40 },
+      { slug: 'enterprise-rag-hardening', title: 'Enterprise RAG Hardening & Evaluation', minutes: 55 }
     ],
     lab: {
-      slug: 'production-monitoring',
-      title: 'Production Monitoring Implementation',
-      description: 'Implement comprehensive monitoring and caching for your AI application',
+      slug: 'medical-records-navigator',
+      title: 'The Precision Retrieval Challenge',
+      description: 'Act as AI Architect for a Clinical Search tool - prove the value of Parent-Document Retrieval and Hybrid Search through side-by-side comparison',
       exercises: [
-        { number: 1, title: 'Set up LangSmith or Helicone', type: 'setup' },
-        { number: 2, title: 'Implement cost tracking', type: 'coding' },
-        { number: 3, title: 'Add semantic caching', type: 'coding' },
-        { number: 4, title: 'Build alerting system', type: 'implementation' },
-        { number: 5, title: 'Deploy to Vercel/Railway', type: 'deployment' }
+        { number: 1, title: 'Setup: Index 5,000 pages of simulated clinical notes (PDFs)', type: 'setup' },
+        { number: 2, title: 'Phase 1: Build "Naive" RAG baseline (fixed 200-token chunks, vector-only)', type: 'coding' },
+        { number: 3, title: 'Test Naive RAG: Query "What was patient HbA1c in June 2024?"', type: 'testing' },
+        { number: 4, title: 'Measure Naive baseline: Context Relevancy, Faithfulness, Latency', type: 'evaluation' },
+        { number: 5, title: 'Phase 2: Implement Parent-Document Retrieval (small-to-big)', type: 'coding' },
+        { number: 6, title: 'Add Hybrid Search (BM25 + Vector) for medical codes', type: 'implementation' },
+        { number: 7, title: 'Deploy Re-Ranker (Cohere or BGE) for top-50 → top-5', type: 'coding' },
+        { number: 8, title: 'Test Advanced RAG: Same query with full clinical context', type: 'testing' },
+        { number: 9, title: 'Measure Advanced metrics: Compare Context Relevancy (45% → 85%)', type: 'evaluation' },
+        { number: 10, title: 'Architect\'s Report: Document tradeoffs and recommendations', type: 'documentation' }
       ]
     },
     project: {
-      slug: 'production-ai-app',
-      title: 'Production-Ready AI Application',
-      description: 'Deploy a fully monitored, optimized AI application with caching and observability',
+      slug: 'enterprise-rag-system',
+      title: 'Production RAG System for Regulated Industry',
+      description: 'Build a HIPAA-grade RAG system with hybrid retrieval, re-ranking, semantic caching, and enterprise evaluation metrics',
       requirements: [
-        'LLM observability integration (LangSmith/Helicone)',
-        'Cost tracking and budget alerts',
-        'Semantic caching for common queries',
-        'Performance monitoring dashboards',
-        'Error tracking and alerting',
-        'Production deployment (Vercel/Railway)',
-        'Load testing and optimization',
-        'Full documentation'
+        'Hybrid Search: Combine pgvector (semantic) + pg_trgm or ElasticSearch (BM25)',
+        'Re-Ranking: Cohere Rerank API or BGE-Reranker model for top-50 → top-5',
+        'Query Transformation: Implement Multi-Query, Decomposition, and HyDE',
+        'Parent-Document Retrieval: Retrieve small chunks, return surrounding context',
+        'Context Pruning: Remove redundant information before LLM call',
+        'Semantic Caching: Redis/GPTCache with cosine similarity threshold 0.95',
+        'HNSW Indexing: Configure for <100ms vector search at 10K QPS',
+        'Evaluation Suite: Measure Recall@10, MRR, Precision@5, TTFT, QPS',
+        'Audit Logging: Track all retrievals for compliance (GDPR/HIPAA)',
+        'Load Testing: 1,000 concurrent users with <200ms p95 latency',
+        'Documentation: Runbook for re-indexing, cache invalidation, monitoring'
       ],
       successCriteria: [
-        'Application deployed and publicly accessible',
-        'All LLM calls are traced and monitored',
-        'Caching reduces costs by 30%+',
-        'Alerts trigger for errors and budget overruns',
-        'Response time p95 < 2 seconds',
-        'Application handles 100+ concurrent users',
-        'Documentation includes runbooks'
+        'Hybrid search improves Recall@10 by 15%+ vs vector-only',
+        'Re-ranking improves MRR (Mean Reciprocal Rank) by 20%+',
+        'Semantic caching reduces TTFT by 80% for repeated queries',
+        'Query transformation handles complex multi-part questions correctly',
+        'Parent-document retrieval maintains clinical context accuracy',
+        'System handles 10K QPS with <100ms vector search latency',
+        'p95 latency stays under 200ms for hybrid search + re-rank',
+        'Cache hit rate >40% after 1 week of production traffic',
+        'Evaluation metrics tracked in dashboard (Grafana/DataDog)',
+        'Zero data leaks: Audit logs show proper tenant isolation',
+        'Passes load test: 1K concurrent users without degradation'
       ],
-      hours: 10
+      hours: 14
     }
   },
   {
