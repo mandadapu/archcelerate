@@ -18,6 +18,8 @@ interface CodePlaygroundProps {
     | 'prompt-caching'
     | 'content-moderation'
     | 'input-validation'
+    | 'bias-detection'
+    | 'accuracy-testing'
     | 'custom'
 }
 

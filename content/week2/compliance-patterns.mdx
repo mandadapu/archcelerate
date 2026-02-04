@@ -1,0 +1,629 @@
+---
+title: "Domain Compliance Patterns"
+description: "Implement compliance for finance, healthcare, and regulated industries"
+estimatedMinutes: 50
+---
+
+# Domain Compliance Patterns
+
+Practical patterns for building compliant AI in regulated industries.
+
+> **Note**: This covers domain-specific compliance patterns. For detailed GDPR/HIPAA implementation, see Week 12.
+
+## Overview
+
+Different industries have different compliance requirements for AI systems:
+
+| Industry | Key Regulations | AI Requirements |
+|----------|----------------|-----------------|
+| **Finance** | ECOA, FCRA, Dodd-Frank | Fair lending, credit decision explainability |
+| **Healthcare** | HIPAA, HITECH, FDA | PHI protection, medical device approval |
+| **Insurance** | State regulations, NAIC | Risk assessment transparency, anti-discrimination |
+| **HR/Hiring** | EEOC, OFCCP | Fair hiring, no disparate impact |
+| **Government** | FISMA, FedRAMP | Security controls, auditability |
+
+---
+
+## Finance: Fair Lending & Credit Decisions
+
+### Equal Credit Opportunity Act (ECOA)
+
+**Requirements**:
+- Cannot discriminate based on race, color, religion, national origin, sex, marital status, age
+- Must provide **adverse action notices** (reasons for denial)
+- Must retain records for 25 months
+
+### Adverse Action Notice
+
+```typescript
+interface AdverseActionNotice {
+  applicantName: string
+  date: Date
+  decision: 'denied' | 'approved_with_conditions'
+  principalReasons: string[]  // Must provide top reasons
+  contactInfo: {
+    name: string
+    address: string
+    phone: string
+  }
+  appealRights: string
+}
+
+async function generateAdverseActionNotice(
+  application: LoanApplication,
+  modelDecision: AIDecision
+): Promise<AdverseActionNotice> {
+  // ECOA requires top 4 reasons for denial
+  const reasons = modelDecision.topFactors
+    .filter(f => f.contribution < 0)  // Negative factors
+    .slice(0, 4)
+    .map(f => formatReasonForConsumer(f))
+
+  return {
+    applicantName: application.name,
+    date: new Date(),
+    decision: 'denied',
+    principalReasons: reasons,
+    contactInfo: {
+      name: 'Credit Decision Team',
+      address: '123 Finance St, New York, NY 10001',
+      phone: '1-800-555-0100'
+    },
+    appealRights: 'You have the right to request a manual review within 30 days by contacting us at the number above.'
+  }
+}
+
+function formatReasonForConsumer(factor: { feature: string; contribution: number }): string {
+  const reasons = {
+    credit_score: 'Credit score below minimum threshold',
+    debt_to_income: 'Debt-to-income ratio too high',
+    income: 'Insufficient income for requested loan amount',
+    employment_length: 'Length of employment less than required',
+    recent_delinquencies: 'Recent late payments or delinquencies'
+  }
+
+  return reasons[factor.feature] || 'Other credit factors'
+}
+```
+
+### Fair Credit Reporting Act (FCRA)
+
+**Model risk factors** (features) must be **reasonable and material**:
+
+```typescript
+const FCRA_APPROVED_FACTORS = [
+  'credit_score',
+  'payment_history',
+  'outstanding_debt',
+  'credit_utilization',
+  'length_of_credit_history',
+  'recent_credit_inquiries',
+  'income',
+  'employment_status'
+]
+
+const FCRA_PROHIBITED_FACTORS = [
+  'race',
+  'color',
+  'religion',
+  'national_origin',
+  'sex',
+  'marital_status',
+  'age',  // Exception: can verify applicant is 18+
+  'zip_code'  // Proxy for race
+]
+
+function validateFeatures(features: string[]): { valid: boolean; violations: string[] } {
+  const prohibited = features.filter(f => FCRA_PROHIBITED_FACTORS.includes(f))
+
+  return {
+    valid: prohibited.length === 0,
+    violations: prohibited
+  }
+}
+```
+
+### Dodd-Frank Stress Testing
+
+```typescript
+// Test model under adverse economic scenarios
+async function stressTestCreditModel(
+  model: MLModel,
+  applications: LoanApplication[]
+) {
+  const scenarios = [
+    { name: 'Recession', unemploymentRate: 0.10, gdpGrowth: -0.03 },
+    { name: 'Market Crash', unemploymentRate: 0.08, gdpGrowth: -0.02 },
+    { name: 'Baseline', unemploymentRate: 0.04, gdpGrowth: 0.02 }
+  ]
+
+  const results = await Promise.all(
+    scenarios.map(async scenario => {
+      // Adjust applicant data based on scenario
+      const adjustedApps = applications.map(app => ({
+        ...app,
+        income: app.income * (1 + scenario.gdpGrowth),
+        employmentRisk: scenario.unemploymentRate
+      }))
+
+      const predictions = await model.predictBatch(adjustedApps)
+      const approvalRate = predictions.filter(p => p > 0.5).length / predictions.length
+
+      return {
+        scenario: scenario.name,
+        approvalRate,
+        expectedLosses: calculateExpectedLosses(predictions, adjustedApps)
+      }
+    })
+  )
+
+  return results
+}
+```
+
+---
+
+## Healthcare: HIPAA & Medical AI
+
+### Protected Health Information (PHI)
+
+**18 identifiers** that must be removed/encrypted:
+
+```typescript
+const PHI_IDENTIFIERS = [
+  'names',
+  'geographic_subdivisions_smaller_than_state',
+  'dates',  // Except year for age > 89
+  'telephone_numbers',
+  'fax_numbers',
+  'email_addresses',
+  'social_security_numbers',
+  'medical_record_numbers',
+  'health_plan_beneficiary_numbers',
+  'account_numbers',
+  'certificate_license_numbers',
+  'vehicle_identifiers',
+  'device_identifiers',
+  'urls',
+  'ip_addresses',
+  'biometric_identifiers',
+  'full_face_photos',
+  'any_unique_identifying_number'
+]
+
+async function deidentifyPHI(medicalText: string): Promise<string> {
+  // Use NER model to detect PHI
+  const entities = await detectEntities(medicalText)
+
+  let deidentified = medicalText
+
+  // Replace PHI with placeholders
+  entities
+    .filter(e => PHI_IDENTIFIERS.includes(e.type))
+    .sort((a, b) => b.start - a.start)  // Replace from end to start
+    .forEach(entity => {
+      const placeholder = `[${entity.type.toUpperCase()}]`
+      deidentified =
+        deidentified.slice(0, entity.start) +
+        placeholder +
+        deidentified.slice(entity.end)
+    })
+
+  return deidentified
+}
+
+// Example:
+// Input:  "Patient John Doe (SSN: 123-45-6789) visited on 2024-01-15"
+// Output: "Patient [NAME] (SSN: [SSN]) visited on [DATE]"
+```
+
+### HIPAA Audit Trails
+
+**Required logs** for AI systems processing PHI:
+
+```typescript
+interface HIPAAAuditLog {
+  timestamp: Date
+  userId: string
+  action: 'access' | 'create' | 'update' | 'delete' | 'export'
+  resourceType: 'patient_record' | 'diagnosis' | 'prescription' | 'image'
+  resourceId: string
+  ipAddress: string
+  outcome: 'success' | 'failure'
+  reason?: string
+}
+
+async function logHIPAAEvent(event: HIPAAAuditLog) {
+  // Store in immutable append-only log
+  await prisma.hipaaAuditLog.create({
+    data: {
+      ...event,
+      hash: await hashEvent(event),  // Tamper detection
+      previousHash: await getLastEventHash()
+    }
+  })
+
+  // Alert on suspicious activity
+  if (await detectSuspiciousPattern(event)) {
+    await alertSecurityTeam(event)
+  }
+}
+```
+
+### Medical AI Decision Support
+
+**FDA requirements** for AI as a medical device:
+
+```typescript
+interface MedicalAIMetadata {
+  // Device identification
+  deviceName: string
+  intendedUse: string
+  indications: string[]
+  contraindications: string[]
+
+  // Performance
+  clinicalValidation: {
+    studyName: string
+    population: string
+    sensitivity: number
+    specificity: number
+    auc: number
+  }
+
+  // Safety
+  adverseEvents: string[]
+  limitations: string[]
+  warnings: string[]
+
+  // Quality management
+  version: string
+  fda510kNumber?: string
+  isoCompliance: string[]  // ISO 13485, ISO 14971
+}
+
+// Example: Diabetic retinopathy screening
+const drScreeningAI: MedicalAIMetadata = {
+  deviceName: 'RetinaAI Screening System',
+  intendedUse: 'Detection of diabetic retinopathy in fundus images',
+  indications: [
+    'Adults with diabetes',
+    'No history of diabetic retinopathy'
+  ],
+  contraindications: [
+    'Patients with known retinopathy',
+    'Poor quality images (< 80% gradable)'
+  ],
+  clinicalValidation: {
+    studyName: 'EyePACS-1',
+    population: '10,000 diabetic patients',
+    sensitivity: 0.87,
+    specificity: 0.90,
+    auc: 0.94
+  },
+  adverseEvents: ['False negative: delayed treatment (0.13%)'],
+  limitations: [
+    'Does not detect other eye diseases',
+    'Requires high-quality fundus images'
+  ],
+  warnings: [
+    'Not a substitute for comprehensive eye exam',
+    'Physician must review all flagged cases'
+  ],
+  version: '2.1.0',
+  fda510kNumber: 'K203456',
+  isoCompliance: ['ISO 13485:2016', 'ISO 14971:2019']
+}
+```
+
+---
+
+## Insurance: Risk Assessment Compliance
+
+### NAIC Model Regulation
+
+**National Association of Insurance Commissioners** requirements:
+
+```typescript
+interface InsuranceAIGovernance {
+  // Model Inventory
+  modelId: string
+  modelName: string
+  businessPurpose: string
+  riskTier: 'high' | 'medium' | 'low'
+
+  // Third-party models
+  vendor?: string
+  vendorValidation: boolean
+
+  // Testing
+  validationResults: {
+    backtesting: BacktestResults
+    sensitivityAnalysis: SensitivityResults
+    outcomeAnalysis: OutcomeResults
+  }
+
+  // Ongoing monitoring
+  performanceMetrics: {
+    metric: string
+    threshold: number
+    current: number
+    status: 'green' | 'yellow' | 'red'
+  }[]
+
+  // Documentation
+  modelDocumentation: string  // Link to model card
+  governanceCommitteeApproval: boolean
+  boardReportingFrequency: 'monthly' | 'quarterly'
+}
+
+// Example: Auto insurance pricing model
+async function validateInsuranceModel(
+  model: MLModel,
+  testData: PolicyApplication[]
+) {
+  // 1. Backtesting: Compare predictions to actual claims
+  const backtest = await backtestModel(model, testData)
+
+  // 2. Sensitivity: Ensure stable predictions
+  const sensitivity = await testSensitivity(model, testData)
+
+  // 3. Outcome analysis: Check for discriminatory patterns
+  const outcomes = await analyzeOutcomes(model, testData)
+
+  return {
+    backtesting: backtest,
+    sensitivityAnalysis: sensitivity,
+    outcomeAnalysis: outcomes,
+    passed: backtest.mae < 0.10 && !outcomes.hasDisparateTreatment
+  }
+}
+
+async function analyzeOutcomes(
+  model: MLModel,
+  data: PolicyApplication[]
+): Promise<OutcomeResults> {
+  // Group by protected class
+  const groups = groupBy(data, 'demographics')
+
+  // Check for disparate treatment
+  const premiumsByGroup = Object.keys(groups).map(group => ({
+    group,
+    avgPremium: average(groups[group].map(d => model.predict(d)))
+  }))
+
+  const maxDiff = Math.max(...premiumsByGroup.map(g => g.avgPremium)) -
+                  Math.min(...premiumsByGroup.map(g => g.avgPremium))
+
+  return {
+    premiumsByGroup,
+    maxDifference: maxDiff,
+    hasDisparateTreatment: maxDiff > 0.20  // 20% threshold
+  }
+}
+```
+
+### Rate Filing Requirements
+
+```typescript
+// Must file rate changes with state insurance commissioner
+async function generateRateFiling(
+  model: MLModel,
+  stateCode: string
+) {
+  return {
+    state: stateCode,
+    effectiveDate: addDays(new Date(), 60),  // 60-day notice
+
+    // Actuarial memorandum
+    actuarialSupport: {
+      dataSource: 'Historical claims 2020-2024',
+      methodology: 'Gradient Boosted Trees',
+      lossRatio: 0.65,  // Target 65% loss ratio
+      expenseRatio: 0.30,
+      targetCombinedRatio: 0.95
+    },
+
+    // Rate factors
+    rateFactors: await model.getFeatureImportances(),
+
+    // Compliance attestation
+    attestation: {
+      notUnfairlyDiscriminatory: true,
+      actuariallySupportedStatement: 'Rates are based on credible claims experience and statistical analysis',
+      signedBy: 'Chief Actuary',
+      date: new Date()
+    }
+  }
+}
+```
+
+---
+
+## HR/Hiring: Equal Employment Opportunity
+
+### EEOC 80% Rule (Adverse Impact)
+
+```typescript
+async function checkAdverseImpact(
+  applications: JobApplication[],
+  protectedClass: 'gender' | 'race'
+) {
+  // Selection rate by group
+  const groups = groupBy(applications, protectedClass)
+
+  const selectionRates = Object.keys(groups).map(group => ({
+    group,
+    selected: groups[group].filter(a => a.hired).length,
+    total: groups[group].length,
+    rate: groups[group].filter(a => a.hired).length / groups[group].length
+  }))
+
+  // 80% rule: selection rate for protected group must be >= 80% of highest rate
+  const highestRate = Math.max(...selectionRates.map(r => r.rate))
+
+  const violations = selectionRates.filter(rate =>
+    rate.rate < highestRate * 0.80
+  )
+
+  return {
+    selectionRates,
+    passed: violations.length === 0,
+    violations,
+    recommendation: violations.length > 0
+      ? 'Manual review required: potential adverse impact detected'
+      : 'No adverse impact detected'
+  }
+}
+
+// Example:
+// Men: 60/100 hired = 60% selection rate
+// Women: 40/100 hired = 40% selection rate
+// 40% < 60% * 0.80 (48%) → VIOLATION
+```
+
+### Resume Screening Compliance
+
+```typescript
+const PROHIBITED_SCREENING_FACTORS = [
+  'age',
+  'gender',
+  'race',
+  'disability',
+  'religion',
+  'national_origin',
+  'pregnancy',
+  'genetic_information'
+]
+
+async function screenResume(resume: Resume): Promise<ScreeningResult> {
+  // Remove prohibited information before AI analysis
+  const sanitized = await removeProtectedInfo(resume)
+
+  // Score based on job-related factors only
+  const score = await model.predict({
+    education: sanitized.education,
+    experience: sanitized.experience,
+    skills: sanitized.skills,
+    // No: age, gender, photo, name (can indicate ethnicity)
+  })
+
+  return {
+    score,
+    recommendation: score > 0.7 ? 'interview' : 'reject',
+    explanation: await generateExplanation(score),
+    complianceChecked: true
+  }
+}
+```
+
+---
+
+## Audit Trails for Compliance
+
+### Immutable Audit Logs
+
+```typescript
+class ComplianceAuditLog {
+  async logDecision(decision: AIDecision) {
+    const previousHash = await this.getLastHash()
+
+    const record = {
+      timestamp: new Date(),
+      decisionId: decision.id,
+      userId: decision.userId,
+      model: decision.modelVersion,
+      input: decision.input,  // May need to redact PHI
+      output: decision.output,
+      explanation: decision.explanation,
+      previousHash
+    }
+
+    const hash = await this.hash(record)
+
+    await prisma.auditLog.create({
+      data: { ...record, hash }
+    })
+
+    return hash
+  }
+
+  async verifyIntegrity() {
+    const logs = await prisma.auditLog.findMany({
+      orderBy: { timestamp: 'asc' }
+    })
+
+    for (let i = 1; i < logs.length; i++) {
+      const currentHash = await this.hash(logs[i])
+      const previousHash = logs[i - 1].hash
+
+      if (logs[i].previousHash !== previousHash) {
+        throw new Error(`Audit log tampered at record ${i}`)
+      }
+
+      if (logs[i].hash !== currentHash) {
+        throw new Error(`Audit log corrupted at record ${i}`)
+      }
+    }
+
+    return { verified: true, recordCount: logs.length }
+  }
+
+  private async hash(record: any): Promise<string> {
+    const crypto = await import('crypto')
+    return crypto
+      .createHash('sha256')
+      .update(JSON.stringify(record))
+      .digest('hex')
+  }
+}
+```
+
+### Retention Policies
+
+```typescript
+const RETENTION_POLICIES = {
+  finance_ecoa: { years: 2.08 },  // 25 months
+  finance_fcra: { years: 5 },
+  healthcare_hipaa: { years: 6 },
+  insurance_naic: { years: 5 },
+  employment_eeoc: { years: 1 }
+}
+
+async function enforceRetentionPolicy(
+  industry: keyof typeof RETENTION_POLICIES
+) {
+  const policy = RETENTION_POLICIES[industry]
+  const cutoffDate = new Date()
+  cutoffDate.setFullYear(cutoffDate.getFullYear() - policy.years)
+
+  // Archive old records (don't delete - may need for litigation)
+  await prisma.auditLog.updateMany({
+    where: {
+      timestamp: { lt: cutoffDate },
+      archived: false
+    },
+    data: { archived: true }
+  })
+}
+```
+
+---
+
+## Key Takeaways
+
+1. **Know your regulations**: Finance (ECOA/FCRA), Healthcare (HIPAA), Insurance (NAIC), HR (EEOC)
+2. **Document decisions**: Adverse action notices, explanations required
+3. **Audit everything**: Immutable logs, tamper detection
+4. **Test for bias**: 80% rule for hiring, disparate impact for lending
+5. **Protect sensitive data**: Deidentify PHI, encrypt PII
+6. **Retain records**: 25 months (ECOA), 5 years (FCRA/NAIC), 6 years (HIPAA)
+
+## Further Reading
+
+- **Finance**: [CFPB - Using AI in Credit Underwriting](https://www.consumerfinance.gov/)
+- **Healthcare**: [HHS - HIPAA for Developers](https://www.hhs.gov/hipaa/for-professionals/security/guidance/index.html)
+- **Insurance**: [NAIC - AI Model Governance](https://content.naic.org/sites/default/files/inline-files/AI%20Model%20Bulletin%202023.pdf)
+- **Employment**: [EEOC - AI and Title VII](https://www.eeoc.gov/ai)
+
+> **Important**: Consult legal counsel for specific compliance requirements. This guide provides technical implementation patterns but is not legal advice.

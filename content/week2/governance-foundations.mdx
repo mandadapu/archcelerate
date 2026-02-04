@@ -1,8 +1,16 @@
+---
+title: "AI Governance Foundations"
+description: "Build production AI with proper content moderation and governance"
+estimatedMinutes: 35
+---
+
 import { CodePlayground } from '@/components/curriculum/CodePlayground'
 
-# Governance Foundations
+# AI Governance Foundations
 
-Build production AI systems with proper guardrails, observability, and cost control from day one.
+Build production AI systems with proper content moderation and governance frameworks.
+
+> **Note**: For input validation, rate limiting, and cost tracking, see Week 1. For detailed observability, see Week 6.
 
 ## Why Governance Matters
 
@@ -22,101 +30,30 @@ Build production AI systems with proper guardrails, observability, and cost cont
 
 ## The Five Pillars of AI Governance
 
-1. **Input Validation**: Ensure requests are safe and well-formed
-2. **Content Moderation**: Filter harmful inputs and outputs
-3. **Rate Limiting**: Prevent abuse and ensure fair usage
-4. **Cost Tracking**: Monitor and control spending
-5. **Observability**: Log, monitor, and audit everything
+1. **Input Validation** → See Week 1: Production Readiness
+2. **Content Moderation** → Covered below
+3. **Rate Limiting** → See Week 1: API Integration
+4. **Cost Tracking** → See Week 1: API Integration
+5. **Observability** → See Week 6: Monitoring & Observability
 
-## Pillar 1: Input Validation
+---
 
-Validate and sanitize all user inputs before processing.
-
-### Validation Strategy
-
-```typescript
-import { z } from 'zod'
-
-// Define schema
-const ChatMessageSchema = z.object({
-  content: z.string()
-    .min(1, 'Message cannot be empty')
-    .max(4000, 'Message too long'),
-  conversationId: z.string().uuid().optional()
-})
-
-// Validate input
-export async function validateInput(input: unknown) {
-  try {
-    const validated = ChatMessageSchema.parse(input)
-
-    // Sanitize content
-    const sanitized = {
-      ...validated,
-      content: sanitizeContent(validated.content)
-    }
-
-    return { valid: true, sanitized }
-
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return {
-        valid: false,
-        errors: error.errors.map(e => e.message)
-      }
-    }
-    return { valid: false, errors: ['Invalid input'] }
-  }
-}
-```
-
-### Sanitization
-
-```typescript
-function sanitizeContent(content: string): string {
-  // Remove null bytes
-  let sanitized = content.replace(/\0/g, '')
-
-  // Trim whitespace
-  sanitized = sanitized.trim()
-
-  // Basic XSS prevention
-  sanitized = sanitized
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-
-  return sanitized
-}
-```
-
-**Key validation rules**:
-- **Length limits**: Prevent token limit exhaustion
-- **Type checking**: Ensure correct data types
-- **Sanitization**: Remove malicious content
-- **Fail fast**: Reject invalid requests immediately
-
-### Try It Yourself: Input Validation
-
-<CodePlayground
-  title="Interactive Input Validation Demo"
-  description="Click 'Run Code' to see Zod schema validation in action with various test inputs"
-  exerciseType="input-validation"
-  code={`// This example demonstrates Zod validation
-// Try modifying the test cases to see different validation errors
-
-import { z } from 'zod'
-
-const ChatMessageSchema = z.object({
-  content: z.string().min(1).max(100),
-  userId: z.string().uuid()
-})
-
-// Test different inputs to see validation results`}
-/>
-
-## Pillar 2: Content Moderation
+## Content Moderation
 
 Filter harmful content before and after LLM processing.
+
+### Why Content Moderation Matters
+
+**Real incidents**:
+- **Microsoft Tay** (2016): Learned racist language from Twitter in 16 hours
+- **Meta BlenderBot** (2022): Made offensive statements about public figures
+- **Character.AI** (2023): Generated harmful content to minors
+- **Bing Chat** (2023): Hostile responses, emotional manipulation
+
+**Regulatory requirements**:
+- **EU Digital Services Act**: Must moderate illegal content
+- **COPPA**: Protect children from harmful content
+- **Platform liability**: Can be liable for user-generated harmful content
 
 ### Input Moderation
 
@@ -141,7 +78,8 @@ Content: "${content}"
   "sexual": boolean,
   "violence": boolean,
   "self_harm": boolean,
-  "harassment": boolean
+  "harassment": boolean,
+  "spam": boolean
 }`
     }]
   })
@@ -184,6 +122,7 @@ export async function POST(request: Request) {
   const outputMod = await moderateContent(userId, response, 'output')
 
   if (outputMod.flagged) {
+    // Don't return harmful output to user
     return Response.json({
       error: 'Generated content violates policy'
     }, { status: 500 })
@@ -193,20 +132,99 @@ export async function POST(request: Request) {
 }
 ```
 
-**Best practices**:
-- **Moderate both input and output**: Don't trust either
-- **Use fast models**: Haiku is perfect for moderation
-- **Log everything**: Track all moderation decisions
-- **Fail gracefully**: If moderation fails, default to allow
+### Advanced Moderation Techniques
+
+**1. Multi-tier Moderation**:
+```typescript
+// Different thresholds for different user tiers
+const MODERATION_TIERS = {
+  free: { threshold: 0.3 },      // Strict moderation
+  premium: { threshold: 0.5 },   // Balanced
+  enterprise: { threshold: 0.7 } // More permissive
+}
+
+async function moderateWithTier(content: string, userTier: string) {
+  const score = await getModerationScore(content)
+  const threshold = MODERATION_TIERS[userTier].threshold
+
+  return {
+    flagged: score > threshold,
+    score,
+    tier: userTier
+  }
+}
+```
+
+**2. Context-Aware Moderation**:
+```typescript
+// Consider conversation context
+async function moderateInContext(
+  message: string,
+  conversationHistory: Message[]
+) {
+  // Check if part of ongoing harmful pattern
+  const recentMessages = conversationHistory.slice(-5)
+  const hasPatternOfHarm = recentMessages.filter(m =>
+    m.moderationFlags?.length > 0
+  ).length >= 2
+
+  const currentModeration = await moderateContent('', message, 'input')
+
+  return {
+    ...currentModeration,
+    flagged: currentModeration.flagged || hasPatternOfHarm,
+    reason: hasPatternOfHarm ? 'pattern_of_harm' : currentModeration.categories
+  }
+}
+```
+
+**3. Human-in-the-Loop**:
+```typescript
+// Escalate borderline cases to human reviewers
+async function moderateWithEscalation(content: string) {
+  const moderation = await moderateContent('', content, 'input')
+
+  // Borderline case: high confidence but not certain
+  const isBorderline =
+    Object.values(moderation.categories).some(v => v === true) &&
+    moderation.confidence < 0.8
+
+  if (isBorderline) {
+    await queueForHumanReview({
+      content,
+      aiDecision: moderation,
+      priority: 'high'
+    })
+
+    // Temporarily block until human review
+    return {
+      flagged: true,
+      reason: 'pending_human_review'
+    }
+  }
+
+  return moderation
+}
+```
 
 ### Try It Yourself: Content Moderation
 
 <CodePlayground
   title="Interactive Content Moderation Demo"
-  description="Click 'Run Code' to see Claude Haiku classify content for policy violations"
+  description="Analyze messages for policy violations using Claude Haiku"
   exerciseType="content-moderation"
-  code={`// This example demonstrates content moderation
-// Claude analyzes messages for policy violations
+  code={`// This example demonstrates AI content moderation
+// Claude classifies content for various policy violations
+
+interface ModerationResult {
+  flagged: boolean
+  categories: {
+    hate: boolean
+    sexual: boolean
+    violence: boolean
+    spam: boolean
+  }
+}
 
 const testMessages = [
   'Hello, how can I help you today?',
@@ -214,274 +232,142 @@ const testMessages = [
   'Click here for free money!!!'
 ]
 
-// Run to see classification results for each message`}
+// Analyze each message
+async function moderateMessages(messages: string[]) {
+  for (const message of messages) {
+    const result = await moderateContent(message)
+    console.log(\`Message: "\${message}"\`)
+    console.log(\`Flagged: \${result.flagged}\`)
+    console.log(\`Violations: \${Object.keys(result.categories).filter(k => result.categories[k]).join(', ') || 'None'}\`)
+  }
+}`}
 />
 
-## Pillar 3: Rate Limiting
+---
 
-Prevent abuse and ensure fair resource allocation.
+## Governance Frameworks
 
-### Sliding Window Rate Limiting
+### Content Policy Definition
 
 ```typescript
-import { Redis } from '@upstash/redis'
-
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!
-})
-
-export async function checkRateLimit(
-  userId: string,
-  limit: number = 10,
-  windowSeconds: number = 60
-) {
-  const key = `rate_limit:${userId}`
-  const now = Date.now()
-  const windowStart = now - windowSeconds * 1000
-
-  // Remove old entries
-  await redis.zremrangebyscore(key, 0, windowStart)
-
-  // Count requests in window
-  const count = await redis.zcard(key)
-
-  if (count >= limit) {
-    const oldest = await redis.zrange(key, 0, 0, { withScores: true })
-    const resetAt = Number(oldest[1]) + windowSeconds * 1000
-
-    return { allowed: false, remaining: 0, resetAt }
-  }
-
-  // Add current request
-  await redis.zadd(key, { score: now, member: `${now}-${Math.random()}` })
-  await redis.expire(key, windowSeconds)
-
-  return {
-    allowed: true,
-    remaining: limit - count - 1,
-    resetAt: now + windowSeconds * 1000
-  }
+interface ContentPolicy {
+  version: string
+  lastUpdated: Date
+  prohibitedContent: {
+    category: string
+    description: string
+    examples: string[]
+    severity: 'low' | 'medium' | 'high' | 'critical'
+  }[]
+  enforcementActions: {
+    severity: string
+    firstOffense: 'warning' | 'temporary_ban' | 'permanent_ban'
+    repeatOffense: 'temporary_ban' | 'permanent_ban'
+  }[]
 }
-```
 
-### Rate Limit Response
-
-```typescript
-// In API endpoint
-const rateLimit = await checkRateLimit(userId, 10, 60)
-
-if (!rateLimit.allowed) {
-  return Response.json(
-    { error: 'Rate limit exceeded', resetAt: rateLimit.resetAt },
+const CONTENT_POLICY: ContentPolicy = {
+  version: '2.0.0',
+  lastUpdated: new Date('2026-02-01'),
+  prohibitedContent: [
     {
-      status: 429,
-      headers: {
-        'X-RateLimit-Limit': '10',
-        'X-RateLimit-Remaining': '0',
-        'X-RateLimit-Reset': rateLimit.resetAt.toString()
-      }
+      category: 'hate_speech',
+      description: 'Content that attacks or demeans based on protected characteristics',
+      examples: [
+        'Racial slurs or stereotypes',
+        'Religious hatred',
+        'Homophobic or transphobic content'
+      ],
+      severity: 'critical'
+    },
+    {
+      category: 'sexual_content',
+      description: 'Sexually explicit or suggestive content',
+      examples: [
+        'Explicit sexual descriptions',
+        'Sexual content involving minors',
+        'Non-consensual sexual content'
+      ],
+      severity: 'critical'
+    },
+    {
+      category: 'violence',
+      description: 'Content promoting or glorifying violence',
+      examples: [
+        'Graphic violence descriptions',
+        'Instructions for weapons',
+        'Threats of violence'
+      ],
+      severity: 'high'
+    },
+    {
+      category: 'spam',
+      description: 'Unsolicited commercial content or manipulation',
+      examples: [
+        'Repeated promotional messages',
+        'Get-rich-quick schemes',
+        'Phishing attempts'
+      ],
+      severity: 'medium'
     }
-  )
+  ],
+  enforcementActions: [
+    { severity: 'critical', firstOffense: 'permanent_ban', repeatOffense: 'permanent_ban' },
+    { severity: 'high', firstOffense: 'temporary_ban', repeatOffense: 'permanent_ban' },
+    { severity: 'medium', firstOffense: 'warning', repeatOffense: 'temporary_ban' }
+  ]
 }
 ```
 
-**Rate limiting strategies**:
-- **Per-user limits**: 10 requests/minute
-- **Per-IP limits**: 100 requests/hour
-- **Tier-based limits**: Free vs. paid users
-- **Endpoint-specific**: Chat vs. code review vs. labs
-
-## Pillar 4: Cost Tracking
-
-Monitor and control AI spending with budget management.
-
-### Cost Calculation
+### Moderation Audit Trail
 
 ```typescript
-export function calculateCost(
-  model: string,
-  inputTokens: number,
-  outputTokens: number
-): number {
-  const pricing = {
-    'claude-3-5-sonnet-20241022': { input: 0.003, output: 0.015 },
-    'claude-3-haiku-20240307': { input: 0.00025, output: 0.00125 }
-  }
-
-  const { input, output } = pricing[model]
-  return (inputTokens / 1000) * input + (outputTokens / 1000) * output
-}
-```
-
-### Budget Enforcement
-
-```typescript
-export async function checkBudget(userId: string) {
-  const supabase = createClient()
-
-  let { data: budget } = await supabase
-    .from('user_budgets')
-    .select('*')
-    .eq('user_id', userId)
-    .single()
-
-  if (!budget) {
-    // Create default budget
-    budget = await createDefaultBudget(userId)
-  }
-
-  // Check if budget period needs reset
-  const daysSinceStart =
-    (Date.now() - new Date(budget.budget_period_start).getTime())
-    / (1000 * 60 * 60 * 24)
-
-  if (daysSinceStart >= 30) {
-    await resetBudget(userId)
-    budget.current_spend = 0
-    budget.budget_exceeded = false
-  }
-
-  const remaining = budget.monthly_budget - budget.current_spend
-
-  return {
-    withinBudget: !budget.budget_exceeded && remaining > 0,
-    currentSpend: budget.current_spend,
-    monthlyBudget: budget.monthly_budget,
-    remaining: Math.max(0, remaining)
-  }
-}
-```
-
-### Cost Tracking
-
-```typescript
-// After successful LLM call
-const cost = calculateCost(model, inputTokens, outputTokens)
-
-await trackCost(userId, cost)
-
-// Track cost function
-async function trackCost(userId: string, cost: number) {
-  const { data: budget } = await supabase
-    .from('user_budgets')
-    .select('*')
-    .eq('user_id', userId)
-    .single()
-
-  if (budget) {
-    const newSpend = budget.current_spend + cost
-    const exceeded = newSpend >= budget.monthly_budget
-
-    await supabase
-      .from('user_budgets')
-      .update({
-        current_spend: newSpend,
-        budget_exceeded: exceeded
-      })
-      .eq('user_id', userId)
-  }
-}
-```
-
-**Budget best practices**:
-- **Set default limits**: $10/month for free tier
-- **Monthly resets**: Automatic budget refresh
-- **Warnings**: Alert at 80% usage
-- **Soft vs. hard limits**: Warning vs. blocking
-
-## Pillar 5: Observability
-
-Log everything for debugging, compliance, and optimization.
-
-### Request Logging
-
-```typescript
-export async function logLLMRequest(request: {
+interface ModerationLog {
+  id: string
+  timestamp: Date
   userId: string
-  endpoint: string
-  model: string
-  promptTokens: number
-  completionTokens: number
-  totalTokens: number
-  cost: number
-  latencyMs: number
-  status: 'success' | 'error' | 'rate_limited'
-  errorMessage?: string
-}) {
-  await supabase.from('llm_requests').insert({
-    user_id: request.userId,
-    endpoint: request.endpoint,
-    model: request.model,
-    prompt_tokens: request.promptTokens,
-    completion_tokens: request.completionTokens,
-    total_tokens: request.totalTokens,
-    cost: request.cost,
-    latency_ms: request.latencyMs,
-    status: request.status,
-    error_message: request.errorMessage
-  })
+  contentId: string
+  contentType: 'user_input' | 'ai_output'
+  content: string  // May need to hash for privacy
+  moderationResult: {
+    flagged: boolean
+    categories: Record<string, boolean>
+    confidence: number
+  }
+  action: 'allowed' | 'blocked' | 'flagged_for_review'
+  reviewedBy?: string
+  reviewOutcome?: 'upheld' | 'overturned'
 }
-```
 
-### Audit Logging
-
-```typescript
-export async function logAuditEvent(
+async function logModeration(
   userId: string,
-  action: string,
-  resourceType: string,
-  resourceId?: string,
-  metadata?: Record<string, any>
+  content: string,
+  flagged: boolean,
+  categories: Record<string, boolean>
 ) {
-  await supabase.from('audit_logs').insert({
-    user_id: userId,
-    action,
-    resource_type: resourceType,
-    resource_id: resourceId,
-    metadata,
-    ip_address: getClientIP(),
-    user_agent: getUserAgent()
+  await prisma.moderationLog.create({
+    data: {
+      userId,
+      contentId: generateId(),
+      contentType: 'user_input',
+      contentHash: await hashContent(content),  // Don't store raw content
+      moderationResult: {
+        flagged,
+        categories,
+        confidence: 0.95
+      },
+      action: flagged ? 'blocked' : 'allowed',
+      timestamp: new Date()
+    }
   })
 }
 ```
 
-### Usage Analytics
-
-```typescript
-export async function getUsageStats(userId: string, days: number = 30) {
-  const since = new Date()
-  since.setDate(since.getDate() - days)
-
-  const { data: requests } = await supabase
-    .from('llm_requests')
-    .select('*')
-    .eq('user_id', userId)
-    .gte('created_at', since.toISOString())
-
-  const totalCost = requests.reduce((sum, r) => sum + r.cost, 0)
-  const totalTokens = requests.reduce((sum, r) => sum + r.total_tokens, 0)
-  const avgLatency = requests.reduce((sum, r) => sum + r.latency_ms, 0) / requests.length
-
-  // Group by day
-  const dailyStats = requests.reduce((acc, r) => {
-    const day = r.created_at.split('T')[0]
-    if (!acc[day]) {
-      acc[day] = { requests: 0, cost: 0, tokens: 0 }
-    }
-    acc[day].requests++
-    acc[day].cost += r.cost
-    acc[day].tokens += r.total_tokens
-    return acc
-  }, {})
-
-  return { totalRequests: requests.length, totalCost, totalTokens, avgLatency, dailyStats }
-}
-```
+---
 
 ## Putting It All Together
 
-### Complete Governed API Endpoint
+### Complete Governed AI System
 
 ```typescript
 export async function POST(request: Request) {
@@ -489,107 +375,85 @@ export async function POST(request: Request) {
   const supabase = createClient()
 
   try {
-    // 1. Authentication
+    // 1. Authentication (from Week 1)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
-    // 2. Validation
+    // 2. Input validation (from Week 1)
     const body = await request.json()
-    const validation = await validateInput(body)
+    const validation = await validateInput(body)  // See Week 1
     if (!validation.valid) {
-      await logAuditEvent(user.id, 'validation_failed', 'message')
-      return Response.json({ error: 'Invalid input', details: validation.errors }, { status: 400 })
+      return Response.json({ error: 'Invalid input' }, { status: 400 })
     }
 
-    // 3. Rate limiting
-    const rateLimit = await checkRateLimit(user.id, 10, 60)
+    // 3. Rate limiting (from Week 1)
+    const rateLimit = await checkRateLimit(user.id)  // See Week 1
     if (!rateLimit.allowed) {
-      await logLLMRequest({ userId: user.id, status: 'rate_limited', ...})
       return Response.json({ error: 'Rate limit exceeded' }, { status: 429 })
     }
 
-    // 4. Budget check
-    const budget = await checkBudget(user.id)
+    // 4. Budget check (from Week 1)
+    const budget = await checkBudget(user.id)  // See Week 1
     if (!budget.withinBudget) {
       return Response.json({ error: 'Budget exceeded' }, { status: 402 })
     }
 
-    // 5. Input moderation
+    // 5. Content moderation (Week 2 - this week!)
     const inputMod = await moderateContent(user.id, content, 'input')
     if (inputMod.flagged) {
-      return Response.json({ error: 'Content policy violation' }, { status: 400 })
+      return Response.json({
+        error: 'Content policy violation',
+        categories: inputMod.categories
+      }, { status: 400 })
     }
 
     // 6. LLM call
     const response = await callLLM(content)
-    const latencyMs = Date.now() - startTime
 
-    // 7. Output moderation
+    // 7. Output moderation (Week 2)
     const outputMod = await moderateContent(user.id, response, 'output')
     if (outputMod.flagged) {
-      return Response.json({ error: 'Generated content violates policy' }, { status: 500 })
+      // Log but don't expose to user
+      await logSecurityEvent('harmful_output_generated', { userId: user.id })
+      return Response.json({
+        error: 'I apologize, but I cannot provide that response.'
+      }, { status: 500 })
     }
 
-    // 8. Logging & cost tracking
-    const cost = calculateCost(model, inputTokens, outputTokens)
-    await logLLMRequest({ userId: user.id, status: 'success', cost, latencyMs, ...})
-    await trackCost(user.id, cost)
-    await logAuditEvent(user.id, 'chat_message_sent', 'conversation')
+    // 8. Logging & cost tracking (Week 1 + Week 6)
+    await logRequest({ userId: user.id, latency: Date.now() - startTime })
 
     // 9. Return response
-    return Response.json({ message: response, usage: { cost }, budget, rateLimit })
+    return Response.json({ message: response })
 
   } catch (error) {
-    await logLLMRequest({ userId: user.id, status: 'error', errorMessage: error.message, ...})
+    await logError(error)
     return Response.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 ```
 
-## Governance Dashboard
-
-Build visibility into your AI system:
-
-```typescript
-// Dashboard showing:
-- Total spend (last 30 days)
-- API request count
-- Average latency
-- Flagged content count
-- Budget usage (% of monthly limit)
-- Recent audit logs
-- Daily usage trends
-```
+---
 
 ## Key Takeaways
 
-1. **Governance is not optional**: Required for production AI
-2. **Implement early**: Easier to add from the start
-3. **Five pillars**: Validation, moderation, rate limiting, cost tracking, observability
-4. **Log everything**: You'll need it for debugging
-5. **Fail gracefully**: Errors will happen, handle them well
-6. **Monitor continuously**: Dashboards and alerts are essential
+1. **Content moderation is critical**: Prevent harmful content before it reaches users
+2. **Moderate both input and output**: Don't trust either users or AI
+3. **Use fast models**: Claude Haiku is perfect for moderation (cheap + fast)
+4. **Log everything**: Audit trail for compliance and debugging
+5. **Context matters**: Consider conversation history, user tier
+6. **Human review for edge cases**: AI isn't perfect, escalate borderline cases
+7. **Clear policies**: Define what's prohibited, severity levels, enforcement
 
-## Compliance Considerations
+## Further Reading
 
-**GDPR/Privacy**:
-- Don't log sensitive user data
-- Allow users to export/delete their data
-- Anonymize logs when possible
-
-**Terms of Service**:
-- Clearly communicate rate limits
-- Explain budget policies
-- Define acceptable use
-
-**Audit Trail**:
-- Immutable logs for compliance
-- Retention policies (e.g., 90 days)
-- Export capabilities for audits
+- **Perspective API** (Google): Toxicity detection
+- **OpenAI Moderation API**: Content classification
+- **Anthropic Constitutional AI**: Alignment through principles
+- **EU Digital Services Act**: Platform moderation requirements
 
 ## Next Steps
 
-- Build your governance dashboard
-- Implement all five pillars
-- Test governance under load
-- Monitor and iterate based on usage patterns
+- **Week 1**: Review input validation, rate limiting, cost tracking fundamentals
+- **Week 6**: Dive deep into observability, monitoring, and alerting
+- **Week 12**: Enterprise compliance (GDPR, HIPAA, SOX implementation)
