@@ -8,7 +8,12 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 })
 
-const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379')
+const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+  connectTimeout: 2000, // 2 second timeout
+  commandTimeout: 2000, // 2 second timeout for commands
+  retryStrategy: () => null, // Don't retry, fail fast
+  lazyConnect: true, // Don't connect until first command
+})
 
 const CACHE_KEY = 'diagnosis:quiz:questions'
 const CACHE_TTL = 60 * 60 * 24 * 7 // 7 days
@@ -115,27 +120,56 @@ export async function GET(request: Request) {
   try {
     // Try to get from cache first (unless refresh requested)
     if (!refresh) {
-      const cached = await redis.get(CACHE_KEY)
-      if (cached) {
-        console.log('✅ Returning cached quiz questions')
-        return NextResponse.json({
-          questions: JSON.parse(cached),
-          source: 'cache',
-        })
+      try {
+        // Add timeout wrapper for Redis operations
+        const cached = await Promise.race([
+          redis.get(CACHE_KEY),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Redis timeout')), 3000)
+          )
+        ])
+        if (cached) {
+          console.log('✅ Returning cached quiz questions')
+          return NextResponse.json({
+            questions: JSON.parse(cached as string),
+            source: 'cache',
+          })
+        }
+      } catch (redisError) {
+        console.log('⚠️ Redis unavailable, skipping cache:', redisError instanceof Error ? redisError.message : 'Unknown error')
+        // Continue to generation
       }
     }
 
-    // Generate new questions with Claude
-    console.log('🤖 Generating new quiz questions with Claude...')
-    const questions = await generateQuestionsWithClaude()
+    // Generate new questions with Claude (only if refresh requested)
+    if (refresh) {
+      console.log('🤖 Generating new quiz questions with Claude...')
+      const questions = await generateQuestionsWithClaude()
 
-    // Cache the generated questions
-    await redis.setex(CACHE_KEY, CACHE_TTL, JSON.stringify(questions))
-    console.log(`✅ Cached ${questions.length} questions for ${CACHE_TTL}s`)
+      // Try to cache the generated questions
+      try {
+        await Promise.race([
+          redis.setex(CACHE_KEY, CACHE_TTL, JSON.stringify(questions)),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Redis timeout')), 3000)
+          )
+        ])
+        console.log(`✅ Cached ${questions.length} questions for ${CACHE_TTL}s`)
+      } catch (cacheError) {
+        console.log('⚠️ Failed to cache questions:', cacheError instanceof Error ? cacheError.message : 'Unknown error')
+      }
 
+      return NextResponse.json({
+        questions,
+        source: 'generated',
+      })
+    }
+
+    // No cache and no refresh - use fallback questions (fast)
+    console.log('⚠️ No cache available, using fallback questions')
     return NextResponse.json({
-      questions,
-      source: 'generated',
+      questions: quizQuestions,
+      source: 'fallback',
     })
   } catch (error) {
     console.error('❌ Error generating questions:', error)
