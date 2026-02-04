@@ -64,7 +64,7 @@ curl -H "Authorization: Bearer YOUR_API_KEY" https://api.example.com/data
   for (const testCase of testCases) {
     try {
       const response = await anthropic.messages.countTokens({
-        model: 'claude-sonnet-4-5-20251101',
+        model: 'claude-3-5-sonnet-20241022',
         messages: [{ role: 'user', content: testCase.text }]
       })
 
@@ -145,7 +145,7 @@ async function executeStructuredOutput(): Promise<string> {
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20251101',
+      model: 'claude-3-5-sonnet-20241022',
       max_tokens: 512,
       messages: [{
         role: 'user',
@@ -182,7 +182,7 @@ async function executePromptCaching(): Promise<string> {
   try {
     const start1 = Date.now()
     const response1 = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20251101',
+      model: 'claude-3-5-sonnet-20241022',
       max_tokens: 100,
       system: [
         {
@@ -205,7 +205,7 @@ async function executePromptCaching(): Promise<string> {
 
     const start2 = Date.now()
     const response2 = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20251101',
+      model: 'claude-3-5-sonnet-20241022',
       max_tokens: 100,
       system: [
         {
