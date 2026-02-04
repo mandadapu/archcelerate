@@ -180,7 +180,7 @@ export async function PUT(
             metadata: {
               wordCount: chunk.split(/\s+/).length,
             },
-          },
+          } as any,
         })
 
         if (i < chunks.length - 1) {

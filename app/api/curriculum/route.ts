@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
           metadata: {
             wordCount: chunk.split(/\s+/).length,
           },
-        },
+        } as any,
       })
 
       // Rate limiting
