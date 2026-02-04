@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import Redis from 'ioredis'
-import { quizQuestions } from '@/lib/quiz/questions'
-import { QuizQuestion } from '@/types/diagnosis'
+import { quizQuestions, getQuestionsByDifficulty, selectRandomQuestions } from '@/lib/quiz/questions'
+import { QuizQuestion, DifficultyLevel } from '@/types/diagnosis'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -43,23 +43,34 @@ redis.on('reconnecting', () => {
   console.log('🔄 Redis reconnecting...')
 })
 
-const CACHE_KEY = 'diagnosis:quiz:questions'
 const CACHE_TTL = 60 * 60 * 24 * 7 // 7 days
 
-async function generateQuestionsWithClaude(): Promise<QuizQuestion[]> {
-  const prompt = `Generate 15 multiple-choice questions for a skill diagnosis quiz covering:
-1. LLM Fundamentals (5 questions) - tokens, context windows, temperature, models
-2. Prompt Engineering (3 questions) - techniques, best practices, optimization
-3. RAG Systems (3 questions) - embeddings, retrieval, chunking strategies
-4. AI Agents (2 questions) - tool use, planning, memory
-5. Production Deployment (2 questions) - costs, latency, monitoring
+async function generateQuestionsWithClaude(level: DifficultyLevel = 'intermediate'): Promise<QuizQuestion[]> {
+  const difficultyDescriptions = {
+    beginner: 'Basic concepts, definitions, fundamental terminology. Questions should cover: "What is X?", simple API usage, introductory concepts.',
+    intermediate: 'Best practices, practical patterns, real-world scenarios. Questions should cover: design decisions, optimization, integration patterns.',
+    advanced: 'Architecture, scaling, edge cases, production systems. Questions should cover: complex tradeoffs, performance optimization, enterprise patterns.'
+  }
+
+  const prompt = `Generate 50 ${level.toUpperCase()} difficulty multiple-choice questions for an AI engineering skill diagnosis quiz.
+
+Difficulty Level: ${level.toUpperCase()}
+${difficultyDescriptions[level]}
+
+Distribute questions evenly across these 6 skill areas (8-9 questions each):
+1. LLM Fundamentals - tokens, context windows, temperature, models, prompting basics
+2. Prompt Engineering - techniques, best practices, optimization, few-shot learning
+3. RAG Systems - embeddings, retrieval, chunking strategies, vector databases
+4. AI Agents - tool use, planning, memory, autonomous systems
+5. Multimodal AI - vision-language models, image understanding, multi-input systems
+6. Production AI - costs, latency, monitoring, scaling, deployment
 
 CRITICAL: Your response must be ONLY a JSON array with NO markdown, NO explanations, NO text before or after.
 
-Format (repeat for 15 questions):
+Format (repeat for 50 questions):
 [
   {
-    "id": "llm-1",
+    "id": "llm-1-${level}",
     "type": "single-choice",
     "question": "What is a token in the context of Large Language Models?",
     "options": [
@@ -70,15 +81,15 @@ Format (repeat for 15 questions):
     ],
     "correctAnswers": ["b"],
     "skillArea": "llm_fundamentals",
-    "difficulty": "beginner"
+    "difficulty": "${level}"
   }
 ]
 
-Make questions practical for engineers building AI products. Start your response with [ and end with ]`
+Make questions practical for engineers building AI products. All questions MUST have "difficulty": "${level}". Start your response with [ and end with ]`
 
   const message = await anthropic.messages.create({
     model: 'claude-opus-4-5-20251101',
-    max_tokens: 4096,
+    max_tokens: 8192,
     temperature: 0.7,
     messages: [
       {
@@ -140,12 +151,23 @@ Make questions practical for engineers building AI products. Start your response
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const refresh = searchParams.get('refresh') === 'true'
+  const level = (searchParams.get('level') || 'intermediate') as DifficultyLevel
+
+  // Validate difficulty level
+  if (!['beginner', 'intermediate', 'advanced'].includes(level)) {
+    return NextResponse.json(
+      { error: 'Invalid difficulty level. Must be: beginner, intermediate, or advanced' },
+      { status: 400 }
+    )
+  }
+
+  const CACHE_KEY = `diagnosis:quiz:pool:${level}`
 
   try {
     // Try to get from cache first (unless refresh requested)
     if (!refresh) {
       try {
-        console.log('🔍 Attempting to get cached questions from Redis...')
+        console.log(`🔍 Attempting to get cached ${level} questions from Redis...`)
         // Add timeout wrapper for Redis operations
         const cached = await Promise.race([
           redis.get(CACHE_KEY),
@@ -154,58 +176,69 @@ export async function GET(request: Request) {
           )
         ])
         if (cached) {
-          console.log('✅ Returning cached quiz questions')
+          const pool = JSON.parse(cached as string)
+          const selected = selectRandomQuestions(pool, 25)
+          console.log(`✅ Returning ${selected.length} random questions from ${pool.length} cached ${level} questions`)
           return NextResponse.json({
-            questions: JSON.parse(cached as string),
+            questions: selected,
+            level,
             source: 'cache',
           })
         } else {
-          console.log('ℹ️ No cached questions found in Redis')
+          console.log(`ℹ️ No cached ${level} questions found in Redis`)
         }
       } catch (redisError) {
         console.error('❌ Redis error:', redisError instanceof Error ? redisError.message : 'Unknown error')
         console.error('Redis error stack:', redisError)
-        // Continue to generation
+        // Continue to generation or fallback
       }
     }
 
     // Generate new questions with Claude (only if refresh requested)
     if (refresh) {
-      console.log('🤖 Generating new quiz questions with Claude...')
-      const questions = await generateQuestionsWithClaude()
+      console.log(`🤖 Generating new ${level} quiz questions with Claude...`)
+      const pool = await generateQuestionsWithClaude(level)
 
-      // Try to cache the generated questions
+      // Try to cache the generated question pool
       try {
         await Promise.race([
-          redis.setex(CACHE_KEY, CACHE_TTL, JSON.stringify(questions)),
+          redis.setex(CACHE_KEY, CACHE_TTL, JSON.stringify(pool)),
           new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Redis timeout')), 3000)
           )
         ])
-        console.log(`✅ Cached ${questions.length} questions for ${CACHE_TTL}s`)
+        console.log(`✅ Cached ${pool.length} ${level} questions for ${CACHE_TTL}s`)
       } catch (cacheError) {
         console.log('⚠️ Failed to cache questions:', cacheError instanceof Error ? cacheError.message : 'Unknown error')
       }
 
+      const selected = selectRandomQuestions(pool, 25)
       return NextResponse.json({
-        questions,
+        questions: selected,
+        level,
         source: 'generated',
       })
     }
 
     // No cache and no refresh - use fallback questions (fast)
-    console.log('⚠️ No cache available, using fallback questions')
+    console.log(`⚠️ No cache available, using fallback ${level} questions`)
+    const fallbackPool = getQuestionsByDifficulty(level)
+    const selected = selectRandomQuestions(fallbackPool, 25)
     return NextResponse.json({
-      questions: quizQuestions,
+      questions: selected,
+      level,
       source: 'fallback',
     })
   } catch (error) {
     console.error('❌ Error generating questions:', error)
 
     // Fallback to hardcoded questions
-    console.log('⚠️ Falling back to hardcoded questions')
+    console.log(`⚠️ Falling back to hardcoded ${level} questions`)
+    const fallbackPool = getQuestionsByDifficulty(level)
+    const selected = selectRandomQuestions(fallbackPool, 25)
     return NextResponse.json({
-      questions: quizQuestions,
+      questions: selected,
+      level,
       source: 'fallback',
       error: error instanceof Error ? error.message : 'Unknown error',
     })
@@ -215,7 +248,7 @@ export async function GET(request: Request) {
 // Optional: Admin endpoint to refresh questions
 export async function POST(request: Request) {
   try {
-    const { adminKey } = await request.json()
+    const { adminKey, level } = await request.json()
 
     // Simple admin key check (you should use proper auth)
     if (adminKey !== process.env.ADMIN_REFRESH_KEY) {
@@ -225,15 +258,44 @@ export async function POST(request: Request) {
       )
     }
 
-    // Clear cache and regenerate
-    await redis.del(CACHE_KEY)
-    const questions = await generateQuestionsWithClaude()
-    await redis.setex(CACHE_KEY, CACHE_TTL, JSON.stringify(questions))
+    // If level specified, refresh only that level
+    if (level) {
+      if (!['beginner', 'intermediate', 'advanced'].includes(level)) {
+        return NextResponse.json(
+          { error: 'Invalid difficulty level' },
+          { status: 400 }
+        )
+      }
+
+      const CACHE_KEY = `diagnosis:quiz:pool:${level}`
+      await redis.del(CACHE_KEY)
+      const questions = await generateQuestionsWithClaude(level as DifficultyLevel)
+      await redis.setex(CACHE_KEY, CACHE_TTL, JSON.stringify(questions))
+
+      return NextResponse.json({
+        success: true,
+        level,
+        questionsCount: questions.length,
+        message: `${level} questions refreshed successfully`,
+      })
+    }
+
+    // Refresh all levels
+    const levels: DifficultyLevel[] = ['beginner', 'intermediate', 'advanced']
+    const results = []
+
+    for (const lvl of levels) {
+      const CACHE_KEY = `diagnosis:quiz:pool:${lvl}`
+      await redis.del(CACHE_KEY)
+      const questions = await generateQuestionsWithClaude(lvl)
+      await redis.setex(CACHE_KEY, CACHE_TTL, JSON.stringify(questions))
+      results.push({ level: lvl, count: questions.length })
+    }
 
     return NextResponse.json({
       success: true,
-      questionsCount: questions.length,
-      message: 'Questions refreshed successfully',
+      results,
+      message: 'All difficulty levels refreshed successfully',
     })
   } catch (error) {
     console.error('Error refreshing questions:', error)

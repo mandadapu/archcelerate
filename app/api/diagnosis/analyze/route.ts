@@ -20,10 +20,15 @@ export async function POST(request: Request) {
     }
 
     // Parse request body
-    const { answers, questions }: { answers: QuizAnswer[], questions?: any[] } = await request.json()
+    const { answers, questions, difficultyLevel }: {
+      answers: QuizAnswer[]
+      questions?: any[]
+      difficultyLevel?: 'beginner' | 'intermediate' | 'advanced'
+    } = await request.json()
 
     // Use provided questions or fallback to static ones
     const questionsToUse = questions || quizQuestions
+    const level = difficultyLevel || 'intermediate'
 
     // Validate answers with the questions being used
     const validation = validateQuizAnswers(answers, questionsToUse)
@@ -52,6 +57,7 @@ export async function POST(request: Request) {
         }
       }).filter(Boolean) as any[],
       totalQuestions: questionsToUse.length,
+      difficultyLevel: level,
     }
 
     // Analyze with Claude AI
@@ -63,6 +69,7 @@ export async function POST(request: Request) {
         userId: session.user.id,
       },
       update: {
+        difficultyLevel: level,
         quizAnswers: answers as any,
         quizQuestions: questionsToUse as any,
         skillScores: analysis.skillScores as any,
@@ -71,6 +78,7 @@ export async function POST(request: Request) {
       },
       create: {
         userId: session.user.id,
+        difficultyLevel: level,
         quizAnswers: answers as any,
         quizQuestions: questionsToUse as any,
         skillScores: analysis.skillScores as any,
@@ -90,6 +98,7 @@ export async function POST(request: Request) {
         userId: session.user.id,
         eventType: 'diagnosis.completed',
         eventData: {
+          difficultyLevel: level,
           score: answers.filter(a => a.isCorrect).length,
           total: questionsToUse.length,
           recommended_path: analysis.recommendedPath,
