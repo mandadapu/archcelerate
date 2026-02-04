@@ -131,12 +131,7 @@ export default async function DashboardPage() {
 
         <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              Week 1
-              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
-                NEW
-              </span>
-            </CardTitle>
+            <CardTitle>Week 1</CardTitle>
             <CardDescription>Foundations + Visual Builder</CardDescription>
           </CardHeader>
           <CardContent>
@@ -240,12 +235,7 @@ export default async function DashboardPage() {
         {week5Data?.week && (
           <Card className="border-2 border-indigo-200 bg-gradient-to-br from-indigo-50 to-blue-50">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                Week 5
-                <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
-                  NEW
-                </span>
-              </CardTitle>
+              <CardTitle>Week 5</CardTitle>
               <CardDescription>{week5Data.week.title}</CardDescription>
             </CardHeader>
             <CardContent>
