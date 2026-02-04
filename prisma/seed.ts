@@ -7,7 +7,7 @@ const weekData = [
   {
     weekNumber: 1,
     title: 'LLM Fundamentals (The Engine)',
-    description: 'Understand LLM fundamentals, master API integration, experience visual agent building, and build production-ready chat assistant',
+    description: 'Master foundation LLM capabilities: tokens, models, prompting, API integration, and production-ready patterns',
     objectives: [
       'Understand LLM fundamentals and capabilities',
       'Master API integration patterns',

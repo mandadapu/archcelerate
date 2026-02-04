@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 
 export const metadata: Metadata = {
   title: 'Week 1: LLM Fundamentals (The Engine)',
-  description: 'Learn LLM fundamentals, prompt engineering, API integration, and visual agent builders'
+  description: 'Master foundation LLM capabilities: tokens, models, prompting, API integration, and production patterns'
 }
 
 export default async function Week1Page() {
