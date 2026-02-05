@@ -33,13 +33,13 @@ Think of it like deploying code—except models are larger (4-70GB), slower to s
 
 **Real-world impact**:
 
-**Anthropic's Claude deployment**: Uses blue-green deployment (two identical environments) enabling rollback in <60 seconds. During a 2023 incident, they rolled back a problematic model version in 45 seconds, preventing widespread user impact.
+**Anthropic's Claude deployment**: Uses blue-green deployment (two identical environments) enabling rollback in &lt;60 seconds. During a 2023 incident, they rolled back a problematic model version in 45 seconds, preventing widespread user impact.
 
 **OpenAI's GPT-4**: Uses canary deployment—new models serve 1% of traffic initially. This caught a 12% accuracy regression on coding tasks before it reached 99% of users.
 
 **Stripe's fine-tuned models**: Started with OpenAI hosted, switched to self-hosted on AWS Bedrock for 60% cost savings ($45K → $18K/month) at same latency (850ms → 820ms).
 
-**Hugging Face Inference Endpoints**: Enable teams to deploy fine-tuned Llama models in <10 minutes with automatic scaling, used by 5,000+ companies.
+**Hugging Face Inference Endpoints**: Enable teams to deploy fine-tuned Llama models in &lt;10 minutes with automatic scaling, used by 5,000+ companies.
 
 **The stakes are high**:
 - Bad deployments can break production for hours if no rollback plan exists
@@ -61,7 +61,7 @@ Think of it like deploying code—except models are larger (4-70GB), slower to s
 - Zero infrastructure management
 - Automatic scaling
 - Built-in monitoring
-- Fast deployment (<1 minute)
+- Fast deployment (&lt;1 minute)
 - Easy rollback (just change model ID)
 
 **Cons**:
@@ -70,7 +70,7 @@ Think of it like deploying code—except models are larger (4-70GB), slower to s
 - Latency depends on API availability
 - Limited customization
 
-**When to use**: Early-stage projects, low-medium volume (<1M tokens/day), need fast time-to-market.
+**When to use**: Early-stage projects, low-medium volume (&lt;1M tokens/day), need fast time-to-market.
 
 #### Deploying to OpenAI Fine-Tuned Models
 
@@ -159,7 +159,7 @@ async function handleUserQuery(query: string): Promise<string> {
 ```
 
 **OpenAI deployment metrics**:
-- **Deployment time**: <1 minute (model already hosted)
+- **Deployment time**: &lt;1 minute (model already hosted)
 - **Cold start**: 0ms (always warm)
 - **Latency**: 800-1,200ms (P50-P95)
 - **Cost**: $3.00-12.00 per 1M input tokens (depends on base model)
@@ -235,7 +235,7 @@ async function generateResponse(userMessage: string): Promise<string> {
 ```
 
 **Anthropic deployment metrics**:
-- **Deployment time**: <1 minute
+- **Deployment time**: &lt;1 minute
 - **Latency**: 600-1,000ms (P50-P95, Haiku)
 - **Cost**: $0.80 per 1M input tokens (Haiku), $3.00 (Sonnet)
 - **Throughput**: 10,000+ RPM per customer
@@ -258,7 +258,7 @@ Host the model on your own infrastructure (AWS, GCP, Azure) for maximum control 
 - Slower deployment (15-60 minutes)
 - You handle monitoring and scaling
 
-**When to use**: High volume (>5M tokens/day), strict data privacy requirements, need <500ms latency, have ML engineering team.
+**When to use**: High volume (&gt;5M tokens/day), strict data privacy requirements, need &lt;500ms latency, have ML engineering team.
 
 #### Self-Hosted with HuggingFace Inference Endpoints
 
@@ -704,7 +704,7 @@ async function monitorAndAutoRollback(
     const metrics = await getProductionMetrics(modelName)
 
     // Rollback triggers
-    if (metrics.errorRate > 0.05) {  // 5% error rate
+    if (metrics.errorRate &gt; 0.05) {  // 5% error rate
       await executeRollback({
         modelName,
         environment,
@@ -713,7 +713,7 @@ async function monitorAndAutoRollback(
       await sendAlert('CRITICAL: Auto-rollback executed due to high error rate')
     }
 
-    if (metrics.userSatisfaction < 0.70) {  // <70% satisfaction
+    if (metrics.userSatisfaction < 0.70) {  // &lt;70% satisfaction
       await executeRollback({
         modelName,
         environment,
@@ -722,7 +722,7 @@ async function monitorAndAutoRollback(
       await sendAlert('WARNING: Auto-rollback executed due to low satisfaction')
     }
 
-    if (metrics.avgLatency > 2000) {  // >2s latency
+    if (metrics.avgLatency &gt; 2000) {  // &gt;2s latency
       await executeRollback({
         modelName,
         environment,
@@ -738,9 +738,9 @@ monitorAndAutoRollback('customer-support', 'production')
 ```
 
 **Rollback metrics**:
-- **OpenAI/Anthropic hosted**: <5 seconds (just change model ID)
+- **OpenAI/Anthropic hosted**: &lt;5 seconds (just change model ID)
 - **Self-hosted**: 30-60 seconds (route traffic to previous endpoint)
-- **Auto-rollback triggers**: Error rate >5%, satisfaction <70%, latency >2s
+- **Auto-rollback triggers**: Error rate &gt;5%, satisfaction &lt;70%, latency &gt;2s
 - **Manual rollback**: Available via CLI or dashboard
 
 ---
@@ -839,7 +839,7 @@ class CanaryDeploymentManager {
 
     console.log(`📈 Increased canary traffic to ${deployment.canaryPercentage}%`)
 
-    if (deployment.canaryPercentage >= 100) {
+    if (deployment.canaryPercentage &gt;= 100) {
       await this.completeCanary(modelName)
     }
 
@@ -946,7 +946,7 @@ async function automatedCanaryProgression(modelName: string): Promise<void> {
     }
 
     if (metrics.userSatisfaction < metrics.baselineUserSatisfaction - 0.05) {
-      await canaryManager.abortCanary(modelName, 'User satisfaction dropped >5%')
+      await canaryManager.abortCanary(modelName, 'User satisfaction dropped &gt;5%')
       return
     }
 
@@ -987,7 +987,7 @@ async function getCanaryMetrics(modelName: string): Promise<{
 
 **Canary metrics**:
 - **Time to full rollout**: 2-3 hours (if metrics healthy)
-- **Catch rate**: Detects 70% of issues before affecting >25% of users
+- **Catch rate**: Detects 70% of issues before affecting &gt;25% of users
 - **False positive rate**: 5% (metrics fluctuate, causing unnecessary aborts)
 - **Average abort time**: 30-45 minutes after deployment starts
 
@@ -999,8 +999,8 @@ async function getCanaryMetrics(modelName: string): Promise<{
 
 | Strategy | Deployment Time | Rollback Time | Risk | Cost (1B tokens/month) | Best For |
 |----------|----------------|---------------|------|------------------------|----------|
-| **OpenAI Hosted** | <1 min | <5 sec | Low | $3,000-12,000 | Early stage, low volume |
-| **Anthropic Hosted** | <1 min | <5 sec | Low | $800-3,000 | Medium volume, quality focus |
+| **OpenAI Hosted** | &lt;1 min | &lt;5 sec | Low | $3,000-12,000 | Early stage, low volume |
+| **Anthropic Hosted** | &lt;1 min | &lt;5 sec | Low | $800-3,000 | Medium volume, quality focus |
 | **HF Inference (self-hosted)** | 5-15 min | 30-60 sec | Medium | $450-600 | High volume, cost-sensitive |
 | **AWS Bedrock** | 10-30 min | 30 sec | Medium | $600-1,200 | Enterprise, data privacy |
 | **Kubernetes (DIY)** | 30-60 min | 60-120 sec | High | $300-500 | Very high volume, full control |
@@ -1031,8 +1031,8 @@ async function getCanaryMetrics(modelName: string): Promise<{
 
 ## Key Takeaways
 
-1. **Hosted platforms (OpenAI, Anthropic) are fastest to deploy** (<1 min) but cost 2-8x more at scale
-2. **Self-hosted saves 60-95% at high volume** (>500M tokens/month) but requires ML engineering
+1. **Hosted platforms (OpenAI, Anthropic) are fastest to deploy** (&lt;1 min) but cost 2-8x more at scale
+2. **Self-hosted saves 60-95% at high volume** (&gt;500M tokens/month) but requires ML engineering
 3. **Model registry is essential**—track versions, metrics, and enable one-click rollback
 4. **Canary deployments catch 70% of issues** before affecting most users
 5. **Automated rollback on error rate/satisfaction drop** prevents prolonged outages

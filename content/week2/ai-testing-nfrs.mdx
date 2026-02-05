@@ -1,30 +1,620 @@
 ---
-title: "AI Testing & Non-Functional Requirements"
-description: "Testing, reliability, accuracy, and performance for production AI"
+title: "Testing & Non-Functional Requirements"
+description: "Engineer production telemetry with SLA circuit breakers for latency and cost control"
 estimatedMinutes: 55
 ---
 
 import { CodePlayground } from '@/components/curriculum/CodePlayground'
 
-# AI Testing & Non-Functional Requirements
+# Testing & Non-Functional Requirements: Production Telemetry
 
-Build testable, reliable, accurate, and performant AI systems.
+Establish **real-time monitoring** for Latency-at-Scale and Token-Burn-Rate—and implement **SLA circuit breakers** that automatically fallback to faster models when latency exceeds 2000ms.
 
-## AI-Specific Quality Challenges
+> **Architect Perspective**: NFRs (Non-Functional Requirements) aren't aspirational metrics—they're **engineering contracts** enforced by code. Build telemetry as **real-time dashboards** (not weekly reports) and circuit breakers as **automated guardrails** (not manual interventions).
 
-**Traditional software**:
-- Deterministic: same input → same output
-- Easy to unit test: assert(add(2, 3) === 5)
-- Predictable failures
+## The NFR Engineering Problem
 
-**AI systems**:
-- Probabilistic: same input → different outputs
-- Hard to test: what's the "right" response to "How do I cook pasta?"
-- Failures are subtle (wrong but plausible answers)
+**Reality Check**: Production AI systems fail on NFRs (latency, cost, reliability) far more often than functional requirements.
+
+**Example NFR Failures**:
+```typescript
+// ❌ Latency Violation (SLA breach)
+const startTime = Date.now()
+const response = await callClaude(prompt)  // Takes 8 seconds
+const latency = Date.now() - startTime     // 8000ms
+
+if (latency &gt; 2000) {
+  // Too late! User already abandoned request
+  // SLA: "95% of requests < 2s" → VIOLATED
+}
+
+// ❌ Cost Violation (budget overrun)
+const monthlyTokens = 100_000_000  // 100M tokens
+const cost = (monthlyTokens / 1_000_000) * 15  // Opus pricing
+// Result: $1,500/month → budget was $500/month → VIOLATED
+
+// ❌ Reliability Violation (uptime SLA)
+const uptime = 99.5%  // 99.5% uptime
+// SLA: 99.9% uptime → VIOLATED
+// Downtime: 43 minutes/month vs. 4.3 minutes allowed
+```
+
+**Cost of NFR Violations**:
+```typescript
+// Latency SLA Breaches
+- User abandonment: 53% abandon after 3s load time
+- Revenue impact: $100K/month → $47K/month (53% loss)
+
+// Cost SLA Breaches
+- Budget overrun: $1,500/month actual vs $500/month budget
+- $1,000/month overage = $12K/year wasted
+
+// Reliability SLA Breaches
+- 99.5% vs 99.9% SLA → 38.7 minutes extra downtime/month
+- Enterprise contracts: $10K penalty per SLA breach
+```
+
+**Architectural Mandate**: **NFRs must be monitored in real-time** and **enforced by circuit breakers**, not monitored in weekly reports.
 
 ---
 
-## Testability: How to Test Non-Deterministic Systems
+## Production Telemetry: Real-Time Dashboards
+
+**The Pattern**: Capture **every** LLM request's latency, cost, and success/failure—and expose via real-time dashboard.
+
+### Telemetry Data Model
+
+```typescript
+interface TelemetryEvent {
+  eventId: string
+  timestamp: Date
+  userId: string
+  requestId: string
+
+  // Performance Metrics
+  latency: {
+    total: number         // End-to-end latency (ms)
+    apiCall: number       // LLM API call time (ms)
+    preprocessing: number // Redaction, validation, etc. (ms)
+    postprocessing: number // Output filtering, logging (ms)
+  }
+
+  // Cost Metrics
+  tokens: {
+    input: number
+    output: number
+    total: number
+  }
+  cost: {
+    input: number   // USD
+    output: number  // USD
+    total: number   // USD
+  }
+
+  // Quality Metrics
+  model: string
+  success: boolean
+  errorType?: 'timeout' | 'rate_limit' | 'content_filter' | 'api_error'
+
+  // SLA Tracking
+  slaCompliant: {
+    latency: boolean  // < 2000ms?
+    cost: boolean     // Within budget?
+  }
+}
+
+async function captureTelemetry(
+  startTime: number,
+  requestContext: any,
+  response: any,
+  error?: Error
+): Promise<void> {
+  const now = Date.now()
+  const totalLatency = now - startTime
+
+  const telemetry: TelemetryEvent = {
+    eventId: crypto.randomUUID(),
+    timestamp: new Date(),
+    userId: requestContext.userId,
+    requestId: requestContext.requestId,
+
+    latency: {
+      total: totalLatency,
+      apiCall: requestContext.apiCallTime || 0,
+      preprocessing: requestContext.preprocessingTime || 0,
+      postprocessing: requestContext.postprocessingTime || 0
+    },
+
+    tokens: {
+      input: response?.usage?.input_tokens || 0,
+      output: response?.usage?.output_tokens || 0,
+      total: (response?.usage?.input_tokens || 0) + (response?.usage?.output_tokens || 0)
+    },
+
+    cost: {
+      input: calculateCost(response?.usage?.input_tokens || 0, 'input', requestContext.model),
+      output: calculateCost(response?.usage?.output_tokens || 0, 'output', requestContext.model),
+      total: 0  // Calculated below
+    },
+
+    model: requestContext.model,
+    success: !error,
+    errorType: error ? classifyError(error) : undefined,
+
+    slaCompliant: {
+      latency: totalLatency < 2000,  // SLA: < 2s
+      cost: true  // Calculated against budget
+    }
+  }
+
+  telemetry.cost.total = telemetry.cost.input + telemetry.cost.output
+
+  // Step 1: Write to time-series database (InfluxDB/Prometheus)
+  await writeToTimeSeries(telemetry)
+
+  // Step 2: Update real-time aggregates (Redis)
+  await updateRealtimeMetrics(telemetry)
+
+  // Step 3: Check SLA violations (trigger alerts if needed)
+  await checkSLAViolations(telemetry)
+}
+
+function calculateCost(tokens: number, type: 'input' | 'output', model: string): number {
+  const pricing: Record<string, { input: number; output: number }> = {
+    'claude-opus-4.5': { input: 15, output: 75 },
+    'claude-sonnet-4.5': { input: 3, output: 15 },
+    'claude-haiku-4.5': { input: 0.25, output: 1.25 }
+  }
+
+  const price = pricing[model] || pricing['claude-sonnet-4.5']
+  return (tokens / 1_000_000) * price[type]
+}
+```
+
+### Real-Time Metrics Dashboard
+
+```typescript
+interface RealtimeMetrics {
+  // Last 5 minutes (rolling window)
+  window: {
+    requestsPerSecond: number
+    p50Latency: number
+    p95Latency: number
+    p99Latency: number
+    errorRate: number
+    slaComplianceRate: number
+  }
+
+  // Cost tracking
+  burn: {
+    tokensPerHour: number
+    costPerHour: number
+    projectedMonthlyCost: number
+  }
+
+  // Model distribution
+  models: Record<string, {
+    requests: number
+    avgLatency: number
+    avgCost: number
+  }>
+}
+
+async function getRealtimeMetrics(): Promise<RealtimeMetrics> {
+  // Pull from Redis (updated by captureTelemetry)
+  const metrics = await redis.hgetall('metrics:realtime:5m')
+
+  return {
+    window: {
+      requestsPerSecond: parseFloat(metrics.rps || '0'),
+      p50Latency: parseFloat(metrics.p50 || '0'),
+      p95Latency: parseFloat(metrics.p95 || '0'),
+      p99Latency: parseFloat(metrics.p99 || '0'),
+      errorRate: parseFloat(metrics.errorRate || '0'),
+      slaComplianceRate: parseFloat(metrics.slaCompliance || '0')
+    },
+
+    burn: {
+      tokensPerHour: parseFloat(metrics.tokensPerHour || '0'),
+      costPerHour: parseFloat(metrics.costPerHour || '0'),
+      projectedMonthlyCost: parseFloat(metrics.costPerHour || '0') * 24 * 30
+    },
+
+    models: JSON.parse(metrics.models || '{}')
+  }
+}
+
+/* Example Dashboard Output:
+{
+  "window": {
+    "requestsPerSecond": 12.5,
+    "p50Latency": 850,
+    "p95Latency": 1800,
+    "p99Latency": 2400,   // ⚠️ SLA violation!
+    "errorRate": 0.02,    // 2% error rate
+    "slaComplianceRate": 0.97  // 97% of requests meet SLA
+  },
+  "burn": {
+    "tokensPerHour": 500000,
+    "costPerHour": 2.50,
+    "projectedMonthlyCost": 1800  // $1,800/month projected
+  },
+  "models": {
+    "claude-sonnet-4.5": { "requests": 750, "avgLatency": 1200, "avgCost": 0.0135 },
+    "claude-haiku-4.5": { "requests": 250, "avgLatency": 400, "avgCost": 0.0015 }
+  }
+}
+*/
+```
+
+## SLA Circuit Breakers: Automatic Fallback on Latency Violations
+
+**The Pattern**: If primary model latency exceeds 2000ms, **automatically** fallback to faster model—don't wait for manual intervention.
+
+### Latency-Based Circuit Breaker
+
+```typescript
+interface CircuitBreakerConfig {
+  latencyThreshold: number     // ms - fallback if exceeded
+  errorRateThreshold: number   // 0-1 - fallback if exceeded
+  windowSize: number           // requests to track
+  cooldownPeriod: number       // ms before trying primary again
+}
+
+const SLA_CIRCUIT_BREAKER: CircuitBreakerConfig = {
+  latencyThreshold: 2000,      // 2s SLA
+  errorRateThreshold: 0.05,    // 5% error rate
+  windowSize: 100,             // Last 100 requests
+  cooldownPeriod: 60000        // 1 minute cooldown
+}
+
+class SLACircuitBreaker {
+  private state: 'closed' | 'open' | 'half-open' = 'closed'
+  private recentMetrics: Array<{
+    latency: number
+    success: boolean
+    timestamp: number
+  }> = []
+  private lastStateChange = Date.now()
+
+  async callWithCircuitBreaker(
+    prompt: string,
+    primaryModel: string,
+    fallbackModel: string
+  ): Promise<{
+    response: string
+    model: string
+    latency: number
+    circuitState: string
+  }> {
+    // Step 1: Check circuit state
+    if (this.state === 'open') {
+      // Circuit open → use fallback immediately
+      if (Date.now() - this.lastStateChange < SLA_CIRCUIT_BREAKER.cooldownPeriod) {
+        return await this.callFallback(prompt, fallbackModel)
+      }
+      // Cooldown expired → try half-open
+      this.state = 'half-open'
+    }
+
+    // Step 2: Try primary model
+    try {
+      const startTime = Date.now()
+      const response = await this.callPrimary(prompt, primaryModel)
+      const latency = Date.now() - startTime
+
+      // Step 3: Record metrics
+      this.recordMetric({ latency, success: true, timestamp: Date.now() })
+
+      // Step 4: Check if latency exceeds SLA
+      if (latency &gt; SLA_CIRCUIT_BREAKER.latencyThreshold) {
+        await this.checkAndTripCircuit()
+        // Too late for this request, but circuit will trip for next ones
+      }
+
+      // Step 5: If half-open, close circuit (primary is healthy)
+      if (this.state === 'half-open') {
+        this.state = 'closed'
+        this.lastStateChange = Date.now()
+        console.log('Circuit breaker closed (primary healthy)')
+      }
+
+      return {
+        response: response.content[0].text,
+        model: primaryModel,
+        latency,
+        circuitState: this.state
+      }
+
+    } catch (error) {
+      // Step 6: Error occurred → record and check circuit
+      this.recordMetric({ latency: 0, success: false, timestamp: Date.now() })
+      await this.checkAndTripCircuit()
+
+      // Step 7: Fallback to secondary model
+      return await this.callFallback(prompt, fallbackModel)
+    }
+  }
+
+  private async checkAndTripCircuit(): Promise<void> {
+    // Calculate metrics over window
+    const metrics = this.recentMetrics.slice(-SLA_CIRCUIT_BREAKER.windowSize)
+
+    const avgLatency = metrics.reduce((sum, m) => sum + m.latency, 0) / metrics.length
+    const errorRate = metrics.filter(m => !m.success).length / metrics.length
+
+    // Trip circuit if SLA violated
+    if (
+      avgLatency > SLA_CIRCUIT_BREAKER.latencyThreshold ||
+      errorRate > SLA_CIRCUIT_BREAKER.errorRateThreshold
+    ) {
+      this.state = 'open'
+      this.lastStateChange = Date.now()
+
+      console.error(`Circuit breaker OPENED: avgLatency=${avgLatency}ms, errorRate=${errorRate}`)
+
+      // Alert ops team
+      await sendAlert({
+        type: 'circuit_breaker_open',
+        avgLatency,
+        errorRate,
+        threshold: SLA_CIRCUIT_BREAKER.latencyThreshold
+      })
+    }
+  }
+
+  private recordMetric(metric: { latency: number; success: boolean; timestamp: number }): void {
+    this.recentMetrics.push(metric)
+
+    // Keep only last 1000 metrics
+    if (this.recentMetrics.length &gt; 1000) {
+      this.recentMetrics = this.recentMetrics.slice(-1000)
+    }
+  }
+
+  private async callPrimary(prompt: string, model: string): Promise<any> {
+    return await anthropic.messages.create({
+      model,
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  }
+
+  private async callFallback(
+    prompt: string,
+    model: string
+  ): Promise<{
+    response: string
+    model: string
+    latency: number
+    circuitState: string
+  }> {
+    const startTime = Date.now()
+
+    const response = await anthropic.messages.create({
+      model,
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: prompt }]
+    })
+
+    return {
+      response: response.content[0].text,
+      model,
+      latency: Date.now() - startTime,
+      circuitState: this.state
+    }
+  }
+}
+
+/* Example Usage:
+const circuitBreaker = new SLACircuitBreaker()
+
+// Request 1-100: Primary (Sonnet) responds in 1.5s → Circuit CLOSED
+const result1 = await circuitBreaker.callWithCircuitBreaker(
+  'Summarize this article',
+  'claude-sonnet-4.5',    // Primary (slower, better quality)
+  'claude-haiku-4.5'      // Fallback (faster, lower quality)
+)
+// Result: { model: 'claude-sonnet-4.5', latency: 1500, circuitState: 'closed' }
+
+// Request 101: Primary responds in 2.5s → Exceeds 2s SLA
+const result2 = await circuitBreaker.callWithCircuitBreaker(...)
+// Circuit trips → state = 'open'
+
+// Request 102-200: Circuit OPEN → Automatically uses Haiku
+const result3 = await circuitBreaker.callWithCircuitBreaker(...)
+// Result: { model: 'claude-haiku-4.5', latency: 400, circuitState: 'open' }
+//         ↑ Fallback model used automatically, NO manual intervention needed
+
+// After 1 minute cooldown: Circuit tries primary again (half-open)
+const result4 = await circuitBreaker.callWithCircuitBreaker(...)
+// If primary succeeds with &lt;2s latency → Circuit closes
+// If primary fails again → Circuit stays open
+*/
+```
+
+### Cost-Based Circuit Breaker
+
+```typescript
+interface CostCircuitBreakerConfig {
+  hourlyBudget: number      // USD per hour
+  dailyBudget: number       // USD per day
+  monthlyBudget: number     // USD per month
+}
+
+const COST_SLA: CostCircuitBreakerConfig = {
+  hourlyBudget: 5.0,        // $5/hour max
+  dailyBudget: 100.0,       // $100/day max
+  monthlyBudget: 2000.0     // $2,000/month max
+}
+
+class CostCircuitBreaker {
+  private currentHourSpend = 0
+  private currentDaySpend = 0
+  private currentMonthSpend = 0
+  private lastHourReset = Date.now()
+  private lastDayReset = Date.now()
+  private lastMonthReset = Date.now()
+
+  async callWithCostControl(
+    prompt: string
+  ): Promise<{ response: string; model: string; cost: number }> {
+    // Step 1: Reset counters if time windows expired
+    this.resetWindowsIfNeeded()
+
+    // Step 2: Check if over budget
+    if (this.currentHourSpend &gt;= COST_SLA.hourlyBudget) {
+      // Hourly budget exceeded → refuse request (or use free local model)
+      throw new Error(`Hourly budget exceeded: $${this.currentHourSpend.toFixed(2)}/$${COST_SLA.hourlyBudget}`)
+    }
+
+    if (this.currentDaySpend &gt;= COST_SLA.dailyBudget) {
+      throw new Error(`Daily budget exceeded: $${this.currentDaySpend.toFixed(2)}/$${COST_SLA.dailyBudget}`)
+    }
+
+    // Step 3: Select model based on remaining budget
+    const remainingHourlyBudget = COST_SLA.hourlyBudget - this.currentHourSpend
+    const model = this.selectModelByBudget(remainingHourlyBudget)
+
+    // Step 4: Make request
+    const response = await anthropic.messages.create({
+      model,
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: prompt }]
+    })
+
+    // Step 5: Track cost
+    const cost = calculateCost(
+      response.usage.input_tokens,
+      'input',
+      model
+    ) + calculateCost(
+      response.usage.output_tokens,
+      'output',
+      model
+    )
+
+    this.currentHourSpend += cost
+    this.currentDaySpend += cost
+    this.currentMonthSpend += cost
+
+    return {
+      response: response.content[0].text,
+      model,
+      cost
+    }
+  }
+
+  private selectModelByBudget(remainingBudget: number): string {
+    // Dynamic model selection based on budget
+    if (remainingBudget &gt; 0.02) {
+      return 'claude-sonnet-4.5'  // Normal budget → use Sonnet
+    } else if (remainingBudget &gt; 0.002) {
+      return 'claude-haiku-4.5'   // Low budget → use Haiku
+    } else {
+      throw new Error('Insufficient budget for request')
+    }
+  }
+
+  private resetWindowsIfNeeded(): void {
+    const now = Date.now()
+
+    // Reset hourly counter
+    if (now - this.lastHourReset &gt; 3600000) {
+      this.currentHourSpend = 0
+      this.lastHourReset = now
+    }
+
+    // Reset daily counter
+    if (now - this.lastDayReset &gt; 86400000) {
+      this.currentDaySpend = 0
+      this.lastDayReset = now
+    }
+
+    // Reset monthly counter (30 days)
+    if (now - this.lastMonthReset &gt; 2592000000) {
+      this.currentMonthSpend = 0
+      this.lastMonthReset = now
+    }
+  }
+}
+```
+
+## Key Takeaways
+
+**Production Telemetry Requirements**:
+- **Capture every request**: latency, cost, tokens, success/failure
+- **Real-time dashboards**: 5-minute rolling windows, not daily reports
+- **SLA tracking**: % of requests meeting latency/cost thresholds
+- **Alert on violations**: Immediate notification when SLA breached
+
+**SLA Circuit Breaker Pattern**:
+```typescript
+// The Contract:
+if (avgLatency &gt; 2000ms || errorRate &gt; 5%) {
+  state = 'open'
+  model = fallbackModel  // Automatic, no manual intervention
+}
+
+// Result:
+- 99% of requests meet 2s SLA (vs 85% without circuit breaker)
+- Users get faster responses (400ms Haiku vs 2.5s Sonnet)
+- Cost reduces during fallback (Haiku is 12x cheaper)
+```
+
+**Cost Circuit Breaker Pattern**:
+```typescript
+// The Contract:
+if (hourlySpend > $5) {
+  if (remainingBudget > $0.02) {
+    model = 'claude-sonnet-4.5'  // Normal quality
+  } else {
+    model = 'claude-haiku-4.5'   // Budget mode
+  }
+}
+
+// Result:
+- Monthly cost capped at $2,000 (vs unbounded)
+- Graceful degradation to cheaper models
+- No service disruption, just quality trade-off
+```
+
+**Telemetry Cost Analysis**:
+```typescript
+// Infrastructure
+- InfluxDB/Prometheus: $50/month
+- Redis for real-time aggregates: $20/month
+- Dashboard (Grafana): $0 (self-hosted)
+- Total: $70/month
+
+// ROI:
+- Prevents SLA breaches → avoids $10K penalties
+- Detects cost overruns → saves $1,000/month
+- ROI: (10,000 + 1,000) / 70 = 157:1
+```
+
+**The Architect's Responsibility**:
+You **own** NFR enforcement. If your service violates latency SLA and you didn't implement circuit breakers, **you're responsible** for the penalty. If costs spiral and you didn't implement cost controls, **you're responsible** for the budget overrun.
+
+## Further Reading
+
+- **Prometheus**: Time-series database for metrics
+- **Grafana**: Real-time dashboards
+- **Circuit Breaker Pattern**: Martin Fowler's classic pattern
+- **SLA Best Practices**: Google SRE Book
+
+## Week 2 Summary
+
+All 5 concepts completed:
+1. **[AI Governance & Shielding Frameworks](./governance-frameworks.mdx)**: Safety Proxy with 3-layer defense
+2. **[AI Governance Foundations](./governance-foundations.mdx)**: System prompts as policy with semantic tracing
+3. **[Responsible AI](./responsible-ai.mdx)**: Bias detection pipelines and self-correction
+4. **[Domain Compliance](./compliance-patterns.mdx)**: PII/PHI redaction and Local-First inference
+5. **[Testing & NFRs](./ai-testing-nfrs.mdx)**: Production telemetry and SLA circuit breakers (this page)
+
+---
+
+## Legacy Testing Content
 
 ### 1. Unit Tests for Deterministic Components
 
@@ -109,7 +699,7 @@ describe('LLM Integration', () => {
 
     // Should have backed off due to rate limits
     expect(elapsed).toBeGreaterThan(1000)  // At least 1 second
-    expect(responses.every(r => r.text.length > 0)).toBe(true)
+    expect(responses.every(r => r.text.length &gt; 0)).toBe(true)
   })
 })
 ```
@@ -250,7 +840,7 @@ class RegressionSuite {
           goldenOutput,
           newOutput: newOutput.text,
           similarity,
-          passed: similarity > 0.85  // 85% similarity threshold
+          passed: similarity &gt; 0.85  // 85% similarity threshold
         }
       })
     )
@@ -337,7 +927,7 @@ class CircuitBreaker {
       this.failures++
       this.lastFailureTime = new Date()
 
-      if (this.failures >= this.threshold) {
+      if (this.failures &gt;= this.threshold) {
         this.state = 'open'
       }
 
@@ -456,7 +1046,7 @@ class ErrorBudget {
   }
 
   get budgetExhausted(): boolean {
-    return this.errorRate >= this.budgetPercentage
+    return this.errorRate &gt;= this.budgetPercentage
   }
 
   private reset() {
@@ -579,7 +1169,7 @@ Rate the model answer on a scale of 1-5:
 
 Provide your rating and brief reasoning in JSON:
 {
-  "score": <1-5>,
+  "score": &lt;1-5>,
   "reasoning": "<brief explanation>"
 }`
 
@@ -608,7 +1198,7 @@ async function batchEvaluate(testCases: TestCase[]) {
       excellent: results.filter(r => r.score === 5).length,
       good: results.filter(r => r.score === 4).length,
       acceptable: results.filter(r => r.score === 3).length,
-      poor: results.filter(r => r.score <= 2).length
+      poor: results.filter(r => r.score &lt;= 2).length
     },
     results
   }
@@ -677,7 +1267,7 @@ class LatencyTracker {
     this.measurements.push(latencyMs)
 
     // Keep only last 1000 measurements
-    if (this.measurements.length > 1000) {
+    if (this.measurements.length &gt; 1000) {
       this.measurements.shift()
     }
   }
@@ -718,7 +1308,7 @@ async function callLLMWithTracking(prompt: string) {
     latencyTracker.record(latency)
 
     // Alert if p99 latency exceeds SLA
-    if (latencyTracker.p99 > 5000) {
+    if (latencyTracker.p99 &gt; 5000) {
       await alertOncall('P99 latency exceeded 5s SLA')
     }
 
@@ -744,7 +1334,7 @@ class BatchProcessor {
     return new Promise((resolve) => {
       this.queue.push({ prompt, resolve })
 
-      if (this.queue.length >= this.batchSize) {
+      if (this.queue.length &gt;= this.batchSize) {
         this.flush()
       } else {
         setTimeout(() => this.flush(), this.maxWaitMs)
@@ -831,12 +1421,12 @@ class CostTracker {
     const metrics = this.getMetrics()
     const recommendations = []
 
-    if (metrics.costPerRequest > 0.10) {
+    if (metrics.costPerRequest &gt; 0.10) {
       recommendations.push('Consider using a cheaper model (Haiku vs Sonnet)')
     }
 
     const inputOutputRatio = metrics.outputTokens / metrics.inputTokens
-    if (inputOutputRatio > 2) {
+    if (inputOutputRatio &gt; 2) {
       recommendations.push('High output/input ratio - consider reducing max_tokens')
     }
 

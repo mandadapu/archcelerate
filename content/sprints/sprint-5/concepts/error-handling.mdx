@@ -149,7 +149,7 @@ class RateLimitHandler {
     }
 
     // Check if at limit
-    if (this.requestCount >= requestsPerMinute) {
+    if (this.requestCount &gt;= requestsPerMinute) {
       const waitTime = this.resetTime - now
       console.log(`Rate limit prevention: waiting ${waitTime}ms`)
       await new Promise(resolve => setTimeout(resolve, waitTime))
@@ -306,7 +306,7 @@ class TokenLimitHandler {
   ): string {
     const estimatedTokens = this.estimateTokens(text)
 
-    if (estimatedTokens <= maxTokens) {
+    if (estimatedTokens &lt;= maxTokens) {
       return text
     }
 
@@ -408,7 +408,7 @@ class OverloadHandler {
     attempt: number,
     maxRetries: number = 5
   ): Promise<void> {
-    if (attempt >= maxRetries) {
+    if (attempt &gt;= maxRetries) {
       throw new Error('Service overloaded after max retries')
     }
 
@@ -529,7 +529,7 @@ async function resilientAICall(prompt: string): Promise<string> {
       }
 
       // Retry on server errors
-      if (error.status >= 500 && error.status < 600) {
+      if (error.status &gt;= 500 && error.status < 600) {
         return true
       }
 
@@ -591,7 +591,7 @@ class AdaptiveRetryStrategy extends RetryStrategy {
       (this.metrics.successCount + this.metrics.failureCount || 1)
 
     // If high error rate or long time since success, be more conservative
-    if (errorRate > 0.5 || timeSinceLastSuccess > 300000) {
+    if (errorRate &gt; 0.5 || timeSinceLastSuccess &gt; 300000) {
       return {
         ...baseConfig,
         initialDelayMs: baseConfig.initialDelayMs * 2,
@@ -616,14 +616,14 @@ class AdaptiveRetryStrategy extends RetryStrategy {
       (this.metrics.successCount + this.metrics.failureCount || 1)
 
     // If error rate very high, fail faster
-    if (errorRate > 0.8 && attempt > 2) {
+    if (errorRate &gt; 0.8 && attempt &gt; 2) {
       return false
     }
 
     // Standard retry logic
     return error.status === 429 ||
            error.status === 529 ||
-           (error.status >= 500 && error.status < 600)
+           (error.status &gt;= 500 && error.status < 600)
   }
 
   private recordSuccess(latencyMs: number): void {
@@ -771,7 +771,7 @@ class CircuitBreaker {
       this.successCount++
 
       // If enough successes in half-open, close circuit
-      if (this.successCount >= this.config.successThreshold) {
+      if (this.successCount &gt;= this.config.successThreshold) {
         this.state = CircuitState.CLOSED
         this.successCount = 0
         console.log(`Circuit breaker [${this.name}]: CLOSED`)
@@ -793,8 +793,8 @@ class CircuitBreaker {
 
     // Check if should open circuit
     if (
-      this.requestCount >= this.config.volumeThreshold &&
-      this.failureCount >= this.config.failureThreshold
+      this.requestCount &gt;= this.config.volumeThreshold &&
+      this.failureCount &gt;= this.config.failureThreshold
     ) {
       this.state = CircuitState.OPEN
       console.log(`Circuit breaker [${this.name}]: OPENED (${this.failureCount} failures)`)
@@ -803,7 +803,7 @@ class CircuitBreaker {
 
   private shouldAttemptReset(): boolean {
     if (!this.lastFailureTime) return false
-    return Date.now() - this.lastFailureTime >= this.config.timeout
+    return Date.now() - this.lastFailureTime &gt;= this.config.timeout
   }
 
   getState(): CircuitState {
@@ -1042,7 +1042,7 @@ class GracefulDegradation {
       this.errorCounts.set(feature, errorCount)
 
       // Disable feature if error threshold exceeded
-      if (errorCount >= this.ERROR_THRESHOLD) {
+      if (errorCount &gt;= this.ERROR_THRESHOLD) {
         this.features[feature] = false
         console.error(`Feature ${feature} disabled after ${errorCount} errors`)
 
@@ -1164,7 +1164,7 @@ class ErrorClassifier {
     }
 
     // Server errors
-    if (status >= 500 && status < 600) {
+    if (status &gt;= 500 && status < 600) {
       return {
         category: 'transient',
         recoverable: true,

@@ -1,15 +1,16 @@
 'use client'
 
 import { useState } from 'react'
-import Image from 'next/image'
 
 const projects = [
   {
     id: 'rag-qa-system',
     title: 'RAG Q&A System',
+    week: 3,
     description: 'Build document search with Claude and vector databases',
     tags: ['Anthropic', 'Pinecone', 'LangChain'],
-    outcome: 'Production RAG with 90%+ accuracy',
+    outcome: 'Target 90%+ accuracy with production RAG',
+    milestone: 'Master basic retrieval using Pinecone and LangChain',
     architecture: `User UI (Next.js)
        ↓
   API Route ──→ Claude AI
@@ -44,9 +45,11 @@ const stream = await anthropic.messages.create({
   {
     id: 'chatbot-platform',
     title: 'AI Chatbot with Tools',
+    week: 4,
     description: 'Function calling, API integrations, and real-time responses',
     tags: ['Claude', 'Function Calling', 'Next.js'],
-    outcome: 'Interactive chatbot with live data',
+    outcome: 'Interactive live data with function calling',
+    milestone: 'Transition from chat to Function Calling with Next.js integration',
     architecture: `User ↔ Chat UI ↔ Claude (Function Calling)
                        ↕
                   Tool Registry ↔ External APIs`,
@@ -80,9 +83,11 @@ const response = await anthropic.messages.create({
   {
     id: 'agent-workflow',
     title: 'Agent Workflow System',
+    week: 5,
     description: 'Multi-step autonomous agents that reason and act',
     tags: ['Agents', 'LangGraph', 'TypeScript'],
     outcome: 'Autonomous task completion',
+    milestone: 'Build multi-step autonomous agents with LangGraph',
     architecture: `Task Input → Planner Agent → [Worker Agents]
                          ↓
                   LangGraph State Machine
@@ -116,9 +121,11 @@ const workflow = graph.compile();`
   {
     id: 'ai-code-reviewer',
     title: 'Fine-tuned Model',
+    week: 10,
     description: 'Custom AI trained for your specific domain and use case',
     tags: ['Fine-tuning', 'Anthropic', 'Datasets'],
     outcome: 'Domain-specific AI performance',
+    milestone: 'Domain-specific training for high-performance use cases',
     architecture: `Training Data → Preprocessing → Fine-tuning API
                                           ↓
                                     Custom Model
@@ -155,9 +162,11 @@ const response = await anthropic.messages.create({
   {
     id: 'content-generator',
     title: 'AI API Product',
+    week: 7,
     description: 'Ship production API with auth, rate limiting, and monitoring',
     tags: ['API', 'Auth', 'Monitoring'],
-    outcome: 'Production-ready AI service',
+    outcome: 'HIPAA/SOC2 compliance with 99.97% uptime',
+    milestone: 'Master Auth, Rate Limiting, and Monitoring as a service',
     architecture: `Client → API Gateway → Rate Limiter
                          ↓
                     Auth → Claude API
@@ -193,9 +202,11 @@ export async function POST(req: Request) {
   {
     id: 'data-analyst',
     title: 'Multi-Agent Collaboration',
+    week: 11,
     description: 'Coordinated AI workflows with specialized agents',
     tags: ['Multi-Agent', 'Orchestration', 'Python'],
     outcome: 'Complex task automation',
+    milestone: 'Coordinated workflows with specialized agents (Researcher + Writer)',
     architecture: `Coordinator Agent
          ↓
 [Researcher] → [Analyst] → [Writer] → [Reviewer]
@@ -229,46 +240,6 @@ const result = await coordinator.run({
   sharedMemory
 });`
   },
-  {
-    id: 'portfolio-deployment',
-    title: 'Portfolio Deployment',
-    description: 'Ship all 7 projects to production with CI/CD',
-    tags: ['Vercel', 'GitHub Actions', 'Docker'],
-    outcome: 'Full-stack portfolio live',
-    architecture: `GitHub Repo → GitHub Actions → Build → Tests
-                                           ↓
-                                      Deploy
-                                           ↓
-                                  [Vercel + Docker]
-                                           ↓
-                                   Production URLs`,
-    techStack: {
-      cicd: 'GitHub Actions workflows',
-      hosting: 'Vercel (frontend), Railway (backend)',
-      containers: 'Docker, docker-compose',
-      monitoring: 'Vercel Analytics, LogDrain',
-      domain: 'Custom domain with SSL'
-    },
-    implementation: [
-      'Set up monorepo structure for all 7 projects',
-      'Create CI/CD pipelines (lint, test, build)',
-      'Configure deployment environments (staging, prod)',
-      'Add health checks and monitoring',
-      'Set up custom domains for each project',
-      'Implement automated rollback on failures'
-    ],
-    codeSnippet: `# GitHub Actions workflow
-name: Deploy Portfolio
-on: [push]
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - run: npm test
-      - run: npm run build
-      - uses: vercel/action@v20`
-  }
 ]
 
 function getEmojiForProject(projectId: string): string {
@@ -279,9 +250,26 @@ function getEmojiForProject(projectId: string): string {
     'ai-code-reviewer': '🔍',
     'content-generator': '✨',
     'data-analyst': '📊',
-    'portfolio-deployment': '🚀',
   }
   return emojiMap[projectId] || '🎯'
+}
+
+function getWeekColor(weekNumber: number): { bg: string; gradient: string } {
+  const colorMap: Record<number, { bg: string; gradient: string }> = {
+    1: { bg: 'bg-purple-600', gradient: 'from-purple-600 to-pink-600' },
+    2: { bg: 'bg-green-600', gradient: 'from-green-600 to-emerald-600' },
+    3: { bg: 'bg-blue-600', gradient: 'from-blue-600 to-sky-600' },
+    4: { bg: 'bg-orange-600', gradient: 'from-orange-600 to-amber-600' },
+    5: { bg: 'bg-indigo-600', gradient: 'from-indigo-600 to-blue-600' },
+    6: { bg: 'bg-teal-600', gradient: 'from-teal-600 to-cyan-600' },
+    7: { bg: 'bg-amber-600', gradient: 'from-amber-600 to-yellow-600' },
+    8: { bg: 'bg-pink-600', gradient: 'from-pink-600 to-rose-600' },
+    9: { bg: 'bg-red-600', gradient: 'from-red-600 to-orange-600' },
+    10: { bg: 'bg-sky-600', gradient: 'from-sky-600 to-blue-600' },
+    11: { bg: 'bg-emerald-600', gradient: 'from-emerald-600 to-green-600' },
+    12: { bg: 'bg-slate-600', gradient: 'from-slate-600 to-gray-600' },
+  }
+  return colorMap[weekNumber] || { bg: 'bg-purple-600', gradient: 'from-purple-600 to-cyan-500' }
 }
 
 export function ProjectShowcase() {
@@ -292,19 +280,19 @@ export function ProjectShowcase() {
   }
 
   return (
-    <section className="py-24 bg-white" id="projects">
+    <section className="py-24 bg-gray-50" id="projects">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-            What You'll Build
+        <div className="mb-16">
+          <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+            Milestone Projects
           </h2>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            7 production-ready AI projects with full technical details
+          <p className="text-xl text-gray-600 max-w-3xl">
+            Production-grade systems that validate your skills and get you hired at the architect level.
           </p>
         </div>
 
-        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3 mb-8">
-          {projects.slice(0, 6).map((project, index) => (
+        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+          {projects.map((project, index) => (
             <ProjectCard
               key={index}
               project={project}
@@ -312,17 +300,6 @@ export function ProjectShowcase() {
               onToggle={() => toggleExpand(index)}
             />
           ))}
-        </div>
-
-        {/* Last project centered */}
-        <div className="flex justify-center">
-          <div className="w-full md:w-1/2 lg:w-1/3">
-            <ProjectCard
-              project={projects[6]}
-              isExpanded={expandedIndex === 6}
-              onToggle={() => toggleExpand(6)}
-            />
-          </div>
         </div>
       </div>
     </section>
@@ -336,36 +313,39 @@ interface ProjectCardProps {
 }
 
 function ProjectCard({ project, isExpanded, onToggle }: ProjectCardProps) {
+  const weekColors = getWeekColor(project.week)
+
   return (
-    <div className="group relative bg-white rounded-2xl border border-gray-200 overflow-hidden transition-all duration-300 hover:shadow-xl hover:border-transparent">
-      <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
-
-      {/* Project Card Image with Emoji Overlay */}
-      <div className="aspect-video relative overflow-hidden">
-        <Image
-          src={`/project-cards/${project.id}.png`}
-          alt={project.title}
-          fill
-          className="object-cover"
-          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-        />
-        {/* Emoji overlay */}
-        <div className="absolute inset-0 flex items-center justify-center text-8xl">
-          {getEmojiForProject(project.id)}
-        </div>
-      </div>
-
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden transition-all duration-300 hover:shadow-lg">
       {/* Content */}
-      <div className="p-6">
-        <h3 className="text-xl font-bold text-gray-900 mb-2">
-          {project.title}
-        </h3>
-        <p className="text-sm text-gray-600 mb-4">
+      <div className="p-8">
+        {/* Icon with gradient background - similar to Command Center */}
+        <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${weekColors.gradient} flex items-center justify-center mb-6`}>
+          <span className="text-3xl">{getEmojiForProject(project.id)}</span>
+        </div>
+
+        {/* Title and Week Badge */}
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-2xl font-bold text-gray-900">
+            {project.title}
+          </h3>
+          <span className={`px-3 py-1 bg-gradient-to-r ${weekColors.gradient} text-white text-xs font-bold rounded-full whitespace-nowrap`}>
+            Week {project.week}
+          </span>
+        </div>
+
+        {/* Description */}
+        <p className="text-base text-gray-600 mb-3">
           {project.description}
         </p>
 
+        {/* Milestone */}
+        <p className="text-sm text-gray-500 italic mb-6">
+          {project.milestone}
+        </p>
+
         {/* Tags */}
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div className="flex flex-wrap gap-2 mb-6">
           {project.tags.map((tag, i) => (
             <span
               key={i}
@@ -376,27 +356,27 @@ function ProjectCard({ project, isExpanded, onToggle }: ProjectCardProps) {
           ))}
         </div>
 
-        {/* Outcome */}
-        <div className="flex items-center text-sm font-medium text-purple-600 mb-4">
-          <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+        {/* Outcome with checkmark */}
+        <div className="flex items-center text-base font-medium text-purple-600 mb-6">
+          <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
           </svg>
           {project.outcome}
         </div>
 
-        {/* Expand/Collapse button */}
+        {/* Learn more link - similar to Command Center style */}
         <button
           onClick={onToggle}
-          className="w-full py-2 text-sm font-medium text-purple-600 hover:text-purple-700 flex items-center justify-center gap-2 transition-colors"
+          className="text-base font-medium text-purple-600 hover:text-purple-700 flex items-center gap-2 transition-colors group"
         >
           {isExpanded ? 'Show less' : 'Learn more'}
           <svg
-            className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+            className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : 'group-hover:translate-x-1'}`}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={isExpanded ? "M19 9l-7 7-7-7" : "M9 5l7 7-7 7"} />
           </svg>
         </button>
 

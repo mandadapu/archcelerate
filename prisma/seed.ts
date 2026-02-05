@@ -61,19 +61,20 @@ const weekData = [
   {
     weekNumber: 2,
     title: 'AI Safety & Governance (The Guardrails)',
-    description: 'Build production AI with proper governance, fairness, compliance, and safety controls',
+    description: 'Building the "Hardened Shell" around your engine to ensure enterprise compliance and adversarial resilience',
     objectives: [
-      'Implement AI governance and content moderation',
-      'Build fair, transparent, and explainable AI systems',
-      'Apply compliance patterns for regulated industries',
-      'Test and validate AI systems with NFRs'
+      'Engineer the Safety Proxy pattern for input/output sanitization and jailbreak detection',
+      'Implement immutable system prompts as technical policy with semantic tracing for auditability',
+      'Build bias detection pipelines and self-correction mechanisms for responsible AI',
+      'Deploy high-speed PII/PHI redaction with data residency patterns for domain compliance',
+      'Establish production telemetry with SLA circuit breakers for non-functional requirement validation'
     ],
     concepts: [
-      { slug: 'governance-frameworks', title: 'AI Governance Frameworks', minutes: 45 },
-      { slug: 'governance-foundations', title: 'AI Governance Foundations', minutes: 35 },
-      { slug: 'responsible-ai', title: 'Responsible AI: Fairness, Transparency & Explainability', minutes: 60 },
-      { slug: 'compliance-patterns', title: 'Domain Compliance Patterns', minutes: 50 },
-      { slug: 'ai-testing-nfrs', title: 'AI Testing & Non-Functional Requirements', minutes: 55 }
+      { slug: 'governance-frameworks', title: 'AI Governance & Shielding Frameworks: Safety Proxy Implementation', minutes: 45 },
+      { slug: 'governance-foundations', title: 'AI Governance Foundations: System Prompts as Policy', minutes: 35 },
+      { slug: 'responsible-ai', title: 'Responsible AI: Bias Detection, XAI & Self-Correction', minutes: 60 },
+      { slug: 'compliance-patterns', title: 'Domain Compliance & Redaction: PII/PHI Protection', minutes: 50 },
+      { slug: 'ai-testing-nfrs', title: 'Testing & Non-Functional Requirements: Production Telemetry', minutes: 55 }
     ],
     lab: {
       slug: 'governance-compliance-lab',
@@ -209,21 +210,23 @@ const weekData = [
   {
     weekNumber: 5,
     title: 'Agentic Frameworks & Multi-Agent Orchestration (The Logic)',
-    description: 'Build systems that reason, plan, and execute using multi-agent architectures and reliability patterns',
+    description: 'Designing systems that reason, plan, and execute using multi-agent architectures and stateful reliability patterns',
     objectives: [
-      'Master the three core agent architectures (Sequential, Supervisor, Collaborative)',
-      'Implement reliability patterns (Reflection, Planning, Human-in-the-Loop)',
-      'Choose the right framework (LangGraph, CrewAI, AutoGen) based on requirements',
-      'Build production-grade multi-agent systems with state management',
-      'Implement error routing and self-healing workflows',
-      'Use the Model Context Protocol (MCP) for unified tool integration',
-      'Achieve "zero-waste" execution with cycle detection and token trimming',
-      'Deploy multi-agent systems with checkpointing and observability'
+      'Engineer task decomposition with Planner agents that break complex intents into executable sub-tasks',
+      'Implement stateful orchestration with LangGraph to manage shared state across agent hand-offs',
+      'Deploy Supervisor pattern with Manager agents that delegate, validate, and orchestrate specialist workers',
+      'Build collaborative swarms using Blackboard architecture for parallel problem-solving',
+      'Architect self-reflection loops where agents critique their own work before submission',
+      'Design Human-in-the-Loop interrupt points for high-stakes actions requiring human approval',
+      'Implement database-backed state checkpointing for resumable agent threads across crashes',
+      'Build time-travel debugging capability to rewind agent state and diagnose reasoning failures'
     ],
     concepts: [
-      { slug: 'agent-architectures', title: 'Agent Architectures', description: 'Sequential, Supervisor, and Collaborative patterns.', minutes: 45 },
-      { slug: 'reliability-patterns', title: 'Reliability Patterns', description: 'Reflection, planning, and self-healing.', minutes: 50 },
-      { slug: 'framework-comparison', title: 'Framework Comparison', description: 'LangGraph, CrewAI, and AutoGen evaluation.', minutes: 40 }
+      { slug: 'agentic-architectures', title: 'Agentic Architectures & Planning: ReAct and Task Decomposition', minutes: 45 },
+      { slug: 'supervisor-patterns', title: 'Supervisor & Collaborative Patterns: Manager Agents and Swarms', minutes: 40 },
+      { slug: 'reliability-patterns', title: 'Reliability Patterns: Self-Reflection and HITL', minutes: 50 },
+      { slug: 'state-checkpointing', title: 'Persistence & State Checkpointing: Resumable Agent Threads', minutes: 45 },
+      { slug: 'framework-selection', title: 'Framework Selection: LangGraph vs. CrewAI Performance', minutes: 35 }
     ],
     lab: {
       slug: 'newsletter-team',
@@ -402,44 +405,59 @@ const weekData = [
   },
   {
     weekNumber: 8,
-    title: 'Portfolio + Launch',
-    description: 'Build your portfolio and launch your AI products to the world',
-    objectives: ['Prepare for AI engineering interviews', 'Create portfolio site', 'Launch products', 'Market your work'],
+    title: 'Portfolio + Launch (The Synthesis)',
+    description: 'Consolidating 7 weeks of engineering into a production-ready pilot and a high-impact architectural portfolio',
+    objectives: [
+      'Design multi-tenant vertical AI platforms with strict data isolation for industry-specific workflows',
+      'Stress-test production systems with red-team adversarial attacks and 10x load spike simulations',
+      'Engineer automated evaluation suites with golden datasets and regression prevention leaderboards',
+      'Author System Design Documents justifying tech stack decisions against enterprise constraints'
+    ],
     concepts: [
-      { slug: 'interview-preparation', title: 'AI Engineering Interview Preparation', minutes: 90 },
-      { slug: 'portfolio-building', title: 'Building Your AI Engineer Portfolio', minutes: 35 },
-      { slug: 'product-launch', title: 'Product Launch Strategy', minutes: 40 },
-      { slug: 'marketing-fundamentals', title: 'Marketing for Developers', minutes: 30 }
+      { slug: 'vertical-ai-platforms', title: 'Architecting Vertical AI Platforms: Multi-Tenant Design', minutes: 45 },
+      { slug: 'production-stress-test', title: 'The Production Stress-Test: Red-Team & Load Validation', minutes: 50 },
+      { slug: 'evaluation-suite', title: 'Engineering the Evaluation Suite: Golden Datasets', minutes: 40 },
+      { slug: 'architectural-storytelling', title: 'Architectural Storytelling: System Design Documents', minutes: 35 }
     ],
     lab: {
-      slug: 'portfolio-site',
-      title: 'Build Your Portfolio Site',
-      description: 'Create a professional portfolio showcasing your AI projects',
+      slug: 'stress-test-suite',
+      title: 'Production Stress-Test Suite',
+      description: 'Subject your capstone project to adversarial attacks, load spikes, and automated evaluation to prove production-readiness',
       exercises: [
-        { number: 1, title: 'Design portfolio structure', type: 'design' },
-        { number: 2, title: 'Build project showcase pages', type: 'coding' },
-        { number: 3, title: 'Add case studies and write-ups', type: 'writing' },
-        { number: 4, title: 'Deploy and optimize for SEO', type: 'deployment' }
+        { number: 1, title: 'Implement red-team adversarial test suite (prompt injections, recursive loops)', type: 'testing' },
+        { number: 2, title: 'Build load testing harness with 10x concurrent user spike simulation', type: 'coding' },
+        { number: 3, title: 'Create golden dataset with 100+ edge case queries', type: 'implementation' },
+        { number: 4, title: 'Deploy automated evaluation leaderboard tracking regressions', type: 'coding' },
+        { number: 5, title: 'Generate production telemetry report with sustained throughput metrics', type: 'testing' }
       ]
     },
     project: {
-      slug: 'launch-campaign',
-      title: 'Product Launch Campaign',
-      description: 'Launch your capstone project with a comprehensive marketing campaign',
+      slug: 'architectural-portfolio',
+      title: 'Architectural Portfolio & System Design Document',
+      description: 'Package 7 weeks of engineering into a production-ready pilot with comprehensive System Design Document proving architectural authority',
       requirements: [
-        'Landing page for your product',
-        'Demo video or interactive demo',
-        'Blog post or case study',
-        'Social media presence',
-        'Product Hunt or similar launch'
+        'Multi-tenant architecture document with data isolation design',
+        'Red-team test results report (100% adversarial attack prevention)',
+        'Load test report with sustained throughput under 10x spike',
+        'Evaluation leaderboard with 100+ edge cases and regression tracking',
+        'System Design Document (SDD) justifying vector DB, agent orchestration, and model selection',
+        'Skill Diagnosis Brief showing verified mastery across 7 domains',
+        'Architectural Decision Records (ADRs) for major tech stack choices',
+        'Cost-benefit analysis for production deployment',
+        'Security audit report with mitigation strategies',
+        'Portfolio site showcasing technical depth with code samples'
       ],
       successCriteria: [
-        'Landing page gets 100+ visitors',
-        'At least 10 signups or users',
-        'Positive feedback from early users',
-        'Content shared on social media'
+        'System survives all red-team attacks without failures',
+        'Maintains <3s latency under 10x load spike',
+        'Evaluation leaderboard shows >90% accuracy on edge cases',
+        'SDD clearly justifies every major architectural decision',
+        'Skill Diagnosis verifies 85%+ competency across all 7 domains',
+        'Portfolio demonstrates production-grade thinking (not just toy projects)',
+        'Cost projections show commercial viability (<$0.10 per request)',
+        'Security vulnerabilities identified and mitigated'
       ],
-      hours: 12
+      hours: 16
     }
   },
   {
