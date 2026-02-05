@@ -136,7 +136,7 @@ class RAGPipeline {
     })
 
     return results.matches
-      .filter(m => m.score >= this.config.minScore)
+      .filter(m => m.score &gt;= this.config.minScore)
       .map(m => ({
         id: m.id,
         text: m.metadata.text,
@@ -307,14 +307,14 @@ class RecursiveCharacterTextSplitter {
       const chunkContent = text.slice(startIndex, endIndex)
 
       // Ensure minimum size
-      if (chunkContent.length >= this.config.minChunkSize * 4 || endIndex === text.length) {
+      if (chunkContent.length &gt;= this.config.minChunkSize * 4 || endIndex === text.length) {
         chunks.push({
           content: chunkContent.trim(),
           metadata: {
             chunkIndex,
             startChar: startIndex,
             endChar: endIndex,
-            overlapWithPrevious: chunkIndex > 0 ? overlapChars : 0,
+            overlapWithPrevious: chunkIndex &gt; 0 ? overlapChars : 0,
             strategy: 'recursive-character'
           }
         })
@@ -325,7 +325,7 @@ class RecursiveCharacterTextSplitter {
       startIndex = endIndex - overlapChars
 
       // Prevent infinite loop
-      if (startIndex >= endIndex - 10) {
+      if (startIndex &gt;= endIndex - 10) {
         startIndex = endIndex
       }
     }
@@ -342,7 +342,7 @@ class RecursiveCharacterTextSplitter {
     end: number
   ): number {
     // If we're at the end, return as-is
-    if (end >= text.length) {
+    if (end &gt;= text.length) {
       return text.length
     }
 
@@ -530,7 +530,7 @@ class CodeChunker {
       }
 
       // Add context: include relevant imports
-      if (chunk.metadata.imports.length > 0) {
+      if (chunk.metadata.imports.length &gt; 0) {
         const importContext = this.getImportContext(ast, chunk.metadata.imports)
         chunk.content = importContext + '\n\n' + chunk.content
       }
@@ -547,7 +547,7 @@ class CodeChunker {
   chunkLongFunction(functionCode: string, maxLines: number = 100): CodeChunk[] {
     const lines = functionCode.split('\n')
 
-    if (lines.length <= maxLines) {
+    if (lines.length &lt;= maxLines) {
       return [{ content: functionCode, metadata: {} }]
     }
 
@@ -642,9 +642,9 @@ async function evaluateChunking(
 ```
 
 **Target Metrics for Production**:
-- **Boundary Quality**: > 80% (chunks end at natural breaks)
+- **Boundary Quality**: &gt; 80% (chunks end at natural breaks)
 - **Size Std Dev**: < 30% of average (consistent sizes)
-- **Retrieval Recall**: > 85% (most relevant chunks found)
+- **Retrieval Recall**: &gt; 85% (most relevant chunks found)
 
 ---
 
@@ -682,7 +682,7 @@ async function semanticChunk(text: string): Promise<string[]> {
     const combined = currentChunk + '\n\n' + para
 
     // If too large, start new chunk
-    if (tokenCount(combined) > 500) {
+    if (tokenCount(combined) &gt; 500) {
       if (currentChunk) chunks.push(currentChunk)
       currentChunk = para
     } else {

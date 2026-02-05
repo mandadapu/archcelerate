@@ -182,7 +182,7 @@ function detectJailbreak(input: string): JailbreakDetectionResult {
   }
 
   return {
-    isJailbreak: matches.length > 0,
+    isJailbreak: matches.length &gt; 0,
     matchedPatterns: [...new Set(matches)],  // Deduplicate
     severity: maxSeverity,
     action: recommendedAction,
@@ -406,15 +406,15 @@ async function filterOutput(output: string): Promise<OutputFilterResult> {
     if (flagged) {
       violations.push({
         category: category as ContentViolation['category'],
-        severity: moderation.category_scores[category] > 0.8 ? 'high' :
-                  moderation.category_scores[category] > 0.5 ? 'medium' : 'low',
+        severity: moderation.category_scores[category] &gt; 0.8 ? 'high' :
+                  moderation.category_scores[category] &gt; 0.5 ? 'medium' : 'low',
         detected: true,
         confidence: moderation.category_scores[category]
       })
     }
   }
 
-  if (violations.length > 0) {
+  if (violations.length &gt; 0) {
     return {
       allowed: false,
       violations,
@@ -458,7 +458,7 @@ async function safetyProxyLayer2(llmOutput: string): Promise<{
   // Step 2: PII detection (even if input was clean, output might leak PII)
   const piiCheck = await detectPII(llmOutput)
 
-  if (piiCheck.detectedPII.length > 0) {
+  if (piiCheck.detectedPII.length &gt; 0) {
     // Redact PII and log
     const redactedOutput = redactPII(llmOutput, piiCheck.detectedPII)
 
@@ -1105,7 +1105,7 @@ async function scheduleBiasAudits(model: any) {
     // Check for violations
     const criticalViolations = results.violations.filter(v => v.severity === 'critical')
 
-    if (criticalViolations.length > 0) {
+    if (criticalViolations.length &gt; 0) {
       // Alert governance team
       await alertGovernanceTeam({
         model: model.name,
@@ -1123,7 +1123,7 @@ async function scheduleBiasAudits(model: any) {
       })
 
       // Optionally: Take model offline automatically
-      if (criticalViolations.length > 2) {
+      if (criticalViolations.length &gt; 2) {
         await disableModel(model.id)
       }
     }
@@ -1296,9 +1296,9 @@ async function redTeamModel(model: any): Promise<RedTeamingResult> {
   let recommendation: 'deploy' | 'fix_required' | 'needs_review'
   const criticalFailures = attacks.filter(a => a.successful && a.severity === 'critical').length
 
-  if (criticalFailures > 0) {
+  if (criticalFailures &gt; 0) {
     recommendation = 'fix_required'
-  } else if (successRate > 0.2) {
+  } else if (successRate &gt; 0.2) {
     recommendation = 'needs_review'
   } else {
     recommendation = 'deploy'
@@ -1387,7 +1387,7 @@ function requiresHumanReview(
   }
 
   // High-value decisions require review
-  if (context.financialImpact > 10000) {
+  if (context.financialImpact &gt; 10000) {
     return true
   }
 
@@ -1664,7 +1664,7 @@ async function monitorModelDrift(modelId: string) {
   // Detect performance drift
   const accuracyDrift = Math.abs(currentMetrics.accuracy - baselineMetrics.accuracy)
 
-  if (accuracyDrift > 0.05) {
+  if (accuracyDrift &gt; 0.05) {
     await alertDrift({
       modelId,
       metric: 'accuracy',
@@ -1678,7 +1678,7 @@ async function monitorModelDrift(modelId: string) {
   // Detect data drift (distribution shift)
   const dataDrift = await calculateDataDrift(model)
 
-  if (dataDrift.kl_divergence > 0.1) {
+  if (dataDrift.kl_divergence &gt; 0.1) {
     await alertDrift({
       modelId,
       metric: 'data_distribution',

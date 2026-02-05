@@ -270,7 +270,7 @@ class ProductionAgent {
 
   private shouldContinue(): boolean {
     // Check step limit
-    if (this.state.steps.length >= this.config.maxSteps) {
+    if (this.state.steps.length &gt;= this.config.maxSteps) {
       this.metrics.record('max_steps_reached', 1)
       return false
     }
@@ -286,7 +286,7 @@ class ProductionAgent {
     const recentErrors = this.state.errors.filter(
       e => Date.now() - e.timestamp < 60000
     ).length
-    if (recentErrors > 10) {
+    if (recentErrors &gt; 10) {
       this.metrics.record('error_threshold_exceeded', 1)
       return false
     }
@@ -344,7 +344,7 @@ class RetryHandler {
   ): Promise<T> {
     let lastError: Error
 
-    for (let attempt = 0; attempt <= this.config.maxRetries; attempt++) {
+    for (let attempt = 0; attempt &lt;= this.config.maxRetries; attempt++) {
       try {
         return await operation()
       } catch (error) {
@@ -411,7 +411,7 @@ class RetryHandler {
     }
 
     // Server errors (5xx) - retry
-    if (error.status >= 500 && error.status < 600) {
+    if (error.status &gt;= 500 && error.status < 600) {
       return true
     }
 
@@ -421,7 +421,7 @@ class RetryHandler {
     }
 
     // Client errors (4xx) - don't retry
-    if (error.status >= 400 && error.status < 500) {
+    if (error.status &gt;= 400 && error.status < 500) {
       return false
     }
 
@@ -518,7 +518,7 @@ class AdaptiveRetryHandler extends RetryHandler {
     }
 
     // High success rate - be more optimistic
-    if (pattern.successRate > 0.9) {
+    if (pattern.successRate &gt; 0.9) {
       return {
         maxRetries: 2,
         baseDelay: 500,
@@ -614,7 +614,7 @@ class CircuitBreaker {
 
     if (state.state === CircuitState.OPEN) {
       // Check if enough time has passed to try again
-      if (Date.now() - state.openedAt >= this.config.resetTimeout) {
+      if (Date.now() - state.openedAt &gt;= this.config.resetTimeout) {
         this.transition(resourceId, CircuitState.HALF_OPEN)
         return true
       }
@@ -634,7 +634,7 @@ class CircuitBreaker {
     if (state.state === CircuitState.HALF_OPEN) {
       state.consecutiveSuccesses++
 
-      if (state.consecutiveSuccesses >= this.config.successThreshold) {
+      if (state.consecutiveSuccesses &gt;= this.config.successThreshold) {
         this.transition(resourceId, CircuitState.CLOSED)
       }
     }
@@ -659,7 +659,7 @@ class CircuitBreaker {
 
     // Check if we should open the circuit
     if (state.state === CircuitState.CLOSED) {
-      if (state.failures.length >= this.config.failureThreshold) {
+      if (state.failures.length &gt;= this.config.failureThreshold) {
         this.transition(resourceId, CircuitState.OPEN)
       }
     }
@@ -783,8 +783,8 @@ class AgentErrorClassifier {
     // API errors
     if (error.status === 429) return ErrorType.RATE_LIMIT
     if (error.status === 401 || error.status === 403) return ErrorType.AUTH
-    if (error.status >= 500) return ErrorType.SERVER
-    if (error.status >= 400) return ErrorType.CLIENT
+    if (error.status &gt;= 500) return ErrorType.SERVER
+    if (error.status &gt;= 400) return ErrorType.CLIENT
 
     // LLM errors
     if (error.type === 'invalid_request_error') return ErrorType.VALIDATION
@@ -1499,7 +1499,7 @@ class CostController {
     this.costs.set(modelName, currentCost + cost)
 
     // Check budget limits
-    if (currentCost + cost > this.getBudgetLimit(modelName)) {
+    if (currentCost + cost &gt; this.getBudgetLimit(modelName)) {
       throw new Error(`Budget limit exceeded for ${modelName}`)
     }
 

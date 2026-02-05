@@ -102,7 +102,7 @@ function chooseSearchStrategy(query: string, context: {
   }
 
   // Rule 3: Natural language queries = semantic
-  if (query.split(' ').length > 5 && !context.queryHasIDs) {
+  if (query.split(' ').length &gt; 5 && !context.queryHasIDs) {
     return {
       queryType: 'semantic',
       reasoning: 'Natural language query benefits from semantic understanding',
@@ -204,7 +204,7 @@ class IntelligentSearchRouter {
 
     // Step 4: Latency circuit breaker
     const latency = Date.now() - startTime
-    if (latency > strategy.latencyBudget) {
+    if (latency &gt; strategy.latencyBudget) {
       console.warn(`Search exceeded latency budget: ${latency}ms > ${strategy.latencyBudget}ms`)
       // Metric for alerting
       await metrics.recordLatencyViolation(strategy.queryType, latency)
@@ -604,7 +604,7 @@ async function searchSimilarChunks(
         return `metadata->>'${key}' = $${i + 2}`
       })
 
-      if (filterConditions.length > 0) {
+      if (filterConditions.length &gt; 0) {
         query += ` WHERE ${filterConditions.join(' AND ')}`
       }
     }
@@ -618,7 +618,7 @@ async function searchSimilarChunks(
     const result = await client.query(query, params)
 
     return result.rows
-      .filter(row => row.similarity >= minSimilarity)
+      .filter(row => row.similarity &gt;= minSimilarity)
       .map(row => ({
         chunkId: row.chunk_id,
         content: row.content,
@@ -779,7 +779,7 @@ async function generateRAGResponse(
 
   // Determine confidence based on similarity scores
   const avgSimilarity = results.reduce((sum, r) => sum + r.similarity, 0) / results.length
-  const confidence = avgSimilarity > 0.85 ? 'high' : avgSimilarity > 0.7 ? 'medium' : 'low'
+  const confidence = avgSimilarity &gt; 0.85 ? 'high' : avgSimilarity &gt; 0.7 ? 'medium' : 'low'
 
   return {
     answer,

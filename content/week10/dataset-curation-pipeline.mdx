@@ -325,7 +325,7 @@ async function redactPII(text: string, method: 'pattern' | 'llm' | 'both'): Prom
   if (method === 'pattern') {
     const result = detectPIIPatterns(text)
     return {
-      hasPII: result.detected.length > 0,
+      hasPII: result.detected.length &gt; 0,
       piiTypes: [...new Set(result.detected.map(d => d.type))],
       redactedText: result.redacted,
       confidence: 0.95 // High confidence for regex matches
@@ -338,7 +338,7 @@ async function redactPII(text: string, method: 'pattern' | 'llm' | 'both'): Prom
     const llmResult = await detectPIIWithLLM(patternResult.redacted)
 
     return {
-      hasPII: patternResult.detected.length > 0 || llmResult.hasPII,
+      hasPII: patternResult.detected.length &gt; 0 || llmResult.hasPII,
       piiTypes: [...new Set([
         ...patternResult.detected.map(d => d.type),
         ...llmResult.piiTypes
@@ -536,7 +536,7 @@ async function runQualityFilter() {
     console.log(\`  - \${ex.id}: \${ex.messages[0].content.substring(0, 50)}...\`)
   })
 
-  if (filtered.discarded.length > 0) {
+  if (filtered.discarded.length &gt; 0) {
     console.log('\\nDiscarded examples:')
     filtered.discarded.forEach(ex => {
       console.log(\`  - \${ex.id}: \${ex.messages[0].content.substring(0, 50)}...\`)
@@ -707,7 +707,7 @@ async function augmentDataset(
 
   let strategyIndex = 0
 
-  while (augmented.length < targetSize && examples.length > 0) {
+  while (augmented.length < targetSize && examples.length &gt; 0) {
     const originalExample = examples[strategyIndex % examples.length]
     const strategy = strategies[strategyIndex % strategies.length]
 
@@ -943,7 +943,7 @@ function balanceDataset(examples: ConversationExample[]): ConversationExample[] 
 ## Key Takeaways
 
 ### Curation Principles
-- **Quality > Quantity**: 1,000 curated examples > 10,000 raw examples
+- **Quality > Quantity**: 1,000 curated examples &gt; 10,000 raw examples
 - **PII is non-negotiable**: Always redact before training (legal requirement)
 - **LLM-as-judge works**: 95% accuracy at quality assessment
 - **Augment conservatively**: 3-5x original dataset size max

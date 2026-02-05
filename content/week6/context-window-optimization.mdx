@@ -176,7 +176,7 @@ async function deduplicateChunks(
   for (let i = 0; i < chunks.length; i++) {
     const isDuplicate = deduplicated.some((_, j) => {
       const similarity = cosineSimilarity(embeddings[i], embeddings[j])
-      return similarity > similarityThreshold
+      return similarity &gt; similarityThreshold
     })
 
     if (!isDuplicate) {
@@ -207,7 +207,7 @@ async function enforceTokenBudget(
   for (const chunk of sorted) {
     const chunkTokens = countTokens(chunk.content)
 
-    if (currentTokens + chunkTokens <= maxTokens) {
+    if (currentTokens + chunkTokens &lt;= maxTokens) {
       selected.push(chunk)
       currentTokens += chunkTokens
     } else {
@@ -319,7 +319,7 @@ async function hierarchicalRetrieval(
       relevance: await checkRelevance(s.content, query)
     }))
   ).then(results =>
-    results.filter(r => r.relevance > 0.6).map(r => r.section)
+    results.filter(r => r.relevance &gt; 0.6).map(r => r.section)
   )
 
   if (relevantSections.length === 0) {
@@ -627,9 +627,9 @@ async function retrieveHierarchically(query: string) {
   const chapters = await docstore.mget(chapterIds.map(id => `chapter:${id}`))
 
   // Step 3: If query is complex, fetch grandparent book
-  const complexQuery = query.split(' ').length > 15
+  const complexQuery = query.split(' ').length &gt; 15
 
-  if (complexQuery && chapters.length > 0) {
+  if (complexQuery && chapters.length &gt; 0) {
     const bookId = chapters[0].book_id
     const book = await docstore.get(`book:${bookId}`)
     return [book] // Return full book for complex queries

@@ -370,7 +370,7 @@ async function runExtraction() {
   console.log(\`\\nExtracted \${result.relationships.length} relationships:\`)
   result.relationships.forEach(r => {
     console.log(\`  - \${r.from} --[\${r.type}]--> \${r.to}\`)
-    if (Object.keys(r.properties).length > 0) {
+    if (Object.keys(r.properties).length &gt; 0) {
       console.log(\`    Properties: \${JSON.stringify(r.properties, null, 2)}\`)
     }
   })
@@ -489,13 +489,13 @@ async function resolveEntities(entities: Entity[]): Promise<Entity[]> {
       const similarity = computeSimilarity(currentEntity, entities[j])
 
       // High confidence match (&gt;0.85 similarity)
-      if (similarity > 0.85) {
+      if (similarity &gt; 0.85) {
         console.log(\`Auto-merging: \${currentEntity.properties.name} ↔ \${entities[j].properties.name} (similarity: \${similarity.toFixed(2)})\`)
         currentEntity = mergeEntities(currentEntity, entities[j])
         merged.add(entities[j].id)
       }
       // Ambiguous case (0.6-0.85): use LLM
-      else if (similarity > 0.6) {
+      else if (similarity &gt; 0.6) {
         const shouldMerge = await verifyMatch(currentEntity, entities[j])
         if (shouldMerge) {
           console.log(\`LLM-verified merge: \${currentEntity.properties.name} ↔ \${entities[j].properties.name}\`)
@@ -544,7 +544,7 @@ async function runResolution() {
 
   resolvedEntities.forEach(entity => {
     console.log(\`- \${entity.properties.name}\`)
-    if (entity.aliases && entity.aliases.length > 0) {
+    if (entity.aliases && entity.aliases.length &gt; 0) {
       console.log(\`  Also known as: \${entity.aliases.join(', ')}\`)
     }
     console.log(\`  Properties: \${JSON.stringify(entity.properties, null, 2)}\`)
@@ -557,7 +557,7 @@ runResolution()`}
 
 **Resolution Strategy**:
 ```
-Similarity > 0.85  →  Auto-merge (high confidence)
+Similarity &gt; 0.85  →  Auto-merge (high confidence)
 Similarity 0.6-0.85 →  LLM verify (ambiguous)
 Similarity < 0.6   →  Keep separate
 ```
@@ -636,7 +636,7 @@ async function updateGraph(
         const existing = existingResult.records[0].get('e').properties
         const conflicts = detectConflicts(existing, entity.properties)
 
-        if (conflicts.length > 0) {
+        if (conflicts.length &gt; 0) {
           // Resolve conflicts with LLM
           const resolved = await resolveConflicts(
             entity.id,
@@ -789,7 +789,7 @@ async function runIncrementalUpdate() {
   console.log(\`  New relationships: \${report.newRelationships}\`)
   console.log(\`  Conflicts detected: \${report.conflicts.length}\`)
 
-  if (report.conflicts.length > 0) {
+  if (report.conflicts.length &gt; 0) {
     console.log('\\nConflicts:')
     report.conflicts.forEach(c => {
       console.log(\`  - \${c.entityId}.\${c.field}: "\${c.oldValue}" → "\${c.newValue}" (resolution: \${c.resolution})\`)
