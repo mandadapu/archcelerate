@@ -87,6 +87,339 @@ Query → Embed → Vector Search → Top-K Results → LLM
 
 ---
 
+## 0. The "Build vs. Buy" Database Decision
+
+Before implementing any RAG system, architects must choose the right vector database. This decision impacts cost, latency, scalability, and operational burden for years.
+
+### The Three Paths
+
+| Path | Examples | Best For | Key Trade-Off |
+|------|----------|----------|---------------|
+| **Managed Cloud** | Pinecone, Weaviate Cloud | Rapid MVP, no ops team | Vendor lock-in, ongoing cost |
+| **Self-Hosted Open Source** | Milvus, Qdrant, Weaviate | Privacy, cost at scale | Ops burden, expertise required |
+| **SQL Extension** | pgvector, SQLite VSS | Existing SQL infrastructure | Performance ceiling, limited features |
+
+### Comparative Analysis: The Big Three
+
+#### 1. Pinecone (Managed Serverless)
+
+**Architecture**: Fully managed, serverless vector database hosted on AWS/GCP/Azure.
+
+```typescript
+// Pinecone setup (zero infrastructure)
+import { Pinecone } from '@pinecone-database/pinecone'
+
+const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY })
+
+// Create index (managed for you)
+await pinecone.createIndex({
+  name: 'my-index',
+  dimension: 1536,
+  metric: 'cosine',
+  spec: {
+    serverless: {
+      cloud: 'aws',
+      region: 'us-east-1'
+    }
+  }
+})
+
+const index = pinecone.index('my-index')
+
+// Upsert vectors
+await index.upsert([
+  {
+    id: 'doc-1',
+    values: embedding,  // 1536-dim vector
+    metadata: { text: 'Document content', source: 'page-1.pdf' }
+  }
+])
+
+// Search
+const results = await index.query({
+  vector: queryEmbedding,
+  topK: 10,
+  filter: { source: { $eq: 'page-1.pdf' } }
+})
+```
+
+**Pros**:
+- ✅ Zero infrastructure management (no servers, no scaling, no backups)
+- ✅ Production-ready in 10 minutes
+- ✅ Auto-scales to billions of vectors
+- ✅ 99.9% uptime SLA
+- ✅ Built-in monitoring and logging
+
+**Cons**:
+- ❌ Vendor lock-in (no self-hosted option)
+- ❌ Cost scales linearly with data ($70/month per 100K vectors at 1536 dims)
+- ❌ Limited control over infrastructure
+- ❌ Metadata filtering less powerful than SQL
+
+**Cost Analysis** (1M vectors, 1536 dims, 10M queries/month):
+- **Storage**: $700/month
+- **Queries**: $200/month (after free tier)
+- **Total**: ~$900/month
+
+**Decision**: Choose Pinecone if you value time-to-market > cost and don't have a dedicated ops team.
+
+---
+
+#### 2. pgvector (PostgreSQL Extension)
+
+**Architecture**: Extension to existing PostgreSQL database, runs in your infrastructure.
+
+```typescript
+// pgvector setup (requires Postgres)
+import { Pool } from 'pg'
+import pgvector from 'pgvector/pg'
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+
+// Enable extension
+await pool.query('CREATE EXTENSION IF NOT EXISTS vector')
+
+// Create table with vector column
+await pool.query(`
+  CREATE TABLE chunks (
+    id TEXT PRIMARY KEY,
+    content TEXT,
+    metadata JSONB,
+    embedding vector(1536)  -- pgvector column type
+  )
+`)
+
+// Create HNSW index for fast search
+await pool.query(`
+  CREATE INDEX ON chunks
+  USING hnsw (embedding vector_cosine_ops)
+  WITH (m = 16, ef_construction = 64)
+`)
+
+// Insert vectors
+await pool.query(
+  'INSERT INTO chunks (id, content, metadata, embedding) VALUES ($1, $2, $3, $4)',
+  ['doc-1', 'Document content', JSON.stringify({ source: 'page-1.pdf' }), pgvector.toSql(embedding)]
+)
+
+// Search with SQL (metadata filtering is native!)
+const result = await pool.query(`
+  SELECT id, content, metadata, embedding <=> $1 AS distance
+  FROM chunks
+  WHERE metadata->>'source' = 'page-1.pdf'
+  ORDER BY embedding <=> $1
+  LIMIT 10
+`, [pgvector.toSql(queryEmbedding)])
+```
+
+**Pros**:
+- ✅ Leverages existing Postgres infrastructure (no new database)
+- ✅ SQL-native metadata filtering (JOIN with user tables, complex WHERE clauses)
+- ✅ ACID transactions (consistency guarantees)
+- ✅ Mature backup/replication tooling (pg_dump, logical replication)
+- ✅ Low cost at scale (just compute/storage, no per-vector fees)
+
+**Cons**:
+- ❌ Slower than specialized vector DBs (50-200ms vs 15ms for Pinecone)
+- ❌ Requires Postgres expertise (tuning, scaling)
+- ❌ Limited to ~10M vectors per table before performance degrades
+- ❌ Manual scaling (read replicas, sharding)
+
+**Cost Analysis** (1M vectors, 1536 dims, 10M queries/month):
+- **Compute**: RDS db.r5.2xlarge ($500/month) or $100/month self-hosted
+- **Storage**: 10 GB × $0.10/GB = $1/month
+- **Total**: $101-$501/month (5-9x cheaper than Pinecone)
+
+**Decision**: Choose pgvector if you already use Postgres, need complex SQL queries, and have DB expertise.
+
+---
+
+#### 3. Chroma (Open Source, Local-First)
+
+**Architecture**: Embedded database (like SQLite) that runs in-process or as a self-hosted server.
+
+```typescript
+// Chroma setup (local-first)
+import { ChromaClient } from 'chromadb'
+
+// Option 1: In-memory (for prototyping)
+const client = new ChromaClient()
+
+// Option 2: Persistent local storage
+const client = new ChromaClient({
+  path: './chroma-data'
+})
+
+// Option 3: Self-hosted server
+const client = new ChromaClient({
+  path: 'http://localhost:8000'
+})
+
+// Create collection
+const collection = await client.createCollection({
+  name: 'my-docs',
+  metadata: { 'hnsw:space': 'cosine' }
+})
+
+// Add documents (Chroma handles embeddings if you provide an embedding function)
+await collection.add({
+  ids: ['doc-1'],
+  documents: ['Document content'],
+  metadatas: [{ source: 'page-1.pdf' }],
+  embeddings: [embedding]  // Or let Chroma generate embeddings
+})
+
+// Query
+const results = await collection.query({
+  queryEmbeddings: [queryEmbedding],
+  nResults: 10,
+  where: { source: 'page-1.pdf' }
+})
+```
+
+**Pros**:
+- ✅ Fully open source (Apache 2.0 license)
+- ✅ Runs locally (no API keys, no network calls)
+- ✅ Perfect for prototyping and development
+- ✅ Can self-host for production (Docker, Kubernetes)
+- ✅ Zero cost for small-scale (<1M vectors)
+
+**Cons**:
+- ❌ Less mature than Pinecone/pgvector
+- ❌ Limited production battle-testing
+- ❌ Smaller ecosystem and community
+- ❌ Scaling to billions of vectors requires expert tuning
+
+**Cost Analysis** (1M vectors, 1536 dims, 10M queries/month):
+- **Compute**: Self-hosted VM ($50-200/month) or local dev (free)
+- **Storage**: Included
+- **Total**: $50-200/month (4-18x cheaper than Pinecone)
+
+**Decision**: Choose Chroma for local development, privacy-sensitive applications, or if you want full control without vendor lock-in.
+
+---
+
+### Decision Framework: Which Database to Choose?
+
+```typescript
+interface ProjectRequirements {
+  teamSize: number
+  hasOpsTeam: boolean
+  budgetPerMonth: number
+  expectedVectors: number
+  queriesPerSecond: number
+  privacyConstraints: 'none' | 'moderate' | 'strict'
+  timeToMarket: 'urgent' | 'normal' | 'flexible'
+}
+
+/**
+ * Architect's decision framework for vector database selection
+ */
+function chooseVectorDatabase(req: ProjectRequirements): {
+  recommendation: 'pinecone' | 'pgvector' | 'chroma' | 'milvus'
+  reasoning: string
+  tradeoffs: string[]
+} {
+  // Rule 1: Privacy constraints
+  if (req.privacyConstraints === 'strict') {
+    return {
+      recommendation: 'chroma',
+      reasoning: 'Strict privacy requires self-hosted, open-source solution',
+      tradeoffs: ['Must manage infrastructure', 'Slower than managed options']
+    }
+  }
+
+  // Rule 2: Already using Postgres
+  if (req.teamSize > 0 && usesPostgres()) {
+    return {
+      recommendation: 'pgvector',
+      reasoning: 'Leverage existing Postgres infrastructure and expertise',
+      tradeoffs: ['Slower than specialized DBs', 'Complex SQL queries required']
+    }
+  }
+
+  // Rule 3: No ops team + urgent timeline
+  if (!req.hasOpsTeam && req.timeToMarket === 'urgent') {
+    return {
+      recommendation: 'pinecone',
+      reasoning: 'Zero infrastructure burden, production-ready immediately',
+      tradeoffs: ['Ongoing cost', 'Vendor lock-in']
+    }
+  }
+
+  // Rule 4: Cost-constrained + large scale
+  if (req.expectedVectors > 10_000_000 && req.budgetPerMonth < 500) {
+    return {
+      recommendation: 'chroma',
+      reasoning: 'Self-hosted open-source minimizes per-vector costs at scale',
+      tradeoffs: ['Requires Kubernetes/ops expertise', 'Less mature ecosystem']
+    }
+  }
+
+  // Rule 5: High QPS + budget available
+  if (req.queriesPerSecond > 1000 && req.budgetPerMonth > 2000) {
+    return {
+      recommendation: 'pinecone',
+      reasoning: 'Best performance and reliability for high-traffic production',
+      tradeoffs: ['High cost at scale']
+    }
+  }
+
+  // Default: Start with pgvector, migrate if needed
+  return {
+    recommendation: 'pgvector',
+    reasoning: 'Best default for most teams - SQL-native, low cost, good enough performance',
+    tradeoffs: ['May need to migrate to specialized DB at very large scale']
+  }
+}
+```
+
+### Real-World Architecture Decisions
+
+**Case Study 1: Notion's AI Search**
+- **Chose**: pgvector (Postgres extension)
+- **Why**: Already running Postgres for user data; SQL JOINs essential for permission filtering
+- **Scale**: 50M+ vectors, 100M+ users
+- **Result**: Sub-200ms P95 latency with read replicas
+
+**Case Study 2: Hugging Face Hub Search**
+- **Chose**: Elasticsearch (keyword) + Custom vector search
+- **Why**: Hybrid search critical; already had Elasticsearch infrastructure
+- **Scale**: 500M+ vectors (model embeddings)
+- **Result**: <50ms P95 for hybrid search
+
+**Case Study 3**: **Early-Stage SaaS Startup**
+- **Chose**: Pinecone
+- **Why**: 2-person team, needed production RAG in 2 weeks
+- **Scale**: 100K vectors, 10K users
+- **Result**: Shipped in 1 week; $100/month cost acceptable for MVP
+
+### The Migration Path
+
+**Start Simple, Migrate When Necessary**:
+
+```
+Phase 1 (MVP): Chroma local → Prototype in days
+Phase 2 (Beta): Pinecone → Ship to users in weeks
+Phase 3 (Scale): pgvector → Optimize costs at 1M+ vectors
+Phase 4 (Hyper-scale): Custom solution → Sub-10ms latency at billions of vectors
+```
+
+**When to migrate**:
+- Chroma → Pinecone: When you need production SLA (>100K queries/day)
+- Pinecone → pgvector: When cost > $1K/month and you have Postgres expertise
+- pgvector → Milvus/Qdrant: When latency > 200ms or vectors > 50M
+
+### Key Takeaways
+
+1. **No single "best" database** - It depends on team, scale, budget, and constraints
+2. **pgvector is the best default** - SQL-native, low cost, good enough for most
+3. **Pinecone for speed** - Best for MVP and teams without ops expertise
+4. **Chroma for privacy** - Self-hosted, open-source, full control
+5. **Plan for migration** - Start simple, optimize when you hit limits
+
+---
+
 ## 1. The "Retrieval Gap": Hybrid Search
 
 **Problem**: Vector search alone fails on exact matches (Part IDs, product codes, acronyms).
