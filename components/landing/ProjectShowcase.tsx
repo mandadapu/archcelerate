@@ -357,11 +357,11 @@ function ProjectCard({ project, isExpanded, onToggle }: ProjectCardProps) {
       <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
 
       {/* Project Card Header with Gradient Background */}
-      <div className="aspect-video relative overflow-hidden bg-gradient-to-br from-purple-600 to-cyan-500">
+      <div className="h-32 relative overflow-hidden bg-gradient-to-br from-purple-600 to-cyan-500">
         {/* Icon overlay */}
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-24 h-24 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
-            <span className="text-5xl">{getEmojiForProject(project.id)}</span>
+          <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
+            <span className="text-3xl">{getEmojiForProject(project.id)}</span>
           </div>
         </div>
       </div>
