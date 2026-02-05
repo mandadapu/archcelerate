@@ -7,9 +7,11 @@ const projects = [
   {
     id: 'rag-qa-system',
     title: 'RAG Q&A System',
+    week: 3,
     description: 'Build document search with Claude and vector databases',
     tags: ['Anthropic', 'Pinecone', 'LangChain'],
-    outcome: 'Production RAG with 90%+ accuracy',
+    outcome: 'Target 90%+ accuracy with production RAG',
+    milestone: 'Master basic retrieval using Pinecone and LangChain',
     architecture: `User UI (Next.js)
        ↓
   API Route ──→ Claude AI
@@ -44,9 +46,11 @@ const stream = await anthropic.messages.create({
   {
     id: 'chatbot-platform',
     title: 'AI Chatbot with Tools',
+    week: 4,
     description: 'Function calling, API integrations, and real-time responses',
     tags: ['Claude', 'Function Calling', 'Next.js'],
-    outcome: 'Interactive chatbot with live data',
+    outcome: 'Interactive live data with function calling',
+    milestone: 'Transition from chat to Function Calling with Next.js integration',
     architecture: `User ↔ Chat UI ↔ Claude (Function Calling)
                        ↕
                   Tool Registry ↔ External APIs`,
@@ -80,9 +84,11 @@ const response = await anthropic.messages.create({
   {
     id: 'agent-workflow',
     title: 'Agent Workflow System',
+    week: 5,
     description: 'Multi-step autonomous agents that reason and act',
     tags: ['Agents', 'LangGraph', 'TypeScript'],
     outcome: 'Autonomous task completion',
+    milestone: 'Build multi-step autonomous agents with LangGraph',
     architecture: `Task Input → Planner Agent → [Worker Agents]
                          ↓
                   LangGraph State Machine
@@ -116,9 +122,11 @@ const workflow = graph.compile();`
   {
     id: 'ai-code-reviewer',
     title: 'Fine-tuned Model',
+    week: 10,
     description: 'Custom AI trained for your specific domain and use case',
     tags: ['Fine-tuning', 'Anthropic', 'Datasets'],
     outcome: 'Domain-specific AI performance',
+    milestone: 'Domain-specific training for high-performance use cases',
     architecture: `Training Data → Preprocessing → Fine-tuning API
                                           ↓
                                     Custom Model
@@ -155,9 +163,11 @@ const response = await anthropic.messages.create({
   {
     id: 'content-generator',
     title: 'AI API Product',
+    week: 7,
     description: 'Ship production API with auth, rate limiting, and monitoring',
     tags: ['API', 'Auth', 'Monitoring'],
-    outcome: 'Production-ready AI service',
+    outcome: 'HIPAA/SOC2 compliance with 99.97% uptime',
+    milestone: 'Master Auth, Rate Limiting, and Monitoring as a service',
     architecture: `Client → API Gateway → Rate Limiter
                          ↓
                     Auth → Claude API
@@ -193,9 +203,11 @@ export async function POST(req: Request) {
   {
     id: 'data-analyst',
     title: 'Multi-Agent Collaboration',
+    week: 11,
     description: 'Coordinated AI workflows with specialized agents',
     tags: ['Multi-Agent', 'Orchestration', 'Python'],
     outcome: 'Complex task automation',
+    milestone: 'Coordinated workflows with specialized agents (Researcher + Writer)',
     architecture: `Coordinator Agent
          ↓
 [Researcher] → [Analyst] → [Writer] → [Reviewer]
@@ -232,9 +244,11 @@ const result = await coordinator.run({
   {
     id: 'portfolio-deployment',
     title: 'Portfolio Deployment',
+    week: 12,
     description: 'Ship all 7 projects to production with CI/CD',
     tags: ['Vercel', 'GitHub Actions', 'Docker'],
     outcome: 'Full-stack portfolio live',
+    milestone: 'Final "Gold Version" launch with CI/CD, Docker, and Vercel',
     architecture: `GitHub Repo → GitHub Actions → Build → Tests
                                            ↓
                                       Deploy
@@ -295,11 +309,14 @@ export function ProjectShowcase() {
     <section className="py-24 bg-white" id="projects">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
-          <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-            What You'll Build
+          <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+            7 Milestone Projects:{' '}
+            <span className="bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent">
+              Your Proof of Mastery
+            </span>
           </h2>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            7 production-ready AI projects with full technical details
+          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+            These aren't tutorial projects. They're production-grade systems that validate your skills and get you hired at the architect level.
           </p>
         </div>
 
@@ -357,11 +374,19 @@ function ProjectCard({ project, isExpanded, onToggle }: ProjectCardProps) {
 
       {/* Content */}
       <div className="p-6">
-        <h3 className="text-xl font-bold text-gray-900 mb-2">
-          {project.title}
-        </h3>
-        <p className="text-sm text-gray-600 mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xl font-bold text-gray-900">
+            {project.title}
+          </h3>
+          <span className="px-3 py-1 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-xs font-bold rounded-full">
+            Week {project.week}
+          </span>
+        </div>
+        <p className="text-sm text-gray-600 mb-2">
           {project.description}
+        </p>
+        <p className="text-xs text-gray-500 italic mb-4">
+          {project.milestone}
         </p>
 
         {/* Tags */}
