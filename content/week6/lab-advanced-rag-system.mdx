@@ -503,6 +503,336 @@ export async function runABTest(dataset: typeof goldenDataset) {
 - Latency: <300ms P95
 - Cost: <$0.005 per query
 
+### 7.3 Benchmark: Hybrid vs Vector-Only Retrieval
+
+**Objective**: Prove that hybrid search + reranking outperforms pure vector search for medical queries.
+
+```typescript
+// src/evaluation/hybrid-vs-vector-benchmark.ts
+interface BenchmarkResult {
+  method: 'vector-only' | 'hybrid' | 'hybrid+rerank'
+  recall_at_10: number
+  precision_at_5: number
+  mrr: number
+  avg_latency_ms: number
+  cost_per_query: number
+}
+
+async function runComprehensiveBenchmark(
+  goldenDataset: typeof goldenDataset
+): Promise<{
+  vectorOnly: BenchmarkResult
+  hybrid: BenchmarkResult
+  hybridRerank: BenchmarkResult
+  winner: string
+}> {
+  console.log('🔬 Running Comprehensive Benchmark: Vector-Only vs Hybrid vs Hybrid+Rerank\n')
+
+  const results = {
+    vectorOnly: await benchmarkMethod('vector-only', goldenDataset),
+    hybrid: await benchmarkMethod('hybrid', goldenDataset),
+    hybridRerank: await benchmarkMethod('hybrid+rerank', goldenDataset)
+  }
+
+  // Determine winner
+  const winner = determineWinner(results)
+
+  // Print comparison table
+  printComparisonTable(results)
+
+  return { ...results, winner }
+}
+
+async function benchmarkMethod(
+  method: BenchmarkResult['method'],
+  dataset: typeof goldenDataset
+): Promise<BenchmarkResult> {
+  const metrics = {
+    recall_scores: [] as number[],
+    precision_scores: [] as number[],
+    mrr_scores: [] as number[],
+    latencies: [] as number[],
+    costs: [] as number[]
+  }
+
+  for (const example of dataset) {
+    const startTime = Date.now()
+
+    let results: RankedResult[]
+
+    switch (method) {
+      case 'vector-only':
+        // Pure vector search (baseline)
+        results = await vectorOnlySearch(example.query, { limit: 10 })
+        metrics.costs.push(0.0001) // Embedding cost only
+        break
+
+      case 'hybrid':
+        // Hybrid search with RRF (no reranking)
+        results = await hybridSearch(example.query, { limit: 10 })
+        metrics.costs.push(0.0002) // Embedding + keyword search
+        break
+
+      case 'hybrid+rerank':
+        // Full pipeline: Hybrid + cross-encoder reranking
+        results = await twoStageRetrieval(example.query, { topK: 10 })
+        metrics.costs.push(0.0042) // Embedding + keyword + rerank ($0.004)
+        break
+    }
+
+    const latency = Date.now() - startTime
+    metrics.latencies.push(latency)
+
+    // Calculate retrieval metrics
+    const retrievedIds = results.map(r => r.id)
+    const relevantIds = example.relevant_docs
+
+    metrics.recall_scores.push(
+      calculateRecall(retrievedIds, relevantIds, 10)
+    )
+    metrics.precision_scores.push(
+      calculatePrecision(retrievedIds, relevantIds, 5)
+    )
+    metrics.mrr_scores.push(
+      calculateMRR(retrievedIds, relevantIds)
+    )
+  }
+
+  // Aggregate metrics
+  return {
+    method,
+    recall_at_10: average(metrics.recall_scores),
+    precision_at_5: average(metrics.precision_scores),
+    mrr: average(metrics.mrr_scores),
+    avg_latency_ms: average(metrics.latencies),
+    cost_per_query: average(metrics.costs)
+  }
+}
+
+function determineWinner(results: {
+  vectorOnly: BenchmarkResult
+  hybrid: BenchmarkResult
+  hybridRerank: BenchmarkResult
+}): string {
+  // Winner = highest combined score (weighted by business priorities)
+  const weights = {
+    recall: 0.3,
+    precision: 0.4, // Most important for medical accuracy
+    mrr: 0.2,
+    latency: 0.05, // Less important if <300ms
+    cost: 0.05 // Less important if <$0.005
+  }
+
+  const scores = {
+    vectorOnly: (
+      results.vectorOnly.recall_at_10 * weights.recall +
+      results.vectorOnly.precision_at_5 * weights.precision +
+      results.vectorOnly.mrr * weights.mrr
+    ),
+    hybrid: (
+      results.hybrid.recall_at_10 * weights.recall +
+      results.hybrid.precision_at_5 * weights.precision +
+      results.hybrid.mrr * weights.mrr
+    ),
+    hybridRerank: (
+      results.hybridRerank.recall_at_10 * weights.recall +
+      results.hybridRerank.precision_at_5 * weights.precision +
+      results.hybridRerank.mrr * weights.mrr
+    )
+  }
+
+  const winner = Object.entries(scores).reduce((max, [method, score]) =>
+    score > max.score ? { method, score } : max,
+    { method: 'vectorOnly', score: scores.vectorOnly }
+  )
+
+  return winner.method
+}
+
+function printComparisonTable(results: {
+  vectorOnly: BenchmarkResult
+  hybrid: BenchmarkResult
+  hybridRerank: BenchmarkResult
+}): void {
+  console.log('\n' + '='.repeat(80))
+  console.log('📊 BENCHMARK RESULTS: Hybrid vs Vector-Only Comparison')
+  console.log('='.repeat(80))
+  console.log('')
+
+  console.log('| Metric           | Vector-Only | Hybrid (RRF) | Hybrid+Rerank | Improvement |')
+  console.log('|------------------|-------------|--------------|---------------|-------------|')
+
+  const metrics = [
+    {
+      name: 'Recall@10',
+      key: 'recall_at_10' as const,
+      format: (v: number) => `${(v * 100).toFixed(1)}%`
+    },
+    {
+      name: 'Precision@5',
+      key: 'precision_at_5' as const,
+      format: (v: number) => `${(v * 100).toFixed(1)}%`
+    },
+    {
+      name: 'MRR',
+      key: 'mrr' as const,
+      format: (v: number) => v.toFixed(3)
+    },
+    {
+      name: 'Avg Latency',
+      key: 'avg_latency_ms' as const,
+      format: (v: number) => `${v.toFixed(0)}ms`
+    },
+    {
+      name: 'Cost/Query',
+      key: 'cost_per_query' as const,
+      format: (v: number) => `$${v.toFixed(4)}`
+    }
+  ]
+
+  for (const metric of metrics) {
+    const vectorVal = results.vectorOnly[metric.key]
+    const hybridVal = results.hybrid[metric.key]
+    const rerankVal = results.hybridRerank[metric.key]
+
+    const improvement = metric.key === 'avg_latency_ms' || metric.key === 'cost_per_query'
+      ? ((vectorVal - rerankVal) / vectorVal * -100) // Negative is bad for latency/cost
+      : ((rerankVal - vectorVal) / vectorVal * 100)   // Positive is good for quality
+
+    console.log(`| ${metric.name.padEnd(16)} | ${metric.format(vectorVal).padEnd(11)} | ${metric.format(hybridVal).padEnd(12)} | ${metric.format(rerankVal).padEnd(13)} | ${improvement > 0 ? '+' : ''}${improvement.toFixed(1)}% |`)
+  }
+
+  console.log('')
+  console.log('='.repeat(80))
+}
+
+// Helper functions
+function average(numbers: number[]): number {
+  return numbers.reduce((sum, n) => sum + n, 0) / numbers.length
+}
+
+function calculateRecall(
+  retrieved: string[],
+  relevant: string[],
+  k: number
+): number {
+  const topK = new Set(retrieved.slice(0, k))
+  const hits = relevant.filter(id => topK.has(id)).length
+  return relevant.length === 0 ? 0 : hits / relevant.length
+}
+
+function calculatePrecision(
+  retrieved: string[],
+  relevant: string[],
+  k: number
+): number {
+  const topK = retrieved.slice(0, k)
+  const relevantSet = new Set(relevant)
+  const hits = topK.filter(id => relevantSet.has(id)).length
+  return topK.length === 0 ? 0 : hits / topK.length
+}
+
+function calculateMRR(
+  retrieved: string[],
+  relevant: string[]
+): number {
+  const relevantSet = new Set(relevant)
+  for (let i = 0; i < retrieved.length; i++) {
+    if (relevantSet.has(retrieved[i])) {
+      return 1 / (i + 1)
+    }
+  }
+  return 0
+}
+```
+
+**Exercise 7.2:** Run the comprehensive benchmark and analyze the results.
+
+```typescript
+// Run benchmark
+const benchmarkResults = await runComprehensiveBenchmark(goldenDataset)
+
+console.log(`\n🏆 WINNER: ${benchmarkResults.winner}`)
+console.log('\nKey Findings:')
+console.log(`- Precision improved by ${((benchmarkResults.hybridRerank.precision_at_5 - benchmarkResults.vectorOnly.precision_at_5) / benchmarkResults.vectorOnly.precision_at_5 * 100).toFixed(1)}%`)
+console.log(`- Latency increased by ${(benchmarkResults.hybridRerank.avg_latency_ms - benchmarkResults.vectorOnly.avg_latency_ms).toFixed(0)}ms`)
+console.log(`- Cost increased by $${(benchmarkResults.hybridRerank.cost_per_query - benchmarkResults.vectorOnly.cost_per_query).toFixed(4)}/query`)
+```
+
+**Expected Output**:
+```
+🔬 Running Comprehensive Benchmark: Vector-Only vs Hybrid vs Hybrid+Rerank
+
+================================================================================
+📊 BENCHMARK RESULTS: Hybrid vs Vector-Only Comparison
+================================================================================
+
+| Metric           | Vector-Only | Hybrid (RRF) | Hybrid+Rerank | Improvement |
+|------------------|-------------|--------------|---------------|-------------|
+| Recall@10        | 72.0%       | 83.5%        | 88.0%         | +22.2%      |
+| Precision@5      | 65.0%       | 81.2%        | 94.0%         | +44.6%      |
+| MRR              | 0.680       | 0.795        | 0.850         | +25.0%      |
+| Avg Latency      | 120ms       | 185ms        | 235ms         | +95.8%      |
+| Cost/Query       | $0.0001     | $0.0002      | $0.0042       | +4100.0%    |
+
+================================================================================
+
+🏆 WINNER: hybrid+rerank
+
+Key Findings:
+- Precision improved by 44.6% (critical for medical accuracy)
+- Latency increased by 115ms (acceptable, <300ms SLA)
+- Cost increased by $0.0041/query (within $0.005 budget)
+
+Recommendation: Deploy Hybrid+Rerank to production
+Rationale: 44% precision improvement prevents medical errors, worth $0.004/query cost
+```
+
+**Business Decision Framework**:
+
+Use this benchmark to justify the approach to stakeholders:
+
+```markdown
+# RAG Architecture Recommendation
+
+## Executive Summary
+Based on 100-query benchmark against golden dataset, we recommend **Hybrid Search + Cross-Encoder Reranking** for production deployment.
+
+## Key Metrics
+
+| Metric | Vector-Only | Hybrid+Rerank | Improvement |
+|--------|------------|---------------|-------------|
+| Precision@5 | 65% | **94%** | **+45%** |
+| Cost/Query | $0.0001 | $0.0042 | +$0.0041 |
+
+## ROI Analysis
+
+**Status Quo (Vector-Only)**:
+- 35% of queries return incorrect/incomplete information
+- Physicians must verify in external sources (UpToDate)
+- Average 2 minutes wasted per inaccurate query
+- Cost: 100K queries/month × 35% × 2 min × $90/hour = **$10,500/month in physician time**
+
+**Proposed (Hybrid+Rerank)**:
+- 94% precision (6% error rate)
+- API cost: 100K queries × $0.0042 = **$420/month**
+- Physician time saved: $10,500 → $1,890 (6% error rate)
+- **Net savings: $8,190/month ($98K/year)**
+
+## Recommendation
+✅ Deploy Hybrid+Rerank
+- Prevents medical errors (44% fewer incorrect results)
+- ROI: 1,950% ($98K savings vs $420 cost)
+- Meets <300ms latency SLA (235ms avg)
+```
+
+**Acceptance Criteria for Exercise 7.2**:
+- [ ] Benchmark shows **>40% precision improvement** for hybrid+rerank vs vector-only
+- [ ] Benchmark shows **>20% recall improvement**
+- [ ] Latency remains **<300ms P95**
+- [ ] Cost per query **<$0.005**
+- [ ] ROI analysis demonstrates **>500% return** on API costs
+
 ---
 
 ## Part 8: Production Deployment (20 minutes)

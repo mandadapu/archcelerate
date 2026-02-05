@@ -493,57 +493,134 @@ export default async function DashboardPage() {
               <CardDescription>Enterprise-grade protection framework</CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Framework Overview Diagram */}
-              <div className="rounded-lg mb-4 overflow-hidden bg-slate-900 border border-green-200">
+              <div className="aspect-video rounded-lg mb-4 overflow-hidden relative">
                 <Image
-                  src="/images/security/framework-overview.svg"
-                  alt="AI Security Framework: DATA → MODEL → USE with INFRA and GOV layers"
-                  width={800}
-                  height={400}
-                  className="w-full h-auto"
+                  src="/images/cards/security.svg"
+                  alt="AI Security"
+                  fill
+                  className="object-cover"
                 />
               </div>
-
-              {/* Detailed Threats & Defenses Diagram */}
-              <div className="rounded-lg mb-4 overflow-hidden bg-slate-900 border border-green-200">
-                <Image
-                  src="/images/security/threats-defenses.svg"
-                  alt="Security threats and defenses for DATA, MODEL, and USAGE layers"
-                  width={800}
-                  height={400}
-                  className="w-full h-auto"
-                />
-              </div>
-
-              {/* Quick Reference */}
-              <div className="space-y-2 mb-4 p-3 bg-green-50 rounded-lg border border-green-200">
-                <div className="text-xs font-semibold text-green-800 uppercase tracking-wide">
-                  Protection Layers
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div>
-                    <div className="font-semibold text-green-900">DATA</div>
-                    <div className="text-green-700 text-[10px]">Poison, Exfil, Leak</div>
-                  </div>
-                  <div>
-                    <div className="font-semibold text-green-900">MODEL</div>
-                    <div className="text-green-700 text-[10px]">SCM, API, Priv Esc</div>
-                  </div>
-                  <div>
-                    <div className="font-semibold text-green-900">USAGE</div>
-                    <div className="text-green-700 text-[10px]">Prompt, DoS, Theft</div>
-                  </div>
-                </div>
-              </div>
-
-              <p className="text-xs text-slate-600 mb-4">
+              <p className="text-sm text-slate-600 mb-4">
                 Complete security framework covering data protection, model security,
-                and usage monitoring with infrastructure (CIA Triad) and governance
-                layers. Implements OWASP Top 10 for LLMs defenses.
+                and usage monitoring. Implements OWASP Top 10 for LLMs defenses with
+                enterprise-grade infrastructure and governance.
               </p>
               <Link href="/security">
                 <Button size="sm" variant="outline" className="w-full border-green-300 text-green-700 hover:bg-green-50">
-                  Learn Security Framework →
+                  Learn Security Framework
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          {/* Industry Scenarios */}
+          <Card className="border-2 border-teal-200 bg-gradient-to-br from-teal-50 to-cyan-50">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <span className="text-2xl">🎯</span>
+                  Industry Scenarios
+                </CardTitle>
+                <div className="flex gap-1">
+                  <span className="text-[10px] bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full">
+                    DIGITAL HEALTH
+                  </span>
+                  <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                    ENTERPRISE
+                  </span>
+                </div>
+              </div>
+              <CardDescription>Real-world boardroom-level challenges</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 mb-4">
+                {/* Digital Health Track (Weeks 1-7) */}
+                <div className="mb-3">
+                  <div className="text-xs font-semibold text-teal-800 mb-2 flex items-center gap-1">
+                    🏥 Digital Health Track
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="p-2 bg-white/70 rounded border border-teal-100">
+                      <div className="font-semibold text-teal-900">W1: Multi-Tier Triage</div>
+                      <div className="text-teal-600 text-[10px]">87.5% cost ↓</div>
+                    </div>
+                    <div className="p-2 bg-white/70 rounded border border-teal-100">
+                      <div className="font-semibold text-teal-900">W2: HIPAA Gateway</div>
+                      <div className="text-teal-600 text-[10px]">100% compliance</div>
+                    </div>
+                    <div className="p-2 bg-white/70 rounded border border-teal-100">
+                      <div className="font-semibold text-teal-900">W4: Support Router</div>
+                      <div className="text-teal-600 text-[10px]">60x faster</div>
+                    </div>
+                    <div className="p-2 bg-white/70 rounded border border-teal-100">
+                      <div className="font-semibold text-teal-900">W5: Research Swarm</div>
+                      <div className="text-teal-600 text-[10px]">96% time ↓</div>
+                    </div>
+                    <div className="p-2 bg-white/70 rounded border border-teal-100">
+                      <div className="font-semibold text-teal-900">W6: Clinical RAG</div>
+                      <div className="text-teal-600 text-[10px]">94% precision</div>
+                    </div>
+                    <div className="p-2 bg-white/70 rounded border border-teal-100">
+                      <div className="font-semibold text-teal-900">W7: LLM-as-Judge</div>
+                      <div className="text-teal-600 text-[10px]">98% cost ↓</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Enterprise Track (Weeks 9-12) */}
+                <div className="mb-3">
+                  <div className="text-xs font-semibold text-purple-800 mb-2 flex items-center gap-1">
+                    🏢 Enterprise Track
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="p-2 bg-white/70 rounded border border-purple-100">
+                      <div className="font-semibold text-purple-900">W9: Pharma Graph</div>
+                      <div className="text-purple-600 text-[10px]">333x ROI</div>
+                    </div>
+                    <div className="p-2 bg-white/70 rounded border border-purple-100">
+                      <div className="font-semibold text-purple-900">W10: Legal QLoRA</div>
+                      <div className="text-purple-600 text-[10px]">70% cost ↓</div>
+                    </div>
+                    <div className="p-2 bg-white/70 rounded border border-purple-100">
+                      <div className="font-semibold text-purple-900">W11: Oncology AI</div>
+                      <div className="text-purple-600 text-[10px]">20x coverage</div>
+                    </div>
+                    <div className="p-2 bg-white/70 rounded border border-purple-100">
+                      <div className="font-semibold text-purple-900">W12: Global Gateway</div>
+                      <div className="text-purple-600 text-[10px]">1,480% ROI</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cumulative Impact */}
+                <div className="p-3 bg-gradient-to-br from-teal-100 to-purple-100 rounded-lg border border-teal-200">
+                  <div className="text-xs font-semibold text-slate-800 uppercase tracking-wide mb-2">
+                    Total Business Impact
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div>
+                      <div className="text-slate-900 font-bold">$1.5M+</div>
+                      <div className="text-slate-700 text-[10px]">Annual Savings</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-900 font-bold">99.97%</div>
+                      <div className="text-slate-700 text-[10px]">Uptime</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-900 font-bold">10</div>
+                      <div className="text-slate-700 text-[10px]">Case Studies</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-sm text-slate-600 mb-4">
+                Master production AI through 10 boardroom-level scenarios spanning Digital Health and Enterprise infrastructure. Each includes production TypeScript, ROI calculations, and architectural trade-offs.
+              </p>
+              <Link href="/curriculum/week-1">
+                <Button size="sm" variant="outline" className="w-full border-teal-300 text-teal-700 hover:bg-teal-50">
+                  Start Week 1 Scenario →
                 </Button>
               </Link>
             </CardContent>

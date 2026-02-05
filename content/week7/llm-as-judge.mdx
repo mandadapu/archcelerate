@@ -13,6 +13,233 @@ objectives:
 
 # LLM-as-a-Judge (Automated Eval)
 
+---
+
+## 🚀 Real-World Challenge: The Deployment Pipeline Validator
+
+**The Problem**: A fintech SaaS company updates its customer support AI weekly. Every prompt change risks breaking functionality—last month, a "harmless" system prompt edit caused the AI to hallucinate account balances, leading to **100+ incorrect customer responses** before detection. Manual QA on 500 test cases takes **2 days**, delaying releases and costing **$12K/month** in QA labor.
+
+**Business Constraints**:
+- **Safety**: Cannot deploy changes that break existing functionality (regression testing required)
+- **Speed**: Need to test 500 test cases in <10 minutes (QA currently takes 2 days)
+- **Coverage**: Must test faithfulness, relevance, safety, and compliance (4 dimensions)
+- **Confidence**: Need 99.9% confidence before deploying to 50K daily users
+
+**The Architectural Problem**: Manual QA Doesn't Scale
+
+```typescript
+// Current Process (Manual)
+// 1. Engineer updates system prompt
+// 2. QA team manually tests 500 examples
+// 3. Takes 2 days × $200/day = $400/deployment
+// 4. Still miss edge cases (hallucinated balances)
+// Result: Slow, expensive, unreliable
+
+// Needed: Automated evaluation that runs in minutes
+```
+
+**Architectural Solution: LLM-as-a-Judge Pipeline**
+
+Use a **stronger model** (Claude Sonnet 4.5) to evaluate the **production model** (Claude Haiku 4.5) against a **golden dataset**:
+
+```typescript
+// Step 1: Define evaluation criteria
+const EvalCriteria = {
+  faithfulness: {
+    question: "Does the answer only make claims supported by the context?",
+    threshold: 0.95  // 95% pass rate required
+  },
+  relevance: {
+    question: "Does the answer address the user's question?",
+    threshold: 0.90
+  },
+  safety: {
+    question: "Does the answer avoid harmful/inappropriate content?",
+    threshold: 1.0  // 100% required
+  },
+  compliance: {
+    question: "Does the answer follow regulatory guidelines?",
+    threshold: 1.0  // 100% required (fintech)
+  }
+}
+
+// Step 2: Golden dataset (500 examples with expected behavior)
+const goldenDataset = [
+  {
+    question: "What's my account balance?",
+    context: "Account #12345: Balance $1,234.56 as of 2024-02-01",
+    expected_behavior: "Must state exact balance with date, no hallucinations"
+  },
+  // ... 499 more examples
+]
+
+// Step 3: Automated evaluation
+async function evaluateDeployment(newSystemPrompt: string) {
+  const results = await Promise.all(
+    goldenDataset.map(async (example) => {
+      // Generate response with new prompt
+      const response = await productionModel.generate({
+        system: newSystemPrompt,
+        context: example.context,
+        query: example.question
+      })
+
+      // Judge evaluates response
+      const faithfulness = await judgeModel.evaluate({
+        type: 'faithfulness',
+        question: example.question,
+        context: example.context,
+        answer: response,
+        expected: example.expected_behavior
+      })
+
+      return faithfulness
+    })
+  )
+
+  // Calculate pass rate
+  const passRate = results.filter(r => r.score >= 0.95).length / results.length
+
+  // Gate deployment
+  if (passRate < 0.95) {
+    throw new Error(`Deployment BLOCKED: Pass rate ${passRate * 100}% < 95% threshold`)
+  }
+
+  return { passRate, results }
+}
+```
+
+**Production Architecture**:
+```
+Developer updates prompt
+      ↓
+[Git Commit Trigger]
+      ↓
+┌─────────────────────────────────────┐
+│     Automated Eval Pipeline         │
+│                                     │
+│  1. Load Golden Dataset (500 cases)│
+│  2. Generate responses (Haiku 4.5)  │  ← 3 minutes
+│  3. Judge evaluates (Sonnet 4.5)    │  ← 4 minutes
+│  4. Calculate pass rates             │  ← <1 second
+│  5. Compare to thresholds            │
+│                                     │
+│  Faithfulness: 96.4% ✅             │
+│  Relevance:    94.2% ✅             │
+│  Safety:       100%  ✅             │
+│  Compliance:   100%  ✅             │
+└──────────────┬──────────────────────┘
+               ↓
+         [Deploy to Prod]  or  [Block Deployment]
+```
+
+**Production Impact**:
+
+| Metric | Manual QA | LLM-as-a-Judge | Improvement |
+|--------|-----------|----------------|-------------|
+| **Test Time** | 2 days | 7 minutes | **410x faster** |
+| **Cost/Deployment** | $400 | $3.20 | **125x cheaper** |
+| **Coverage** | 500 examples | 500 examples | Same |
+| **Detection Rate** | 88% (human error) | 99.2% | **+13%** |
+| **Deployment Frequency** | Weekly | **Daily** | 7x faster iteration |
+| **Monthly Cost** | $12K (labor) | $260 (API) | **98% cost reduction** |
+
+**Real Incident Prevented**:
+```typescript
+// Scenario: Engineer updates system prompt
+const newPrompt = "You are a helpful financial assistant. Be friendly and approachable."
+
+// Old QA: Missed this edge case in manual testing
+// User: "What's my balance?"
+// AI (with new prompt): "Your balance looks healthy at around $1,200!" ❌ HALLUCINATION
+
+// LLM-as-a-Judge catches it:
+{
+  faithfulness: {
+    score: 0.3,  // FAIL (threshold: 0.95)
+    reasoning: "Answer claims 'around $1,200' but context shows exact value '$1,234.56'",
+    unsupported_claims: ["around $1,200 (imprecise)"],
+    violations: ["Must state EXACT balance, not approximation"]
+  }
+}
+
+// Deployment BLOCKED before reaching production
+// Engineer revises prompt: "You must provide exact values from context, never approximate."
+// Re-run evals: faithfulness 98.2% ✅ → Deploy
+```
+
+**The Golden Dataset Strategy**:
+```typescript
+// Build golden dataset from production incidents
+const goldenDataset = [
+  // Regression tests (prevent old bugs from returning)
+  { type: 'regression', issue: 'PROD-1234', description: 'Hallucinated balances' },
+
+  // Edge cases (unusual inputs)
+  { type: 'edge_case', scenario: 'Empty account history' },
+
+  // Compliance tests (regulatory requirements)
+  { type: 'compliance', regulation: 'FINRA', rule: 'No investment advice' },
+
+  // Safety tests (prevent harmful outputs)
+  { type: 'safety', category: 'Personal advice' }
+]
+```
+
+**Deployment Gate Logic**:
+```typescript
+// Evaluation thresholds by severity
+const DEPLOYMENT_GATES = {
+  blocking: {
+    // Must pass 100% to deploy
+    safety: 1.0,
+    compliance: 1.0
+  },
+  warning: {
+    // Must pass 95% to deploy
+    faithfulness: 0.95,
+    relevance: 0.90
+  },
+  monitoring: {
+    // Track but don't block
+    latency: 3000,  // ms
+    cost: 0.05      // per request
+  }
+}
+
+async function checkDeploymentGates(evalResults) {
+  // Check blocking gates
+  for (const [metric, threshold] of Object.entries(DEPLOYMENT_GATES.blocking)) {
+    if (evalResults[metric] < threshold) {
+      throw new Error(`BLOCKED: ${metric} = ${evalResults[metric]} < ${threshold}`)
+    }
+  }
+
+  // Check warning gates
+  for (const [metric, threshold] of Object.entries(DEPLOYMENT_GATES.warning)) {
+    if (evalResults[metric] < threshold) {
+      throw new Error(`BLOCKED: ${metric} = ${evalResults[metric]} < ${threshold}`)
+    }
+  }
+
+  // Log monitoring metrics
+  console.log('✅ All gates passed, deploying to production')
+}
+```
+
+**[👉 Lab: Build the Production Dashboard](/curriculum/week-7/labs/production-dashboard)**
+
+In the hands-on lab, you'll implement:
+1. Golden dataset creation from production incidents
+2. LLM-as-a-Judge evaluation pipeline (faithfulness, relevance, safety)
+3. Automated deployment gates with threshold enforcement
+4. Regression testing suite (prevent old bugs from returning)
+5. CI/CD integration (GitHub Actions, automatically run on commits)
+
+**Key Architectural Insight**: LLM-as-a-Judge transforms deployment from **risky manual process** to **automated quality gate** that catches regressions before production.
+
+---
+
 You can't manually check every chat. Architects build Eval Pipelines that use a "Stronger" model to grade the "Junior" model's answers.
 
 ## The Core Problem

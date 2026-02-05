@@ -1,0 +1,1168 @@
+---
+title: "Lab: Build a Global AI Gateway"
+description: "Implement an enterprise-grade AI gateway with rate limiting, failover, and cost tracking"
+estimatedMinutes: 300
+week: 12
+labType: "capstone"
+difficulty: expert
+points: 100
+objectives:
+  - Build a production-ready Global AI Gateway supporting multiple AI providers
+  - Implement hierarchical rate limiting (global, tenant, user) with Redis
+  - Deploy multi-region failover architecture with health checks
+  - Create FinOps cost attribution system tracking costs by user and department
+  - Achieve <500ms latency and 99.9% uptime targets
+---
+
+# Lab: Build a Global AI Gateway
+
+## Overview
+
+In this capstone lab, you'll build **GatewayHub** - a production-ready Global AI Gateway that handles 10K+ requests/second across multiple AI providers. This is the culmination of everything you've learned in the AI Architect Accelerator.
+
+**What You'll Build**:
+```
+External Apps
+  ├─ Mobile App
+  ├─ Web Dashboard
+  └─ CLI Tool
+         ↓
+   [Your Gateway]
+         ├─ Rate Limiting (global, tenant, user)
+         ├─ Authentication (JWT + API keys)
+         ├─ Multi-Region Routing (us-east, us-west, eu-west)
+         ├─ Provider Abstraction (Anthropic, OpenAI, local)
+         ├─ Cost Attribution (by user, dept, project)
+         └─ Health Monitoring (Prometheus metrics)
+         ↓
+   AI Providers
+     ├─ Anthropic Claude
+     ├─ OpenAI GPT-4
+     └─ Local Llama
+```
+
+**Production Targets**:
+- **Latency**: P95 < 500ms (gateway overhead < 50ms)
+- **Throughput**: 10,000 requests/second
+- **Uptime**: 99.9% (43 minutes downtime/month)
+- **Cost**: Track 100% of requests with full attribution
+
+**Real-World Use Case**: Similar to:
+- **Stripe AI Gateway**: Routes 50K req/s across multiple LLM providers
+- **Cloudflare AI Gateway**: Handles 1M+ requests/day with <10ms overhead
+- **AWS Bedrock**: Multi-model gateway with usage tracking
+
+---
+
+## Scenario
+
+You're the AI Infrastructure Engineer at **CloudCorp**, a SaaS company with 500 customers and 10,000 end-users. Your challenge:
+
+**Problems**:
+1. 8 different teams calling AI APIs directly → No cost visibility
+2. Users hitting provider rate limits → App crashes
+3. Single region deployment → Downtime when AWS us-east-1 has outages
+4. No way to switch providers → Locked into one vendor
+
+**Your Solution**: Build a Global AI Gateway that solves all these problems.
+
+**Success Criteria**:
+- All AI traffic routes through gateway (100% coverage)
+- Rate limits enforce tenant quotas (prevent $10K surprise bills)
+- Multi-region failover prevents downtime
+- FinOps dashboard shows costs by team/user/project
+- <50ms gateway overhead (fast enough for production)
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Load Balancer                           │
+│            (CloudFlare / AWS ALB / Nginx)                   │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+        ┌────────────┴────────────┐
+        │                         │
+┌───────▼────────┐      ┌────────▼────────┐
+│  us-east-1     │      │   us-west-2     │
+│  Gateway       │      │   Gateway       │
+│  (3 instances) │      │   (3 instances) │
+└───────┬────────┘      └────────┬────────┘
+        │                        │
+        ├────────────────────────┤
+        │   Shared Redis Cluster │
+        │   (Rate Limiting)      │
+        └────────────────────────┘
+        │                        │
+┌───────▼────────────────────────▼──────────┐
+│         Provider Abstraction              │
+│  ┌─────────┬─────────┬──────────┐        │
+│  │Anthropic│ OpenAI  │  Local   │        │
+│  └─────────┴─────────┴──────────┘        │
+└───────────────────────────────────────────┘
+```
+
+---
+
+## Part 1: Project Setup (15 minutes)
+
+### Install Dependencies
+
+```bash
+npm init -y
+npm install express @anthropic-ai/sdk openai ioredis zod
+npm install --save-dev @types/express @types/node typescript ts-node nodemon
+```
+
+### Project Structure
+
+```
+global-ai-gateway/
+├── src/
+│   ├── server.ts                 # Express server
+│   ├── middleware/
+│   │   ├── auth.ts              # JWT + API key auth
+│   │   ├── rate-limiter.ts      # Hierarchical rate limiting
+│   │   └── cost-tracker.ts      # FinOps tracking
+│   ├── router/
+│   │   ├── gateway.ts           # Main routing logic
+│   │   └── providers/
+│   │       ├── anthropic.ts
+│   │       ├── openai.ts
+│   │       └── base.ts
+│   ├── health/
+│   │   └── checker.ts           # Health checks
+│   ├── metrics/
+│   │   └── prometheus.ts        # Prometheus metrics
+│   └── types.ts
+├── docker-compose.yml           # Redis cluster
+├── package.json
+└── tsconfig.json
+```
+
+### TypeScript Config
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules"]
+}
+```
+
+### Docker Compose (Redis Cluster)
+
+```yaml
+version: '3.8'
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: gateway
+      POSTGRES_PASSWORD: gateway
+      POSTGRES_DB: gateway
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  redis-data:
+  postgres-data:
+```
+
+**Start services**:
+```bash
+docker-compose up -d
+```
+
+---
+
+## Part 2: Types & Interfaces (15 minutes)
+
+Create `src/types.ts`:
+
+```typescript
+import { z } from 'zod'
+
+// Unified API request (works with any provider)
+export const UnifiedRequestSchema = z.object({
+  model: z.string(),
+  messages: z.array(
+    z.object({
+      role: z.enum(['user', 'assistant', 'system']),
+      content: z.string()
+    })
+  ),
+  max_tokens: z.number().optional(),
+  temperature: z.number().optional(),
+  stream: z.boolean().optional()
+})
+
+export type UnifiedRequest = z.infer<typeof UnifiedRequestSchema>
+
+// Unified response
+export interface UnifiedResponse {
+  content: string
+  model: string
+  provider: string
+  usage: {
+    input_tokens: number
+    output_tokens: number
+    total_cost: number
+  }
+  metadata: {
+    region: string
+    latency: number
+    cache_hit: boolean
+    request_id: string
+  }
+}
+
+// Rate limit result
+export interface RateLimitResult {
+  allowed: boolean
+  limit_type?: 'global' | 'tenant' | 'user'
+  remaining: number
+  reset_at: number
+  retry_after: number
+}
+
+// Auth context
+export interface AuthContext {
+  user_id: string
+  tenant_id: string
+  department_id?: string
+  project_id?: string
+  tier: 'free' | 'pro' | 'enterprise'
+  api_key: string
+}
+
+// Provider config
+export interface ProviderConfig {
+  name: string
+  endpoint: string
+  api_key: string
+  rate_limit: number
+  cost_per_1k_input: number
+  cost_per_1k_output: number
+}
+
+// Health status
+export interface HealthStatus {
+  status: 'healthy' | 'degraded' | 'unhealthy'
+  checks: HealthCheck[]
+  timestamp: string
+}
+
+export interface HealthCheck {
+  name: string
+  status: 'pass' | 'fail'
+  latency?: number
+  error?: string
+}
+
+// Cost record
+export interface CostRecord {
+  request_id: string
+  user_id: string
+  tenant_id: string
+  department_id?: string
+  project_id?: string
+  model: string
+  provider: string
+  input_tokens: number
+  output_tokens: number
+  total_cost: number
+  timestamp: Date
+}
+```
+
+---
+
+## Part 3: Hierarchical Rate Limiting (45 minutes)
+
+Create `src/middleware/rate-limiter.ts`:
+
+```typescript
+import Redis from 'ioredis'
+import { AuthContext, RateLimitResult } from '../types'
+
+interface RateLimitConfig {
+  global_per_second: number
+  tenant_per_hour: Record<string, number>  // tier → limit
+  user_per_hour: number
+}
+
+export class HierarchicalRateLimiter {
+  private redis: Redis
+  private config: RateLimitConfig
+
+  constructor() {
+    this.redis = new Redis({
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT || '6379'),
+      retryStrategy: (times) => Math.min(times * 50, 2000)
+    })
+
+    this.config = {
+      global_per_second: 10000,
+      tenant_per_hour: {
+        free: 100,
+        pro: 10000,
+        enterprise: 1000000
+      },
+      user_per_hour: 1000
+    }
+  }
+
+  async checkLimit(auth: AuthContext): Promise<RateLimitResult> {
+    const now = Date.now()
+
+    // Check all three levels in parallel
+    const [globalCheck, tenantCheck, userCheck] = await Promise.all([
+      this.checkGlobal(now),
+      this.checkTenant(auth.tenant_id, auth.tier, now),
+      this.checkUser(auth.user_id, now)
+    ])
+
+    // Return first failure
+    if (!globalCheck.allowed) return globalCheck
+    if (!tenantCheck.allowed) return tenantCheck
+    if (!userCheck.allowed) return userCheck
+
+    // All passed
+    return {
+      allowed: true,
+      limit_type: undefined,
+      remaining: Math.min(
+        globalCheck.remaining,
+        tenantCheck.remaining,
+        userCheck.remaining
+      ),
+      reset_at: Math.max(
+        globalCheck.reset_at,
+        tenantCheck.reset_at,
+        userCheck.reset_at
+      ),
+      retry_after: 0
+    }
+  }
+
+  private async checkGlobal(now: number): Promise<RateLimitResult> {
+    // Sliding window: 10K requests per second
+    const key = `ratelimit:global:${Math.floor(now / 1000)}`
+    const limit = this.config.global_per_second
+
+    const count = await this.redis.incr(key)
+    await this.redis.expire(key, 2) // Expire after 2 seconds
+
+    if (count > limit) {
+      const resetAt = Math.ceil(now / 1000) * 1000 + 1000
+
+      return {
+        allowed: false,
+        limit_type: 'global',
+        remaining: 0,
+        reset_at: resetAt,
+        retry_after: Math.ceil((resetAt - now) / 1000)
+      }
+    }
+
+    return {
+      allowed: true,
+      limit_type: 'global',
+      remaining: limit - count,
+      reset_at: Math.ceil(now / 1000) * 1000 + 1000,
+      retry_after: 0
+    }
+  }
+
+  private async checkTenant(
+    tenantId: string,
+    tier: string,
+    now: number
+  ): Promise<RateLimitResult> {
+    // Fixed window: Per-tier limits per hour
+    const hourKey = Math.floor(now / 3600000)
+    const key = `ratelimit:tenant:${tenantId}:${hourKey}`
+    const limit = this.config.tenant_per_hour[tier] || 100
+
+    const count = await this.redis.incr(key)
+
+    if (count === 1) {
+      await this.redis.expire(key, 3600) // Expire after 1 hour
+    }
+
+    const resetAt = (hourKey + 1) * 3600000
+
+    if (count > limit) {
+      return {
+        allowed: false,
+        limit_type: 'tenant',
+        remaining: 0,
+        reset_at: resetAt,
+        retry_after: Math.ceil((resetAt - now) / 1000)
+      }
+    }
+
+    return {
+      allowed: true,
+      limit_type: 'tenant',
+      remaining: limit - count,
+      reset_at: resetAt,
+      retry_after: 0
+    }
+  }
+
+  private async checkUser(userId: string, now: number): Promise<RateLimitResult> {
+    // Fixed window: 1000 requests per hour per user
+    const hourKey = Math.floor(now / 3600000)
+    const key = `ratelimit:user:${userId}:${hourKey}`
+    const limit = this.config.user_per_hour
+
+    const count = await this.redis.incr(key)
+
+    if (count === 1) {
+      await this.redis.expire(key, 3600)
+    }
+
+    const resetAt = (hourKey + 1) * 3600000
+
+    if (count > limit) {
+      return {
+        allowed: false,
+        limit_type: 'user',
+        remaining: 0,
+        reset_at: resetAt,
+        retry_after: Math.ceil((resetAt - now) / 1000)
+      }
+    }
+
+    return {
+      allowed: true,
+      limit_type: 'user',
+      remaining: limit - count,
+      reset_at: resetAt,
+      retry_after: 0
+    }
+  }
+
+  async close() {
+    await this.redis.quit()
+  }
+}
+```
+
+**✅ Checkpoint**: Test rate limiter
+```typescript
+const limiter = new HierarchicalRateLimiter()
+
+const auth: AuthContext = {
+  user_id: 'user-123',
+  tenant_id: 'tenant-456',
+  tier: 'pro',
+  api_key: 'test'
+}
+
+// Should pass first 10 times
+for (let i = 0; i < 15; i++) {
+  const result = await limiter.checkLimit(auth)
+  console.log(`Request ${i + 1}:`, result.allowed ? '✅ PASS' : '❌ BLOCKED')
+}
+
+await limiter.close()
+```
+
+---
+
+## Part 4: Provider Abstraction (45 minutes)
+
+### Base Provider Interface
+
+Create `src/router/providers/base.ts`:
+
+```typescript
+import { UnifiedRequest, UnifiedResponse } from '../../types'
+
+export interface ProviderAdapter {
+  name: string
+  convertRequest(unified: UnifiedRequest): any
+  call(request: any): Promise<any>
+  convertResponse(response: any, latency: number): UnifiedResponse
+  calculateCost(usage: { input_tokens: number; output_tokens: number }): number
+}
+```
+
+### Anthropic Adapter
+
+Create `src/router/providers/anthropic.ts`:
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+import { ProviderAdapter } from './base'
+import { UnifiedRequest, UnifiedResponse } from '../../types'
+
+export class AnthropicAdapter implements ProviderAdapter {
+  name = 'anthropic'
+  private client: Anthropic
+
+  constructor() {
+    this.client = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY
+    })
+  }
+
+  convertRequest(unified: UnifiedRequest) {
+    return {
+      model: unified.model,
+      max_tokens: unified.max_tokens || 1024,
+      temperature: unified.temperature || 0.7,
+      messages: unified.messages,
+      stream: unified.stream || false
+    }
+  }
+
+  async call(request: any) {
+    return await this.client.messages.create(request)
+  }
+
+  convertResponse(response: any, latency: number): UnifiedResponse {
+    const cost = this.calculateCost(response.usage)
+
+    return {
+      content: response.content[0].text,
+      model: response.model,
+      provider: 'anthropic',
+      usage: {
+        input_tokens: response.usage.input_tokens,
+        output_tokens: response.usage.output_tokens,
+        total_cost: cost
+      },
+      metadata: {
+        region: process.env.AWS_REGION || 'us-east-1',
+        latency,
+        cache_hit: false,
+        request_id: response.id
+      }
+    }
+  }
+
+  calculateCost(usage: { input_tokens: number; output_tokens: number }): number {
+    // Claude Sonnet pricing
+    return (usage.input_tokens / 1000) * 0.003 + (usage.output_tokens / 1000) * 0.015
+  }
+}
+```
+
+### OpenAI Adapter
+
+Create `src/router/providers/openai.ts`:
+
+```typescript
+import OpenAI from 'openai'
+import { ProviderAdapter } from './base'
+import { UnifiedRequest, UnifiedResponse } from '../../types'
+
+export class OpenAIAdapter implements ProviderAdapter {
+  name = 'openai'
+  private client: OpenAI
+
+  constructor() {
+    this.client = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    })
+  }
+
+  convertRequest(unified: UnifiedRequest) {
+    return {
+      model: unified.model,
+      max_tokens: unified.max_tokens || 1024,
+      temperature: unified.temperature || 0.7,
+      messages: unified.messages,
+      stream: unified.stream || false
+    }
+  }
+
+  async call(request: any) {
+    return await this.client.chat.completions.create(request)
+  }
+
+  convertResponse(response: any, latency: number): UnifiedResponse {
+    const cost = this.calculateCost({
+      input_tokens: response.usage.prompt_tokens,
+      output_tokens: response.usage.completion_tokens
+    })
+
+    return {
+      content: response.choices[0].message.content,
+      model: response.model,
+      provider: 'openai',
+      usage: {
+        input_tokens: response.usage.prompt_tokens,
+        output_tokens: response.usage.completion_tokens,
+        total_cost: cost
+      },
+      metadata: {
+        region: process.env.AWS_REGION || 'us-east-1',
+        latency,
+        cache_hit: false,
+        request_id: response.id
+      }
+    }
+  }
+
+  calculateCost(usage: { input_tokens: number; output_tokens: number }): number {
+    // GPT-4 Turbo pricing
+    return (usage.input_tokens / 1000) * 0.01 + (usage.output_tokens / 1000) * 0.03
+  }
+}
+```
+
+### Model-Agnostic Router
+
+Create `src/router/gateway.ts`:
+
+```typescript
+import { UnifiedRequest, UnifiedResponse } from '../types'
+import { ProviderAdapter } from './providers/base'
+import { AnthropicAdapter } from './providers/anthropic'
+import { OpenAIAdapter } from './providers/openai'
+
+export class AIGateway {
+  private providers = new Map<string, ProviderAdapter>([
+    ['anthropic', new AnthropicAdapter()],
+    ['openai', new OpenAIAdapter()]
+  ])
+
+  async route(request: UnifiedRequest): Promise<UnifiedResponse> {
+    // Determine provider from model name
+    const provider = this.selectProvider(request.model)
+
+    // Get adapter
+    const adapter = this.providers.get(provider)
+    if (!adapter) {
+      throw new Error(`Unknown provider: ${provider}`)
+    }
+
+    // Convert request
+    const providerRequest = adapter.convertRequest(request)
+
+    // Call provider
+    const startTime = Date.now()
+    const providerResponse = await adapter.call(providerRequest)
+    const latency = Date.now() - startTime
+
+    // Convert response
+    const unifiedResponse = adapter.convertResponse(providerResponse, latency)
+
+    return unifiedResponse
+  }
+
+  private selectProvider(model: string): string {
+    if (model.startsWith('claude')) return 'anthropic'
+    if (model.startsWith('gpt')) return 'openai'
+
+    throw new Error(`Unknown model: ${model}`)
+  }
+}
+```
+
+---
+
+## Part 5: Cost Attribution (30 minutes)
+
+Create `src/middleware/cost-tracker.ts`:
+
+```typescript
+import { Pool } from 'pg'
+import { AuthContext, CostRecord } from '../types'
+
+export class CostTracker {
+  private pool: Pool
+
+  constructor() {
+    this.pool = new Pool({
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '5432'),
+      user: process.env.DB_USER || 'gateway',
+      password: process.env.DB_PASSWORD || 'gateway',
+      database: process.env.DB_NAME || 'gateway'
+    })
+
+    this.initSchema()
+  }
+
+  private async initSchema() {
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS cost_records (
+        id SERIAL PRIMARY KEY,
+        request_id VARCHAR(255) NOT NULL,
+        user_id VARCHAR(255) NOT NULL,
+        tenant_id VARCHAR(255) NOT NULL,
+        department_id VARCHAR(255),
+        project_id VARCHAR(255),
+        model VARCHAR(255) NOT NULL,
+        provider VARCHAR(255) NOT NULL,
+        input_tokens INTEGER NOT NULL,
+        output_tokens INTEGER NOT NULL,
+        total_cost DECIMAL(10, 6) NOT NULL,
+        timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
+        INDEX idx_tenant (tenant_id, timestamp),
+        INDEX idx_user (user_id, timestamp),
+        INDEX idx_department (department_id, timestamp)
+      )
+    `)
+
+    console.log('✅ Cost tracking schema initialized')
+  }
+
+  async record(auth: AuthContext, record: CostRecord) {
+    await this.pool.query(
+      `INSERT INTO cost_records (
+        request_id, user_id, tenant_id, department_id, project_id,
+        model, provider, input_tokens, output_tokens, total_cost, timestamp
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [
+        record.request_id,
+        auth.user_id,
+        auth.tenant_id,
+        auth.department_id || null,
+        auth.project_id || null,
+        record.model,
+        record.provider,
+        record.input_tokens,
+        record.output_tokens,
+        record.total_cost,
+        record.timestamp
+      ]
+    )
+  }
+
+  async getCostsByTenant(tenantId: string, startDate: Date, endDate: Date) {
+    const result = await this.pool.query(
+      `SELECT
+        DATE_TRUNC('day', timestamp) as date,
+        SUM(total_cost) as total_cost,
+        SUM(input_tokens) as input_tokens,
+        SUM(output_tokens) as output_tokens,
+        COUNT(*) as request_count
+      FROM cost_records
+      WHERE tenant_id = $1 AND timestamp >= $2 AND timestamp <= $3
+      GROUP BY DATE_TRUNC('day', timestamp)
+      ORDER BY date DESC`,
+      [tenantId, startDate, endDate]
+    )
+
+    return result.rows
+  }
+
+  async getCostsByUser(userId: string, startDate: Date, endDate: Date) {
+    const result = await this.pool.query(
+      `SELECT
+        model,
+        provider,
+        SUM(total_cost) as total_cost,
+        COUNT(*) as request_count
+      FROM cost_records
+      WHERE user_id = $1 AND timestamp >= $2 AND timestamp <= $3
+      GROUP BY model, provider
+      ORDER BY total_cost DESC`,
+      [userId, startDate, endDate]
+    )
+
+    return result.rows
+  }
+
+  async close() {
+    await this.pool.end()
+  }
+}
+```
+
+---
+
+## Part 6: Express Server (45 minutes)
+
+Create `src/server.ts`:
+
+```typescript
+import express, { Request, Response, NextFunction } from 'express'
+import { HierarchicalRateLimiter } from './middleware/rate-limiter'
+import { CostTracker } from './middleware/cost-tracker'
+import { AIGateway } from './router/gateway'
+import { UnifiedRequestSchema, AuthContext } from './types'
+import { v4 as uuidv4 } from 'uuid'
+
+const app = express()
+app.use(express.json())
+
+// Initialize components
+const rateLimiter = new HierarchicalRateLimiter()
+const costTracker = new CostTracker()
+const gateway = new AIGateway()
+
+// Auth middleware (simplified - use JWT in production)
+async function authenticate(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  const apiKey = req.headers['authorization']?.replace('Bearer ', '')
+
+  if (!apiKey) {
+    return res.status(401).json({ error: 'Missing API key' })
+  }
+
+  // Mock auth - replace with real JWT/database lookup
+  const auth: AuthContext = {
+    user_id: 'user-123',
+    tenant_id: 'tenant-456',
+    department_id: 'engineering',
+    tier: 'pro',
+    api_key: apiKey
+  }
+
+  req.auth = auth
+  next()
+}
+
+// Rate limiting middleware
+async function rateLimit(req: Request, res: Response, next: NextFunction) {
+  const result = await rateLimiter.checkLimit(req.auth)
+
+  // Add rate limit headers
+  res.setHeader('X-RateLimit-Remaining', result.remaining.toString())
+  res.setHeader('X-RateLimit-Reset', result.reset_at.toString())
+
+  if (!result.allowed) {
+    return res.status(429).json({
+      error: `Rate limit exceeded (${result.limit_type})`,
+      retry_after: result.retry_after
+    })
+  }
+
+  next()
+}
+
+// Main gateway endpoint
+app.post('/v1/complete', authenticate, rateLimit, async (req: Request, res: Response) => {
+  const requestId = uuidv4()
+
+  try {
+    // Validate request
+    const validatedRequest = UnifiedRequestSchema.parse(req.body)
+
+    // Route to provider
+    const response = await gateway.route(validatedRequest)
+
+    // Add request ID
+    response.metadata.request_id = requestId
+
+    // Record costs
+    await costTracker.record(req.auth, {
+      request_id: requestId,
+      user_id: req.auth.user_id,
+      tenant_id: req.auth.tenant_id,
+      department_id: req.auth.department_id,
+      project_id: req.auth.project_id,
+      model: response.model,
+      provider: response.provider,
+      input_tokens: response.usage.input_tokens,
+      output_tokens: response.usage.output_tokens,
+      total_cost: response.usage.total_cost,
+      timestamp: new Date()
+    })
+
+    // Return response
+    res.json(response)
+  } catch (error) {
+    console.error('Gateway error:', error)
+    res.status(500).json({
+      error: 'Internal server error',
+      request_id: requestId
+    })
+  }
+})
+
+// Health check
+app.get('/health', async (req: Request, res: Response) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString()
+  })
+})
+
+// Cost analytics endpoint
+app.get('/analytics/costs', authenticate, async (req: Request, res: Response) => {
+  const startDate = new Date(req.query.start_date as string)
+  const endDate = new Date(req.query.end_date as string)
+
+  const costs = await costTracker.getCostsByTenant(
+    req.auth.tenant_id,
+    startDate,
+    endDate
+  )
+
+  res.json({ costs })
+})
+
+// Start server
+const PORT = process.env.PORT || 3000
+
+app.listen(PORT, () => {
+  console.log(`\n🚀 Global AI Gateway running on port ${PORT}`)
+  console.log(`   Health: http://localhost:${PORT}/health`)
+  console.log(`   API: http://localhost:${PORT}/v1/complete\n`)
+})
+
+// Augment Express Request type
+declare global {
+  namespace Express {
+    interface Request {
+      auth: AuthContext
+    }
+  }
+}
+```
+
+---
+
+## Part 7: Testing & Validation (60 minutes)
+
+### Test 1: Basic Request
+
+```bash
+curl -X POST http://localhost:3000/v1/complete \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer test-key-123" \
+  -d '{
+    "model": "claude-3-5-sonnet-20241022",
+    "messages": [
+      {"role": "user", "content": "Hello!"}
+    ],
+    "max_tokens": 100
+  }'
+```
+
+**Expected Response**:
+```json
+{
+  "content": "Hello! How can I help you today?",
+  "model": "claude-3-5-sonnet-20241022",
+  "provider": "anthropic",
+  "usage": {
+    "input_tokens": 5,
+    "output_tokens": 8,
+    "total_cost": 0.000135
+  },
+  "metadata": {
+    "region": "us-east-1",
+    "latency": 842,
+    "cache_hit": false,
+    "request_id": "req-abc123"
+  }
+}
+```
+
+### Test 2: Rate Limiting
+
+Send 15 requests rapidly:
+```bash
+for i in {1..15}; do
+  curl -X POST http://localhost:3000/v1/complete \
+    -H "Authorization: Bearer test-key" \
+    -d '{"model":"claude-3-haiku-20240307","messages":[{"role":"user","content":"Hi"}],"max_tokens":10}' &
+done
+```
+
+**Expected**: First 10 pass, rest get 429 rate limit errors.
+
+### Test 3: Multi-Provider Routing
+
+```bash
+# Anthropic
+curl -X POST http://localhost:3000/v1/complete \
+  -H "Authorization: Bearer test-key" \
+  -d '{"model":"claude-3-5-sonnet-20241022","messages":[{"role":"user","content":"Test"}]}'
+
+# OpenAI
+curl -X POST http://localhost:3000/v1/complete \
+  -H "Authorization: Bearer test-key" \
+  -d '{"model":"gpt-4-turbo","messages":[{"role":"user","content":"Test"}]}'
+```
+
+Both should work transparently.
+
+### Test 4: Cost Analytics
+
+```bash
+curl http://localhost:3000/analytics/costs?start_date=2025-02-01&end_date=2025-02-05 \
+  -H "Authorization: Bearer test-key"
+```
+
+**Expected**:
+```json
+{
+  "costs": [
+    {
+      "date": "2025-02-04",
+      "total_cost": "0.245000",
+      "input_tokens": 1250,
+      "output_tokens": 3800,
+      "request_count": 42
+    }
+  ]
+}
+```
+
+---
+
+## Part 8: Load Testing (30 minutes)
+
+Install load testing tool:
+```bash
+npm install -g artillery
+```
+
+Create `load-test.yml`:
+```yaml
+config:
+  target: 'http://localhost:3000'
+  phases:
+    - duration: 60
+      arrivalRate: 100  # 100 requests/second
+  defaults:
+    headers:
+      Authorization: 'Bearer test-key-123'
+
+scenarios:
+  - name: 'AI Completion'
+    flow:
+      - post:
+          url: '/v1/complete'
+          json:
+            model: 'claude-3-haiku-20240307'
+            messages:
+              - role: 'user'
+                content: 'Hello'
+            max_tokens: 20
+```
+
+**Run test**:
+```bash
+artillery run load-test.yml
+```
+
+**Target Metrics**:
+- P95 latency: <500ms
+- Success rate: >99.9%
+- Throughput: 100 req/s sustained
+
+---
+
+## Evaluation Rubric (100 points)
+
+| Component | Points | Criteria |
+|-----------|--------|----------|
+| **Rate Limiting** | 25 | - Global limit (8pts)<br>- Tenant limit (8pts)<br>- User limit (8pts)<br>- Redis integration (1pt) |
+| **Provider Abstraction** | 20 | - Unified API (5pts)<br>- Anthropic adapter (7pts)<br>- OpenAI adapter (7pts)<br>- Error handling (1pt) |
+| **Cost Attribution** | 20 | - PostgreSQL schema (5pts)<br>- Record tracking (5pts)<br>- Analytics queries (5pts)<br>- Per-user costs (5pts) |
+| **API Implementation** | 20 | - Express server (5pts)<br>- Auth middleware (5pts)<br>- Error handling (5pts)<br>- Response format (5pts) |
+| **Production Readiness** | 15 | - TypeScript types (3pts)<br>- Docker setup (3pts)<br>- Health checks (3pts)<br>- Logging (3pts)<br>- Documentation (3pts) |
+| **Performance** | 10 | - P95 latency <500ms (5pts)<br>- Load test passing (5pts) |
+
+**Bonus Points** (+20):
+- Multi-region deployment (5pts)
+- Semantic caching layer (5pts)
+- Prometheus metrics (5pts)
+- Automated failover (5pts)
+
+---
+
+## Submission
+
+Submit GitHub repository with:
+
+1. **Complete Code**: All components implemented
+2. **README**: Setup instructions, architecture diagram
+3. **Demo Video**: 3-5 minute walkthrough showing:
+   - Request routing to different providers
+   - Rate limiting in action
+   - Cost analytics dashboard
+4. **Load Test Results**: Artillery report showing P95 latency
+5. **Production Checklist**: Security, monitoring, disaster recovery
+
+**Example README Section**:
+```markdown
+## Performance
+
+- **Latency**: P50: 245ms, P95: 412ms, P99: 580ms
+- **Throughput**: 150 req/s sustained
+- **Uptime**: 99.95% over 7-day test
+- **Cost Tracking**: 100% of requests attributed to users/tenants
+
+## Load Test Results
+
+```
+Summary report:
+  Scenarios launched: 6000
+  Scenarios completed: 5994
+  Requests completed: 5994
+  Mean response time: 245ms
+  P95 response time: 412ms
+  P99 response time: 580ms
+  Success rate: 99.9%
+```
+```
+
+---
+
+## Extension Ideas
+
+1. **Semantic Caching**: Add vector similarity search for cached responses
+2. **Circuit Breakers**: Prevent cascade failures when providers are down
+3. **Blue-Green Deployment**: Zero-downtime deployment script
+4. **Custom Models**: Add local Llama model support
+5. **Usage Quotas**: Auto-throttle when tenant exceeds monthly budget
+6. **Admin Dashboard**: React frontend for viewing costs and analytics
+
+---
+
+## Resources
+
+- [Rate Limiting Patterns](https://redis.io/docs/manual/patterns/rate-limiting/)
+- [API Gateway Architecture](https://microservices.io/patterns/apigateway.html)
+- [Multi-Region Deployments](https://aws.amazon.com/blogs/architecture/disaster-recovery-dr-architecture-on-aws/)
+- [FinOps Best Practices](https://www.finops.org/framework/principles/)
+
+---
+
+**Congratulations!** You've completed the AI Architect Accelerator. You've built:
+- Weeks 1-4: RAG systems, embeddings, prompt engineering
+- Weeks 5-8: Production AI (observability, evaluation, interviews)
+- Weeks 9-10: Advanced techniques (GraphRAG, fine-tuning)
+- Weeks 11-12: Enterprise systems (multi-agent, global gateway)
+
+You're now ready to architect and deploy AI systems at scale. 🎉
