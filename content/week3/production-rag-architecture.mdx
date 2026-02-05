@@ -204,10 +204,10 @@ await pool.query(
 
 // Search with SQL (metadata filtering is native!)
 const result = await pool.query(`
-  SELECT id, content, metadata, embedding <=> $1 AS distance
+  SELECT id, content, metadata, embedding &lt;=&gt; $1 AS distance
   FROM chunks
   WHERE metadata->>'source' = 'page-1.pdf'
-  ORDER BY embedding <=> $1
+  ORDER BY embedding &lt;=&gt; $1
   LIMIT 10
 `, [pgvector.toSql(queryEmbedding)])
 ```
@@ -555,9 +555,9 @@ WITH vector_search AS (
     id,
     content,
     metadata,
-    1.0 / (60 + row_number() OVER (ORDER BY embedding <=> $1::vector)) AS rrf_score
+    1.0 / (60 + row_number() OVER (ORDER BY embedding &lt;=&gt; $1::vector)) AS rrf_score
   FROM document_chunks
-  ORDER BY embedding <=> $1::vector
+  ORDER BY embedding &lt;=&gt; $1::vector
   LIMIT 20
 ),
 keyword_search AS (
@@ -612,9 +612,9 @@ async function hybridSearchPostgres(
     WITH vector_search AS (
       SELECT
         id, content, metadata,
-        1.0 / (60 + row_number() OVER (ORDER BY embedding <=> $1::vector)) AS rrf_score
+        1.0 / (60 + row_number() OVER (ORDER BY embedding &lt;=&gt; $1::vector)) AS rrf_score
       FROM document_chunks
-      ORDER BY embedding <=> $1::vector
+      ORDER BY embedding &lt;=&gt; $1::vector
       LIMIT 20
     ),
     keyword_search AS (
@@ -839,7 +839,7 @@ async function secureSearchPostgres(
       id,
       content,
       metadata,
-      embedding <=> $1::vector AS distance
+      embedding &lt;=&gt; $1::vector AS distance
     FROM document_chunks
     WHERE
       -- Pre-filter: Only search documents user can access
@@ -853,7 +853,7 @@ async function secureSearchPostgres(
         -- Document is public
         metadata->>'access_level' = 'public'
       )
-    ORDER BY embedding <=> $1::vector
+    ORDER BY embedding &lt;=&gt; $1::vector
     LIMIT $4
     `,
     [pgvector.toSql(queryEmbedding), userRoles, userId, topK]
