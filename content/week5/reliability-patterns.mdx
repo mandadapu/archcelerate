@@ -1,877 +1,638 @@
 ---
-title: "Reliability Patterns for Multi-Agent Systems"
+title: "Reliability Patterns: Self-Reflection and HITL"
 week: 5
-concept: 2
-description: "Prevent agent failures with Reflection, Planning, Human-in-the-Loop, and State Management"
+concept: 3
+description: "Hardening non-deterministic agentic systems with self-critique loops and human approval gates for enterprise deployment"
 estimatedMinutes: 50
 objectives:
-  - Implement self-correction with Reflection
-  - Use Planning & Execution (ReWOO) to reduce costs
-  - Add Human-in-the-Loop for critical actions
-  - Master state management and checkpointing
+  - Engineer self-reflection loops where agents critique their own work
+  - Implement Human-in-the-Loop interrupt points for high-stakes actions
+  - Build automated quality gates with validation criteria
 ---
 
-# Reliability Patterns (Implementation Guide)
+# Reliability Patterns
 
-This module covers how to engineer systems that reason, plan, and execute with high reliability.
-
-## Overview: The Four Reliability Patterns
-
-### 1. Self-Correction & Reflection
-
-**Definition**: Implementing a "Critic" loop where the agent reviews its own output against a set of constraints before finalizing.
-
-**Architectural Pattern**: The Reflection Pattern uses a two-step process: Generation followed by Evaluation.
-
-**Production Benefit**: Significant reduction in hallucinations and "lazy" outputs by forcing the model to re-examine its logic.
-
-### 2. Planning & Re-Planning
-
-**Definition**: Breaking down complex user requests into a step-by-step execution graph before any tools are called.
-
-**Self-Healing**: If a specific tool or step fails, the agent uses an Error Routing pattern to re-plan the remaining steps rather than crashing.
-
-**State Management**: Using Checkpointing to save the state of a multi-step workflow so it can be resumed if a process is interrupted.
-
-### 3. Human-in-the-Loop (HITL)
-
-**Definition**: Strategic insertion of human approval steps for high-stakes actions, such as database writes or API calls with side effects.
-
-**Pattern**: The agent pauses execution and waits for a "Resume" signal or an "Override" from a human operator.
-
-**Safety & Governance**: Ensures that the system remains under human control as it executes autonomous tasks.
-
-### 4. "Zero-Waste" Execution
-
-**Cycle Detection**: Implementing logic to identify if an agent is stuck in an infinite loop of the same tool calls.
-
-**Token Trimming**: Automatically cleaning the message history (context window) to keep only essential information, ensuring low latency and cost.
-
-## Week 5 Lab: The Multi-Agent Newsroom
-
-To apply these patterns, the lab involves building a collaborative team:
-
-- **Hunter Agent**: Searches for information using tools.
-- **Fact-Checker Agent**: Applies Reliability Patterns to verify the Hunter's findings.
-- **Writer Agent**: Consolidates the verified data into a final newsletter using a Supervisor pattern.
-
----
-
-# Design Patterns for Reliability
-
-Teach these "Architectural Guardrails" to prevent agents from going off the rails.
+Hardening non-deterministic systems for the enterprise.
 
 ## The Core Problem
 
-**Agents fail in three ways**:
-1. **Hallucination**: Agent confidently provides wrong information
-2. **Infinite loops**: Agent gets stuck in feedback cycles
-3. **Unintended actions**: Agent executes destructive operations
+**Agents are non-deterministic**: Same input can produce different outputs. In production, this means:
 
-**Solution**: Add architectural guardrails BEFORE deploying to production.
+1. **Quality variance**: Agent produces excellent output 90% of the time, garbage 10%
+2. **High-stakes errors**: Agent approves a $10K refund when it should have escalated
+3. **No audit trail**: When agent makes a mistake, you can't explain why
+
+**Architect's Challenge**: How do you deploy systems that **sometimes make mistakes** to production?
+
+**Solution**: Build reliability patterns that catch errors before they cause damage.
 
 ---
 
-## Pattern 1: Reflection (Self-Correction)
+## Pattern 1: Self-Reflection (Agent as its Own Critic)
 
-**Concept**: The agent reviews its own work before submitting.
+**The Pattern**: Force the agent to critique its own work **before** submitting. If critique identifies issues, agent revises.
 
-**Question**: "Did I actually answer the user's question accurately?"
+**Why It Works**: LLMs are better at **evaluating** than **generating**. Reflection catches lazy outputs, factual errors, and incomplete reasoning.
 
-### When to Use
-
-- **High-stakes outputs** where errors are costly (legal docs, medical info)
-- **Complex reasoning** where initial answer may miss edge cases
-- **Quality assurance** before final delivery
-
-### Example: Reflection Loop
+### Self-Reflection Architecture
 
 ```typescript
 import Anthropic from '@anthropic-ai/sdk'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-interface ReflectionResult {
-  initialAnswer: string
-  reflection: string
-  revisedAnswer: string
-  confidence: 'high' | 'medium' | 'low'
+interface ReflectionCriteria {
+  dimension: string        // "Accuracy", "Completeness", "Safety"
+  question: string         // "Does this answer cite verifiable sources?"
+  threshold: number        // 0-10 scale, minimum score to pass
 }
 
-async function reflectiveAgent(question: string): Promise<ReflectionResult> {
-  // Step 1: Generate initial answer
+interface ReflectionResult {
+  initialOutput: string
+  critique: {
+    dimension: string
+    score: number          // 0-10
+    issues: string[]
+    passedThreshold: boolean
+  }[]
+  revisedOutput: string | null
+  finalQuality: 'approved' | 'needs_human_review'
+}
+
+async function reflectiveAgent(
+  task: string,
+  criteria: ReflectionCriteria[],
+  maxRevisions: number = 2
+): Promise<ReflectionResult> {
+  let currentOutput: string
+  let attempt = 0
+  const result: ReflectionResult = {
+    initialOutput: '',
+    critique: [],
+    revisedOutput: null,
+    finalQuality: 'needs_human_review'
+  }
+
+  // Step 1: Generate initial output
+  console.log('🤖 Generating initial output...')
   const initialResponse = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20240620',
-    max_tokens: 1024,
-    messages: [{
-      role: 'user',
-      content: question
-    }]
-  })
-  const initialAnswer = initialResponse.content[0].text
-
-  // Step 2: Reflect on the answer
-  const reflectionResponse = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20240620',
-    max_tokens: 512,
-    messages: [{
-      role: 'user',
-      content: `Review this answer for accuracy and completeness:
-
-QUESTION: ${question}
-ANSWER: ${initialAnswer}
-
-Provide critique:
-1. Is the answer factually correct?
-2. Does it fully address the question?
-3. Are there any logical gaps?
-4. Confidence level (high/medium/low)
-
-Format as JSON: { "critique": "...", "confidence": "high" }`
-    }]
+    model: 'claude-4.5-sonnet',
+    max_tokens: 2048,
+    messages: [{ role: 'user', content: task }]
   })
 
-  const reflectionText = reflectionResponse.content[0].text
-  const reflectionJson = JSON.parse(
-    reflectionText.match(/\{[\s\S]*\}/)?.[0] || '{"critique":"", "confidence":"low"}'
-  )
+  currentOutput = initialResponse.content[0].text
+  result.initialOutput = currentOutput
 
-  // Step 3: Revise if confidence is not high
-  if (reflectionJson.confidence !== 'high') {
-    const revisionResponse = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20240620',
-      max_tokens: 1024,
-      messages: [{
-        role: 'user',
-        content: `Improve this answer based on the critique:
+  // Step 2: Reflection loop
+  while (attempt < maxRevisions) {
+    attempt++
+    console.log(`\n🔍 Reflection attempt ${attempt}...`)
 
-QUESTION: ${question}
-INITIAL ANSWER: ${initialAnswer}
-CRITIQUE: ${reflectionJson.critique}
+    // Critique current output
+    const critiquePrompt = `You are a quality assurance reviewer. Evaluate this output against specific criteria.
 
-Provide a revised, more accurate answer.`
-      }]
+Task: ${task}
+
+Output to review:
+${currentOutput}
+
+Evaluate on these dimensions:
+${criteria.map((c, i) => `${i + 1}. ${c.dimension}: ${c.question} (Score 0-10, must score ≥${c.threshold})`).join('\n')}
+
+Output JSON:
+{
+  "critiques": [
+    {
+      "dimension": "Accuracy",
+      "score": 8,
+      "issues": ["Issue 1", "Issue 2"],
+      "passedThreshold": true
+    },
+    ...
+  ],
+  "overallQuality": "approved" or "needs_revision"
+}`
+
+    const critiqueResponse = await anthropic.messages.create({
+      model: 'claude-4.5-sonnet',
+      max_tokens: 1500,
+      messages: [{ role: 'user', content: critiquePrompt }]
     })
 
-    return {
-      initialAnswer,
-      reflection: reflectionJson.critique,
-      revisedAnswer: revisionResponse.content[0].text,
-      confidence: reflectionJson.confidence
+    const critiqueText = critiqueResponse.content[0].text
+    const jsonMatch = critiqueText.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) throw new Error('Critique failed to generate valid JSON')
+
+    const critique = JSON.parse(jsonMatch[0])
+    result.critique = critique.critiques
+
+    // Check if all criteria passed
+    const allPassed = critique.critiques.every((c: any) => c.passedThreshold)
+
+    if (allPassed || critique.overallQuality === 'approved') {
+      result.finalQuality = 'approved'
+      result.revisedOutput = attempt > 1 ? currentOutput : null
+      console.log('✅ Quality approved')
+      break
+    }
+
+    if (attempt >= maxRevisions) {
+      console.log('❌ Max revisions reached, escalating to human review')
+      result.finalQuality = 'needs_human_review'
+      break
+    }
+
+    // Step 3: Revise based on critique
+    console.log('⚙️  Revising output based on critique...')
+    const revisionPrompt = `Improve your previous output based on this critique:
+
+Original Task: ${task}
+
+Your Previous Output:
+${currentOutput}
+
+Critique:
+${critique.critiques.map((c: any) =>
+  `${c.dimension} (score: ${c.score}/${c.threshold} required):
+Issues: ${c.issues.join(', ')}`
+).join('\n\n')}
+
+Provide revised output that addresses all issues.`
+
+    const revisionResponse = await anthropic.messages.create({
+      model: 'claude-4.5-sonnet',
+      max_tokens: 2048,
+      messages: [{ role: 'user', content: revisionPrompt }]
+    })
+
+    currentOutput = revisionResponse.content[0].text
+  }
+
+  return result
+}
+
+/* Example Usage:
+
+Task: "Write a technical explanation of how vector databases work"
+
+Criteria:
+1. Accuracy: Does it cite verifiable technical facts? (threshold: 8/10)
+2. Completeness: Does it cover indexing, search, and storage? (threshold: 7/10)
+3. Clarity: Can a software engineer without ML background understand it? (threshold: 7/10)
+
+Execution:
+🤖 Generating initial output...
+🔍 Reflection attempt 1...
+  - Accuracy: 9/10 ✅
+  - Completeness: 5/10 ❌ (missing storage layer explanation)
+  - Clarity: 8/10 ✅
+⚙️  Revising output based on critique...
+🔍 Reflection attempt 2...
+  - Accuracy: 9/10 ✅
+  - Completeness: 8/10 ✅
+  - Clarity: 8/10 ✅
+✅ Quality approved
+*/
+```
+
+### Self-Reflection: Production Benefits
+
+| Without Reflection | With Reflection |
+|--------------------|-----------------|
+| Agent outputs "I think X" | Agent provides sources: "According to [source], X" |
+| Incomplete answers (misses 30% of requirements) | Comprehensive (critique ensures all aspects covered) |
+| Inconsistent quality (60-100% accuracy) | Consistent quality (85-100% accuracy) |
+| Single LLM call: $0.02 | 3 calls (generate + critique + revise): $0.09 |
+
+**Cost Trade-off**: 4.5x cost increase, but **prevents 80% of quality issues** that would require human review ($50/hour).
+
+---
+
+## Pattern 2: Human-in-the-Loop (HITL)
+
+**The Pattern**: For high-stakes actions (bank transfers, database writes, email sends), agent **pauses execution** and waits for human approval.
+
+**Critical Principle**: **Agents propose, humans approve.**
+
+### HITL Architecture
+
+```typescript
+interface HITLRequest {
+  requestId: string
+  timestamp: Date
+  agentId: string
+  action: {
+    type: 'database_write' | 'api_call' | 'email_send' | 'financial_transaction'
+    description: string
+    parameters: Record<string, any>
+    estimatedImpact: string
+    reversible: boolean
+  }
+  status: 'pending' | 'approved' | 'rejected' | 'expired'
+  humanReviewer?: string
+  reviewedAt?: Date
+  rejectionReason?: string
+}
+
+interface HITLConfig {
+  requireApproval: (action: any) => boolean  // Which actions need HITL?
+  timeout: number                             // Auto-reject after X ms
+  notificationChannel: 'email' | 'slack' | 'dashboard'
+}
+
+class HITLGate {
+  private pendingRequests: Map<string, HITLRequest> = new Map()
+
+  constructor(private config: HITLConfig) {}
+
+  async requestApproval(
+    agentId: string,
+    action: HITLRequest['action']
+  ): Promise<'approved' | 'rejected' | 'timeout'> {
+    const request: HITLRequest = {
+      requestId: `hitl_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      timestamp: new Date(),
+      agentId,
+      action,
+      status: 'pending'
+    }
+
+    this.pendingRequests.set(request.requestId, request)
+
+    console.log(`\n⏸️  HITL: Agent ${agentId} requesting approval for ${action.type}`)
+    console.log(`   Description: ${action.description}`)
+    console.log(`   Impact: ${action.estimatedImpact}`)
+    console.log(`   Reversible: ${action.reversible ? 'Yes' : 'No'}`)
+    console.log(`   Request ID: ${request.requestId}\n`)
+
+    // Send notification to human (mock)
+    await this.notifyHuman(request)
+
+    // Wait for human approval or timeout
+    const result = await this.waitForApproval(request.requestId)
+
+    return result
+  }
+
+  private async notifyHuman(request: HITLRequest): Promise<void> {
+    // In production: Send to Slack, email, or dashboard
+    if (this.config.notificationChannel === 'slack') {
+      // await slackClient.post({
+      //   channel: '#agent-approvals',
+      //   text: `Agent ${request.agentId} requests approval for ${request.action.type}`,
+      //   blocks: [...]
+      // })
     }
   }
 
-  return {
-    initialAnswer,
-    reflection: reflectionJson.critique,
-    revisedAnswer: initialAnswer,
-    confidence: 'high'
+  private async waitForApproval(requestId: string): Promise<'approved' | 'rejected' | 'timeout'> {
+    const startTime = Date.now()
+
+    return new Promise((resolve) => {
+      const checkInterval = setInterval(() => {
+        const request = this.pendingRequests.get(requestId)
+        if (!request) {
+          clearInterval(checkInterval)
+          resolve('rejected')
+          return
+        }
+
+        // Check for timeout
+        if (Date.now() - startTime > this.config.timeout) {
+          request.status = 'expired'
+          clearInterval(checkInterval)
+          console.log('⏱️  HITL timeout: Auto-rejecting action')
+          resolve('timeout')
+          return
+        }
+
+        // Check if human approved/rejected
+        if (request.status === 'approved') {
+          clearInterval(checkInterval)
+          console.log('✅ HITL: Human approved action')
+          resolve('approved')
+        } else if (request.status === 'rejected') {
+          clearInterval(checkInterval)
+          console.log(`❌ HITL: Human rejected action. Reason: ${request.rejectionReason}`)
+          resolve('rejected')
+        }
+      }, 1000)
+    })
+  }
+
+  // Called by human reviewer (via API or dashboard)
+  approveRequest(requestId: string, reviewerId: string): void {
+    const request = this.pendingRequests.get(requestId)
+    if (request && request.status === 'pending') {
+      request.status = 'approved'
+      request.humanReviewer = reviewerId
+      request.reviewedAt = new Date()
+    }
+  }
+
+  rejectRequest(requestId: string, reviewerId: string, reason: string): void {
+    const request = this.pendingRequests.get(requestId)
+    if (request && request.status === 'pending') {
+      request.status = 'rejected'
+      request.humanReviewer = reviewerId
+      request.reviewedAt = new Date()
+      request.rejectionReason = reason
+    }
   }
 }
 
-// Usage
-const result = await reflectiveAgent(
-  'What are the three main differences between pgvector and Pinecone for production RAG?'
-)
+// HITL Configuration
+const hitlConfig: HITLConfig = {
+  requireApproval: (action) => {
+    // Define which actions require human approval
+    const highStakes = [
+      'database_write',
+      'financial_transaction',
+      'email_send'
+    ]
+    return highStakes.includes(action.type) || !action.reversible
+  },
+  timeout: 300000,  // 5 minutes
+  notificationChannel: 'slack'
+}
 
-console.log('Initial:', result.initialAnswer)
-console.log('Reflection:', result.reflection)
-console.log('Revised:', result.revisedAnswer)
+const hitlGate = new HITLGate(hitlConfig)
+
+// Agent Workflow with HITL
+async function agentWithHITL(userRequest: string): Promise<string> {
+  // Agent processes request and determines action
+  const action = {
+    type: 'database_write' as const,
+    description: 'Delete 1,500 user records older than 2 years (GDPR compliance)',
+    parameters: {
+      table: 'users',
+      condition: 'created_at < NOW() - INTERVAL \'2 years\' AND gdpr_deletion_requested = true'
+    },
+    estimatedImpact: '1,500 records deleted (irreversible)',
+    reversible: false
+  }
+
+  // Check if HITL is required
+  if (hitlConfig.requireApproval(action)) {
+    const approval = await hitlGate.requestApproval('agent_cleanup_001', action)
+
+    if (approval === 'approved') {
+      console.log('🚀 Executing action...')
+      // Execute the action (mock)
+      return 'Action executed successfully'
+    } else if (approval === 'rejected') {
+      return 'Action rejected by human reviewer'
+    } else {
+      return 'Action timed out waiting for approval'
+    }
+  } else {
+    // Low-stakes action, execute immediately
+    console.log('🚀 Executing low-stakes action without approval...')
+    return 'Action executed'
+  }
+}
+
+/* Example Execution:
+
+⏸️  HITL: Agent agent_cleanup_001 requesting approval for database_write
+   Description: Delete 1,500 user records older than 2 years (GDPR compliance)
+   Impact: 1,500 records deleted (irreversible)
+   Reversible: No
+   Request ID: hitl_1738790123456_abc123
+
+[Slack notification sent to #agent-approvals]
+
+... Human reviews in Slack, clicks "Approve" ...
+
+✅ HITL: Human approved action
+🚀 Executing action...
+Action executed successfully
+*/
 ```
 
-### Reflection: Cost vs Quality Trade-off
+### HITL Decision Matrix
 
-| Approach | API Calls | Cost | Quality |
-|----------|-----------|------|---------|
-| No reflection | 1 | $0.02 | 70% accuracy |
-| Single reflection | 3 | $0.06 | 85% accuracy |
-| Iterative reflection (max 3) | 5-7 | $0.10-$0.14 | 92% accuracy |
+| Action Type | Reversible? | Cost | Human Approval? |
+|-------------|-------------|------|-----------------|
+| Database read | N/A | Free | ❌ No |
+| Send email to 1 user | Yes (send apology) | $0.01 | ❌ No (agent can proceed) |
+| Send email to 10K users | No (reputation damage) | $100 | ✅ Yes (HITL required) |
+| Approve $50 refund | Yes (can reverse transaction) | $50 | ❌ No (set threshold at $100) |
+| Approve $500 refund | Partially (dispute risk) | $500 | ✅ Yes (above threshold) |
+| Delete user data | No (GDPR violation if wrong) | $10K+ fine | ✅ Yes (irreversible) |
+| Deploy code to production | Yes (can rollback) | $0 | ✅ Yes (high stakes) |
 
-**Production advice**: Use reflection for outputs that impact business decisions. Skip for low-stakes tasks (chat responses, drafts).
+**Architect's Rule**: If action is **irreversible** OR **cost > $100** OR **affects >100 users**, require HITL.
 
 ---
 
-## Pattern 2: Planning & Execution (ReWOO)
+## Pattern 3: Automated Quality Gates
 
-**Concept**: The agent creates a **full step-by-step plan** before it starts using tools.
+**The Pattern**: Define **explicit validation criteria** that agent output must pass before proceeding to next step.
 
-**Why it matters**:
-- **Reduces cost**: Generate plan once (100 tokens), not after every tool call (500 tokens/iteration)
-- **Makes logic auditable**: Humans can review the plan before execution
-- **Prevents loops**: Plan has fixed steps, can't loop infinitely
+**Why It Works**: Prevents cascading failures where bad output from Agent A becomes bad input for Agent B.
 
-### ReWOO Architecture
-
-```
-Step 1: PLAN - Generate full plan with all tool calls
-Step 2: EXECUTE - Execute tools in order
-Step 3: SOLVE - Synthesize results
-```
-
-### Example: Research with Planning
+### Quality Gate Architecture
 
 ```typescript
-import Anthropic from '@anthropic-ai/sdk'
+interface ValidationRule {
+  name: string
+  check: (output: string) => boolean | Promise<boolean>
+  errorMessage: string
+  severity: 'error' | 'warning'
+}
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
-interface Plan {
-  steps: {
-    id: string
-    tool: string
-    input: string
-    dependsOn: string[]
+interface QualityGateResult {
+  passed: boolean
+  violations: {
+    rule: string
+    severity: 'error' | 'warning'
+    message: string
   }[]
 }
 
-interface ReWOOResult {
-  plan: Plan
-  toolResults: Record<string, string>
-  finalAnswer: string
-}
+class QualityGate {
+  constructor(private rules: ValidationRule[]) {}
 
-// Step 1: Generate plan
-async function planAgent(question: string): Promise<Plan> {
-  const response = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20240620',
-    max_tokens: 1024,
-    messages: [{
-      role: 'user',
-      content: `Create a step-by-step plan to answer this question: ${question}
+  async validate(output: string): Promise<QualityGateResult> {
+    const violations: QualityGateResult['violations'] = []
 
-Available tools:
-- web_search(query: string): Search the web
-- read_url(url: string): Read content from URL
-- calculator(expression: string): Calculate math
-
-Output JSON plan:
-{
-  "steps": [
-    { "id": "step1", "tool": "web_search", "input": "...", "dependsOn": [] },
-    { "id": "step2", "tool": "read_url", "input": "#step1.url", "dependsOn": ["step1"] }
-  ]
-}`
-    }]
-  })
-
-  const planText = response.content[0].text
-  const jsonMatch = planText.match(/\{[\s\S]*\}/)
-  return jsonMatch ? JSON.parse(jsonMatch[0]) : { steps: [] }
-}
-
-// Step 2: Execute tools (mock implementations)
-async function executePlan(plan: Plan): Promise<Record<string, string>> {
-  const results: Record<string, string> = {}
-
-  for (const step of plan.steps) {
-    console.log(`Executing ${step.id}: ${step.tool}(${step.input})`)
-
-    // Resolve dependencies
-    let input = step.input
-    for (const dep of step.dependsOn) {
-      const depResult = results[dep]
-      input = input.replace(`#${dep}`, depResult)
+    for (const rule of this.rules) {
+      const passed = await rule.check(output)
+      if (!passed) {
+        violations.push({
+          rule: rule.name,
+          severity: rule.severity,
+          message: rule.errorMessage
+        })
+      }
     }
 
-    // Execute tool (mock)
-    switch (step.tool) {
-      case 'web_search':
-        results[step.id] = `[Mock search results for: ${input}]`
-        break
-      case 'read_url':
-        results[step.id] = `[Mock content from: ${input}]`
-        break
-      case 'calculator':
-        results[step.id] = eval(input).toString()
-        break
-    }
-  }
+    const hasErrors = violations.some(v => v.severity === 'error')
 
-  return results
-}
-
-// Step 3: Synthesize answer
-async function solveAgent(question: string, toolResults: Record<string, string>): Promise<string> {
-  const response = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20240620',
-    max_tokens: 1024,
-    messages: [{
-      role: 'user',
-      content: `Answer this question using the tool results:
-
-QUESTION: ${question}
-
-TOOL RESULTS:
-${JSON.stringify(toolResults, null, 2)}
-
-Provide a comprehensive answer.`
-    }]
-  })
-
-  return response.content[0].text
-}
-
-// ReWOO Orchestrator
-async function rewooWorkflow(question: string): Promise<ReWOOResult> {
-  console.log('Phase 1: Planning...')
-  const plan = await planAgent(question)
-
-  console.log('Phase 2: Executing tools...')
-  const toolResults = await executePlan(plan)
-
-  console.log('Phase 3: Solving...')
-  const finalAnswer = await solveAgent(question, toolResults)
-
-  return { plan, toolResults, finalAnswer }
-}
-
-// Usage
-const result = await rewooWorkflow(
-  'What is the market cap of the top 3 AI companies, and what is their total?'
-)
-```
-
-### ReWOO vs ReAct: Cost Comparison
-
-| Approach | Pattern | API Calls (avg) | Cost | When to Use |
-|----------|---------|----------------|------|-------------|
-| **ReAct** | Think → Act → Observe (loop) | 5-10 | $0.10-$0.20 | Dynamic tasks where path is unknown |
-| **ReWOO** | Plan → Execute → Solve | 3 | $0.06 | Fixed tasks with predictable steps |
-
-**Production advice**: Use ReWOO when task has clear milestones (research, data gathering). Use ReAct when task is exploratory.
-
----
-
-## Pattern 3: Human-in-the-Loop (HITL)
-
-**Concept**: For critical actions, the architecture **requires a human signature** before proceeding.
-
-### When to Use
-
-- **Financial transactions** (spending money, issuing refunds)
-- **Destructive operations** (deleting files, dropping databases)
-- **Legal/compliance** (signing contracts, submitting reports)
-
-### Example: Approval Workflow
-
-```typescript
-import Anthropic from '@anthropic-ai/sdk'
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
-interface ApprovalRequest {
-  action: string
-  impact: string
-  estimatedCost: number
-  approved: boolean
-}
-
-// Agent proposes an action
-async function proposeAction(userRequest: string): Promise<ApprovalRequest> {
-  const response = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20240620',
-    max_tokens: 512,
-    messages: [{
-      role: 'user',
-      content: `Analyze this request and propose an action:
-
-REQUEST: ${userRequest}
-
-Output JSON:
-{
-  "action": "Brief description of what will happen",
-  "impact": "What systems/data will be affected",
-  "estimatedCost": 0.00
-}`
-    }]
-  })
-
-  const proposalText = response.content[0].text
-  const jsonMatch = proposalText.match(/\{[\s\S]*\}/)
-  const proposal = jsonMatch ? JSON.parse(jsonMatch[0]) : {}
-
-  return {
-    action: proposal.action || '',
-    impact: proposal.impact || '',
-    estimatedCost: proposal.estimatedCost || 0,
-    approved: false
-  }
-}
-
-// Human approval (mock - in production this would be UI)
-async function requestHumanApproval(request: ApprovalRequest): Promise<boolean> {
-  console.log('\n🚨 HUMAN APPROVAL REQUIRED 🚨')
-  console.log(`Action: ${request.action}`)
-  console.log(`Impact: ${request.impact}`)
-  console.log(`Estimated Cost: $${request.estimatedCost}`)
-
-  // In production: pause workflow, send to UI, wait for response
-  // Mock: auto-approve for demo
-  return true
-}
-
-// Execute only if approved
-async function executeAction(request: ApprovalRequest): Promise<string> {
-  if (!request.approved) {
-    return '❌ Action rejected by human reviewer'
-  }
-
-  // Execute the actual action
-  return `✅ Action executed: ${request.action}`
-}
-
-// HITL Workflow
-async function hitlWorkflow(userRequest: string): Promise<string> {
-  const proposal = await proposeAction(userRequest)
-  const approved = await requestHumanApproval(proposal)
-
-  proposal.approved = approved
-
-  return await executeAction(proposal)
-}
-
-// Usage
-const result = await hitlWorkflow(
-  'Process a $5,000 refund for customer ID 12345'
-)
-```
-
-### HITL Architecture: Checkpoints
-
-```typescript
-interface HITLCheckpoint {
-  stage: 'proposal' | 'approval' | 'execution' | 'complete'
-  data: any
-  timestamp: Date
-  approver?: string
-}
-
-// Save state between stages
-async function saveCheckpoint(checkpoint: HITLCheckpoint) {
-  // In production: save to Redis/Postgres
-  console.log(`Checkpoint saved: ${checkpoint.stage}`)
-}
-
-// Resume from checkpoint after approval
-async function resumeFromCheckpoint(checkpointId: string) {
-  // In production: load from database
-  console.log(`Resuming from checkpoint: ${checkpointId}`)
-}
-```
-
----
-
-## Pattern 4: Multi-Agent State Management
-
-**The Golden Rule**: The State is the "Single Source of Truth."
-
-### 1. The State Schema
-
-Define what data needs to persist across the workflow.
-
-```typescript
-interface NewsletterState {
-  topic: string              // Original user request
-  raw_articles: string[]     // Output from 'The Hunter'
-  verified_data: string[]    // Output from 'The Fact-Checker'
-  final_newsletter: string   // Output from 'The Writer'
-  iteration_count: number    // Safety counter to prevent infinite loops
-  max_iterations: number     // Stop after N cycles
-}
-```
-
-### 2. The Node Logic (The Handoff)
-
-Each agent is a **function** that takes the State, performs an action, and returns an **update** to the state.
-
-```typescript
-// The Hunter: Searches for articles
-async function hunterNode(state: NewsletterState): Promise<Partial<NewsletterState>> {
-  console.log(`Hunter: Searching for articles on "${state.topic}"`)
-
-  // Call search API (mock)
-  const articles = [
-    'Article 1: AI Safety in Production Systems',
-    'Article 2: Cost Optimization for LLMs',
-    'Article 3: RAG Architecture Patterns'
-  ]
-
-  return {
-    raw_articles: articles
-  }
-}
-
-// The Fact-Checker: Verifies articles
-async function factCheckerNode(state: NewsletterState): Promise<Partial<NewsletterState>> {
-  console.log(`Fact-Checker: Verifying ${state.raw_articles.length} articles`)
-
-  const response = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20240620',
-    max_tokens: 1024,
-    messages: [{
-      role: 'user',
-      content: `Verify these articles for quality and accuracy:
-
-${state.raw_articles.join('\n\n')}
-
-Output JSON:
-{
-  "verified": ["Article 1", "Article 2"],
-  "rejected": ["Article 3"],
-  "feedback": "Article 3 lacks sources"
-}`
-    }]
-  })
-
-  const result = JSON.parse(response.content[0].text.match(/\{[\s\S]*\}/)?.[0] || '{}')
-
-  if (result.verified.length === 0) {
-    // No good articles - need to search again
     return {
-      verified_data: [],
-      iteration_count: state.iteration_count + 1,
-      // Provide feedback to Hunter for next iteration
-      hunter_feedback: result.feedback
+      passed: !hasErrors,
+      violations
     }
-  }
-
-  return {
-    verified_data: result.verified
   }
 }
 
-// The Writer: Generates newsletter
-async function writerNode(state: NewsletterState): Promise<Partial<NewsletterState>> {
-  console.log(`Writer: Creating newsletter from ${state.verified_data.length} verified articles`)
+// Example: Code generation quality gate
+const codeQualityGate = new QualityGate([
+  {
+    name: 'no_placeholder_code',
+    check: (output) => !output.match(/\/\/ TODO|\/\/ FIXME|\.\.\.$/gm),
+    errorMessage: 'Code contains TODO/FIXME placeholders',
+    severity: 'error'
+  },
+  {
+    name: 'has_error_handling',
+    check: (output) => output.includes('try') || output.includes('catch') || output.includes('throw'),
+    errorMessage: 'Code lacks error handling',
+    severity: 'error'
+  },
+  {
+    name: 'has_types',
+    check: (output) => output.includes('interface') || output.includes('type '),
+    errorMessage: 'Code missing TypeScript type definitions',
+    severity: 'warning'
+  },
+  {
+    name: 'reasonable_length',
+    check: (output) => output.length > 100 && output.length < 10000,
+    errorMessage: 'Code is suspiciously short (<100 chars) or long (>10K chars)',
+    severity: 'warning'
+  }
+])
 
+// Usage in agent workflow
+async function codeGeneratorAgentWithQualityGate(task: string): Promise<string> {
   const response = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20240620',
-    max_tokens: 2048,
-    messages: [{
-      role: 'user',
-      content: `Write a professional newsletter from these verified articles:
-
-${state.verified_data.join('\n\n')}
-
-Format as Markdown with sections for each article.`
-    }]
+    model: 'claude-4.5-sonnet',
+    max_tokens: 4000,
+    messages: [{ role: 'user', content: `Generate TypeScript code for: ${task}` }]
   })
 
-  return {
-    final_newsletter: response.content[0].text
-  }
-}
-```
+  const generatedCode = response.content[0].text
 
-### 3. The Supervisor (The Router)
+  // Validate through quality gate
+  const validation = await codeQualityGate.validate(generatedCode)
 
-The Architect must decide how to handle failures.
-
-```typescript
-type NodeFunction = (state: NewsletterState) => Promise<Partial<NewsletterState>>
-
-interface WorkflowConfig {
-  initialState: NewsletterState
-  nodes: {
-    hunter: NodeFunction
-    factChecker: NodeFunction
-    writer: NodeFunction
-  }
-  maxIterations: number
-}
-
-async function supervisorWorkflow(config: WorkflowConfig): Promise<NewsletterState> {
-  let state = config.initialState
-
-  while (state.iteration_count < config.maxIterations) {
-    // Step 1: Hunter searches
-    const hunterUpdate = await config.nodes.hunter(state)
-    state = { ...state, ...hunterUpdate }
-
-    // Step 2: Fact-Checker verifies
-    const factCheckUpdate = await config.nodes.factChecker(state)
-    state = { ...state, ...factCheckUpdate }
-
-    // Decision: Are we done or do we need to search again?
-    if (state.verified_data.length > 0) {
-      // We have good data - proceed to Writer
-      break
-    } else {
-      // No good data - loop back to Hunter with feedback
-      console.log(`⚠️ Iteration ${state.iteration_count}: No verified data. Searching again...`)
-      continue
-    }
-  }
-
-  // Safety check
-  if (state.verified_data.length === 0) {
-    throw new Error('Max iterations reached without finding verified articles')
-  }
-
-  // Step 3: Writer generates newsletter
-  const writerUpdate = await config.nodes.writer(state)
-  state = { ...state, ...writerUpdate }
-
-  return state
-}
-
-// Usage
-const result = await supervisorWorkflow({
-  initialState: {
-    topic: 'AI Architecture Best Practices',
-    raw_articles: [],
-    verified_data: [],
-    final_newsletter: '',
-    iteration_count: 0,
-    max_iterations: 3
-  },
-  nodes: {
-    hunter: hunterNode,
-    factChecker: factCheckerNode,
-    writer: writerNode
-  },
-  maxIterations: 3
-})
-
-console.log('Final Newsletter:', result.final_newsletter)
-```
-
----
-
-## Architectural Key Findings
-
-### 1. Token Trimming
-
-**Don't pass unnecessary data between agents.**
-
-```typescript
-// ❌ BAD: Passing raw_articles to Writer (already processed)
-const writerInput = {
-  raw_articles: state.raw_articles,      // 5,000 tokens (unnecessary!)
-  verified_data: state.verified_data     // 2,000 tokens (needed)
-}
-
-// ✅ GOOD: Only pass verified_data
-const writerInput = {
-  verified_data: state.verified_data     // 2,000 tokens
-}
-// Savings: 60% token reduction
-```
-
-### 2. Cycle Detection
-
-**Always implement a `max_iterations` check.**
-
-```typescript
-if (state.iteration_count >= state.max_iterations) {
-  console.log('⚠️ Max iterations reached. Escalating to human.')
-  await notifyHuman({
-    issue: 'Fact-Checker rejected Hunter results 3 times',
-    state: state
-  })
-  throw new Error('Max iterations exceeded')
-}
-```
-
-### 3. Persistence (Checkpointing)
-
-**Save state to database between steps.** If the Fact-Checker fails, you can resume from that point without re-running the Hunter.
-
-```typescript
-interface Checkpoint {
-  workflowId: string
-  step: 'hunter' | 'factChecker' | 'writer'
-  state: NewsletterState
-  timestamp: Date
-}
-
-async function saveCheckpoint(checkpoint: Checkpoint) {
-  await prisma.checkpoint.create({
-    data: {
-      workflowId: checkpoint.workflowId,
-      step: checkpoint.step,
-      state: checkpoint.state as any,
-      timestamp: checkpoint.timestamp
-    }
-  })
-}
-
-// Resume from checkpoint
-async function resumeWorkflow(workflowId: string): Promise<NewsletterState> {
-  const checkpoint = await prisma.checkpoint.findFirst({
-    where: { workflowId },
-    orderBy: { timestamp: 'desc' }
-  })
-
-  if (!checkpoint) {
-    throw new Error('No checkpoint found')
-  }
-
-  console.log(`Resuming from step: ${checkpoint.step}`)
-  return checkpoint.state as NewsletterState
-}
-```
-
----
-
-## The State Reset Architecture
-
-To handle errors without a full restart, implement **Checkpointing and Conditional Routing**.
-
-### 1. The Checkpoint Mechanism
-
-**Atomic Updates**: Each agent only modifies its specific key in the State object.
-
-```typescript
-// ✅ Atomic update pattern
-async function factCheckerNode(state: NewsletterState): Promise<Partial<NewsletterState>> {
-  // Only update verified_data, don't touch raw_articles or final_newsletter
-  return {
-    verified_data: ['Article 1', 'Article 2']
-  }
-}
-```
-
-### 2. The "Back-to-Search" Pattern
-
-If the Fact-Checker identifies a hallucination, **reset only the failing node's data**.
-
-```typescript
-function handleFactCheckFailure(state: NewsletterState): Partial<NewsletterState> {
-  return {
-    verified_data: [],  // Reset the failing node's data
-    hunter_feedback: 'The previous articles were biased. Find more academic sources.',
-    iteration_count: state.iteration_count + 1
-  }
-}
-```
-
----
-
-## Implementation: "Time Travel" Debugging
-
-### Snapshots
-
-Save state to Redis/Postgres after each node completion.
-
-```typescript
-async function runWithSnapshots(workflow: WorkflowConfig) {
-  let state = workflow.initialState
-
-  for (const [nodeName, nodeFunc] of Object.entries(workflow.nodes)) {
-    // Execute node
-    const update = await nodeFunc(state)
-    state = { ...state, ...update }
-
-    // Save snapshot
-    await saveCheckpoint({
-      workflowId: crypto.randomUUID(),
-      step: nodeName as any,
-      state,
-      timestamp: new Date()
+  if (!validation.passed) {
+    console.log('❌ Quality gate failed:')
+    validation.violations.forEach(v => {
+      console.log(`  [${v.severity.toUpperCase()}] ${v.rule}: ${v.message}`)
     })
-  }
 
-  return state
-}
-```
+    // Option 1: Auto-retry with feedback
+    const revisionPrompt = `Your previous code failed quality checks:
 
-### Forking
+${validation.violations.map(v => `- ${v.message}`).join('\n')}
 
-Create a "Branch" when an agent is uncertain.
+Fix these issues and regenerate the code.`
 
-```typescript
-// Test two different Writer styles
-const casualNewsletter = await writerNode({ ...state, style: 'casual' })
-const formalNewsletter = await writerNode({ ...state, style: 'formal' })
-
-// Supervisor picks the winner
-const winner = await supervisorAgent({
-  options: [casualNewsletter, formalNewsletter],
-  criteria: 'Professional tone for enterprise audience'
-})
-```
-
-### Manual Override
-
-Pause the state and wait for human approval.
-
-```typescript
-if (state.iteration_count >= 2) {
-  // Pause workflow
-  const approved = await requestHumanApproval({
-    action: 'Continue searching for articles',
-    impact: `Already tried ${state.iteration_count} times`,
-    estimatedCost: 0.12
-  })
-
-  if (!approved) {
-    throw new Error('Human rejected continuation')
-  }
-}
-```
-
----
-
-## The "Poison Pill" Pattern
-
-Some errors are **recoverable**, some are **poison pills**.
-
-| Error Type | Example | Action |
-|-----------|---------|--------|
-| **Recoverable** | Tool timeout, API rate limit | Use State Reset to retry |
-| **Poison Pill** | User requested illegal content | Terminal Node - shut down immediately |
-
-```typescript
-function isRecoverableError(error: Error): boolean {
-  const recoverableErrors = [
-    'TIMEOUT',
-    'RATE_LIMIT',
-    'NETWORK_ERROR'
-  ]
-
-  return recoverableErrors.some(msg => error.message.includes(msg))
-}
-
-async function handleError(error: Error, state: NewsletterState) {
-  if (isRecoverableError(error)) {
-    console.log('Recoverable error - retrying...')
-    return { ...state, iteration_count: state.iteration_count + 1 }
-  } else {
-    console.log('Poison pill detected - shutting down')
-    await alertUser({
-      error: error.message,
-      state
+    const revisionResponse = await anthropic.messages.create({
+      model: 'claude-4.5-sonnet',
+      max_tokens: 4000,
+      messages: [
+        { role: 'user', content: `Generate TypeScript code for: ${task}` },
+        { role: 'assistant', content: generatedCode },
+        { role: 'user', content: revisionPrompt }
+      ]
     })
+
+    return revisionResponse.content[0].text
+  }
+
+  console.log('✅ Quality gate passed')
+  return generatedCode
+}
+
+/* Example:
+
+Task: "Create a function to fetch user data from API"
+
+First attempt:
+```typescript
+async function fetchUser(id) {
+  // TODO: Add error handling
+  const response = await fetch(`/api/users/${id}`)
+  return response.json()
+}
+```
+
+❌ Quality gate failed:
+  [ERROR] no_placeholder_code: Code contains TODO/FIXME placeholders
+  [ERROR] has_error_handling: Code lacks error handling
+  [WARNING] has_types: Code missing TypeScript type definitions
+
+Agent revises:
+```typescript
+interface User {
+  id: string
+  name: string
+  email: string
+}
+
+async function fetchUser(id: string): Promise<User> {
+  try {
+    const response = await fetch(`/api/users/${id}`)
+    if (!response.ok) {
+      throw new Error(`Failed to fetch user: ${response.statusText}`)
+    }
+    return await response.json()
+  } catch (error) {
+    console.error('Error fetching user:', error)
     throw error
   }
 }
+```
+
+✅ Quality gate passed
+*/
 ```
 
 ---
 
 ## Key Takeaways
 
-1. **Reflection**: Agent reviews its own work before submitting (85% → 92% accuracy)
-2. **Planning (ReWOO)**: Generate full plan before executing tools (50% cost reduction)
-3. **Human-in-the-Loop**: Require approval for critical actions (prevent destructive ops)
-4. **State Management**: Single source of truth with atomic updates and checkpointing
-5. **Cycle Detection**: Max iterations to prevent infinite loops (save costs)
-6. **Token Trimming**: Only pass necessary data between agents (60% reduction)
-7. **Poison Pill Detection**: Shut down immediately for unrecoverable errors
+**Self-Reflection**:
+- Agents critique their own output before submission
+- Catches lazy reasoning, factual errors, incomplete answers
+- Cost: 4.5x single-shot, but prevents 80% of quality issues
+- Use for: High-stakes outputs (legal, medical, financial)
 
----
+**Human-in-the-Loop (HITL)**:
+- Agents pause execution for human approval on high-stakes actions
+- Required for: Irreversible actions, cost >$100, affects >100 users
+- Timeout policy: Auto-reject after 5 minutes (prevents hanging agents)
+- Notification channels: Slack, email, dashboard
 
-## Next Steps
+**Automated Quality Gates**:
+- Define explicit validation rules for agent output
+- Prevents cascading failures (bad output → bad input)
+- Auto-retry with feedback if validation fails
+- Use for: Code generation, data processing, content creation
 
-- **Week 5 Concept 3**: Compare frameworks (LangGraph, CrewAI, AutoGen)
-- **Week 5 Lab**: Build the Auto-Research & Newsletter Team with all patterns
-- **Production tip**: Use LangGraph's checkpointing system for state persistence
+**The Architect's Responsibility**:
+You **own** reliability. If your agent sends 10K emails without HITL, **you failed to add approval gates**. If your code generator produces TODO placeholders in production, **you skipped quality gates**. If your agent makes a critical error and you can't explain why, **you didn't implement audit logging**.
 
----
+**Cost Analysis**:
+```typescript
+// No reliability patterns
+- Cost: $0.02 per agent call
+- Quality: 70% (30% require human intervention)
+- Human review cost: 30% × $50/hour = $15 per failed call
+- Real cost: $0.02 + $15 = $15.02
 
-## Further Reading
+// With reflection + quality gates
+- Cost: $0.09 per agent call (4.5x increase)
+- Quality: 95% (5% require human intervention)
+- Human review cost: 5% × $50/hour = $2.50 per failed call
+- Real cost: $0.09 + $2.50 = $2.59
 
-- [ReWOO: Reasoning WithOut Observation](https://arxiv.org/abs/2305.18323)
-- [Self-Refine: Iterative Refinement with Self-Feedback](https://arxiv.org/abs/2303.17651)
-- [LangGraph Checkpointing](https://langchain-ai.github.io/langgraph/concepts/#checkpointing)
+// ROI: $0.07 extra prevents $12.43 in human review costs (177:1 ROI)
+```
+
+**Next Concept**: Now that your agents are reliable, Concept 4 covers **State Checkpointing** so agents can resume after crashes and **Time Travel Debugging** to rewind agent state when reasoning fails.

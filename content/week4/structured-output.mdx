@@ -829,6 +829,490 @@ async function validateToolCall(
 
 ---
 
+## Self-Healing Logic: The Repair Middleware
+
+Even with perfect prompts and schemas, LLMs occasionally produce malformed output in production. Architect-level systems must **automatically recover** from these failures without human intervention.
+
+### The Three-Layer Defense Strategy
+
+```
+┌──────────────────────────────────────────────────────┐
+│ Layer 1: PREVENTIVE (Before LLM call)                │
+│ - Generous max_tokens buffer                         │
+│ - Clear schema in system prompt                      │
+│ - Few-shot examples of correct format                │
+└──────────────────┬───────────────────────────────────┘
+                   │ LLM generates output
+                   ▼
+┌──────────────────────────────────────────────────────┐
+│ Layer 2: REACTIVE (Parse & Validate)                 │
+│ - Try JSON.parse()                                   │
+│ - If success, validate against Zod schema            │
+│ - If fail, proceed to Layer 3                        │
+└──────────────────┬───────────────────────────────────┘
+                   │ Validation failed
+                   ▼
+┌──────────────────────────────────────────────────────┐
+│ Layer 3: REPAIR (Auto-fix & Retry)                   │
+│ - JSON repair (add missing brackets)                 │
+│ - Regex cleanup (remove conversational fluff)        │
+│ - Feedback loop (send error back to LLM)             │
+└──────────────────────────────────────────────────────┘
+```
+
+### Production Pattern: JSON Repair Middleware
+
+```typescript
+import { z } from 'zod'
+import Anthropic from '@anthropic-ai/sdk'
+
+interface RepairResult<T> {
+  success: boolean
+  data?: T
+  repaired: boolean
+  attempts: number
+  error?: string
+}
+
+/**
+ * Self-healing JSON extraction with automatic repair
+ */
+class SelfHealingExtractor<T> {
+  constructor(
+    private schema: z.ZodSchema<T>,
+    private anthropic: Anthropic,
+    private maxRepairAttempts: number = 3
+  ) {}
+
+  async extract(
+    prompt: string,
+    systemPrompt: string
+  ): Promise<RepairResult<T>> {
+    let attempts = 0
+    let lastError: string = ''
+
+    while (attempts < this.maxRepairAttempts) {
+      attempts++
+
+      try {
+        // Step 1: Get LLM response
+        const response = await this.anthropic.messages.create({
+          model: 'claude-3-5-sonnet-20240620',
+          max_tokens: 2048,
+          system: systemPrompt + (attempts > 1 ? this.buildErrorFeedback(lastError) : ''),
+          messages: [{ role: 'user', content: prompt }]
+        })
+
+        const content = response.content[0].type === 'text' ? response.content[0].text : ''
+
+        // Step 2: Try direct parsing
+        try {
+          const parsed = JSON.parse(content)
+          const validated = this.schema.parse(parsed)
+
+          return {
+            success: true,
+            data: validated,
+            repaired: false,
+            attempts
+          }
+        } catch (parseError) {
+          console.log(`Attempt ${attempts}: Direct parse failed, trying repair...`)
+
+          // Step 3: Auto-repair
+          const repaired = await this.repairJSON(content)
+
+          if (repaired) {
+            try {
+              const parsed = JSON.parse(repaired)
+              const validated = this.schema.parse(parsed)
+
+              console.log(`✅ Successfully repaired JSON on attempt ${attempts}`)
+
+              return {
+                success: true,
+                data: validated,
+                repaired: true,
+                attempts
+              }
+            } catch (repairError) {
+              // Repair didn't work, prepare feedback for next attempt
+              lastError = this.buildErrorMessage(parseError, repairError, content)
+            }
+          } else {
+            lastError = this.buildErrorMessage(parseError, null, content)
+          }
+        }
+      } catch (apiError) {
+        // API-level error (rate limit, network, etc.)
+        return {
+          success: false,
+          repaired: false,
+          attempts,
+          error: apiError instanceof Error ? apiError.message : 'API error'
+        }
+      }
+    }
+
+    // All repair attempts failed
+    return {
+      success: false,
+      repaired: false,
+      attempts,
+      error: `Failed after ${attempts} attempts. Last error: ${lastError}`
+    }
+  }
+
+  /**
+   * Attempt to repair malformed JSON
+   */
+  private async repairJSON(content: string): Promise<string | null> {
+    // Strategy 1: Remove conversational fluff (common LLM mistake)
+    let cleaned = this.removeConversationalFluff(content)
+
+    // Strategy 2: Fix missing closing brackets (truncation)
+    cleaned = this.addMissingBrackets(cleaned)
+
+    // Strategy 3: Fix common quote issues
+    cleaned = this.fixQuotes(cleaned)
+
+    // Strategy 4: Try partial JSON parser
+    try {
+      const repaired = this.parsePartialJSON(cleaned)
+      if (repaired) {
+        return JSON.stringify(repaired)
+      }
+    } catch {
+      // Partial parse failed
+    }
+
+    return null
+  }
+
+  /**
+   * Remove text before/after JSON block
+   */
+  private removeConversationalFluff(content: string): string {
+    // Common patterns LLMs add:
+    // "Here's the JSON: {...}"
+    // "```json\n{...}\n```"
+    // "Sure! {...}"
+
+    // Extract JSON from code blocks
+    const codeBlockMatch = content.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/)
+    if (codeBlockMatch) {
+      return codeBlockMatch[1]
+    }
+
+    // Find first { and last }
+    const firstBrace = content.indexOf('{')
+    const lastBrace = content.lastIndexOf('}')
+
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      return content.slice(firstBrace, lastBrace + 1)
+    }
+
+    return content
+  }
+
+  /**
+   * Add missing closing brackets (token limit truncation)
+   */
+  private addMissingBrackets(content: string): string {
+    let fixed = content.trim()
+
+    // Count brackets
+    const openBraces = (fixed.match(/\{/g) || []).length
+    const closeBraces = (fixed.match(/\}/g) || []).length
+    const openBrackets = (fixed.match(/\[/g) || []).length
+    const closeBrackets = (fixed.match(/\]/g) || []).length
+
+    // Add missing closing braces
+    for (let i = 0; i < openBraces - closeBraces; i++) {
+      fixed += '}'
+    }
+
+    // Add missing closing brackets
+    for (let i = 0; i < openBrackets - closeBrackets; i++) {
+      fixed += ']'
+    }
+
+    return fixed
+  }
+
+  /**
+   * Fix common quote issues
+   */
+  private fixQuotes(content: string): string {
+    // Replace smart quotes with standard quotes
+    return content
+      .replace(/[""]/g, '"')
+      .replace(/['']/g, "'")
+  }
+
+  /**
+   * Parse incomplete JSON (progressive parsing)
+   */
+  private parsePartialJSON(content: string): any | null {
+    // Try progressive truncation
+    let current = content
+    while (current.length > 10) {
+      try {
+        return JSON.parse(current)
+      } catch {
+        // Remove last character and try again
+        current = current.slice(0, -1).trim()
+
+        // Add closing bracket if needed
+        if (current.endsWith(',')) {
+          current = current.slice(0, -1) + '}'
+        }
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * Build error feedback for LLM (validation error → retry with hints)
+   */
+  private buildErrorFeedback(error: string): string {
+    return `
+
+IMPORTANT: Your previous response had errors. Please fix them:
+
+Error: ${error}
+
+Requirements:
+- Return ONLY valid JSON (no explanation before/after)
+- Ensure all required fields are present
+- Use exact field names from schema
+- Close all brackets properly
+- Use double quotes for strings, not single quotes`
+  }
+
+  /**
+   * Build detailed error message from parse/validation errors
+   */
+  private buildErrorMessage(
+    parseError: any,
+    repairError: any,
+    content: string
+  ): string {
+    let message = 'JSON parsing failed. '
+
+    if (parseError instanceof SyntaxError) {
+      message += `Syntax error: ${parseError.message}. `
+    } else if (parseError instanceof z.ZodError) {
+      const fieldErrors = parseError.errors
+        .map(e => `Field "${e.path.join('.')}" ${e.message}`)
+        .join(', ')
+      message += `Validation errors: ${fieldErrors}. `
+    }
+
+    if (repairError) {
+      message += `Repair also failed: ${repairError instanceof Error ? repairError.message : 'Unknown error'}. `
+    }
+
+    // Include truncated content for debugging
+    const preview = content.slice(0, 200) + (content.length > 200 ? '...' : '')
+    message += `Content preview: ${preview}`
+
+    return message
+  }
+}
+```
+
+### Usage: Self-Healing Extraction
+
+```typescript
+// Define schema
+const WeatherSchema = z.object({
+  temperature: z.number(),
+  unit: z.enum(['F', 'C']),
+  conditions: z.string(),
+  location: z.string()
+})
+
+// Create self-healing extractor
+const extractor = new SelfHealingExtractor(
+  WeatherSchema,
+  anthropic,
+  3 // max repair attempts
+)
+
+// Extract with automatic repair
+const result = await extractor.extract(
+  'Extract weather from: "It\'s 62 degrees and rainy in SF"',
+  'You are a weather data extractor. Return ONLY valid JSON matching the schema.'
+)
+
+if (result.success) {
+  console.log('Data:', result.data)
+  console.log('Repaired:', result.repaired)
+  console.log('Attempts:', result.attempts)
+
+  // Use validated data
+  await db.weather.create({ data: result.data })
+} else {
+  console.error('Extraction failed:', result.error)
+  // Fall back to manual processing or alert human
+}
+```
+
+### Advanced: Validation Error Feedback Loop
+
+When validation fails, **send the exact error messages back to the LLM** so it can self-correct.
+
+```typescript
+/**
+ * Multi-turn extraction with validation feedback
+ */
+async function extractWithFeedback<T>(
+  schema: z.ZodSchema<T>,
+  prompt: string,
+  maxTurns: number = 3
+): Promise<T> {
+  let conversationHistory: Anthropic.MessageParam[] = [
+    { role: 'user', content: prompt }
+  ]
+
+  for (let turn = 1; turn <= maxTurns; turn++) {
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20240620',
+      max_tokens: 1024,
+      messages: conversationHistory
+    })
+
+    const content = response.content[0].type === 'text' ? response.content[0].text : ''
+
+    try {
+      // Try parsing and validation
+      const parsed = JSON.parse(content)
+      const validated = schema.parse(parsed)
+
+      console.log(`✅ Success on turn ${turn}`)
+      return validated
+    } catch (error) {
+      console.log(`Turn ${turn} failed, sending feedback...`)
+
+      // Build detailed error feedback
+      let feedback = 'Your JSON has errors:\n\n'
+
+      if (error instanceof SyntaxError) {
+        feedback += `SYNTAX ERROR: ${error.message}\n\n`
+        feedback += 'Common fixes:\n'
+        feedback += '- Ensure all brackets are closed\n'
+        feedback += '- Use double quotes for strings\n'
+        feedback += '- Remove trailing commas\n'
+      } else if (error instanceof z.ZodError) {
+        feedback += 'VALIDATION ERRORS:\n'
+        error.errors.forEach((e, i) => {
+          feedback += `${i + 1}. Field "${e.path.join('.')}" - ${e.message}\n`
+        })
+        feedback += '\nFix these issues and return corrected JSON.'
+      }
+
+      // Add feedback to conversation
+      conversationHistory.push(
+        { role: 'assistant', content: response.content },
+        { role: 'user', content: feedback }
+      )
+
+      if (turn === maxTurns) {
+        throw new Error(`Failed after ${maxTurns} turns. Last error: ${error}`)
+      }
+    }
+  }
+
+  throw new Error('Extraction failed')
+}
+```
+
+### Production Metrics: Repair Success Rates
+
+Track repair effectiveness to optimize strategies:
+
+```typescript
+interface RepairMetrics {
+  totalExtractions: number
+  directSuccess: number
+  repairedSuccess: number
+  totalFailures: number
+  avgAttempts: number
+  commonErrors: Map<string, number>
+}
+
+class RepairMetricsTracker {
+  private metrics: RepairMetrics = {
+    totalExtractions: 0,
+    directSuccess: 0,
+    repairedSuccess: 0,
+    totalFailures: 0,
+    avgAttempts: 0,
+    commonErrors: new Map()
+  }
+
+  recordResult(result: RepairResult<any>): void {
+    this.metrics.totalExtractions++
+
+    if (result.success) {
+      if (result.repaired) {
+        this.metrics.repairedSuccess++
+      } else {
+        this.metrics.directSuccess++
+      }
+    } else {
+      this.metrics.totalFailures++
+      if (result.error) {
+        const count = this.metrics.commonErrors.get(result.error) || 0
+        this.metrics.commonErrors.set(result.error, count + 1)
+      }
+    }
+
+    // Update average attempts
+    const total = this.metrics.directSuccess + this.metrics.repairedSuccess + this.metrics.totalFailures
+    this.metrics.avgAttempts =
+      ((this.metrics.avgAttempts * (total - 1)) + result.attempts) / total
+  }
+
+  getReport(): string {
+    const total = this.metrics.totalExtractions
+    const successRate = ((this.metrics.directSuccess + this.metrics.repairedSuccess) / total) * 100
+    const repairRate = (this.metrics.repairedSuccess / total) * 100
+
+    return `
+Extraction Metrics (last ${total} calls):
+  Success Rate: ${successRate.toFixed(1)}%
+  Direct Success: ${this.metrics.directSuccess} (${((this.metrics.directSuccess / total) * 100).toFixed(1)}%)
+  Repaired Success: ${this.metrics.repairedSuccess} (${repairRate.toFixed(1)}%)
+  Failures: ${this.metrics.totalFailures} (${((this.metrics.totalFailures / total) * 100).toFixed(1)}%)
+  Avg Attempts: ${this.metrics.avgAttempts.toFixed(2)}
+
+Top Errors:
+${Array.from(this.metrics.commonErrors.entries())
+  .sort((a, b) => b[1] - a[1])
+  .slice(0, 5)
+  .map(([error, count]) => `  ${count}x - ${error.slice(0, 80)}`)
+  .join('\n')}
+`
+  }
+}
+```
+
+**Target Metrics**:
+- **Direct Success Rate**: > 95% (schema works well, no repair needed)
+- **Repair Success Rate**: 3-4% (auto-repair saves failed calls)
+- **Total Failure Rate**: < 1% (alert humans for manual review)
+- **Avg Attempts**: < 1.1 (most succeed on first try)
+
+**When to Alert**:
+- Direct success < 90% → Schema/prompt needs improvement
+- Repair success > 10% → Underlying issue with LLM behavior
+- Total failure > 2% → Production reliability at risk
+
+---
+
 ## Production Checklist
 
 Before shipping structured output to production:
