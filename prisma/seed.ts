@@ -221,9 +221,9 @@ const weekData = [
       'Deploy multi-agent systems with checkpointing and observability'
     ],
     concepts: [
-      { slug: 'agent-architectures', title: 'Agent Architectures: Sequential, Supervisor, Collaborative', minutes: 45 },
-      { slug: 'reliability-patterns', title: 'Reliability Patterns: Reflection, Planning, HITL', minutes: 50 },
-      { slug: 'framework-comparison', title: 'Framework Face-Off: LangGraph vs CrewAI vs AutoGen', minutes: 40 }
+      { slug: 'agent-architectures', title: 'Agent Architectures', minutes: 45 },
+      { slug: 'reliability-patterns', title: 'Reliability Patterns', minutes: 50 },
+      { slug: 'framework-comparison', title: 'Framework Comparison', minutes: 40 }
     ],
     lab: {
       slug: 'newsletter-team',
