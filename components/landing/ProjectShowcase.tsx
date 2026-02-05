@@ -254,6 +254,24 @@ function getEmojiForProject(projectId: string): string {
   return emojiMap[projectId] || '🎯'
 }
 
+function getWeekColor(weekNumber: number): { bg: string; gradient: string } {
+  const colorMap: Record<number, { bg: string; gradient: string }> = {
+    1: { bg: 'bg-purple-600', gradient: 'from-purple-600 to-pink-600' },
+    2: { bg: 'bg-green-600', gradient: 'from-green-600 to-emerald-600' },
+    3: { bg: 'bg-blue-600', gradient: 'from-blue-600 to-sky-600' },
+    4: { bg: 'bg-orange-600', gradient: 'from-orange-600 to-amber-600' },
+    5: { bg: 'bg-indigo-600', gradient: 'from-indigo-600 to-blue-600' },
+    6: { bg: 'bg-teal-600', gradient: 'from-teal-600 to-cyan-600' },
+    7: { bg: 'bg-amber-600', gradient: 'from-amber-600 to-yellow-600' },
+    8: { bg: 'bg-pink-600', gradient: 'from-pink-600 to-rose-600' },
+    9: { bg: 'bg-red-600', gradient: 'from-red-600 to-orange-600' },
+    10: { bg: 'bg-sky-600', gradient: 'from-sky-600 to-blue-600' },
+    11: { bg: 'bg-emerald-600', gradient: 'from-emerald-600 to-green-600' },
+    12: { bg: 'bg-slate-600', gradient: 'from-slate-600 to-gray-600' },
+  }
+  return colorMap[weekNumber] || { bg: 'bg-purple-600', gradient: 'from-purple-600 to-cyan-500' }
+}
+
 export function ProjectShowcase() {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null)
 
@@ -298,12 +316,14 @@ interface ProjectCardProps {
 }
 
 function ProjectCard({ project, isExpanded, onToggle }: ProjectCardProps) {
+  const weekColors = getWeekColor(project.week)
+
   return (
     <div className="group relative bg-white rounded-2xl border border-gray-200 overflow-hidden transition-all duration-300 hover:shadow-xl hover:border-transparent">
-      <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
+      <div className={`absolute inset-0 bg-gradient-to-r ${weekColors.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl`} />
 
       {/* Project Card Header with Gradient Background */}
-      <div className="h-32 relative overflow-hidden bg-gradient-to-br from-purple-600 to-cyan-500">
+      <div className={`h-32 relative overflow-hidden bg-gradient-to-br ${weekColors.gradient}`}>
         {/* Icon overlay */}
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
@@ -318,7 +338,7 @@ function ProjectCard({ project, isExpanded, onToggle }: ProjectCardProps) {
           <h3 className="text-xl font-bold text-gray-900">
             {project.title}
           </h3>
-          <span className="px-3 py-1 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-xs font-bold rounded-full">
+          <span className={`px-3 py-1 bg-gradient-to-r ${weekColors.gradient} text-white text-xs font-bold rounded-full`}>
             Week {project.week}
           </span>
         </div>
