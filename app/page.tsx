@@ -89,7 +89,7 @@ export default function Home() {
               </span>
             </h1>
             <p className="text-xl md:text-2xl text-gray-600 leading-relaxed max-w-2xl mx-auto">
-              Transform from a software engineer to a <span className="font-semibold text-gray-900">Technical Lead</span> in 12 weeks.
+              Transform from a software engineer to an <span className="font-semibold text-gray-900">AI Architect</span> in 12 weeks.
               Master the <span className="font-semibold text-gray-900">physics of LLMs</span>, build <span className="font-semibold text-gray-900">sovereign security frameworks</span>,
               and ship <span className="font-semibold text-gray-900">7 production-grade AI systems</span>.
             </p>
