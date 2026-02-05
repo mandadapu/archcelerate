@@ -1,0 +1,897 @@
+---
+title: "Hierarchical Agent Swarms"
+description: "Design manager-worker architectures with autonomous feedback loops and semantic circuit breakers for production multi-agent systems"
+estimatedMinutes: 60
+week: 11
+concept: 4
+difficulty: expert
+objectives:
+  - Build hierarchical agent architectures (manager supervising workers)
+  - Implement semantic circuit breakers to prevent infinite loops
+  - Design autonomous feedback loops for self-correction
+  - Deploy production swarms with cost and latency monitoring
+---
+
+# Hierarchical Agent Swarms
+
+## The Enterprise Multi-Agent Problem
+
+**Simple agents:** One agent, one task (e.g., "summarize this document")
+**Enterprise reality:** Complex workflows requiring specialization and coordination
+
+**Example: Product Launch Campaign**
+- Market research (requires web search + analysis)
+- Competitive analysis (requires data gathering + comparison)
+- Marketing copy (requires creative writing + brand consistency)
+- Code generation (requires technical implementation)
+- Budget planning (requires financial modeling)
+
+**Problem:** A single agent can't master all these skills. You need a **swarm**.
+
+---
+
+## 1. Hierarchical Architecture: Manager-Worker Pattern
+
+### The Pattern
+
+```
+                    ┌─────────────────┐
+                    │  Manager Agent  │
+                    │   (Coordinator) │
+                    └────────┬────────┘
+                             │
+          ┌──────────────────┼──────────────────┐
+          │                  │                  │
+     ┌────▼────┐       ┌────▼────┐       ┌────▼────┐
+     │ Worker  │       │ Worker  │       │ Worker  │
+     │ (Market)│       │ (Tech)  │       │ (Finance)│
+     └─────────┘       └─────────┘       └─────────┘
+```
+
+**Manager Agent:**
+- Decomposes high-level goals into sub-tasks
+- Routes sub-tasks to specialized worker agents
+- Aggregates worker outputs
+- Makes final decisions
+
+**Worker Agents:**
+- Specialize in one domain (market research, coding, finance)
+- Execute assigned tasks autonomously
+- Report results back to manager
+- Request clarification if task is ambiguous
+
+### Implementation: Manager Agent
+
+```typescript
+/**
+ * Manager Agent: Coordinates Hierarchical Swarm
+ */
+import Anthropic from '@anthropic-ai/sdk'
+
+interface Task {
+  id: string
+  description: string
+  assigned_to?: string
+  status: 'pending' | 'in_progress' | 'completed' | 'failed'
+  result?: any
+  retry_count: number
+}
+
+interface WorkerAgent {
+  id: string
+  name: string
+  specialization: string
+  model: string
+  available: boolean
+}
+
+class ManagerAgent {
+  private anthropic: Anthropic
+  private workers: Map<string, WorkerAgent>
+  private taskQueue: Task[]
+
+  constructor() {
+    this.anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    this.workers = new Map()
+    this.taskQueue = []
+  }
+
+  // Register worker agents
+  registerWorker(worker: WorkerAgent) {
+    this.workers.set(worker.id, worker)
+    console.log(`✅ Registered worker: ${worker.name} (${worker.specialization})`)
+  }
+
+  // Step 1: Decompose high-level goal into sub-tasks
+  async decompose(goal: string): Promise<Task[]> {
+    const prompt = `You are a Manager Agent coordinating a team of specialized workers.
+
+Goal: "${goal}"
+
+Available Workers:
+${Array.from(this.workers.values()).map(w =>
+  `- ${w.name}: ${w.specialization}`
+).join('\n')}
+
+Decompose this goal into 3-5 specific, actionable sub-tasks. For each sub-task:
+1. Write a clear description
+2. Assign it to the most appropriate worker
+3. Ensure tasks can be executed independently (minimal dependencies)
+
+Return JSON array:
+[
+  {
+    "description": "Task description",
+    "assigned_to": "worker_id",
+    "dependencies": []
+  }
+]`
+
+    const response = await this.anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 2048,
+      messages: [{ role: 'user', content: prompt }]
+    })
+
+    const tasksJson = response.content[0].text.match(/\[[\s\S]*\]/)?.[0]
+    const taskDefinitions = JSON.parse(tasksJson || '[]')
+
+    const tasks: Task[] = taskDefinitions.map((t: any, index: number) => ({
+      id: `task_${index + 1}`,
+      description: t.description,
+      assigned_to: t.assigned_to,
+      status: 'pending',
+      retry_count: 0
+    }))
+
+    this.taskQueue.push(...tasks)
+    return tasks
+  }
+
+  // Step 2: Execute tasks (parallel or sequential based on dependencies)
+  async executeTasks(tasks: Task[]): Promise<Map<string, any>> {
+    const results = new Map<string, any>()
+
+    // Execute tasks in parallel (assuming no dependencies)
+    await Promise.all(
+      tasks.map(async (task) => {
+        task.status = 'in_progress'
+
+        try {
+          const worker = this.workers.get(task.assigned_to!)
+          if (!worker) throw new Error(`Worker ${task.assigned_to} not found`)
+
+          console.log(`🔄 ${worker.name} executing: ${task.description}`)
+
+          const result = await this.executeWorkerTask(worker, task)
+
+          task.status = 'completed'
+          task.result = result
+          results.set(task.id, result)
+
+          console.log(`✅ ${worker.name} completed: ${task.description}`)
+
+        } catch (error) {
+          task.status = 'failed'
+          task.retry_count++
+
+          console.error(`❌ Task failed: ${task.description}`, error)
+
+          // Retry logic (max 2 retries)
+          if (task.retry_count < 2) {
+            console.log(`🔄 Retrying task: ${task.description}`)
+            await this.executeTasks([task])
+          }
+        }
+      })
+    )
+
+    return results
+  }
+
+  // Step 3: Worker executes task
+  private async executeWorkerTask(worker: WorkerAgent, task: Task): Promise<string> {
+    const prompt = `You are ${worker.name}, a ${worker.specialization} specialist.
+
+Your task: ${task.description}
+
+Execute this task and return your findings. Be specific and actionable.`
+
+    const response = await this.anthropic.messages.create({
+      model: worker.model,
+      max_tokens: 2048,
+      messages: [{ role: 'user', content: prompt }]
+    })
+
+    return response.content[0].text
+  }
+
+  // Step 4: Aggregate results and make final decision
+  async synthesize(goal: string, taskResults: Map<string, any>): Promise<string> {
+    const resultsText = Array.from(taskResults.entries())
+      .map(([taskId, result]) => {
+        const task = this.taskQueue.find(t => t.id === taskId)
+        return `### ${task?.description}\n${result}\n`
+      })
+      .join('\n---\n\n')
+
+    const prompt = `You are a Manager Agent synthesizing the work of your team.
+
+Original Goal: "${goal}"
+
+Team Results:
+${resultsText}
+
+Synthesize these results into a coherent final deliverable that achieves the goal.`
+
+    const response = await this.anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: prompt }]
+    })
+
+    return response.content[0].text
+  }
+
+  // Complete workflow
+  async execute(goal: string): Promise<string> {
+    console.log(`\n🎯 Manager Agent: Starting workflow for goal: "${goal}"\n`)
+
+    // Step 1: Decompose
+    const tasks = await this.decompose(goal)
+    console.log(`📋 Decomposed into ${tasks.length} tasks\n`)
+
+    // Step 2: Execute
+    const results = await this.executeTasks(tasks)
+    console.log(`\n✅ All tasks completed (${results.size}/${tasks.length})\n`)
+
+    // Step 3: Synthesize
+    const final = await this.synthesize(goal, results)
+    console.log(`\n🎉 Final deliverable ready\n`)
+
+    return final
+  }
+}
+```
+
+### Usage: Product Launch Swarm
+
+```typescript
+// Initialize manager
+const manager = new ManagerAgent()
+
+// Register specialized workers
+manager.registerWorker({
+  id: 'market_researcher',
+  name: 'Market Researcher',
+  specialization: 'market analysis, competitive research, trend identification',
+  model: 'claude-3-5-sonnet-20241022',
+  available: true
+})
+
+manager.registerWorker({
+  id: 'tech_lead',
+  name: 'Tech Lead',
+  specialization: 'software architecture, code generation, technical documentation',
+  model: 'claude-3-5-sonnet-20241022',
+  available: true
+})
+
+manager.registerWorker({
+  id: 'marketing_writer',
+  name: 'Marketing Writer',
+  specialization: 'copywriting, brand messaging, content strategy',
+  model: 'claude-3-5-sonnet-20241022',
+  available: true
+})
+
+manager.registerWorker({
+  id: 'financial_analyst',
+  name: 'Financial Analyst',
+  specialization: 'budget planning, ROI analysis, cost modeling',
+  model: 'claude-3-haiku-20240307', // Cheaper model for simpler tasks
+  available: true
+})
+
+// Execute swarm
+const goal = 'Launch a new AI-powered customer support chatbot product. Include market analysis, technical architecture, marketing strategy, and budget.'
+
+const result = await manager.execute(goal)
+
+console.log('=== FINAL PRODUCT LAUNCH PLAN ===')
+console.log(result)
+```
+
+**Output:**
+```
+🎯 Manager Agent: Starting workflow for goal: "Launch a new AI-powered customer support chatbot product..."
+
+📋 Decomposed into 4 tasks
+
+🔄 Market Researcher executing: Analyze the customer support chatbot market...
+🔄 Tech Lead executing: Design technical architecture for AI chatbot...
+🔄 Marketing Writer executing: Create go-to-market strategy and messaging...
+🔄 Financial Analyst executing: Create budget and ROI projections...
+
+✅ Market Researcher completed: Analyze the customer support chatbot market...
+✅ Tech Lead completed: Design technical architecture for AI chatbot...
+✅ Marketing Writer completed: Create go-to-market strategy and messaging...
+✅ Financial Analyst completed: Create budget and ROI projections...
+
+✅ All tasks completed (4/4)
+
+🎉 Final deliverable ready
+
+=== FINAL PRODUCT LAUNCH PLAN ===
+[Synthesized plan combining all worker outputs]
+```
+
+---
+
+## 2. Semantic Circuit Breakers: Preventing Infinite Loops
+
+### The Problem
+
+**Scenario:** Manager agent delegates task to Worker A → Worker A asks for clarification → Manager delegates to Worker B → Worker B asks for clarification → **Infinite loop!**
+
+**Real Example:**
+1. Manager: "Research our competitors"
+2. Market Researcher: "Which industry? Which geography?"
+3. Manager: "Clarify scope with Product Manager"
+4. Product Manager: "What's the budget for research?"
+5. Manager: "Get budget from Finance"
+6. Finance: "What's the project timeline?"
+7. Manager: "Check timeline with Product Manager"
+8. **LOOP!** Manager ↔ Product Manager ↔ Finance ↔ Manager...
+
+**Cost:** $50+ in API calls, 10+ minutes wasted, no result delivered
+
+### The Solution: Semantic Circuit Breaker
+
+```typescript
+/**
+ * Semantic Circuit Breaker: Detect and Stop Infinite Loops
+ */
+interface CircuitBreakerConfig {
+  max_task_retries: number          // Max retries per task (default: 2)
+  max_clarification_loops: number   // Max back-and-forth clarifications (default: 3)
+  max_total_iterations: number      // Max total agent calls (default: 20)
+  similarity_threshold: number      // Cosine similarity for duplicate detection (default: 0.9)
+}
+
+class SemanticCircuitBreaker {
+  private config: CircuitBreakerConfig
+  private callHistory: Array<{
+    agent: string
+    task: string
+    timestamp: number
+    embedding: number[]
+  }>
+  private totalCalls: number
+
+  constructor(config?: Partial<CircuitBreakerConfig>) {
+    this.config = {
+      max_task_retries: 2,
+      max_clarification_loops: 3,
+      max_total_iterations: 20,
+      similarity_threshold: 0.9,
+      ...config
+    }
+    this.callHistory = []
+    this.totalCalls = 0
+  }
+
+  // Check if circuit should open (stop execution)
+  async shouldBreak(agent: string, task: string): Promise<{
+    break: boolean
+    reason?: string
+  }> {
+    this.totalCalls++
+
+    // Rule 1: Total iteration limit
+    if (this.totalCalls >= this.config.max_total_iterations) {
+      return {
+        break: true,
+        reason: `Max iterations reached (${this.config.max_total_iterations})`
+      }
+    }
+
+    // Rule 2: Detect duplicate tasks (semantic similarity)
+    const taskEmbedding = await this.embed(task)
+
+    for (const historyEntry of this.callHistory) {
+      const similarity = this.cosineSimilarity(taskEmbedding, historyEntry.embedding)
+
+      if (similarity > this.config.similarity_threshold) {
+        return {
+          break: true,
+          reason: `Duplicate task detected (similarity: ${similarity.toFixed(2)}). Previous: "${historyEntry.task}"`
+        }
+      }
+    }
+
+    // Rule 3: Detect clarification loops (same agent asked 3+ times)
+    const sameAgentCalls = this.callHistory.filter(h => h.agent === agent)
+    if (sameAgentCalls.length >= this.config.max_clarification_loops) {
+      return {
+        break: true,
+        reason: `Agent ${agent} called ${sameAgentCalls.length} times (max: ${this.config.max_clarification_loops})`
+      }
+    }
+
+    // Rule 4: Detect rapid back-and-forth (same 2 agents alternating)
+    if (this.callHistory.length >= 4) {
+      const recent4 = this.callHistory.slice(-4)
+      const agent1 = recent4[0].agent
+      const agent2 = recent4[1].agent
+
+      if (
+        recent4[2].agent === agent1 &&
+        recent4[3].agent === agent2 &&
+        agent1 !== agent2
+      ) {
+        return {
+          break: true,
+          reason: `Infinite loop detected between ${agent1} and ${agent2}`
+        }
+      }
+    }
+
+    // Record this call
+    this.callHistory.push({
+      agent,
+      task,
+      timestamp: Date.now(),
+      embedding: taskEmbedding
+    })
+
+    return { break: false }
+  }
+
+  // Embed task for semantic comparison
+  private async embed(text: string): Promise<number[]> {
+    // Use OpenAI or Anthropic embeddings
+    // Simplified for example
+    return Array(1536).fill(0).map(() => Math.random())
+  }
+
+  // Calculate cosine similarity
+  private cosineSimilarity(a: number[], b: number[]): number {
+    const dotProduct = a.reduce((sum, val, i) => sum + val * b[i], 0)
+    const magnitudeA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0))
+    const magnitudeB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0))
+    return dotProduct / (magnitudeA * magnitudeB)
+  }
+
+  // Reset circuit breaker
+  reset() {
+    this.callHistory = []
+    this.totalCalls = 0
+  }
+
+  // Get current state
+  getState() {
+    return {
+      total_calls: this.totalCalls,
+      history_length: this.callHistory.length,
+      most_called_agent: this.getMostCalledAgent()
+    }
+  }
+
+  private getMostCalledAgent(): string {
+    const counts = new Map<string, number>()
+    for (const entry of this.callHistory) {
+      counts.set(entry.agent, (counts.get(entry.agent) || 0) + 1)
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])[0]?.[0] || 'none'
+  }
+}
+```
+
+### Integration with Manager Agent
+
+```typescript
+class SafeManagerAgent extends ManagerAgent {
+  private circuitBreaker: SemanticCircuitBreaker
+
+  constructor() {
+    super()
+    this.circuitBreaker = new SemanticCircuitBreaker({
+      max_total_iterations: 20,
+      max_clarification_loops: 3,
+      similarity_threshold: 0.9
+    })
+  }
+
+  // Override executeWorkerTask with circuit breaker
+  protected async executeWorkerTask(worker: WorkerAgent, task: Task): Promise<string> {
+    // Check circuit breaker BEFORE executing
+    const circuitCheck = await this.circuitBreaker.shouldBreak(worker.id, task.description)
+
+    if (circuitCheck.break) {
+      throw new Error(`🛑 Circuit breaker opened: ${circuitCheck.reason}`)
+    }
+
+    // Execute task if circuit is closed
+    return await super.executeWorkerTask(worker, task)
+  }
+
+  // Override execute with circuit breaker monitoring
+  async execute(goal: string): Promise<string> {
+    try {
+      const result = await super.execute(goal)
+
+      // Log circuit breaker state
+      const state = this.circuitBreaker.getState()
+      console.log(`\n📊 Circuit Breaker Stats:`)
+      console.log(`  Total calls: ${state.total_calls}`)
+      console.log(`  Most called agent: ${state.most_called_agent}`)
+
+      return result
+
+    } catch (error) {
+      // Circuit breaker opened
+      if (error.message.includes('Circuit breaker opened')) {
+        console.error(`\n🛑 CIRCUIT BREAKER TRIGGERED`)
+        console.error(error.message)
+
+        // Return partial results
+        return this.getPartialResults()
+      }
+
+      throw error
+    }
+  }
+
+  private getPartialResults(): string {
+    const completedTasks = this.taskQueue.filter(t => t.status === 'completed')
+
+    return `# Partial Results (Circuit Breaker Triggered)
+
+Completed: ${completedTasks.length}/${this.taskQueue.length} tasks
+
+${completedTasks.map(t => `### ${t.description}\n${t.result}\n`).join('\n---\n\n')}
+
+Note: Execution stopped early to prevent infinite loop.`
+  }
+}
+```
+
+---
+
+## 3. Autonomous Feedback Loops
+
+### The Pattern
+
+**Problem:** Worker agents make mistakes. Manager needs to detect and correct them autonomously.
+
+**Solution:** Self-verification loop where manager reviews worker output and requests revisions if needed.
+
+```typescript
+/**
+ * Autonomous Feedback Loop: Self-Correcting Swarm
+ */
+class SelfCorrectingManagerAgent extends SafeManagerAgent {
+  private maxRevisions: number = 2
+
+  // Override execute with feedback loop
+  protected async executeWorkerTask(worker: WorkerAgent, task: Task): Promise<string> {
+    let revisionCount = 0
+    let result: string
+
+    while (revisionCount <= this.maxRevisions) {
+      // Execute task
+      result = await super.executeWorkerTask(worker, task)
+
+      // Self-verify result
+      const verification = await this.verifyResult(task, result)
+
+      if (verification.passed) {
+        console.log(`✅ Verification passed for: ${task.description}`)
+        return result
+      }
+
+      // Request revision
+      console.log(`⚠️ Verification failed: ${verification.reason}`)
+      console.log(`🔄 Requesting revision (${revisionCount + 1}/${this.maxRevisions})`)
+
+      revisionCount++
+
+      // Update task with feedback
+      task.description = `${task.description}
+
+REVISION REQUEST:
+${verification.reason}
+
+Previous attempt:
+${result}
+
+Please revise your work addressing the issues above.`
+    }
+
+    // Max revisions reached, return last attempt
+    console.warn(`⚠️ Max revisions reached for: ${task.description}`)
+    return result!
+  }
+
+  // Verify worker output meets quality standards
+  private async verifyResult(task: Task, result: string): Promise<{
+    passed: boolean
+    reason?: string
+  }> {
+    const prompt = `You are a Quality Assurance Agent verifying work.
+
+Task: ${task.description}
+
+Worker Output:
+${result}
+
+Verify this output meets quality standards:
+1. Completeness: Does it fully address the task?
+2. Accuracy: Is the information correct?
+3. Specificity: Are there concrete details (not vague statements)?
+4. Actionability: Can this be used to make decisions?
+
+Return JSON:
+{
+  "passed": true/false,
+  "reason": "Explanation if failed"
+}`
+
+    const response = await this.anthropic.messages.create({
+      model: 'claude-3-haiku-20240307', // Cheap model for verification
+      max_tokens: 512,
+      messages: [{ role: 'user', content: prompt }]
+    })
+
+    const verificationJson = response.content[0].text.match(/\{[\s\S]*\}/)?.[0]
+    return JSON.parse(verificationJson || '{"passed": true}')
+  }
+}
+```
+
+### Example: Self-Correcting Market Research
+
+```typescript
+const manager = new SelfCorrectingManagerAgent()
+
+// Register market researcher
+manager.registerWorker({
+  id: 'market_researcher',
+  name: 'Market Researcher',
+  specialization: 'market analysis',
+  model: 'claude-3-5-sonnet-20241022',
+  available: true
+})
+
+// Execute task
+const result = await manager.execute('Analyze the AI chatbot market size and growth rate')
+
+// Output:
+// 🔄 Market Researcher executing: Analyze the AI chatbot market...
+// ⚠️ Verification failed: Output lacks specific numbers and sources
+// 🔄 Requesting revision (1/2)
+// 🔄 Market Researcher executing: [REVISED TASK]
+// ✅ Verification passed for: Analyze the AI chatbot market...
+```
+
+---
+
+## 4. Production Monitoring
+
+### Cost Tracking
+
+```typescript
+/**
+ * Track costs per agent and per task
+ */
+interface AgentCostMetrics {
+  agent_id: string
+  total_calls: number
+  total_tokens: number
+  total_cost_usd: number
+  avg_latency_ms: number
+}
+
+class MonitoredManagerAgent extends SelfCorrectingManagerAgent {
+  private costMetrics: Map<string, AgentCostMetrics>
+
+  constructor() {
+    super()
+    this.costMetrics = new Map()
+  }
+
+  // Override executeWorkerTask to track costs
+  protected async executeWorkerTask(worker: WorkerAgent, task: Task): Promise<string> {
+    const startTime = Date.now()
+
+    const result = await super.executeWorkerTask(worker, task)
+
+    const latency = Date.now() - startTime
+
+    // Estimate cost (simplified)
+    const tokens = Math.ceil(result.length / 4)
+    const costPerToken = worker.model.includes('haiku') ? 0.00000025 : 0.000003
+    const cost = tokens * costPerToken
+
+    // Update metrics
+    const metrics = this.costMetrics.get(worker.id) || {
+      agent_id: worker.id,
+      total_calls: 0,
+      total_tokens: 0,
+      total_cost_usd: 0,
+      avg_latency_ms: 0
+    }
+
+    metrics.total_calls++
+    metrics.total_tokens += tokens
+    metrics.total_cost_usd += cost
+    metrics.avg_latency_ms = (metrics.avg_latency_ms * (metrics.total_calls - 1) + latency) / metrics.total_calls
+
+    this.costMetrics.set(worker.id, metrics)
+
+    return result
+  }
+
+  // Get cost report
+  getCostReport(): AgentCostMetrics[] {
+    return Array.from(this.costMetrics.values())
+      .sort((a, b) => b.total_cost_usd - a.total_cost_usd)
+  }
+
+  // Print dashboard
+  printDashboard() {
+    console.log('\n===== SWARM COST DASHBOARD =====')
+    const report = this.getCostReport()
+
+    for (const metrics of report) {
+      const worker = this.workers.get(metrics.agent_id)
+      console.log(`\n${worker?.name}:`)
+      console.log(`  Calls: ${metrics.total_calls}`)
+      console.log(`  Tokens: ${metrics.total_tokens.toLocaleString()}`)
+      console.log(`  Cost: $${metrics.total_cost_usd.toFixed(4)}`)
+      console.log(`  Avg Latency: ${metrics.avg_latency_ms.toFixed(0)}ms`)
+    }
+
+    const totalCost = report.reduce((sum, m) => sum + m.total_cost_usd, 0)
+    const totalTokens = report.reduce((sum, m) => sum + m.total_tokens, 0)
+
+    console.log(`\n--- TOTAL ---`)
+    console.log(`  Total Cost: $${totalCost.toFixed(4)}`)
+    console.log(`  Total Tokens: ${totalTokens.toLocaleString()}`)
+    console.log('================================\n')
+  }
+}
+```
+
+---
+
+## 5. Production Example: Full Swarm
+
+```typescript
+async function productLaunchSwarm() {
+  // Initialize monitored manager with circuit breaker
+  const manager = new MonitoredManagerAgent()
+
+  // Register specialized workers
+  manager.registerWorker({
+    id: 'market_researcher',
+    name: 'Market Researcher',
+    specialization: 'market analysis, competitive research',
+    model: 'claude-3-5-sonnet-20241022',
+    available: true
+  })
+
+  manager.registerWorker({
+    id: 'tech_architect',
+    name: 'Tech Architect',
+    specialization: 'system design, scalability, security',
+    model: 'claude-3-5-sonnet-20241022',
+    available: true
+  })
+
+  manager.registerWorker({
+    id: 'marketing_strategist',
+    name: 'Marketing Strategist',
+    specialization: 'brand positioning, go-to-market strategy',
+    model: 'claude-3-5-sonnet-20241022',
+    available: true
+  })
+
+  manager.registerWorker({
+    id: 'finance_analyst',
+    name: 'Finance Analyst',
+    specialization: 'budget planning, ROI modeling',
+    model: 'claude-3-haiku-20240307', // Cheaper for simpler tasks
+    available: true
+  })
+
+  // Execute swarm
+  const goal = `Launch an AI-powered customer support chatbot SaaS product.
+
+Requirements:
+- Target market: SMBs with 10-100 employees
+- Budget: $500K for first year
+- Timeline: 6 months to launch
+
+Deliverables needed:
+1. Market opportunity analysis
+2. Technical architecture (scalable to 1M users)
+3. Go-to-market strategy
+4. Financial projections (3-year)
+`
+
+  const result = await manager.execute(goal)
+
+  // Print results
+  console.log('='.repeat(80))
+  console.log('PRODUCT LAUNCH PLAN')
+  console.log('='.repeat(80))
+  console.log(result)
+
+  // Print cost dashboard
+  manager.printDashboard()
+
+  return result
+}
+
+// Run swarm
+await productLaunchSwarm()
+```
+
+**Output:**
+```
+===== SWARM COST DASHBOARD =====
+
+Market Researcher:
+  Calls: 2
+  Tokens: 4,521
+  Cost: $0.0136
+  Avg Latency: 2,341ms
+
+Tech Architect:
+  Calls: 2
+  Tokens: 5,832
+  Cost: $0.0175
+  Avg Latency: 2,789ms
+
+Marketing Strategist:
+  Calls: 1
+  Tokens: 3,210
+  Cost: $0.0096
+  Avg Latency: 1,890ms
+
+Finance Analyst:
+  Calls: 1
+  Tokens: 2,100
+  Cost: $0.0005
+  Avg Latency: 1,234ms
+
+--- TOTAL ---
+  Total Cost: $0.0412
+  Total Tokens: 15,663
+================================
+```
+
+---
+
+## Key Takeaways
+
+1. **Hierarchical Architecture**: Manager-worker pattern for complex workflows
+2. **Semantic Circuit Breakers**: Prevent infinite loops with similarity detection
+3. **Autonomous Feedback Loops**: Self-verification and revision requests
+4. **Production Monitoring**: Track costs, latency, and call patterns per agent
+5. **Specialized Workers**: One agent per domain (market, tech, finance, marketing)
+
+**Production Checklist:**
+- [ ] Implement circuit breaker with max iterations (20)
+- [ ] Add semantic duplicate detection (similarity > 0.9)
+- [ ] Enable self-verification with revision loops (max 2)
+- [ ] Track costs per agent and per task
+- [ ] Monitor for rapid back-and-forth between agents
+- [ ] Set budget alerts for swarm execution ($0.10 limit)
+
+---
+
+**Next:** Week 12 - Global AI Gateway & Enterprise FinOps
