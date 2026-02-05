@@ -18,30 +18,31 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
-// Concept visualization icons - Week 4: Structured Intelligence & API Integration
+// Concept visualization icons - Week 4: Structured Intelligence & API Integration (The Interface)
+// Using orange/amber theme to match Week 4's gradient (from-orange-50 to-amber-50)
 function getConceptIllustration(slug: string) {
   const illustrations: Record<string, JSX.Element> = {
     'structured-output': (
-      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+      <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <Braces className="h-7 w-7 text-primary" />
-          <FileCode2 className="h-6 w-6 text-info" />
+          <Braces className="h-7 w-7 text-orange-600" />
+          <FileCode2 className="h-6 w-6 text-amber-500" />
         </div>
       </div>
     ),
     'function-calling': (
-      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+      <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <Wrench className="h-7 w-7 text-warning" />
-          <Zap className="h-6 w-6 text-success" />
+          <Wrench className="h-7 w-7 text-orange-600" />
+          <Zap className="h-6 w-6 text-amber-500" />
         </div>
       </div>
     ),
     'schema-design': (
-      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+      <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <FileType2 className="h-7 w-7 text-info" />
-          <Blocks className="h-6 w-6 text-primary" />
+          <FileType2 className="h-7 w-7 text-orange-600" />
+          <Blocks className="h-6 w-6 text-amber-500" />
         </div>
       </div>
     ),
@@ -135,7 +136,7 @@ export default async function Week4Page() {
 
         {/* Progress Overview */}
         {progress && (
-          <Card className="bg-red-50 dark:bg-red-950 border-red-200">
+          <Card className="bg-orange-50 dark:bg-orange-950 border-orange-200">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Your Progress</CardTitle>
