@@ -403,44 +403,59 @@ const weekData = [
   },
   {
     weekNumber: 8,
-    title: 'Portfolio + Launch',
-    description: 'Build your portfolio and launch your AI products to the world',
-    objectives: ['Prepare for AI engineering interviews', 'Create portfolio site', 'Launch products', 'Market your work'],
+    title: 'Portfolio + Launch (The Synthesis)',
+    description: 'Consolidating 7 weeks of engineering into a production-ready pilot and a high-impact architectural portfolio',
+    objectives: [
+      'Design multi-tenant vertical AI platforms with strict data isolation for industry-specific workflows',
+      'Stress-test production systems with red-team adversarial attacks and 10x load spike simulations',
+      'Engineer automated evaluation suites with golden datasets and regression prevention leaderboards',
+      'Author System Design Documents justifying tech stack decisions against enterprise constraints'
+    ],
     concepts: [
-      { slug: 'interview-preparation', title: 'AI Engineering Interview Preparation', minutes: 90 },
-      { slug: 'portfolio-building', title: 'Building Your AI Engineer Portfolio', minutes: 35 },
-      { slug: 'product-launch', title: 'Product Launch Strategy', minutes: 40 },
-      { slug: 'marketing-fundamentals', title: 'Marketing for Developers', minutes: 30 }
+      { slug: 'vertical-ai-platforms', title: 'Architecting Vertical AI Platforms: Multi-Tenant Design', minutes: 45 },
+      { slug: 'production-stress-test', title: 'The Production Stress-Test: Red-Team & Load Validation', minutes: 50 },
+      { slug: 'evaluation-suite', title: 'Engineering the Evaluation Suite: Golden Datasets', minutes: 40 },
+      { slug: 'architectural-storytelling', title: 'Architectural Storytelling: System Design Documents', minutes: 35 }
     ],
     lab: {
-      slug: 'portfolio-site',
-      title: 'Build Your Portfolio Site',
-      description: 'Create a professional portfolio showcasing your AI projects',
+      slug: 'stress-test-suite',
+      title: 'Production Stress-Test Suite',
+      description: 'Subject your capstone project to adversarial attacks, load spikes, and automated evaluation to prove production-readiness',
       exercises: [
-        { number: 1, title: 'Design portfolio structure', type: 'design' },
-        { number: 2, title: 'Build project showcase pages', type: 'coding' },
-        { number: 3, title: 'Add case studies and write-ups', type: 'writing' },
-        { number: 4, title: 'Deploy and optimize for SEO', type: 'deployment' }
+        { number: 1, title: 'Implement red-team adversarial test suite (prompt injections, recursive loops)', type: 'testing' },
+        { number: 2, title: 'Build load testing harness with 10x concurrent user spike simulation', type: 'coding' },
+        { number: 3, title: 'Create golden dataset with 100+ edge case queries', type: 'implementation' },
+        { number: 4, title: 'Deploy automated evaluation leaderboard tracking regressions', type: 'coding' },
+        { number: 5, title: 'Generate production telemetry report with sustained throughput metrics', type: 'testing' }
       ]
     },
     project: {
-      slug: 'launch-campaign',
-      title: 'Product Launch Campaign',
-      description: 'Launch your capstone project with a comprehensive marketing campaign',
+      slug: 'architectural-portfolio',
+      title: 'Architectural Portfolio & System Design Document',
+      description: 'Package 7 weeks of engineering into a production-ready pilot with comprehensive System Design Document proving architectural authority',
       requirements: [
-        'Landing page for your product',
-        'Demo video or interactive demo',
-        'Blog post or case study',
-        'Social media presence',
-        'Product Hunt or similar launch'
+        'Multi-tenant architecture document with data isolation design',
+        'Red-team test results report (100% adversarial attack prevention)',
+        'Load test report with sustained throughput under 10x spike',
+        'Evaluation leaderboard with 100+ edge cases and regression tracking',
+        'System Design Document (SDD) justifying vector DB, agent orchestration, and model selection',
+        'Skill Diagnosis Brief showing verified mastery across 7 domains',
+        'Architectural Decision Records (ADRs) for major tech stack choices',
+        'Cost-benefit analysis for production deployment',
+        'Security audit report with mitigation strategies',
+        'Portfolio site showcasing technical depth with code samples'
       ],
       successCriteria: [
-        'Landing page gets 100+ visitors',
-        'At least 10 signups or users',
-        'Positive feedback from early users',
-        'Content shared on social media'
+        'System survives all red-team attacks without failures',
+        'Maintains <3s latency under 10x load spike',
+        'Evaluation leaderboard shows >90% accuracy on edge cases',
+        'SDD clearly justifies every major architectural decision',
+        'Skill Diagnosis verifies 85%+ competency across all 7 domains',
+        'Portfolio demonstrates production-grade thinking (not just toy projects)',
+        'Cost projections show commercial viability (<$0.10 per request)',
+        'Security vulnerabilities identified and mitigated'
       ],
-      hours: 12
+      hours: 16
     }
   },
   {

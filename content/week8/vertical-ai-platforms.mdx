@@ -1,0 +1,597 @@
+---
+title: "Architecting Vertical AI Platforms: Multi-Tenant Design"
+week: 8
+concept: 1
+description: "Moving from single-app to scalable platform: designing multi-tenant systems with strict data isolation and industry-specific vertical integration"
+estimatedMinutes: 45
+objectives:
+  - Design multi-tenant architecture with tenant isolation at database, caching, and vector store layers
+  - Build industry-specific vertical AI workflows deeply integrated with domain schemas (Clinical, Legal, FinTech)
+  - Implement tenant-aware routing, rate limiting, and cost allocation
+---
+
+# Architecting Vertical AI Platforms
+
+Moving from a single app to a Scalable Platform.
+
+## The Architectural Shift
+
+**Single-Tenant App**: One customer, one deployment, one database
+**Multi-Tenant Platform**: N customers, one deployment, shared infrastructure with **strict data isolation**
+
+**Why It Matters**: Multi-tenancy unlocks **economies of scale** (shared infrastructure costs) but introduces **complexity** (data leakage risks, performance isolation, cost allocation).
+
+---
+
+## Pattern 1: Multi-Tenant Design (The Foundation)
+
+**The Problem**: How do you safely handle multiple users or organizations within the same AI engine while maintaining strict data isolation?
+
+**Failure Mode**: Tenant A's query accidentally retrieves Tenant B's documents (data leakage disaster).
+
+### Multi-Tenant Architecture Layers
+
+```
+User Request → Tenant Context → Database Isolation → Vector Isolation → Model Isolation → Response
+         ↓
+      tenant_id
+```
+
+#### Layer 1: Tenant Context Extraction
+
+```typescript
+import { PrismaClient } from '@prisma/client'
+import { Redis } from 'ioredis'
+
+const prisma = new PrismaClient()
+const redis = new Redis(process.env.REDIS_URL)
+
+interface TenantContext {
+  tenantId: string
+  plan: 'free' | 'pro' | 'enterprise'
+  limits: {
+    requestsPerDay: number
+    maxDocuments: number
+    allowedModels: string[]
+  }
+  isolation: {
+    database: string     // Tenant-specific Postgres schema
+    vectorNamespace: string  // Tenant-specific Pinecone namespace
+    cachePrefix: string  // Tenant-specific Redis keys
+  }
+}
+
+// Extract tenant from JWT or API key
+async function extractTenantContext(authToken: string): Promise<TenantContext> {
+  // Decode JWT or lookup API key
+  const decoded = decodeJWT(authToken)  // Returns { userId, tenantId }
+
+  // Load tenant config from database
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: decoded.tenantId },
+    include: { plan: true }
+  })
+
+  if (!tenant) throw new Error('Tenant not found')
+
+  return {
+    tenantId: tenant.id,
+    plan: tenant.plan.tier,
+    limits: {
+      requestsPerDay: tenant.plan.requestsPerDay,
+      maxDocuments: tenant.plan.maxDocuments,
+      allowedModels: tenant.plan.allowedModels
+    },
+    isolation: {
+      database: `tenant_${tenant.id}`,
+      vectorNamespace: `tenant_${tenant.id}`,
+      cachePrefix: `tenant:${tenant.id}`
+    }
+  }
+}
+```
+
+#### Layer 2: Database Isolation (Postgres Schemas)
+
+**Strategy**: Use Postgres schemas for logical isolation (all tenants in one database, separate schemas).
+
+```typescript
+// Prisma Schema (prisma/schema.prisma)
+/*
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  planId    String
+  plan      Plan     @relation(fields: [planId], references: [id])
+
+  documents Document[]  // Isolated by tenantId foreign key
+
+  createdAt DateTime @default(now())
+  @@index([id])
+}
+
+model Document {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  title     String
+  content   String   @db.Text
+  metadata  Json
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@unique([tenantId, title])  // Unique within tenant
+}
+*/
+
+// Tenant-isolated query
+async function getTenantDocuments(tenantContext: TenantContext): Promise<Document[]> {
+  // Prisma automatically filters by tenantId
+  return await prisma.document.findMany({
+    where: {
+      tenantId: tenantContext.tenantId  // CRITICAL: Always filter by tenant
+    },
+    take: tenantContext.limits.maxDocuments
+  })
+}
+
+// ANTI-PATTERN: Query without tenant filter
+async function getAllDocuments() {
+  // ❌ DANGEROUS: Returns documents across ALL tenants
+  return await prisma.document.findMany()
+}
+```
+
+**Cost Analysis**:
+```typescript
+// Single-tenant deployment (per customer)
+- Infrastructure: $500/month × 10 customers = $5,000/month
+- Ops overhead: 10 separate deployments
+
+// Multi-tenant platform (shared infrastructure)
+- Infrastructure: $1,200/month for all 10 customers
+- Ops overhead: 1 deployment
+- Savings: $3,800/month (76% reduction)
+```
+
+#### Layer 3: Vector Store Isolation (Namespaces)
+
+**Strategy**: Use vector database namespaces to isolate embeddings.
+
+```typescript
+import { Pinecone } from '@pinecone-database/pinecone'
+
+const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY })
+const index = pinecone.index('multi-tenant-index')
+
+// Upsert with tenant namespace
+async function upsertTenantEmbeddings(
+  tenantContext: TenantContext,
+  documents: { id: string; text: string }[]
+) {
+  const namespace = tenantContext.isolation.vectorNamespace
+
+  const embeddings = await generateEmbeddings(documents.map(d => d.text))
+
+  await index.namespace(namespace).upsert(
+    documents.map((doc, i) => ({
+      id: doc.id,
+      values: embeddings[i],
+      metadata: {
+        tenantId: tenantContext.tenantId,  // Redundant metadata for safety
+        text: doc.text
+      }
+    }))
+  )
+
+  console.log(`✅ Upserted ${documents.length} embeddings to namespace: ${namespace}`)
+}
+
+// Query with tenant namespace
+async function queryTenantVectors(
+  tenantContext: TenantContext,
+  queryText: string,
+  topK: number = 10
+) {
+  const namespace = tenantContext.isolation.vectorNamespace
+
+  const queryEmbedding = await generateEmbeddings([queryText])
+
+  const results = await index.namespace(namespace).query({
+    vector: queryEmbedding[0],
+    topK,
+    includeMetadata: true
+  })
+
+  // Additional safety check: Verify tenant ID in metadata
+  const filtered = results.matches.filter(
+    match => match.metadata.tenantId === tenantContext.tenantId
+  )
+
+  if (filtered.length < results.matches.length) {
+    console.warn('⚠️ Data leakage detected: Filtered out cross-tenant results')
+  }
+
+  return filtered
+}
+```
+
+**Namespace Strategy**:
+| Strategy | Isolation Level | Cost | Best For |
+|----------|----------------|------|----------|
+| **Shared index, namespaces** | Logical isolation | Lowest | SaaS with 100+ tenants |
+| **Separate indexes per tenant** | Physical isolation | Highest | Enterprise tenants (HIPAA, SOC2) |
+
+#### Layer 4: Cache Isolation (Redis Keys)
+
+```typescript
+// Tenant-prefixed cache keys
+async function getCachedResponse(
+  tenantContext: TenantContext,
+  query: string
+): Promise<string | null> {
+  const cacheKey = `${tenantContext.isolation.cachePrefix}:query:${hashQuery(query)}`
+
+  const cached = await redis.get(cacheKey)
+
+  if (cached) {
+    console.log(`✅ Cache hit for tenant ${tenantContext.tenantId}`)
+  }
+
+  return cached
+}
+
+async function setCachedResponse(
+  tenantContext: TenantContext,
+  query: string,
+  response: string,
+  ttl: number = 3600
+) {
+  const cacheKey = `${tenantContext.isolation.cachePrefix}:query:${hashQuery(query)}`
+
+  await redis.setex(cacheKey, ttl, response)
+}
+```
+
+---
+
+## Pattern 2: Vertical Integration (Industry-Specific Workflows)
+
+**The Problem**: Generic AI assistants fail in specialized domains because they don't understand industry-specific data schemas and compliance requirements.
+
+**Solution**: Design agentic workflows deeply integrated with domain schemas (Clinical, Legal, FinTech).
+
+### Example 1: Clinical Vertical (HIPAA-Compliant Patient Support)
+
+```typescript
+// Clinical domain schema
+interface ClinicalContext {
+  patientId: string
+  mrn: string             // Medical Record Number
+  facility: string
+  treatmentPlan: {
+    medications: string[]
+    allergies: string[]
+    conditions: string[]
+  }
+  hipaaCompliance: {
+    phiRedaction: boolean
+    auditTrail: boolean
+    localInference: boolean  // PHI must not leave VPC
+  }
+}
+
+// Vertical-specific agent prompt
+const CLINICAL_AGENT_PROMPT = `You are a HIPAA-compliant patient support assistant.
+
+CRITICAL RULES:
+1. NEVER provide medical diagnoses or prescriptions
+2. ALWAYS redact PHI (names, MRNs, DOBs) in logs
+3. ONLY reference verified medical records
+4. If uncertain, escalate to human clinician
+
+Patient context: {patientContext}
+
+Available actions:
+- lookup_medication(name): Get medication information
+- check_interaction(med1, med2): Check drug interactions
+- escalate_to_clinician(reason): Send to human review
+
+Answer the patient's question using ONLY verified information.`
+
+// Clinical-specific tools
+async function lookupMedication(
+  medicationName: string,
+  clinicalContext: ClinicalContext
+): Promise<{ name: string; interactions: string[]; contraindications: string[] }> {
+  // Query FDA drug database (PHI-free)
+  const drugInfo = await fetchFromFDA(medicationName)
+
+  // Check patient-specific interactions
+  const patientMeds = clinicalContext.treatmentPlan.medications
+  const interactions = drugInfo.interactions.filter(interaction =>
+    patientMeds.includes(interaction.drug)
+  )
+
+  return {
+    name: drugInfo.name,
+    interactions: interactions.map(i => i.description),
+    contraindications: drugInfo.contraindications
+  }
+}
+
+// HIPAA-compliant audit trail
+async function logClinicalInteraction(
+  tenantContext: TenantContext,
+  clinicalContext: ClinicalContext,
+  query: string,
+  response: string
+) {
+  // Redact PHI from logs
+  const redactedQuery = redactPHI(query)
+  const redactedResponse = redactPHI(response)
+
+  await prisma.auditLog.create({
+    data: {
+      tenantId: tenantContext.tenantId,
+      patientMRN: clinicalContext.mrn,  // Encrypted
+      queryHash: hashQuery(query),      // Not plaintext
+      responseHash: hashQuery(response),
+      complianceFlags: {
+        phiRedacted: true,
+        localInference: clinicalContext.hipaaCompliance.localInference
+      },
+      timestamp: new Date()
+    }
+  })
+}
+```
+
+### Example 2: Legal Vertical (Contract Analysis)
+
+```typescript
+// Legal domain schema
+interface LegalContext {
+  caseId: string
+  jurisdiction: string
+  practiceArea: 'contract' | 'litigation' | 'ip' | 'corporate'
+  confidentialityLevel: 'public' | 'attorney-client' | 'work-product'
+}
+
+// Legal-specific RAG pipeline
+async function analyzeLegalDocument(
+  tenantContext: TenantContext,
+  legalContext: LegalContext,
+  document: string
+): Promise<{
+  summary: string
+  riskyTerms: Array<{ term: string; risk: string; recommendation: string }>
+  missingClauses: string[]
+  jurisdictionCompliance: boolean
+}> {
+  // Step 1: Extract key terms
+  const terms = await extractLegalTerms(document)
+
+  // Step 2: Query jurisdiction-specific precedents
+  const namespace = `${tenantContext.isolation.vectorNamespace}:${legalContext.jurisdiction}`
+
+  const precedents = await index.namespace(namespace).query({
+    vector: await generateEmbeddings([document]),
+    topK: 20,
+    filter: {
+      practiceArea: legalContext.practiceArea
+    }
+  })
+
+  // Step 3: Identify risky terms
+  const riskyTerms = terms.filter(term =>
+    RISKY_LEGAL_TERMS[legalContext.jurisdiction].includes(term)
+  )
+
+  // Step 4: Check for missing standard clauses
+  const requiredClauses = REQUIRED_CLAUSES[legalContext.practiceArea][legalContext.jurisdiction]
+  const missingClauses = requiredClauses.filter(clause =>
+    !document.toLowerCase().includes(clause.toLowerCase())
+  )
+
+  return {
+    summary: await summarizeDocument(document),
+    riskyTerms: riskyTerms.map(term => ({
+      term,
+      risk: getRiskExplanation(term, legalContext.jurisdiction),
+      recommendation: getRecommendation(term, precedents)
+    })),
+    missingClauses,
+    jurisdictionCompliance: missingClauses.length === 0
+  }
+}
+```
+
+### Example 3: FinTech Vertical (Fraud Detection)
+
+```typescript
+// FinTech domain schema
+interface FinTechContext {
+  accountId: string
+  riskScore: number  // 0-100
+  transactionHistory: Transaction[]
+  regulatoryRegime: 'SEC' | 'FCA' | 'MAS'  // Securities regulator
+}
+
+// Fraud detection agent
+async function detectFraudulentTransaction(
+  tenantContext: TenantContext,
+  finTechContext: FinTechContext,
+  transaction: {
+    amount: number
+    merchant: string
+    location: string
+    timestamp: Date
+  }
+): Promise<{
+  fraudScore: number  // 0-100
+  flags: string[]
+  recommendation: 'approve' | 'review' | 'block'
+  explanation: string
+}> {
+  // Rule-based checks
+  const flags: string[] = []
+
+  if (transaction.amount > 10000) flags.push('High-value transaction')
+  if (isUnusualLocation(transaction.location, finTechContext.transactionHistory)) {
+    flags.push('Unusual location')
+  }
+  if (isUnusualMerchant(transaction.merchant, finTechContext.transactionHistory)) {
+    flags.push('First-time merchant')
+  }
+
+  // ML model prediction
+  const fraudScore = await mlFraudModel.predict({
+    amount: transaction.amount,
+    merchantCategory: await getMerchantCategory(transaction.merchant),
+    hourOfDay: transaction.timestamp.getHours(),
+    accountRiskScore: finTechContext.riskScore
+  })
+
+  // Decision logic
+  let recommendation: 'approve' | 'review' | 'block'
+  if (fraudScore > 80 || flags.includes('High-value transaction')) {
+    recommendation = 'block'
+  } else if (fraudScore > 50) {
+    recommendation = 'review'
+  } else {
+    recommendation = 'approve'
+  }
+
+  // Regulatory compliance: Generate explanation (SEC requires justification for fraud flags)
+  const explanation = await generateExplanation({
+    fraudScore,
+    flags,
+    regulatoryRegime: finTechContext.regulatoryRegime
+  })
+
+  return { fraudScore, flags, recommendation, explanation }
+}
+```
+
+---
+
+## Pattern 3: Tenant-Aware Infrastructure
+
+### Rate Limiting (Tenant-Specific Quotas)
+
+```typescript
+async function checkRateLimit(tenantContext: TenantContext): Promise<boolean> {
+  const rateLimitKey = `${tenantContext.isolation.cachePrefix}:ratelimit:daily`
+
+  const currentCount = await redis.incr(rateLimitKey)
+
+  // Set TTL on first request of the day
+  if (currentCount === 1) {
+    await redis.expire(rateLimitKey, 86400)  // 24 hours
+  }
+
+  if (currentCount > tenantContext.limits.requestsPerDay) {
+    throw new Error(`Rate limit exceeded: ${currentCount}/${tenantContext.limits.requestsPerDay}`)
+  }
+
+  return true
+}
+```
+
+### Cost Allocation (Tenant-Specific Billing)
+
+```typescript
+interface TenantUsage {
+  tenantId: string
+  period: string  // '2025-02'
+  requests: number
+  tokens: {
+    input: number
+    output: number
+  }
+  cost: number
+  vectorOperations: number
+}
+
+async function trackTenantUsage(
+  tenantContext: TenantContext,
+  usage: {
+    model: string
+    inputTokens: number
+    outputTokens: number
+  }
+) {
+  const cost = calculateCost(usage.model, usage.inputTokens, usage.outputTokens)
+
+  await prisma.tenantUsage.upsert({
+    where: {
+      tenantId_period: {
+        tenantId: tenantContext.tenantId,
+        period: getCurrentPeriod()  // '2025-02'
+      }
+    },
+    update: {
+      requests: { increment: 1 },
+      tokens: {
+        input: { increment: usage.inputTokens },
+        output: { increment: usage.outputTokens }
+      },
+      cost: { increment: cost }
+    },
+    create: {
+      tenantId: tenantContext.tenantId,
+      period: getCurrentPeriod(),
+      requests: 1,
+      tokens: {
+        input: usage.inputTokens,
+        output: usage.outputTokens
+      },
+      cost
+    }
+  })
+}
+```
+
+---
+
+## Key Takeaways
+
+**Multi-Tenant Design**:
+- Extract tenant context from JWT/API key at request entry
+- Isolate at all layers: Database (Postgres schemas), Vectors (namespaces), Cache (key prefixes)
+- Always filter queries by tenantId (never query across tenants)
+- Redundant safety checks: Verify tenant ID in metadata even after namespace filtering
+- Cost savings: 76% reduction vs single-tenant deployments
+
+**Vertical Integration**:
+- Clinical: HIPAA-compliant with PHI redaction, local inference, audit trails
+- Legal: Jurisdiction-specific precedents, risky term detection, compliance checking
+- FinTech: Fraud detection with regulatory-compliant explanations (SEC, FCA)
+- Domain-specific prompts, tools, and schemas drive vertical expertise
+
+**Tenant-Aware Infrastructure**:
+- Rate limiting per tenant plan (free: 100/day, pro: 1000/day, enterprise: unlimited)
+- Cost allocation for usage-based billing
+- Model access control (free: Haiku only, enterprise: Opus access)
+
+**The Architect's Responsibility**:
+You **own** data isolation. If Tenant A retrieves Tenant B's data, **you failed to filter by tenantId**. If PHI leaks in logs, **you skipped redaction**. If fraud detection can't explain its decision, **you violated SEC regulations**.
+
+**Cost Analysis**:
+```typescript
+// Single-tenant (10 customers)
+- Infrastructure: $5,000/month
+- Support overhead: High (10 separate systems)
+
+// Multi-tenant platform (10 customers)
+- Infrastructure: $1,200/month (shared)
+- Support overhead: Low (1 system)
+- Savings: $3,800/month (76%)
+
+// Break-even: 3 customers make multi-tenancy worth the complexity
+```
+
+**Next Concept**: Now that you can architect scalable platforms, Concept 2 covers **Production Stress-Testing** with red-team adversarial attacks and 10x load spike simulations to prove your system survives the real world.
