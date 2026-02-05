@@ -296,7 +296,7 @@ const weekData = [
     lab: {
       slug: 'medical-records-navigator',
       title: 'Lab: The Precision Retrieval Challenge',
-      description: 'Role: AI Architect for a Clinical Search tool. Objective: Conduct a side-by-side comparison of baseline vector search versus parent-document and hybrid retrieval to prove the quantitative value of advanced techniques in a high-stakes environment. Scope: 10 specialized exercises covering implementation and evaluation. Key Metrics: Focus on Hit Rate (Recall@K) and Mean Reciprocal Rank (MRR) to provide objective architectural proof of system performance.',
+      description: 'Build a clinical search platform and prove advanced RAG techniques through quantitative benchmarking. Compare baseline vector search vs. parent-document vs. hybrid retrieval across 10 specialized exercises. Measure success with Hit Rate (Recall@K) and MRR to validate architectural decisions with data.',
       exercises: [
         { number: 1, title: 'Setup: Index 5,000 pages of simulated clinical notes (PDFs)', type: 'setup' },
         { number: 2, title: 'Phase 1: Build "Naive" RAG baseline (fixed 200-token chunks, vector-only)', type: 'coding' },
