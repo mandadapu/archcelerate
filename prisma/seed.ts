@@ -288,8 +288,8 @@ const weekData = [
       { slug: 'query-transformation-patterns', title: 'Query Transformation', description: 'Patterns like HyDE and Multi-Query decomposition.', minutes: 45 },
       { slug: 'context-window-optimization', title: 'Context Optimization', description: 'Preventing degradation and managing window limits.', minutes: 40 },
       { slug: 'enterprise-rag-hardening', title: 'Enterprise RAG Hardening', description: 'Security, evaluation, and robustness for production.', minutes: 55 },
-      { slug: 'observability-basics', title: 'AI Observability', description: 'Deep tracing and insight into system reasoning.', minutes: 30 },
-      { slug: 'monitoring-ai-systems', title: 'LLM Monitoring', description: 'Tracking live performance, drift, and latency.', minutes: 35 },
+      { slug: 'observability-basics', title: 'Request Tracing', description: 'Single-request debugging with spans and traces.', minutes: 30 },
+      { slug: 'monitoring-ai-systems', title: 'System Metrics', description: 'Aggregated monitoring for drift, cost, and health.', minutes: 35 },
       { slug: 'performance-optimization', title: 'Performance & Caching', description: 'Low-latency engineering with semantic caching.', minutes: 40 },
       { slug: 'production-deployment', title: 'Production Deployment', description: 'Scaling and infrastructure best practices.', minutes: 35 }
     ],
