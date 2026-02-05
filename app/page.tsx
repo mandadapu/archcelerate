@@ -97,7 +97,7 @@ export default function Home() {
         </div>
 
         {/* System Diagram - Full Width */}
-        <div className="w-full">
+        <div className="w-full px-4 sm:px-6 lg:px-8">
           <SystemDiagram />
         </div>
 
