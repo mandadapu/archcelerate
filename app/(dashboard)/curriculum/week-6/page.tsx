@@ -11,84 +11,93 @@ import {
   Search,
   Database,
   Sparkles,
-  FileText,
-  Zap,
-  BarChart3,
-  Network,
-  MessageSquare,
-  CheckSquare,
+  ArrowUpDown,
+  Settings,
+  GitBranch,
+  Filter,
+  Columns,
   Shield,
   Activity,
+  BarChart3,
+  Eye,
   Gauge,
-  TrendingUp
+  TrendingUp,
+  Zap,
+  Server,
+  Rocket
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
-// Concept visualization icons - Week 6: Advanced RAG
+// Concept visualization icons - Week 6: Advanced RAG (The Optimizer)
+// Using red/orange theme to match Week 6's primary color
 function getConceptIllustration(slug: string) {
   const illustrations: Record<string, JSX.Element> = {
     'hybrid-retrieval-reranking': (
-      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+      <div className="flex items-center justify-center opacity-75">
         <div className="flex items-center gap-1.5">
-          <Search className="h-7 w-7 text-primary" />
-          <Database className="h-6 w-6 text-info" />
+          <Search className="h-7 w-7 text-red-600" />
+          <ArrowUpDown className="h-5 w-5 text-orange-500" />
+          <Database className="h-6 w-6 text-red-500" />
         </div>
       </div>
     ),
     'query-transformation-patterns': (
-      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+      <div className="flex items-center justify-center opacity-75">
         <div className="flex items-center gap-1.5">
-          <FileText className="h-7 w-7 text-warning" />
-          <Zap className="h-6 w-6 text-primary" />
+          <Settings className="h-7 w-7 text-red-600" />
+          <GitBranch className="h-6 w-6 text-orange-500" />
         </div>
       </div>
     ),
     'context-window-optimization': (
-      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+      <div className="flex items-center justify-center opacity-75">
         <div className="flex items-center gap-1.5">
-          <MessageSquare className="h-7 w-7 text-success" />
-          <CheckSquare className="h-6 w-6 text-primary" />
+          <Filter className="h-7 w-7 text-red-600" />
+          <Columns className="h-6 w-6 text-orange-500" />
         </div>
       </div>
     ),
     'enterprise-rag-hardening': (
-      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+      <div className="flex items-center justify-center opacity-75">
         <div className="flex items-center gap-1.5">
-          <Shield className="h-7 w-7 text-info" />
-          <Activity className="h-6 w-6 text-success" />
+          <Shield className="h-7 w-7 text-red-600" />
+          <Activity className="h-6 w-6 text-orange-500" />
+          <BarChart3 className="h-5 w-5 text-red-500" />
         </div>
       </div>
     ),
     'observability-basics': (
-      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+      <div className="flex items-center justify-center opacity-75">
         <div className="flex items-center gap-1.5">
-          <Activity className="h-7 w-7 text-primary" />
-          <BarChart3 className="h-6 w-6 text-info" />
+          <Eye className="h-7 w-7 text-red-600" />
+          <Activity className="h-6 w-6 text-orange-500" />
         </div>
       </div>
     ),
     'monitoring-ai-systems': (
-      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+      <div className="flex items-center justify-center opacity-75">
         <div className="flex items-center gap-1.5">
-          <Gauge className="h-7 w-7 text-warning" />
-          <TrendingUp className="h-6 w-6 text-success" />
+          <BarChart3 className="h-7 w-7 text-red-600" />
+          <Gauge className="h-6 w-6 text-orange-500" />
         </div>
       </div>
     ),
     'performance-optimization': (
-      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+      <div className="flex items-center justify-center opacity-75">
         <div className="flex items-center gap-1.5">
-          <Zap className="h-7 w-7 text-success" />
-          <Database className="h-6 w-6 text-primary" />
+          <Zap className="h-7 w-7 text-orange-500" />
+          <Database className="h-6 w-6 text-red-600" />
+          <TrendingUp className="h-5 w-5 text-red-500" />
         </div>
       </div>
     ),
     'production-deployment': (
-      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+      <div className="flex items-center justify-center opacity-75">
         <div className="flex items-center gap-1.5">
-          <CheckCircle2 className="h-7 w-7 text-success" />
-          <Shield className="h-6 w-6 text-info" />
+          <Server className="h-6 w-6 text-gray-500" />
+          <Rocket className="h-7 w-7 text-red-600" />
+          <CheckCircle2 className="h-6 w-6 text-green-600" />
         </div>
       </div>
     ),
