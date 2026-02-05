@@ -134,7 +134,7 @@ export default async function Week3Page() {
         {/* Learning Objectives */}
         <Card>
           <CardHeader>
-            <CardTitle>Learning Objectives</CardTitle>
+            <CardTitle>Technical Milestones</CardTitle>
           </CardHeader>
           <CardContent>
             <ul className="space-y-2">

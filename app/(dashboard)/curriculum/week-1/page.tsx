@@ -172,7 +172,7 @@ export default async function Week1Page() {
         {/* Learning Objectives */}
         <Card>
           <CardHeader>
-            <CardTitle>Learning Objectives</CardTitle>
+            <CardTitle>Technical Milestones</CardTitle>
             <CardDescription>
               This week covers {objectives.length} key objectives across {objectiveCategories.length} focus areas
             </CardDescription>

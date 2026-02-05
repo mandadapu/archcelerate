@@ -120,7 +120,7 @@ export default async function Week4Page() {
         {/* Learning Objectives */}
         <Card>
           <CardHeader>
-            <CardTitle>Learning Objectives</CardTitle>
+            <CardTitle>Technical Milestones</CardTitle>
           </CardHeader>
           <CardContent>
             <ul className="space-y-2">
