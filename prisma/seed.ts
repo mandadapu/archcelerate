@@ -168,9 +168,9 @@ const weekData = [
       'Validate LLM outputs with type safety'
     ],
     concepts: [
-      { slug: 'structured-output', title: 'Structured Output & JSON Mode', minutes: 40 },
-      { slug: 'function-calling', title: 'Function Calling & Tool Use', minutes: 45 },
-      { slug: 'schema-design', title: 'Schema Design & API Contracts', minutes: 45 }
+      { slug: 'structured-output', title: 'Structured Output', minutes: 40 },
+      { slug: 'function-calling', title: 'Function Calling', minutes: 45 },
+      { slug: 'schema-design', title: 'Schema Design', minutes: 45 }
     ],
     lab: {
       slug: 'support-ticket-router',
