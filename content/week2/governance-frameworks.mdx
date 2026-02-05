@@ -482,6 +482,436 @@ async function safetyProxyLayer2(llmOutput: string): Promise<{
 }
 ```
 
+## Enterprise Refinements: 2026 Production Patterns
+
+### Semantic Cache Layer: Latency Optimization
+
+**The Performance Problem**: Safety checks add 100ms-300ms latency per request. At scale, this impacts user experience.
+
+**The Solution**: Cache safety-cleared queries semantically—similar queries bypass re-validation.
+
+```typescript
+import Redis from 'ioredis'
+import { embed } from '@/lib/embeddings'
+
+const redis = new Redis(process.env.REDIS_URL)
+
+interface CachedSafetyCheck {
+  queryHash: string
+  queryEmbedding: number[]
+  safetyCheckPassed: boolean
+  sanitizedInput?: string
+  timestamp: Date
+  ttl: number // seconds
+}
+
+/**
+ * Semantic Safety Cache
+ * Caches safety-cleared queries by embedding similarity
+ */
+async function checkSemanticSafetyCache(
+  userInput: string,
+  similarityThreshold: number = 0.95
+): Promise<{ hit: boolean; sanitizedInput?: string }> {
+  // 1. Embed the query
+  const queryEmbedding = await embed(userInput)
+  const queryHash = hashEmbedding(queryEmbedding)
+
+  // 2. Check exact match first (fast path)
+  const exactMatch = await redis.get(`safety:exact:${queryHash}`)
+  if (exactMatch) {
+    const cached: CachedSafetyCheck = JSON.parse(exactMatch)
+    return {
+      hit: true,
+      sanitizedInput: cached.sanitizedInput || userInput
+    }
+  }
+
+  // 3. Vector similarity search for near-matches
+  const similarCached = await findSimilarSafeQuery(queryEmbedding, similarityThreshold)
+
+  if (similarCached) {
+    // Cache hit on similar query
+    await logMetric('safety_cache_hit', { type: 'semantic' })
+    return {
+      hit: true,
+      sanitizedInput: similarCached.sanitizedInput || userInput
+    }
+  }
+
+  return { hit: false }
+}
+
+/**
+ * Cache a safety-cleared query
+ */
+async function cacheSafetyCheck(
+  userInput: string,
+  sanitizedInput: string,
+  ttl: number = 3600 // 1 hour
+) {
+  const queryEmbedding = await embed(userInput)
+  const queryHash = hashEmbedding(queryEmbedding)
+
+  const cached: CachedSafetyCheck = {
+    queryHash,
+    queryEmbedding,
+    safetyCheckPassed: true,
+    sanitizedInput: sanitizedInput !== userInput ? sanitizedInput : undefined,
+    timestamp: new Date(),
+    ttl
+  }
+
+  // Store in Redis with TTL
+  await redis.setex(
+    `safety:exact:${queryHash}`,
+    ttl,
+    JSON.stringify(cached)
+  )
+
+  // Index in vector store for similarity search
+  await indexSafetyCacheEntry(queryHash, queryEmbedding)
+}
+
+/* Performance Impact:
+- Without cache: 265ms per request (jailbreak + moderation + logging)
+- With cache (80% hit rate): 53ms average (10ms cache lookup + 20% * 265ms)
+- Latency reduction: 80%
+- Cost savings: 80% (no moderation API calls on hits)
+*/
+```
+
+### Egress Filtering: Output Sanitization Beyond Content Moderation
+
+**The Missing Layer**: Current output filtering catches harmful content, but 2026 regulations require:
+1. **Hallucination Detection**: Verify URLs, facts, company-specific claims
+2. **Secret Leakage Prevention**: Ensure system prompts, API keys never leak
+
+```typescript
+interface EgressFilterResult {
+  allowed: boolean
+  issues: Array<{
+    type: 'hallucinated_url' | 'leaked_secret' | 'leaked_system_prompt'
+    severity: 'critical' | 'high' | 'medium'
+    evidence: string
+  }>
+  sanitizedOutput?: string
+}
+
+/**
+ * Egress Filtering: Validate output before returning to user
+ */
+async function egressFilter(llmOutput: string): Promise<EgressFilterResult> {
+  const issues: EgressFilterResult['issues'] = []
+
+  // 1. Hallucination Check: Verify URLs are real
+  const urlPattern = /https?:\/\/[^\s]+/g
+  const urls = llmOutput.match(urlPattern) || []
+
+  for (const url of urls) {
+    const isReal = await verifyUrlExists(url)
+    if (!isReal) {
+      issues.push({
+        type: 'hallucinated_url',
+        severity: 'high',
+        evidence: url
+      })
+    }
+  }
+
+  // 2. Secret Leakage Check: Detect API keys, tokens
+  const secretPatterns = [
+    /sk-[a-zA-Z0-9]{32,}/g,  // OpenAI/Anthropic API keys
+    /ghp_[a-zA-Z0-9]{36}/g,   // GitHub tokens
+    /AKIA[A-Z0-9]{16}/g       // AWS access keys
+  ]
+
+  for (const pattern of secretPatterns) {
+    if (pattern.test(llmOutput)) {
+      issues.push({
+        type: 'leaked_secret',
+        severity: 'critical',
+        evidence: '[REDACTED]'
+      })
+    }
+  }
+
+  // 3. System Prompt Leakage: Check if LLM revealed internal instructions
+  const systemPromptIndicators = [
+    'You are a helpful assistant',
+    'SYSTEM:',
+    '###SYSTEM###',
+    'Your instructions are',
+    'I was instructed to'
+  ]
+
+  for (const indicator of systemPromptIndicators) {
+    if (llmOutput.toLowerCase().includes(indicator.toLowerCase())) {
+      issues.push({
+        type: 'leaked_system_prompt',
+        severity: 'critical',
+        evidence: indicator
+      })
+    }
+  }
+
+  // Sanitize if issues detected
+  if (issues.length > 0) {
+    let sanitized = llmOutput
+
+    // Redact secrets
+    for (const pattern of secretPatterns) {
+      sanitized = sanitized.replace(pattern, '[REDACTED_SECRET]')
+    }
+
+    // Remove hallucinated URLs
+    for (const url of urls) {
+      if (issues.some(i => i.type === 'hallucinated_url' && i.evidence === url)) {
+        sanitized = sanitized.replace(url, '[URL_REMOVED]')
+      }
+    }
+
+    return {
+      allowed: issues.some(i => i.severity === 'critical'),
+      issues,
+      sanitizedOutput: sanitized
+    }
+  }
+
+  return { allowed: true, issues: [] }
+}
+
+/**
+ * Verify URL actually exists (prevent hallucinated links)
+ */
+async function verifyUrlExists(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, { method: 'HEAD', timeout: 2000 })
+    return response.ok
+  } catch {
+    return false
+  }
+}
+```
+
+### Governance as Code: Version-Controlled Rules
+
+**The Problem**: Hardcoded jailbreak patterns become stale as attacks evolve. Security teams can't update rules without deploying new code.
+
+**The Solution**: Store governance rules in version-controlled JSON/YAML configs.
+
+```typescript
+// config/safety-rules.yaml
+interface SafetyRulesConfig {
+  version: string
+  lastUpdated: Date
+  jailbreakPatterns: JailbreakPattern[]
+  outputFilters: OutputFilterRule[]
+  circuitBreaker: CircuitBreakerConfig
+}
+
+/**
+ * Load safety rules from Git-versioned config
+ */
+async function loadSafetyRules(): Promise<SafetyRulesConfig> {
+  const configPath = process.env.SAFETY_CONFIG_PATH || './config/safety-rules.json'
+  const config = await fs.readFile(configPath, 'utf-8')
+  return JSON.parse(config)
+}
+
+/**
+ * Hot-reload safety rules on config change (no deploy needed)
+ */
+let cachedRules: SafetyRulesConfig | null = null
+
+async function getSafetyRules(): Promise<SafetyRulesConfig> {
+  if (!cachedRules) {
+    cachedRules = await loadSafetyRules()
+
+    // Watch for config file changes
+    fs.watch(process.env.SAFETY_CONFIG_PATH || './config/safety-rules.json', async () => {
+      console.log('Safety config updated, reloading...')
+      cachedRules = await loadSafetyRules()
+    })
+  }
+
+  return cachedRules
+}
+
+/* Example config/safety-rules.json:
+{
+  "version": "1.2.0",
+  "lastUpdated": "2026-02-05T00:00:00Z",
+  "jailbreakPatterns": [
+    {
+      "family": "DAN v12.0",
+      "signatures": ["you are now DAN 12.0", "DAN mode activated"],
+      "severity": "critical",
+      "blockAction": "reject"
+    }
+  ],
+  "circuitBreaker": {
+    "threshold": 3,
+    "windowMinutes": 1,
+    "banDurationMinutes": 60
+  }
+}
+
+When new jailbreak discovered:
+1. Security team updates config/safety-rules.json
+2. Commits to Git
+3. CI/CD deploys config (not code)
+4. Proxy hot-reloads rules in <1s
+*/
+```
+
+### Circuit Breaker Pattern: Auto-Ban on Repeated Violations
+
+**The Problem**: Attackers brute-force jailbreaks by trying 100s of variants. Manual bans are too slow.
+
+**The Solution**: Automatically ban IPs/users after 3 violations in 1 minute.
+
+```typescript
+import Redis from 'ioredis'
+
+const redis = new Redis(process.env.REDIS_URL)
+
+interface CircuitBreakerConfig {
+  threshold: number       // violations to trip
+  windowMinutes: number   // time window
+  banDurationMinutes: number
+}
+
+/**
+ * Circuit Breaker: Auto-ban on repeated violations
+ */
+async function checkCircuitBreaker(
+  ipAddress: string,
+  config: CircuitBreakerConfig = { threshold: 3, windowMinutes: 1, banDurationMinutes: 60 }
+): Promise<{ banned: boolean; violationCount: number }> {
+  const banKey = `circuit:ban:${ipAddress}`
+  const violationKey = `circuit:violations:${ipAddress}`
+
+  // Check if already banned
+  const isBanned = await redis.exists(banKey)
+  if (isBanned) {
+    return { banned: true, violationCount: -1 }
+  }
+
+  // Increment violation count
+  const violations = await redis.incr(violationKey)
+
+  // Set TTL on first violation
+  if (violations === 1) {
+    await redis.expire(violationKey, config.windowMinutes * 60)
+  }
+
+  // Trip circuit breaker if threshold exceeded
+  if (violations >= config.threshold) {
+    await redis.setex(
+      banKey,
+      config.banDurationMinutes * 60,
+      JSON.stringify({
+        bannedAt: new Date(),
+        reason: `${violations} violations in ${config.windowMinutes} minutes`,
+        expiresAt: new Date(Date.now() + config.banDurationMinutes * 60 * 1000)
+      })
+    )
+
+    // Alert security team
+    await alertSecurityTeam({
+      type: 'circuit_breaker_tripped',
+      ipAddress,
+      violations,
+      action: 'auto-banned'
+    })
+
+    return { banned: true, violationCount: violations }
+  }
+
+  return { banned: false, violationCount: violations }
+}
+
+/* Example Flow:
+1. User at 203.0.113.5 sends jailbreak attempt → Blocked, violation count = 1
+2. 20 seconds later, same IP tries DAN variant → Blocked, violation count = 2
+3. 30 seconds later, same IP tries role hijacking → Circuit trips, auto-banned for 1 hour
+4. Security team gets Slack alert: "IP 203.0.113.5 auto-banned (3 violations in 50s)"
+*/
+```
+
+### Asynchronous Logging: Non-Blocking Event Streaming
+
+**The Problem**: Current logging uses `await logSecurityEvent()`, blocking the response path. At 200ms per DB write, this adds unacceptable latency.
+
+**The Solution**: Emit events to a stream (Kafka/Kinesis), process asynchronously.
+
+```typescript
+import { Kafka } from 'kafkajs'
+
+const kafka = new Kafka({
+  clientId: 'safety-proxy',
+  brokers: [process.env.KAFKA_BROKER!]
+})
+
+const producer = kafka.producer()
+
+/**
+ * Async Event Emitter: Non-blocking audit logging
+ */
+async function emitSecurityEvent(event: any): Promise<void> {
+  // Fire-and-forget (no await)
+  producer.send({
+    topic: 'ai-security-events',
+    messages: [{
+      key: event.eventId,
+      value: JSON.stringify(event)
+    }]
+  }).catch(err => {
+    // Log error but don't block user response
+    console.error('Failed to emit security event:', err)
+  })
+
+  // Return immediately (no blocking)
+}
+
+/**
+ * Updated Safety Proxy with async logging
+ */
+async function safetyProxyLayer1Async(userInput: string): Promise<{
+  allowed: boolean
+  sanitizedInput?: string
+}> {
+  const jailbreakCheck = detectJailbreak(userInput)
+
+  if (jailbreakCheck.action === 'block') {
+    // Async logging (non-blocking)
+    emitSecurityEvent({
+      eventType: 'jailbreak_blocked',
+      patterns: jailbreakCheck.matchedPatterns,
+      severity: jailbreakCheck.severity,
+      timestamp: new Date()
+    })
+
+    return { allowed: false }
+  }
+
+  return { allowed: true, sanitizedInput: userInput }
+}
+
+/* Performance Impact:
+- Before (sync logging): 265ms (10ms detection + 200ms DB write + 50ms moderation)
+- After (async logging): 65ms (10ms detection + 50ms moderation + 5ms emit)
+- Latency reduction: 75%
+- TTFT: <200ms ✅ (meets 2026 SLA)
+
+Separate Kafka consumer processes events:
+- Writes to audit DB
+- Sends to SIEM (DataDog, Splunk)
+- Triggers alerts
+*/
+```
+
 ## Layer 3: Audit Logging - Semantic Intent Tracking
 
 **The Compliance Problem**: Regulators require audit trails showing **what was asked, why it was blocked, and what intent was served**.

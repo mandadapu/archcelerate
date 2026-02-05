@@ -45,9 +45,9 @@ hybridSearch("HbA1c March 2022", { vectorWeight: 0.5, keywordWeight: 0.5 })
 // Semantic search (pgvector): "what does the query mean?"
 const vectorResults = await db.query(`
   SELECT id, content,
-         1 - (embedding <=> $1) AS vector_score
+         1 - (embedding &lt;=&gt; $1) AS vector_score
   FROM clinical_notes
-  ORDER BY embedding <=> $1
+  ORDER BY embedding &lt;=&gt; $1
   LIMIT 50
 `, [queryEmbedding])
 
@@ -287,9 +287,9 @@ async function searchWithVector(
       content,
       section,
       fda_approval_date,
-      1 - (embedding <=> $1::vector) AS vector_score
+      1 - (embedding &lt;=&gt; $1::vector) AS vector_score
     FROM fda_drug_labels
-    ORDER BY embedding <=> $1::vector
+    ORDER BY embedding &lt;=&gt; $1::vector
     LIMIT $2
   `, [queryEmbedding, limit])
 
@@ -739,9 +739,9 @@ async function hybridSearch(query: string, options: {
   // Stage 1: Semantic search with pgvector
   const vectorResults = await db.query(`
     SELECT id, content,
-           1 - (embedding <=> $1) AS vector_score
+           1 - (embedding &lt;=&gt; $1) AS vector_score
     FROM documents
-    ORDER BY embedding <=> $1
+    ORDER BY embedding &lt;=&gt; $1
     LIMIT 50
   `, [queryEmbedding])
 
