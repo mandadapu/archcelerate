@@ -277,11 +277,11 @@ const weekData = [
     title: 'Advanced RAG (The Optimizer)',
     description: 'Master enterprise-grade retrieval systems with hybrid search, re-ranking, and query optimization for high-precision, low-latency RAG at scale',
     objectives: [
-      'Implement hybrid retrieval combining semantic and keyword search for precision',
-      'Deploy re-ranking models to improve top-K accuracy by 20%+',
-      'Apply query transformation patterns (Multi-Query, HyDE, Decomposition)',
-      'Optimize context windows and prevent "Lost in the Middle" degradation',
-      'Build production RAG with sub-200ms latency and enterprise hardening'
+      'Architect Hybrid Retrieval: Combine semantic and keyword search to eliminate "vector blur" and improve retrieval precision',
+      'Deploy Neural Re-rankers: Implement cross-encoders to optimize Top-K accuracy and validate the "precision vs. latency" trade-off',
+      'Master Query Engineering: Apply Multi-Query, HyDE, and Decomposition patterns to handle complex, real-world user intent',
+      'Context Engineering: Optimize context windows to mitigate "Lost in the Middle" degradation and maximize LLM reasoning efficiency',
+      'Production Hardening: Build HIPAA-compliant RAG systems with sub-200ms latency and semantic caching'
     ],
     concepts: [
       { slug: 'hybrid-retrieval-reranking', title: 'Hybrid Search & Re-Ranking', description: 'Combining vector and keyword precision.', minutes: 50 },
