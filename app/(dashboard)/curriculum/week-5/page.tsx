@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button'
 function getConceptIllustration(slug: string) {
   const illustrations: Record<string, JSX.Element> = {
     'agent-architectures': (
-      <div className="flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
+      <div className="w-20 flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
           <Network className="h-7 w-7 text-indigo-600" />
           <Users className="h-6 w-6 text-blue-500" />
@@ -31,7 +31,7 @@ function getConceptIllustration(slug: string) {
       </div>
     ),
     'reliability-patterns': (
-      <div className="flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
+      <div className="w-20 flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
           <RefreshCw className="h-7 w-7 text-indigo-600" />
           <Shield className="h-6 w-6 text-blue-500" />
@@ -39,7 +39,7 @@ function getConceptIllustration(slug: string) {
       </div>
     ),
     'framework-comparison': (
-      <div className="flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
+      <div className="w-20 flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
           <GitCompare className="h-7 w-7 text-indigo-600" />
           <Code2 className="h-6 w-6 text-blue-500" />
