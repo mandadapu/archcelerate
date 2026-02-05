@@ -199,7 +199,7 @@ export default async function DashboardPage() {
         )}
 
         {week3Data?.week && (
-          <Card className="border-2 border-teal-200 bg-gradient-to-br from-teal-50 to-cyan-50">
+          <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-sky-50">
             <CardHeader>
               <CardTitle>Week 3</CardTitle>
               <CardDescription>{week3Data.week.title}</CardDescription>
@@ -209,7 +209,7 @@ export default async function DashboardPage() {
                 {week3Data.week.description}
               </p>
               <Link href="/curriculum/week-3">
-                <Button size="sm" variant="outline" className="border-teal-300 text-teal-700 hover:bg-teal-50">
+                <Button size="sm" variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50">
                   {week3Data.progress ? 'Continue' : 'Start'}
                 </Button>
               </Link>
@@ -323,7 +323,7 @@ export default async function DashboardPage() {
         )}
 
         {week8Data?.week && (
-          <Card className="border-2 border-cyan-200 bg-gradient-to-br from-cyan-50 to-sky-50">
+          <Card className="border-2 border-rose-200 bg-gradient-to-br from-rose-50 to-pink-50">
             <CardHeader>
               <CardTitle>Week 8</CardTitle>
               <CardDescription>{week8Data.week.title}</CardDescription>
@@ -333,7 +333,7 @@ export default async function DashboardPage() {
                 {week8Data.week.description}
               </p>
               <Link href="/curriculum/week-8">
-                <Button size="sm" variant="outline" className="border-cyan-300 text-cyan-700 hover:bg-cyan-50">
+                <Button size="sm" variant="outline" className="border-rose-300 text-rose-700 hover:bg-rose-50">
                   {week8Data.progress ? 'Continue' : 'Start'}
                 </Button>
               </Link>
@@ -342,7 +342,7 @@ export default async function DashboardPage() {
         )}
 
         {week9Data?.week && (
-          <Card className="border-2 border-violet-200 bg-gradient-to-br from-violet-50 to-purple-50">
+          <Card className="border-2 border-red-200 bg-gradient-to-br from-red-50 to-orange-50">
             <CardHeader>
               <CardTitle>Week 9</CardTitle>
               <CardDescription>{week9Data.week.title}</CardDescription>
@@ -352,7 +352,7 @@ export default async function DashboardPage() {
                 {week9Data.week.description}
               </p>
               <Link href="/curriculum/week-9">
-                <Button size="sm" variant="outline" className="border-violet-300 text-violet-700 hover:bg-violet-50">
+                <Button size="sm" variant="outline" className="border-red-300 text-red-700 hover:bg-red-50">
                   {week9Data.progress ? 'Continue' : 'Start'}
                 </Button>
               </Link>
