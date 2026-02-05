@@ -537,6 +537,270 @@ const activities = [
         description: 'Full observability, regression testing, golden datasets'
       }
     ]
+  },
+  // Week 9
+  {
+    weekNumber: 9,
+    activityType: 'lab',
+    slug: 'w9-hybrid-search-lab',
+    title: 'Build Hybrid Search System',
+    description: 'Implement BM25 + vector search with RRF fusion and reranking',
+    maxTotalPoints: 60,
+    domainMappings: [
+      {
+        domainSlug: 'retrieval-optimization',
+        maxPoints: 35,
+        isPrimary: true,
+        description: 'Hybrid search algorithms, RRF fusion, and reranking strategies'
+      },
+      {
+        domainSlug: 'knowledge-architecture',
+        maxPoints: 20,
+        isPrimary: false,
+        description: 'Vector database integration and index optimization'
+      },
+      {
+        domainSlug: 'production-observability',
+        maxPoints: 5,
+        isPrimary: false,
+        description: 'Retrieval metrics and latency monitoring'
+      }
+    ]
+  },
+  {
+    weekNumber: 9,
+    activityType: 'project',
+    slug: 'w9-graphrag-assistant-project',
+    title: 'GraphRAG Knowledge Assistant',
+    description: 'Production knowledge assistant with graph-based retrieval and context fusion',
+    maxTotalPoints: 140,
+    domainMappings: [
+      {
+        domainSlug: 'knowledge-architecture',
+        maxPoints: 60,
+        isPrimary: true,
+        description: 'GraphRAG architecture with Neo4j and entity extraction'
+      },
+      {
+        domainSlug: 'retrieval-optimization',
+        maxPoints: 50,
+        isPrimary: true,
+        description: 'Query optimization, context fusion, and multi-hop reasoning'
+      },
+      {
+        domainSlug: 'interface-engineering',
+        maxPoints: 20,
+        isPrimary: false,
+        description: 'Structured knowledge graph queries and type-safe responses'
+      },
+      {
+        domainSlug: 'production-observability',
+        maxPoints: 10,
+        isPrimary: false,
+        description: 'Graph traversal performance metrics and query analytics'
+      }
+    ]
+  },
+  // Week 10
+  {
+    weekNumber: 10,
+    activityType: 'lab',
+    slug: 'w10-finetuning-experiment-lab',
+    title: 'Fine-Tuning Experimentation',
+    description: 'Experiment with LoRA, QLoRA, and PEFT techniques for model customization',
+    maxTotalPoints: 70,
+    domainMappings: [
+      {
+        domainSlug: 'systematic-prompting',
+        maxPoints: 40,
+        isPrimary: true,
+        description: 'Dataset curation, quality filtering, and training data engineering'
+      },
+      {
+        domainSlug: 'production-observability',
+        maxPoints: 20,
+        isPrimary: false,
+        description: 'Model evaluation frameworks, LLM-as-judge, and regression testing'
+      },
+      {
+        domainSlug: 'retrieval-optimization',
+        maxPoints: 10,
+        isPrimary: false,
+        description: 'Fine-tuning vs RAG decision framework and cost optimization'
+      }
+    ]
+  },
+  {
+    weekNumber: 10,
+    activityType: 'project',
+    slug: 'w10-production-finetuned-model-project',
+    title: 'Deploy Production Fine-Tuned Model',
+    description: 'End-to-end fine-tuning pipeline with evaluation, deployment, and monitoring',
+    maxTotalPoints: 150,
+    domainMappings: [
+      {
+        domainSlug: 'systematic-prompting',
+        maxPoints: 60,
+        isPrimary: true,
+        description: 'Complete dataset curation pipeline with PII detection and quality scoring'
+      },
+      {
+        domainSlug: 'production-observability',
+        maxPoints: 50,
+        isPrimary: true,
+        description: 'Automated evaluation, A/B testing, canary deployments, and drift detection'
+      },
+      {
+        domainSlug: 'sovereign-governance',
+        maxPoints: 25,
+        isPrimary: false,
+        description: 'Model versioning, rollback procedures, and compliance tracking'
+      },
+      {
+        domainSlug: 'interface-engineering',
+        maxPoints: 15,
+        isPrimary: false,
+        description: 'Model registry and deployment orchestration'
+      }
+    ]
+  },
+  // Week 11
+  {
+    weekNumber: 11,
+    activityType: 'lab',
+    slug: 'w11-multi-agent-coordination-lab',
+    title: 'Build Coordinated Agent System',
+    description: 'Implement multi-agent coordination with task delegation and conflict resolution',
+    maxTotalPoints: 70,
+    domainMappings: [
+      {
+        domainSlug: 'agentic-orchestration',
+        maxPoints: 45,
+        isPrimary: true,
+        description: 'Agent coordination patterns, task delegation, and conflict resolution'
+      },
+      {
+        domainSlug: 'interface-engineering',
+        maxPoints: 15,
+        isPrimary: false,
+        description: 'Inter-agent communication protocols and message passing'
+      },
+      {
+        domainSlug: 'production-observability',
+        maxPoints: 10,
+        isPrimary: false,
+        description: 'Agent performance tracking and coordination metrics'
+      }
+    ]
+  },
+  {
+    weekNumber: 11,
+    activityType: 'project',
+    slug: 'w11-autonomous-workflow-platform-project',
+    title: 'Autonomous Workflow Orchestration Platform',
+    description: 'Production multi-agent system with hierarchical coordination and state management',
+    maxTotalPoints: 160,
+    domainMappings: [
+      {
+        domainSlug: 'agentic-orchestration',
+        maxPoints: 80,
+        isPrimary: true,
+        description: 'Hierarchical agent systems, manager-worker patterns, and autonomous loops'
+      },
+      {
+        domainSlug: 'interface-engineering',
+        maxPoints: 35,
+        isPrimary: true,
+        description: 'Complex task decomposition and type-safe agent interactions'
+      },
+      {
+        domainSlug: 'systematic-prompting',
+        maxPoints: 25,
+        isPrimary: false,
+        description: 'Agent role prompting and capability-based routing'
+      },
+      {
+        domainSlug: 'production-observability',
+        maxPoints: 20,
+        isPrimary: false,
+        description: 'Multi-agent workflow observability and failure recovery'
+      }
+    ]
+  },
+  // Week 12
+  {
+    weekNumber: 12,
+    activityType: 'lab',
+    slug: 'w12-security-compliance-lab',
+    title: 'Implement Enterprise Security & Compliance',
+    description: 'Build OWASP LLM Top 10 defenses and GDPR/SOC 2 compliance systems',
+    maxTotalPoints: 70,
+    domainMappings: [
+      {
+        domainSlug: 'sovereign-governance',
+        maxPoints: 50,
+        isPrimary: true,
+        description: 'OWASP LLM Top 10, prompt injection defense, and PII protection'
+      },
+      {
+        domainSlug: 'production-observability',
+        maxPoints: 15,
+        isPrimary: false,
+        description: 'Security monitoring, audit logging, and anomaly detection'
+      },
+      {
+        domainSlug: 'systematic-prompting',
+        maxPoints: 5,
+        isPrimary: false,
+        description: 'Secure prompt engineering and input sanitization'
+      }
+    ]
+  },
+  {
+    weekNumber: 12,
+    activityType: 'project',
+    slug: 'w12-enterprise-ai-system-project',
+    title: 'Enterprise-Grade AI System',
+    description: 'Complete enterprise system with multi-tenancy, compliance, scaling, and cost optimization',
+    maxTotalPoints: 200,
+    domainMappings: [
+      {
+        domainSlug: 'sovereign-governance',
+        maxPoints: 60,
+        isPrimary: true,
+        description: 'Full compliance stack: GDPR, SOC 2, OWASP LLM Top 10, data sovereignty'
+      },
+      {
+        domainSlug: 'production-observability',
+        maxPoints: 50,
+        isPrimary: true,
+        description: 'Production observability, cost tracking, and SLA monitoring'
+      },
+      {
+        domainSlug: 'agentic-orchestration',
+        maxPoints: 35,
+        isPrimary: true,
+        description: 'Scalable multi-agent architecture with load balancing'
+      },
+      {
+        domainSlug: 'retrieval-optimization',
+        maxPoints: 30,
+        isPrimary: false,
+        description: 'Enterprise RAG with caching, model routing, and cost optimization'
+      },
+      {
+        domainSlug: 'knowledge-architecture',
+        maxPoints: 15,
+        isPrimary: false,
+        description: 'Multi-tenant knowledge isolation and access control'
+      },
+      {
+        domainSlug: 'interface-engineering',
+        maxPoints: 10,
+        isPrimary: false,
+        description: 'Enterprise API gateway and service orchestration'
+      }
+    ]
   }
 ]
 

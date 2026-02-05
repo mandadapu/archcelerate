@@ -1,14 +1,30 @@
 import { CodePlayground } from '@/components/curriculum/CodePlayground'
 
-# Prompt Engineering Mastery
+# Deterministic Logic Patterns: Few-Shot Calibration & Thought Traces
 
-Master the art and science of crafting effective prompts for LLMs.
+Moving from "vibe-based" prompting to **systematic engineering patterns** that produce auditable, reproducible outputs at scale.
 
-> **Note**: Updated February 2026 with Claude 4.5 and GPT-5 best practices, including prompt caching, structured outputs, and extended thinking modes.
+> **Architect Perspective**: Prompts are not creative writing—they're **configuration files** for non-deterministic systems. Your goal: minimize variance, maximize reproducibility, enable auditability.
 
-## Prompting Fundamentals
+## The Determinism Problem
 
-A well-crafted prompt is the difference between mediocre and excellent LLM outputs.
+**The Challenge**: LLMs are fundamentally probabilistic. Same prompt → different outputs.
+
+**Architectural Implication**:
+```typescript
+// ❌ Production Anti-Pattern: "Vibe-based" prompting
+const prompt = "Write a good summary of this document"
+// Variance: 40-60% consistency across runs
+
+// ✅ Deterministic Pattern: Explicit constraints
+const prompt = `
+Summarize this document in exactly 3 bullet points.
+Each bullet: 1 sentence, max 20 words.
+Focus: Key findings only, no opinions.
+Format: • [Finding] (Evidence)
+`
+// Variance: 5-10% (acceptable for production)
+```
 
 ### Critical: Claude 4.x & GPT-5 Behavioral Changes
 
@@ -72,51 +88,183 @@ Write a clear, concise explanation with a practical example.
 Use simple language and include a code snippet.
 ```
 
-## Few-Shot Prompting
+## Few-Shot Calibration: Latent Space Anchors
 
-Provide examples to guide the model's behavior.
+**Architect Perspective**: Examples aren't just for "style"—they're **anchors** that constrain the model into a specific region of its latent space, forcing consistent behavior.
 
-**Pattern**:
-```
-Here are examples of the task:
+### The Physics of Few-Shot Learning
+
+```typescript
+// ❌ Anti-Pattern: Vague style guidance
+const prompt = "Extract product names from text in JSON format"
+// Result: Inconsistent structure, hallucinated fields
+
+// ✅ Architectural Pattern: Latent Space Anchoring
+const prompt = `
+Extract product names into this exact JSON structure:
 
 Example 1:
-Input: [input]
-Output: [output]
+Input: "I bought an iPhone 15 and AirPods Pro"
+Output: {"products": ["iPhone 15", "AirPods Pro"]}
 
 Example 2:
-Input: [input]
-Output: [output]
+Input: "The MacBook Air is great"
+Output: {"products": ["MacBook Air"]}
 
-Now do the same for:
-Input: [your actual input]
+Example 3: (Edge case: No products)
+Input: "I love technology"
+Output: {"products": []}
+
+Now extract from: "${userInput}"
+`
+// Result: 95%+ consistency, handles edge cases
 ```
 
-**When to use**: Complex formatting, specific style, edge cases to avoid
+### Calibration Strategies
 
-## Chain-of-Thought (CoT) Prompting
-
-Ask the model to show its reasoning process.
-
-**Simple CoT**:
-```
-Question: [complex problem]
-Let's think step by step:
-```
-
-**Structured CoT**:
-```
-Question: [problem]
-
-Please solve this by:
-1. Understanding the problem
-2. Breaking it into sub-problems
-3. Solving each sub-problem
-4. Combining results
-5. Verifying the answer
+**1. Minimum Viable Examples (MVE)**
+```typescript
+// Rule: 2-3 examples for simple tasks
+const CALIBRATION_BUDGET = {
+  classification: 2,      // Binary/multi-class
+  extraction: 3,          // Structured data
+  transformation: 4,      // Complex reformatting
+  reasoning: 5            // Multi-step logic
+}
 ```
 
-**When to use**: Mathematical reasoning, multi-step problems, debugging
+**2. Edge Case Coverage**
+```typescript
+const examples = [
+  // Happy path
+  { input: "Normal case", output: "..." },
+
+  // Edge cases (critical for production)
+  { input: "Empty input", output: "..." },
+  { input: "Malformed data", output: "..." },
+  { input: "Extreme length", output: "..." }
+]
+```
+
+**3. The Anti-Example Pattern**
+```typescript
+// Show what NOT to do
+const prompt = `
+✅ Correct format:
+Input: "Meeting at 3pm"
+Output: {"time": "15:00", "type": "meeting"}
+
+❌ Incorrect (do NOT do this):
+Input: "Meeting at 3pm"
+Output: "The meeting is at 3pm"  // ← Wrong: not JSON
+
+Now process: "${input}"
+`
+```
+
+## Chain-of-Thought Engineering: Thought Traces for Auditability
+
+**Architect Perspective**: CoT isn't about "showing work"—it's about making **non-deterministic outputs auditable** for enterprise safety and regulatory compliance.
+
+### The Auditability Problem
+
+```typescript
+// ❌ Black Box Output (unauditable)
+const result = await callLLM("Is this loan application approved?")
+// Result: "Yes"
+// Problem: No way to audit WHY it said yes
+
+// ✅ Thought Trace Pattern (auditable)
+const result = await callLLM(`
+Evaluate this loan application:
+${application}
+
+Use this exact reasoning structure:
+<reasoning>
+1. Credit score analysis: [score] → [risk level]
+2. Debt-to-income ratio: [ratio] → [assessment]
+3. Employment verification: [status] → [decision]
+4. Final decision: [approved/denied]
+</reasoning>
+
+<decision>[Yes/No]</decision>
+`)
+// Result: Full audit trail of reasoning steps
+```
+
+### Production CoT Patterns
+
+**Pattern 1: Structured Reasoning Output**
+```typescript
+interface ThoughtTrace {
+  steps: Array<{
+    step: number
+    reasoning: string
+    conclusion: string
+    confidence: number
+  }>
+  finalDecision: string
+  riskFactors: string[]
+}
+
+const prompt = `
+Analyze this medical claim:
+${claimData}
+
+Provide reasoning in this JSON structure:
+{
+  "steps": [
+    {"step": 1, "reasoning": "...", "conclusion": "...", "confidence": 0.95},
+    {"step": 2, "reasoning": "...", "conclusion": "...", "confidence": 0.85}
+  ],
+  "finalDecision": "approved/denied",
+  "riskFactors": ["list", "of", "concerns"]
+}
+`
+```
+
+**Pattern 2: The Verification Loop**
+```typescript
+const prompt = `
+Task: ${task}
+
+Step 1: Solve the problem
+<solution>${"..."}</solution>
+
+Step 2: Verify your solution
+<verification>
+- Check #1: [what you're checking]
+- Check #2: [what you're checking]
+- Result: [pass/fail]
+</verification>
+
+Step 3: If verification failed, correct and re-verify
+<correction>${"..."}</correction>
+
+Final Answer: [only if verification passed]
+`
+```
+
+**Pattern 3: Enterprise Compliance Template**
+```typescript
+const AUDIT_TEMPLATE = `
+<analysis>
+Input: ${input}
+Policy Applied: ${policyName}
+Reasoning:
+  1. Check: ${criterion1} → ${result1}
+  2. Check: ${criterion2} → ${result2}
+  3. Check: ${criterion3} → ${result3}
+Decision: ${decision}
+Justification: ${why}
+Risk Level: ${riskScore}
+Reviewer: AI-${timestamp}
+</analysis>
+
+Output: ${decision}
+`
+// Saves to audit log for regulatory review
+```
 
 ## Extended Thinking & Reasoning Modes (2026)
 

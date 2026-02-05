@@ -1,10 +1,20 @@
-# API Integration Patterns
+# API Resilience & Integration: Fault Tolerance & Model Cascade
 
-Learn how to integrate LLM APIs into production applications with proper error handling, streaming, and cost controls.
+Engineering the "connection" for production-grade reliability—because **APIs will fail**, and your system must survive.
 
-## REST API Basics
+> **Architect Perspective**: API integration isn't about "making requests"—it's about building **fault-tolerant systems** that maintain 99.9% uptime despite rate limits, network failures, and provider outages.
 
-All major LLM providers expose REST APIs for text generation.
+## The Reliability Problem
+
+**Reality Check**: LLM APIs fail frequently
+- Rate limits: 429 errors at scale
+- Transient failures: Network timeouts, 503s
+- Provider outages: Even Claude/OpenAI go down
+- Latency spikes: p99 can be 10x p50
+
+**Architectural Mandate**: Your application **must not crash** when the API fails.
+
+## REST API Basics (With Production Guardrails)
 
 ### Basic Request Structure
 
@@ -115,17 +125,187 @@ async function sendMessage(message: string) {
 }
 ```
 
-## Error Handling and Retries
+## Fault Tolerance Architecture: Exponential Backoff with Jitter
 
-LLM APIs can fail for various reasons. Implement robust error handling.
+**Architect Perspective**: Retries without backoff cause **thundering herd** problems. Exponential backoff with jitter is the only production-safe pattern.
 
-### Common Error Types
+### The Retry Physics
 
-1. **Rate Limiting (429)**: Too many requests
-2. **Context Length Exceeded (400)**: Input too long
-3. **Authentication (401)**: Invalid API key
-4. **Service Unavailable (503)**: API temporarily down
-5. **Timeout**: Request took too long
+```typescript
+// ❌ Anti-Pattern: Naive Retry (causes cascading failures)
+async function callAPIBad(prompt: string) {
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await api.call(prompt)
+    } catch {
+      // Instant retry → hammers the API during outages
+      continue
+    }
+  }
+}
+
+// ✅ Production Pattern: Exponential Backoff + Jitter
+async function callAPIProduction<T>(
+  fn: () => Promise<T>,
+  maxRetries = 3
+): Promise<T> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (error) {
+      if (!isRetryable(error)) throw error  // Don't retry auth errors
+      if (attempt === maxRetries - 1) throw error
+
+      // Exponential backoff: 1s, 2s, 4s, 8s...
+      const baseDelay = Math.pow(2, attempt) * 1000
+
+      // Jitter: Add randomness to prevent thundering herd
+      const jitter = Math.random() * 1000
+      const delay = baseDelay + jitter
+
+      console.log(`Retry ${attempt + 1}/${maxRetries} after ${delay}ms`)
+      await sleep(delay)
+    }
+  }
+  throw new Error('All retries failed')
+}
+
+function isRetryable(error: any): boolean {
+  // Retry transient failures only
+  const retryableCodes = [429, 500, 502, 503, 504]
+  return retryableCodes.includes(error.status) || error.code === 'ETIMEDOUT'
+}
+```
+
+### The Jitter Calculation
+
+```typescript
+// Why jitter matters: Prevents synchronized retries
+const RETRY_CONFIG = {
+  baseDelay: 1000,       // 1 second base
+  maxDelay: 32000,       // 32 second max
+  jitterFactor: 0.3      // 30% randomness
+}
+
+function calculateDelay(attempt: number): number {
+  // Exponential: 1s → 2s → 4s → 8s → 16s → 32s (capped)
+  const exponential = Math.min(
+    RETRY_CONFIG.baseDelay * Math.pow(2, attempt),
+    RETRY_CONFIG.maxDelay
+  )
+
+  // Jitter: ±30% randomness
+  const jitter = exponential * RETRY_CONFIG.jitterFactor * (Math.random() - 0.5)
+
+  return exponential + jitter
+}
+
+// Result: 1000 clients retry at different times (no thundering herd)
+```
+
+## Model Cascade: Fallback Strategy for 99.9% Uptime
+
+**Architectural Pattern**: If primary model fails, **automatically cascade** to backup models to maintain service.
+
+### The Cascade Architecture
+
+```typescript
+interface ModelConfig {
+  name: string
+  priority: number  // Lower = higher priority
+  maxRetries: number
+}
+
+const MODEL_CASCADE: ModelConfig[] = [
+  { name: 'claude-opus-4.5', priority: 1, maxRetries: 2 },
+  { name: 'claude-sonnet-4.5', priority: 2, maxRetries: 2 },
+  { name: 'claude-haiku-4.5', priority: 3, maxRetries: 1 }
+]
+
+async function callWithCascade(prompt: string): Promise<string> {
+  const errors: Error[] = []
+
+  for (const model of MODEL_CASCADE) {
+    try {
+      console.log(`Trying ${model.name}...`)
+      return await callAPIProduction(
+        () => callModel(model.name, prompt),
+        model.maxRetries
+      )
+    } catch (error) {
+      errors.push(error)
+      console.warn(`${model.name} failed, cascading to next...`)
+      continue  // Try next model in cascade
+    }
+  }
+
+  // All models failed
+  throw new AggregateError(errors, 'All models in cascade failed')
+}
+```
+
+### Production Cascade Patterns
+
+**Pattern 1: Quality → Cost Cascade**
+```typescript
+// Start with best quality, fall back to cheaper
+const cascade = ['opus-4.5', 'sonnet-4.5', 'haiku-4.5']
+// 90% succeed on Opus, 9% on Sonnet, 1% on Haiku
+```
+
+**Pattern 2: Provider Diversity Cascade**
+```typescript
+// Avoid single-provider dependency
+const cascade = [
+  { provider: 'anthropic', model: 'claude-sonnet-4.5' },
+  { provider: 'openai', model: 'gpt-4o' },
+  { provider: 'anthropic', model: 'claude-haiku-4.5' }
+]
+// If Anthropic is down, OpenAI provides fallback
+```
+
+**Pattern 3: The Circuit Breaker**
+```typescript
+class CircuitBreaker {
+  private failures = 0
+  private state: 'closed' | 'open' | 'half-open' = 'closed'
+  private lastFailure = 0
+
+  async call<T>(fn: () => Promise<T>): Promise<T> {
+    // If circuit open, fail fast
+    if (this.state === 'open') {
+      if (Date.now() - this.lastFailure < 60000) {
+        throw new Error('Circuit breaker open')
+      }
+      this.state = 'half-open'  // Try again after 1 min
+    }
+
+    try {
+      const result = await fn()
+      this.onSuccess()
+      return result
+    } catch (error) {
+      this.onFailure()
+      throw error
+    }
+  }
+
+  private onSuccess() {
+    this.failures = 0
+    this.state = 'closed'
+  }
+
+  private onFailure() {
+    this.failures++
+    this.lastFailure = Date.now()
+
+    if (this.failures >= 5) {
+      this.state = 'open'  // Stop hitting failing service
+      console.warn('Circuit breaker opened')
+    }
+  }
+}
+```
 
 ### Retry Logic with Exponential Backoff
 

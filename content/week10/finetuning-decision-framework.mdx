@@ -1,0 +1,987 @@
+---
+title: "Fine-Tuning Decision Framework"
+description: "Master the decision tree for when to use RAG, prompt engineering, or fine-tuning based on cost, latency, and accuracy requirements"
+estimatedMinutes: 50
+week: 10
+concept: 1
+difficulty: advanced
+objectives:
+  - Build decision frameworks for RAG vs prompting vs fine-tuning
+  - Calculate ROI for fine-tuning with real cost/benefit analysis
+  - Implement fine-tuning pipelines for OpenAI, Claude, and Llama
+  - Deploy fine-tuned models with versioning and rollback strategies
+---
+
+import { CodePlayground } from '@/components/curriculum/CodePlayground'
+
+# Fine-Tuning Decision Framework
+
+Master the critical decision of when to fine-tune language models versus using RAG or prompt engineering, backed by production metrics and ROI analysis.
+
+> **Note**: Fine-tuning is expensive (time, money, maintenance). 80% of use cases don't need it. This framework helps you make the right choice.
+
+## What is Fine-Tuning?
+
+**Simple Explanation**: Fine-tuning takes a pre-trained language model and further trains it on your specific data to adapt its behavior. It's like taking a general doctor and giving them specialized training in cardiology.
+
+**Three Approaches Compared**:
+
+```
+Problem: "Generate SQL queries from natural language"
+
+Approach 1: Prompt Engineering
+→ Input: "Convert to SQL: Show me all users over 18"
+→ Output: "SELECT * FROM users WHERE age > 18"
+→ Cost: $0.001 per query
+→ Accuracy: 75%
+
+Approach 2: RAG (Retrieval-Augmented Generation)
+→ Input: Query + Retrieved examples from SQL docs
+→ Output: "SELECT * FROM users WHERE age > 18"
+→ Cost: $0.003 per query (retrieval + LLM)
+→ Accuracy: 85%
+
+Approach 3: Fine-Tuning
+→ Train model on 10,000 SQL examples
+→ Input: "Show me all users over 18"
+→ Output: "SELECT * FROM users WHERE age > 18"
+→ Setup Cost: $500 (training)
+→ Per-query Cost: $0.0005 (smaller model works)
+→ Accuracy: 92%
+→ Break-even: 500,000 queries
+```
+
+## The Decision Tree
+
+Use this framework to choose the right approach:
+
+<CodePlayground
+  title="Interactive Decision Framework"
+  description="Answer questions about your use case to get a recommendation. Try different scenarios!"
+  exerciseType="finetuning-decision"
+  code={`interface UseCase {
+  taskType: 'classification' | 'generation' | 'extraction' | 'summarization'
+  volumePerMonth: number
+  accuracyRequirement: number // 0-1
+  latencyRequirement: number // ms
+  domainSpecificity: 'generic' | 'specialized' | 'niche'
+  dataAvailable: number // training examples
+  budgetConstraint: number // monthly budget
+}
+
+interface Recommendation {
+  approach: 'prompt-engineering' | 'rag' | 'fine-tuning' | 'hybrid'
+  reasoning: string[]
+  estimatedCost: number
+  estimatedAccuracy: number
+  implementation: string
+}
+
+function recommendApproach(useCase: UseCase): Recommendation {
+  const scores = {
+    promptEngineering: 0,
+    rag: 0,
+    fineTuning: 0
+  }
+
+  // Rule 1: Volume economics
+  if (useCase.volumePerMonth < 10000) {
+    scores.promptEngineering += 3
+    scores.rag += 2
+  } else if (useCase.volumePerMonth > 100000) {
+    scores.fineTuning += 3
+  }
+
+  // Rule 2: Accuracy requirements
+  if (useCase.accuracyRequirement > 0.9) {
+    scores.fineTuning += 3
+    scores.rag += 2
+  } else if (useCase.accuracyRequirement < 0.75) {
+    scores.promptEngineering += 2
+  }
+
+  // Rule 3: Domain specificity
+  if (useCase.domainSpecificity === 'niche') {
+    scores.fineTuning += 3
+    scores.rag += 1
+  } else if (useCase.domainSpecificity === 'generic') {
+    scores.promptEngineering += 2
+  }
+
+  // Rule 4: Training data availability
+  if (useCase.dataAvailable < 100) {
+    scores.promptEngineering += 3
+    scores.rag += 2
+    scores.fineTuning -= 3
+  } else if (useCase.dataAvailable > 1000) {
+    scores.fineTuning += 2
+  }
+
+  // Rule 5: Latency requirements
+  if (useCase.latencyRequirement < 500) {
+    scores.promptEngineering += 2
+    scores.fineTuning += 2
+  } else {
+    scores.rag += 1 // RAG adds latency
+  }
+
+  // Rule 6: Task type
+  if (useCase.taskType === 'classification') {
+    scores.fineTuning += 2 // Fine-tuning excels at classification
+  } else if (useCase.taskType === 'generation') {
+    scores.rag += 2 // RAG better for knowledge-heavy generation
+  }
+
+  // Determine winner
+  const maxScore = Math.max(scores.promptEngineering, scores.rag, scores.fineTuning)
+
+  if (scores.fineTuning === maxScore && scores.fineTuning >= 8) {
+    return {
+      approach: 'fine-tuning',
+      reasoning: [
+        \`High volume (\${useCase.volumePerMonth.toLocaleString()}/month) justifies upfront cost\`,
+        \`Accuracy requirement (\${(useCase.accuracyRequirement * 100).toFixed(0)}%) demands specialized model\`,
+        \`Sufficient training data (\${useCase.dataAvailable} examples)\`,
+        \`Domain-specific behavior needed\`
+      ],
+      estimatedCost: calculateFineTuningCost(useCase),
+      estimatedAccuracy: 0.90,
+      implementation: 'OpenAI GPT-3.5-turbo fine-tuning or Llama 3 LoRA'
+    }
+  } else if (scores.rag === maxScore) {
+    return {
+      approach: 'rag',
+      reasoning: [
+        \`Knowledge retrieval improves accuracy for \${useCase.taskType} tasks\`,
+        \`Moderate volume doesn't justify fine-tuning cost\`,
+        \`Dynamic knowledge base required\`,
+        \`Good balance of cost and accuracy\`
+      ],
+      estimatedCost: useCase.volumePerMonth * 0.003,
+      estimatedAccuracy: 0.82,
+      implementation: 'Pinecone + Claude Sonnet with retrieval'
+    }
+  } else {
+    return {
+      approach: 'prompt-engineering',
+      reasoning: [
+        \`Low volume (\${useCase.volumePerMonth}/month) makes prompt engineering most cost-effective\`,
+        \`Accuracy requirement (\${(useCase.accuracyRequirement * 100).toFixed(0)}%) achievable with good prompts\`,
+        \`Limited training data available\`,
+        \`Fastest time to production\`
+      ],
+      estimatedCost: useCase.volumePerMonth * 0.001,
+      estimatedAccuracy: 0.75,
+      implementation: 'Claude Sonnet with optimized system prompt'
+    }
+  }
+}
+
+function calculateFineTuningCost(useCase: UseCase): number {
+  const trainingCost = 500 // One-time setup
+  const monthlyInferenceCost = useCase.volumePerMonth * 0.0005
+  return trainingCost + monthlyInferenceCost
+}
+
+// Example use cases
+const useCases: UseCase[] = [
+  {
+    taskType: 'classification',
+    volumePerMonth: 500000,
+    accuracyRequirement: 0.95,
+    latencyRequirement: 300,
+    domainSpecificity: 'niche',
+    dataAvailable: 5000,
+    budgetConstraint: 1000
+  },
+  {
+    taskType: 'generation',
+    volumePerMonth: 5000,
+    accuracyRequirement: 0.80,
+    latencyRequirement: 2000,
+    domainSpecificity: 'generic',
+    dataAvailable: 50,
+    budgetConstraint: 100
+  },
+  {
+    taskType: 'extraction',
+    volumePerMonth: 50000,
+    accuracyRequirement: 0.88,
+    latencyRequirement: 500,
+    domainSpecificity: 'specialized',
+    dataAvailable: 2000,
+    budgetConstraint: 500
+  }
+]
+
+console.log('Fine-Tuning Decision Framework\\n')
+console.log('='.repeat(80))
+
+useCases.forEach((useCase, i) => {
+  console.log(\`\\nUse Case \${i + 1}: \${useCase.taskType} (\${useCase.volumePerMonth.toLocaleString()}/month)\\n\`)
+
+  const recommendation = recommendApproach(useCase)
+
+  console.log(\`RECOMMENDATION: \${recommendation.approach.toUpperCase()}\\n\`)
+  console.log('Reasoning:')
+  recommendation.reasoning.forEach(reason => {
+    console.log(\`  • \${reason}\`)
+  })
+  console.log(\`\\nEstimated monthly cost: $\${recommendation.estimatedCost.toFixed(2)}\`)
+  console.log(\`Expected accuracy: \${(recommendation.estimatedAccuracy * 100).toFixed(0)}%\`)
+  console.log(\`Implementation: \${recommendation.implementation}\`)
+  console.log('\\n' + '='.repeat(80))
+})
+`}
+/>
+
+## When to Fine-Tune: Real-World Scenarios
+
+### ✅ FINE-TUNE WHEN:
+
+**1. High-Volume Classification Tasks**
+```
+Example: Email routing for customer support
+- Volume: 1M emails/month
+- Accuracy needed: 95%+
+- 20 categories
+
+Analysis:
+- Prompt engineering: $1,000/month, 80% accuracy
+- Fine-tuning: $500 setup + $250/month, 96% accuracy
+- Break-even: Month 3
+- ROI: $750/month savings after month 3
+```
+
+**2. Consistent Output Formatting**
+```
+Example: Structured data extraction from legal documents
+- Need: Exact JSON schema adherence
+- Problem: GPT-4 sometimes deviates from schema
+
+Solution:
+- Fine-tune GPT-3.5-turbo on 2,000 examples
+- 99.8% schema compliance (vs 92% with prompting)
+- $200/month savings using cheaper base model
+```
+
+**3. Domain-Specific Terminology**
+```
+Example: Medical transcription
+- Specialized terms: Pharmaceutical names, procedures
+- Baseline GPT-4: 75% terminology accuracy
+- Fine-tuned Llama 3: 94% accuracy
+
+Why it works:
+- Model learns domain vocabulary
+- Reduces hallucination on medical terms
+- Can use smaller, faster model
+```
+
+**4. Style Matching**
+```
+Example: Brand voice for marketing copy
+- Need: Consistent brand tone, style, formatting
+- Problem: Generic LLMs produce generic content
+
+Fine-tuning benefits:
+- Learns brand-specific phrases
+- Matches sentence structure patterns
+- Maintains consistency across campaigns
+- $3,000 setup, saves $2,000/month in editing time
+```
+
+### ❌ DON'T FINE-TUNE WHEN:
+
+**1. Knowledge-Heavy Tasks**
+```
+Example: Q&A about company documentation
+
+Wrong approach:
+✗ Fine-tune on all documentation
+  - Docs change frequently
+  - Model can't update without re-training
+  - $2,000/month to keep current
+
+Right approach:
+✓ Use RAG with document retrieval
+  - Updates immediately when docs change
+  - $200/month
+  - Better accuracy on recent changes
+```
+
+**2. Low Volume**
+```
+Example: Internal tool with 100 queries/month
+
+Cost analysis:
+- Fine-tuning setup: $500
+- Monthly inference: $5
+- Total: $505 first month, $5/month after
+
+vs Prompt engineering:
+- No setup cost
+- Monthly: $10
+- Total: $10/month
+
+Verdict: Not worth fine-tuning until 50x volume increase
+```
+
+**3. Insufficient Training Data**
+```
+Minimum data requirements:
+- Classification: 100 examples per class
+- Generation: 500-1,000 examples
+- Style matching: 1,000+ examples
+
+With less data:
+- Model won't generalize well
+- Overfitting likely
+- Prompt engineering + few-shot examples better
+```
+
+**4. Rapidly Changing Requirements**
+```
+Example: Experimental product features
+
+Problem with fine-tuning:
+- Takes 2-4 weeks to collect data, train, evaluate
+- Requirements change weekly
+- Constantly playing catch-up
+
+Better approach:
+- Rapid prompt iteration (change in minutes)
+- Gather data over time
+- Fine-tune only when requirements stabilize
+```
+
+## Cost-Benefit Analysis Framework
+
+<CodePlayground
+  title="ROI Calculator for Fine-Tuning"
+  description="Calculate break-even point and 12-month ROI. Try different scenarios to see when fine-tuning pays off!"
+  exerciseType="finetuning-roi"
+  code={`interface FineTuningProject {
+  projectName: string
+  monthlyVolume: number
+  baselineCostPerQuery: number // Current approach cost
+  fineTunedCostPerQuery: number
+  trainingCost: number
+  dataCollectionCost: number
+  evaluationCost: number
+  maintenanceCostPerMonth: number
+  accuracyImprovementPercent: number
+  valuePerAccuracyPoint: number // $/1% accuracy
+}
+
+function calculateROI(project: FineTuningProject): {
+  breakEvenMonths: number
+  roi12Month: number
+  totalSavings12Month: number
+  recommendation: string
+} {
+  // One-time costs
+  const setupCost = project.trainingCost + project.dataCollectionCost + project.evaluationCost
+
+  // Monthly costs
+  const baselineMonthly = project.monthlyVolume * project.baselineCostPerQuery
+  const fineTunedMonthly = project.monthlyVolume * project.fineTunedCostPerQuery + project.maintenanceCostPerMonth
+
+  const monthlySavings = baselineMonthly - fineTunedMonthly
+
+  // Accuracy value
+  const monthlyAccuracyValue = project.accuracyImprovementPercent * project.valuePerAccuracyPoint
+
+  const totalMonthlyBenefit = monthlySavings + monthlyAccuracyValue
+
+  // Break-even calculation
+  const breakEvenMonths = setupCost / totalMonthlyBenefit
+
+  // 12-month ROI
+  const total12MonthBenefit = totalMonthlyBenefit * 12
+  const total12MonthCost = setupCost + (fineTunedMonthly * 12)
+  const roi12Month = ((total12MonthBenefit - total12MonthCost) / total12MonthCost) * 100
+
+  const totalSavings12Month = total12MonthBenefit - setupCost
+
+  let recommendation: string
+  if (breakEvenMonths < 3) {
+    recommendation = '✅ STRONGLY RECOMMENDED - Fast payback'
+  } else if (breakEvenMonths < 6) {
+    recommendation = '✅ RECOMMENDED - Good ROI'
+  } else if (breakEvenMonths < 12) {
+    recommendation = '⚠️ CONSIDER - Marginal ROI'
+  } else {
+    recommendation = '❌ NOT RECOMMENDED - Poor ROI'
+  }
+
+  return {
+    breakEvenMonths,
+    roi12Month,
+    totalSavings12Month,
+    recommendation
+  }
+}
+
+// Example projects
+const projects: FineTuningProject[] = [
+  {
+    projectName: 'Email Classification (High Volume)',
+    monthlyVolume: 1000000,
+    baselineCostPerQuery: 0.001,
+    fineTunedCostPerQuery: 0.0003,
+    trainingCost: 500,
+    dataCollectionCost: 2000,
+    evaluationCost: 500,
+    maintenanceCostPerMonth: 100,
+    accuracyImprovementPercent: 15,
+    valuePerAccuracyPoint: 50
+  },
+  {
+    projectName: 'SQL Generation (Medium Volume)',
+    monthlyVolume: 50000,
+    baselineCostPerQuery: 0.003,
+    fineTunedCostPerQuery: 0.001,
+    trainingCost: 300,
+    dataCollectionCost: 1000,
+    evaluationCost: 200,
+    maintenanceCostPerMonth: 50,
+    accuracyImprovementPercent: 20,
+    valuePerAccuracyPoint: 10
+  },
+  {
+    projectName: 'Content Generation (Low Volume)',
+    monthlyVolume: 5000,
+    baselineCostPerQuery: 0.01,
+    fineTunedCostPerQuery: 0.005,
+    trainingCost: 500,
+    dataCollectionCost: 3000,
+    evaluationCost: 500,
+    maintenanceCostPerMonth: 50,
+    accuracyImprovementPercent: 10,
+    valuePerAccuracyPoint: 5
+  }
+]
+
+console.log('Fine-Tuning ROI Analysis\\n')
+console.log('='.repeat(80))
+
+projects.forEach(project => {
+  const analysis = calculateROI(project)
+
+  console.log(\`\\nProject: \${project.projectName}\`)
+  console.log(\`Monthly Volume: \${project.monthlyVolume.toLocaleString()} queries\\n\`)
+
+  console.log('Costs:')
+  console.log(\`  Setup: $\${(project.trainingCost + project.dataCollectionCost + project.evaluationCost).toLocaleString()}\`)
+  console.log(\`  Baseline monthly: $\${(project.monthlyVolume * project.baselineCostPerQuery).toFixed(2)}\`)
+  console.log(\`  Fine-tuned monthly: $\${(project.monthlyVolume * project.fineTunedCostPerQuery + project.maintenanceCostPerMonth).toFixed(2)}\\n\`)
+
+  console.log('Results:')
+  console.log(\`  Break-even: \${analysis.breakEvenMonths.toFixed(1)} months\`)
+  console.log(\`  12-month ROI: \${analysis.roi12Month.toFixed(0)}%\`)
+  console.log(\`  12-month savings: $\${analysis.totalSavings12Month.toFixed(2)}\\n\`)
+
+  console.log(\`  \${analysis.recommendation}\\n\`)
+  console.log('='.repeat(80))
+})
+`}
+/>
+
+## Fine-Tuning Options: Platform Comparison
+
+### OpenAI GPT-3.5-turbo / GPT-4
+
+**Best for**: High-volume classification, structured output, API-first deployments
+
+<CodePlayground
+  title="OpenAI Fine-Tuning Pipeline"
+  description="Complete OpenAI fine-tuning implementation. Watch the full lifecycle from data prep to deployment!"
+  exerciseType="openai-finetuning"
+  code={`import OpenAI from 'openai'
+import fs from 'fs'
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+})
+
+interface TrainingExample {
+  messages: Array<{
+    role: 'system' | 'user' | 'assistant'
+    content: string
+  }>
+}
+
+// Step 1: Prepare training data
+function prepareTrainingData(examples: TrainingExample[]): void {
+  const jsonl = examples.map(ex => JSON.stringify(ex)).join('\\n')
+  fs.writeFileSync('training.jsonl', jsonl)
+
+  console.log(\`Prepared \${examples.length} training examples\`)
+  console.log(\`File size: \${(jsonl.length / 1024).toFixed(2)} KB\\n\`)
+}
+
+// Step 2: Upload training file
+async function uploadTrainingFile(): Promise<string> {
+  console.log('Uploading training file...\\n')
+
+  const file = await openai.files.create({
+    file: fs.createReadStream('training.jsonl'),
+    purpose: 'fine-tune'
+  })
+
+  console.log(\`File uploaded: \${file.id}\\n\`)
+  return file.id
+}
+
+// Step 3: Create fine-tuning job
+async function createFineTuningJob(fileId: string): Promise<string> {
+  console.log('Creating fine-tuning job...\\n')
+
+  const fineTune = await openai.fineTuning.jobs.create({
+    training_file: fileId,
+    model: 'gpt-3.5-turbo-0613',
+    hyperparameters: {
+      n_epochs: 3,
+      batch_size: 1,
+      learning_rate_multiplier: 0.1
+    },
+    suffix: 'email-classifier-v1'
+  })
+
+  console.log(\`Job ID: \${fineTune.id}\`)
+  console.log(\`Status: \${fineTune.status}\\n\`)
+
+  return fineTune.id
+}
+
+// Step 4: Monitor training progress
+async function monitorTraining(jobId: string): Promise<void> {
+  console.log('Monitoring training progress...\\n')
+
+  let status = 'validating_files'
+
+  while (status !== 'succeeded' && status !== 'failed') {
+    await new Promise(resolve => setTimeout(resolve, 60000)) // Poll every minute
+
+    const job = await openai.fineTuning.jobs.retrieve(jobId)
+    status = job.status
+
+    console.log(\`Status: \${status}\`)
+
+    if (job.trained_tokens) {
+      console.log(\`Trained tokens: \${job.trained_tokens}\`)
+    }
+  }
+
+  if (status === 'succeeded') {
+    console.log('\\n✅ Training completed successfully!\\n')
+  } else {
+    console.log('\\n❌ Training failed\\n')
+  }
+}
+
+// Step 5: Use fine-tuned model
+async function useFineTunedModel(modelId: string, testInput: string): Promise<string> {
+  console.log(\`Testing model: \${modelId}\\n\`)
+  console.log(\`Input: "\${testInput}"\\n\`)
+
+  const response = await openai.chat.completions.create({
+    model: modelId,
+    messages: [
+      { role: 'user', content: testInput }
+    ],
+    temperature: 0.3,
+    max_tokens: 100
+  })
+
+  const output = response.content[0].text
+  console.log(\`Output: "\${output}"\\n\`)
+
+  return output
+}
+
+// Complete pipeline
+async function runFineTuningPipeline() {
+  // Example: Email classification
+  const trainingExamples: TrainingExample[] = [
+    {
+      messages: [
+        { role: 'system', content: 'Classify customer emails into: BILLING, TECHNICAL, SALES, OTHER' },
+        { role: 'user', content: 'I was charged twice for my subscription last month' },
+        { role: 'assistant', content: 'BILLING' }
+      ]
+    },
+    {
+      messages: [
+        { role: 'system', content: 'Classify customer emails into: BILLING, TECHNICAL, SALES, OTHER' },
+        { role: 'user', content: 'The app crashes when I try to upload files' },
+        { role: 'assistant', content: 'TECHNICAL' }
+      ]
+    },
+    {
+      messages: [
+        { role: 'system', content: 'Classify customer emails into: BILLING, TECHNICAL, SALES, OTHER' },
+        { role: 'user', content: 'Do you offer enterprise plans for teams?' },
+        { role: 'assistant', content: 'SALES' }
+      ]
+    }
+    // In production: 1000+ examples
+  ]
+
+  // Step 1: Prepare data
+  prepareTrainingData(trainingExamples)
+
+  // Step 2: Upload file
+  const fileId = await uploadTrainingFile()
+
+  // Step 3: Start training
+  const jobId = await createFineTuningJob(fileId)
+
+  // Step 4: Monitor (commented out for demo - takes hours)
+  // await monitorTraining(jobId)
+
+  // Step 5: Use model
+  // const modelId = 'ft:gpt-3.5-turbo-0613:company:email-classifier-v1:abc123'
+  // await useFineTunedModel(modelId, 'My invoice shows incorrect charges')
+
+  console.log('Pipeline complete!')
+  console.log('\\nCost breakdown:')
+  console.log('  Training: ~$8 (for 1K examples)')
+  console.log('  Inference: $0.012 per 1K tokens (1.6x base price)')
+}
+
+runFineTuningPipeline()
+`}
+/>
+
+**OpenAI Pros & Cons**:
+
+| Pros | Cons |
+|------|------|
+| Easiest to use (managed service) | Most expensive ($8/1K training examples) |
+| No infrastructure needed | 1.6x cost for inference vs base model |
+| Fast training (hours, not days) | Limited control over hyperparameters |
+| Automatic versioning | Can't export model weights |
+
+**Cost**: $8 per 1K training tokens + $0.012 per 1K inference tokens (vs $0.0075 base)
+
+### Anthropic Claude (Coming 2026)
+
+**Best for**: Long-context tasks, reasoning-heavy applications
+
+**Current status**: No public fine-tuning API (as of Feb 2025)
+**Expected**: Q2-Q3 2026 based on roadmap
+
+**Anticipated features**:
+- Context window fine-tuning (optimize for 100K+ token inputs)
+- Constitutional AI alignment fine-tuning
+- Similar pricing to OpenAI (~$10/1K examples estimated)
+
+### Open-Source: Llama 3 with LoRA
+
+**Best for**: Cost-sensitive, high-control, on-premise deployments
+
+<CodePlayground
+  title="Llama 3 LoRA Fine-Tuning"
+  description="Fine-tune Llama 3 using LoRA (Low-Rank Adaptation) for 95% memory savings. Production-ready code!"
+  exerciseType="llama-lora"
+  code={`import { HfInference } from '@huggingface/inference'
+import { AutoTokenizer, AutoModelForCausalLM } from '@xenova/transformers'
+
+// Note: This is conceptual TypeScript. Actual implementation uses Python.
+// Use this as a guide for understanding the process.
+
+interface LoRAConfig {
+  r: number // LoRA rank (4, 8, 16, 32)
+  alpha: number // LoRA scaling factor
+  dropout: number
+  targetModules: string[] // Which layers to adapt
+}
+
+interface TrainingConfig {
+  learningRate: number
+  batchSize: number
+  epochs: number
+  warmupSteps: number
+}
+
+// Python code you would run (shown as string for reference)
+const pythonTrainingCode = \`
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from datasets import load_dataset
+import torch
+
+# Load base model (4-bit quantized for memory efficiency)
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Meta-Llama-3-8B",
+    load_in_4bit=True,
+    device_map="auto"
+)
+
+# Configure LoRA
+lora_config = LoraConfig(
+    r=16,  # Rank - higher = more expressive but more memory
+    lora_alpha=32,  # Scaling factor
+    target_modules=["q_proj", "v_proj"],  # Adapt attention layers
+    lora_dropout=0.05,
+    bias="none",
+    task_type="CAUSAL_LM"
+)
+
+# Apply LoRA adapters
+model = prepare_model_for_kbit_training(model)
+model = get_peft_model(model, lora_config)
+
+print(f"Trainable parameters: {model.print_trainable_parameters()}")
+# Output: "trainable params: 4M || all params: 8B || trainable%: 0.05%"
+
+# Load training data
+dataset = load_dataset("json", data_files="training.jsonl")
+
+# Training arguments
+training_args = TrainingArguments(
+    output_dir="./llama3-lora-email-classifier",
+    num_train_epochs=3,
+    per_device_train_batch_size=4,
+    gradient_accumulation_steps=4,
+    learning_rate=2e-4,
+    warmup_steps=100,
+    logging_steps=10,
+    save_strategy="epoch"
+)
+
+# Train
+from trl import SFTTrainer
+
+trainer = SFTTrainer(
+    model=model,
+    args=training_args,
+    train_dataset=dataset["train"],
+    tokenizer=AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B")
+)
+
+trainer.train()
+
+# Save LoRA adapters (only ~100MB!)
+model.save_pretrained("./llama3-email-classifier-lora")
+\`
+
+// After training, deploy with Node.js
+async function deployLoRAModel() {
+  console.log('LoRA Fine-Tuning Overview\\n')
+  console.log('Base Model: Llama 3 8B (16GB VRAM required)')
+  console.log('With 4-bit quantization: 5GB VRAM required')
+  console.log('LoRA adapters: ~100MB\\n')
+
+  console.log('Training Configuration:')
+  console.log('  LoRA rank (r): 16')
+  console.log('  Target modules: q_proj, v_proj (attention layers)')
+  console.log('  Trainable params: 4M / 8B (0.05%)')
+  console.log('  Training time: ~4 hours on A100 GPU\\n')
+
+  console.log('Cost Comparison:')
+  console.log('  OpenAI fine-tuning: $8 per 1K examples')
+  console.log('  Llama 3 LoRA: $50 GPU cost (one-time)')
+  console.log('  Break-even: 6,250 examples\\n')
+
+  console.log('Inference Cost:')
+  console.log('  OpenAI: $0.012 per 1K tokens')
+  console.log('  Self-hosted Llama: $0.002 per 1K tokens (85% savings)\\n')
+
+  console.log('Production Deployment:')
+  console.log('  Option 1: HuggingFace Inference Endpoints ($0.60/hour)')
+  console.log('  Option 2: AWS EC2 g5.2xlarge ($1.21/hour)')
+  console.log('  Option 3: Modal Labs serverless ($0.30/hour average)\\n')
+}
+
+deployLoRAModel()
+
+console.log('Python Training Script:')
+console.log(pythonTrainingCode)
+`}
+/>
+
+**Llama 3 LoRA Pros & Cons**:
+
+| Pros | Cons |
+|------|------|
+| 95% memory savings vs full fine-tuning | Requires technical expertise |
+| Own your model weights | Need GPU infrastructure |
+| 85% cheaper inference (self-hosted) | Longer time to production |
+| Full control over training | Maintenance burden |
+
+**Cost**: $50 training (one-time GPU) + $0.002 per 1K inference tokens (self-hosted)
+
+## Production Deployment Strategies
+
+### Model Versioning
+
+```typescript
+interface ModelVersion {
+  id: string
+  version: string
+  baseModel: string
+  trainingDate: Date
+  accuracy: number
+  status: 'training' | 'testing' | 'production' | 'deprecated'
+}
+
+class ModelRegistry {
+  private versions: Map<string, ModelVersion> = new Map()
+
+  registerVersion(version: ModelVersion): void {
+    this.versions.set(version.id, version)
+    console.log(`Registered model: ${version.id} (v${version.version})`)
+  }
+
+  deploy(modelId: string): void {
+    const model = this.versions.get(modelId)
+    if (!model) throw new Error('Model not found')
+
+    // Set previous production model to deprecated
+    for (const [id, v] of this.versions) {
+      if (v.status === 'production') {
+        v.status = 'deprecated'
+      }
+    }
+
+    model.status = 'production'
+    console.log(`Deployed model ${modelId} to production`)
+  }
+
+  rollback(): void {
+    // Find previous production model
+    const versions = Array.from(this.versions.values())
+      .filter(v => v.status === 'deprecated')
+      .sort((a, b) => b.trainingDate.getTime() - a.trainingDate.getTime())
+
+    if (versions.length === 0) {
+      throw new Error('No previous version to rollback to')
+    }
+
+    this.deploy(versions[0].id)
+    console.log('Rolled back to previous version')
+  }
+}
+```
+
+### Canary Deployment
+
+```typescript
+class CanaryDeployment {
+  private canaryPercent: number = 5 // Start with 5% traffic
+
+  async routeRequest(request: any): Promise<string> {
+    const useCanary = Math.random() < (this.canaryPercent / 100)
+
+    if (useCanary) {
+      return await this.callModel('ft:gpt-3.5-turbo:new-version', request)
+    } else {
+      return await this.callModel('ft:gpt-3.5-turbo:current-version', request)
+    }
+  }
+
+  async callModel(modelId: string, request: any): Promise<string> {
+    // Make API call to model
+    return 'response'
+  }
+
+  increaseCanary(): void {
+    // Gradually increase if metrics look good
+    this.canaryPercent = Math.min(this.canaryPercent * 2, 100)
+    console.log(`Canary traffic increased to ${this.canaryPercent}%`)
+  }
+}
+```
+
+## Common Pitfalls
+
+### 1. Insufficient Training Data
+**Problem**: Fine-tuning with <100 examples leads to overfitting
+```typescript
+// ❌ Bad: Too few examples
+const trainingData = generateExamples(50) // Model memorizes, doesn't generalize
+
+// ✅ Good: Sufficient diversity
+const trainingData = generateExamples(1000) // Model learns patterns
+```
+
+### 2. Data Leakage
+**Problem**: Test data in training set inflates accuracy metrics
+```typescript
+// ✅ Good: Proper train/val/test split
+const data = shuffle(allExamples)
+const train = data.slice(0, 800) // 80%
+const val = data.slice(800, 900) // 10%
+const test = data.slice(900) // 10%
+```
+
+### 3. Ignoring Base Model Performance
+**Problem**: Fine-tuning when base model already works
+```typescript
+// Always test baseline first
+const baselineAccuracy = await evaluateBaseModel(testSet)
+console.log(`Baseline: ${baselineAccuracy}%`)
+
+if (baselineAccuracy > 85) {
+  console.log('⚠️ Consider prompt engineering first')
+}
+```
+
+### 4. Not Monitoring Drift
+**Problem**: Model performance degrades over time
+```typescript
+// ✅ Good: Track accuracy weekly
+setInterval(async () => {
+  const currentAccuracy = await evaluate(productionModel, liveData)
+  if (currentAccuracy < threshold) {
+    alert('Model drift detected - consider retraining')
+  }
+}, 7 * 24 * 60 * 60 * 1000) // Weekly
+```
+
+## Key Takeaways
+
+### Decision Framework
+- **Prompt Engineering**: <10K queries/month, generic tasks, limited data
+- **RAG**: Knowledge-heavy, frequently changing information, 10K-100K/month
+- **Fine-Tuning**: >100K queries/month, consistent formatting, niche domain
+
+### When to Fine-Tune
+- ✅ High volume (>100K/month) with stable requirements
+- ✅ Classification tasks needing >90% accuracy
+- ✅ Consistent output formatting required
+- ✅ Domain-specific language/style
+- ❌ Knowledge retrieval tasks (use RAG)
+- ❌ Low volume (<10K/month)
+- ❌ Insufficient training data (<100 examples)
+- ❌ Rapidly changing requirements
+
+### Platform Selection
+- **OpenAI**: Easiest, fastest, most expensive ($8/1K examples)
+- **Claude**: Best for long-context (when available, 2026)
+- **Llama 3 LoRA**: Cheapest inference, most control, requires expertise
+
+### Production Metrics
+- **Break-even**: Typically 3-6 months for high-volume applications
+- **Accuracy gain**: 10-20% over prompt engineering
+- **Cost savings**: 60-85% per query (vs larger base models)
+- **Training time**: Hours (OpenAI) to days (self-hosted)
+
+### Best Practices
+- Start with baseline evaluation (prompt engineering)
+- Collect 1000+ diverse examples
+- Use proper train/val/test splits (80/10/10)
+- Implement canary deployments for new models
+- Monitor for model drift monthly
+- Version all models with rollback capability
+
+## Further Reading
+
+- [OpenAI Fine-Tuning Guide](https://platform.openai.com/docs/guides/fine-tuning) - Official documentation
+- [LoRA: Low-Rank Adaptation](https://arxiv.org/abs/2106.09685) - Original paper
+- [Llama 3 Technical Report](https://ai.meta.com/llama/) - Meta AI
+- [When to Fine-Tune LLMs](https://eugeneyan.com/writing/llm-patterns/) - Eugene Yan's practical guide
+- [HuggingFace PEFT Library](https://huggingface.co/docs/peft) - Parameter-efficient fine-tuning

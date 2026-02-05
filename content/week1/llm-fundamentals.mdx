@@ -1,53 +1,172 @@
 import { CodePlayground } from '@/components/curriculum/CodePlayground'
 
-# LLM Fundamentals
+# The LLM Blueprint: Tokenization Physics & Context Constraints
 
-Learn how Large Language Models work and how to choose the right model for your use case.
+Moving beyond "next token prediction" to understand the architectural constraints that determine your system's reliability, cost, and precision.
 
-> **Note**: Pricing and model information updated as of February 2026. The Claude 4.5 series and GPT-5 represent the latest frontier models.
+> **Architect Perspective**: This isn't about how LLMs work—it's about the **physical limits** that constrain your design decisions. Think of tokens as your "unit of compute" and context windows as your "working memory budget."
 
-## How LLMs Work
+## Tokenization Physics: The Hidden Cost Layer
 
-Large Language Models (LLMs) like Claude and GPT-4 are neural networks trained on vast amounts of text data. They work by:
+Every character you send to an LLM gets encoded into tokens. But **not all tokenizers are created equal**, and this directly impacts your prompt effectiveness and cost.
 
-1. **Transformers Architecture**: Using attention mechanisms to understand context
-2. **Token Processing**: Breaking text into tokens (subwords)
-3. **Next Token Prediction**: Predicting the most likely next token given context
+### Why Tokenization Matters
 
-### Key Concepts
+**Example: The tiktoken difference**
+```typescript
+// Claude's tokenizer (cl100k_base)
+"Hello, world!" → 3 tokens
 
-**Context Windows**: The amount of text an LLM can "remember" at once.
-- Claude Sonnet 4.5: 200K tokens standard, 1M tokens extended (~750K words)
-- GPT-5: 400K tokens
-- GPT-4o: 128K tokens
-- Practical consideration: Cost increases with context size
+// GPT-4o's tokenizer (o200k_base)
+"Hello, world!" → 2 tokens
 
-**Tokens**: The fundamental unit LLMs process.
-- Rule of thumb: 1 token ≈ 0.75 words (English)
-- Example: "Hello world!" = ~3 tokens
-- Why it matters: Pricing is per token (input + output)
+// Why it matters:
+const inputCost = tokenCount * pricePerToken
+// Different tokenizers = different costs for the SAME prompt
+```
 
-## Model Selection
+### Architectural Constraint #1: Token Efficiency
 
-Choosing the right model involves balancing three factors:
+**The Physics**:
+- Code and technical terms fragment more than natural language
+- Special characters (JSON, XML) consume extra tokens
+- Non-English text often requires 2-3x more tokens
 
-| Model | Cost | Latency | Quality | Best For |
-|-------|------|---------|---------|----------|
-| Claude Opus 4.5 | High | Slow | Excellent | Complex reasoning, agents, coding |
-| GPT-5 | Medium-High | Medium | Excellent | Deep reasoning, sophisticated agents |
-| Claude Sonnet 4.5 | Medium | Fast | Excellent | Balanced performance, coding, agents |
-| GPT-4o | Medium | Fast | Very Good | General purpose, multimodal tasks |
-| Claude Haiku 4.5 | Low | Very Fast | Good | Fast responses, classification, simple tasks |
+**Design Impact**:
+```typescript
+// ❌ Token-inefficient prompt (18 tokens)
+"Please analyze this JSON: {...}"
 
-### Cost/Latency/Quality Tradeoffs
+// ✅ Token-optimized (12 tokens)
+"Analyze JSON: {...}"
 
-Choose your optimization focus based on your application's primary constraint:
+// At 10M requests/month, this saves $200-500
+```
 
-| Priority | When to Use | Example Use Cases | Recommended Model |
-|----------|-------------|-------------------|-------------------|
-| **Cost** | High-volume, simple tasks | • Email classification<br/>• Data extraction<br/>• Sentiment analysis<br/>• Tag generation | Claude Haiku 4.5 |
-| **Latency** | Real-time user interactions | • Chat applications<br/>• Auto-complete features<br/>• Live customer support<br/>• Interactive tutoring | Claude Haiku 4.5<br/>GPT-4o |
-| **Quality** | Complex reasoning required | • Code generation<br/>• Legal document analysis<br/>• Medical diagnosis support<br/>• Strategic planning | Claude Opus 4.5<br/>GPT-5 |
+## Context Density: Managing the Effective Context Window
+
+**The Problem**: Models advertise "1M token windows" but lose precision as you approach the limit. This is called the **"Lost in the Middle"** phenomenon.
+
+### The Precision Falloff Curve
+
+```typescript
+// Effective Context Utilization (Claude Sonnet 4.5)
+interface ContextReliability {
+  '0-32K tokens': 95-100%    // ✅ High precision
+  '32K-128K tokens': 85-95%  // ⚠️  Slight degradation
+  '128K-500K tokens': 70-85% // ⚠️  Noticeable precision loss
+  '500K-1M tokens': 50-70%   // ❌ "Lost in the Middle"
+}
+```
+
+### Architectural Constraint #2: Context Window Strategy
+
+**Design Pattern: The Context Budget**
+```typescript
+const CONTEXT_BUDGET = {
+  systemPrompt: 2000,      // Fixed instructions
+  fewShot: 5000,           // Example demonstrations
+  userContext: 20000,      // Dynamic user data
+  buffer: 3000,            // Safety margin
+  maxOutput: 4000          // Response limit
+} // Total: 34K tokens (sweet spot for reliability)
+```
+
+**Anti-Pattern**: Stuffing the entire 200K window
+```typescript
+// ❌ Architect's mistake
+const prompt = `
+  ${systemInstructions} +    // 2K tokens
+  ${allCustomerHistory} +    // 180K tokens (!)
+  ${currentQuery}            // 1K tokens
+`
+// Result: Model "loses" critical details from history
+```
+
+**✅ Production Pattern**: Sliding window with summarization
+```typescript
+const prompt = `
+  ${systemInstructions} +         // 2K
+  ${summarizedHistory} +          // 8K (condensed)
+  ${recentContextFull} +          // 15K (last 10 turns)
+  ${currentQuery}                 // 1K
+` // Total: 26K tokens → stays in high-precision zone
+```
+
+## The Model Selection Matrix: Architectural Decision Framework
+
+**Architect Perspective**: Model selection isn't about "which is best"—it's about **matching the constraint** that matters most for your specific use case.
+
+### The Three-Axis Constraint Model
+
+| Model | Input Cost | Output Cost | Latency (p95) | Quality Tier | Architectural Use Case |
+|-------|-----------|-------------|---------------|--------------|------------------------|
+| **Claude Opus 4.5** | $15/MTok | $75/MTok | 4-8s | Tier 1 | Critical reasoning, high-stakes decisions, complex agents |
+| **GPT-5** | $10/MTok | $40/MTok | 3-6s | Tier 1 | Deep analytical tasks, strategic planning |
+| **Claude Sonnet 4.5** | $3/MTok | $15/MTok | 1-3s | Tier 1 | Balanced workhorse, coding, production agents |
+| **GPT-4o** | $2.50/MTok | $10/MTok | 1-2s | Tier 2 | General-purpose tasks, multimodal processing |
+| **Claude Haiku 4.5** | $0.25/MTok | $1.25/MTok | 0.3-0.8s | Tier 2 | High-volume classification, fast inference |
+
+> **Cost Reality Check**: At 1M requests/month with 1K input + 500 output tokens:
+> - Haiku: $875/month
+> - Sonnet: $10,500/month (12x more)
+> - Opus: $41,250/month (47x more)
+
+### Architectural Decision Tree
+
+```typescript
+function selectModel(useCase: UseCase): Model {
+  // Constraint #1: Latency Requirements
+  if (useCase.requiresRealTime && useCase.p95Latency < 1000ms) {
+    return 'claude-haiku-4.5' // Only option for sub-second
+  }
+
+  // Constraint #2: Cost Budget
+  if (useCase.requestVolume > 1_000_000 && useCase.budgetPerRequest < 0.01) {
+    return 'claude-haiku-4.5' // Economic constraint forces choice
+  }
+
+  // Constraint #3: Quality Floor
+  if (useCase.requiresCriticalReasoning || useCase.errorTolerance < 0.01) {
+    return 'claude-opus-4.5' // Quality constraint overrides cost
+  }
+
+  // Default: Balanced choice
+  return 'claude-sonnet-4.5'
+}
+```
+
+### Real-World Architecture Patterns
+
+**Pattern 1: The Cascade Strategy**
+```typescript
+// High-quality with cost optimization
+async function processWithCascade(input: string) {
+  try {
+    // Try fast + cheap first
+    const result = await callHaiku(input)
+    if (result.confidence > 0.9) return result
+
+    // Fall back to quality if uncertain
+    return await callSonnet(input)
+  } catch {
+    // Ultimate fallback for high-stakes
+    return await callOpus(input)
+  }
+}
+// Cost impact: 70% requests use Haiku, 25% Sonnet, 5% Opus
+// Average cost: ~$2.50/MTok vs. $15/MTok (6x savings)
+```
+
+**Pattern 2: The Tiered Quality System**
+```typescript
+// Different models for different users
+const MODEL_BY_TIER = {
+  free: 'claude-haiku-4.5',      // Fast, cheap
+  pro: 'claude-sonnet-4.5',      // Balanced
+  enterprise: 'claude-opus-4.5'  // Best quality
+}
+```
 
 **Decision Framework:**
 1. **Start with cost optimization** - Use Haiku 4.5 as your baseline
