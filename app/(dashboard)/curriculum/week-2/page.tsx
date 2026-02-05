@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   description: 'Build production AI with proper governance, fairness, compliance, and safety controls'
 }
 
-export default async function Week6Page() {
+export default async function Week2Page() {
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.email) {
