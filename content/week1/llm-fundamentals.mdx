@@ -6,6 +6,59 @@ Moving beyond "next token prediction" to understand the architectural constraint
 
 > **Architect Perspective**: This isn't about how LLMs work—it's about the **physical limits** that constrain your design decisions. Think of tokens as your "unit of compute" and context windows as your "working memory budget."
 
+---
+
+## 🏥 Real-World Challenge: The Multi-Tier Health Triage
+
+**The Problem**: A global telehealth platform receives 50,000 patient queries daily. Using Opus 4.5 for every request costs **$225,000/month**—financially unsustainable. But downgrading all queries to Haiku risks missing critical medical symptoms that require deep reasoning.
+
+**Business Constraints**:
+- **Budget**: Must reduce monthly AI costs to under $30,000 (80% reduction)
+- **Safety**: Cannot compromise on medical accuracy—100% precision on critical queries
+- **Latency**: Must maintain <3s P95 response time for good UX
+- **Compliance**: HIPAA-compliant audit trail for all medical decisions
+
+**Architectural Solution: The Model Cascade**
+
+Implement intelligent query routing based on complexity classification:
+
+```typescript
+// Step 1: Fast classifier (Haiku 4.5) categorizes query in <500ms
+const classification = await classifyQueryComplexity(patientQuery)
+// → "simple" (password reset), "complex" (drug interaction), or "critical" (chest pain)
+
+// Step 2: Route to appropriate model based on classification
+if (classification.type === 'simple' && classification.confidence > 0.90) {
+  return await callHaiku(patientQuery)      // Fast & cheap: $0.001/query
+} else if (classification.type === 'critical') {
+  return await escalateToHuman(patientQuery) // Safety: Always HITL
+} else {
+  return await callOpus(patientQuery)       // Quality: $0.15/query
+}
+```
+
+**Production Impact**:
+- **Cost**: $225K → $28K/month (87.5% reduction)
+- **Latency**: 4.2s → 1.8s P95 (57% faster) by routing 70% to Haiku
+- **Safety**: 100% of critical queries escalated to human review (zero missed emergencies)
+- **ROI**: 3-month implementation, $197K/month savings = **22-day payback period**
+
+**Routing Distribution** (50K queries/day):
+- 70% → Haiku (administrative, simple questions): **$35K savings**
+- 25% → Opus (medical reasoning, drug interactions): **$162K spend**
+- 5% → Human review (emergencies, uncertain cases): **$0 AI cost**
+
+**How This Connects to LLM Fundamentals**:
+- **Tokenization Physics** → Understanding that Haiku uses the same tokenizer as Opus enables seamless cascade without prompt rewriting
+- **Context Constraints** → Staying within 32K token sweet spot ensures high precision for medical queries
+- **Model Selection Matrix** → Matching the right model constraint (cost vs quality vs latency) to each query type
+
+**[👉 Lab: Build the Multi-Tier Triage System](/curriculum/week-1/labs/multi-tier-triage)**
+
+In the hands-on lab, you'll implement the complete system: Haiku classifier, Opus escalation, confidence thresholds, cost tracking, and production validation showing 80%+ cost savings.
+
+---
+
 ## Tokenization Physics: The Hidden Cost Layer
 
 Every character you send to an LLM gets encoded into tokens. But **not all tokenizers are created equal**, and this directly impacts your prompt effectiveness and cost.
