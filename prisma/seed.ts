@@ -277,19 +277,19 @@ const weekData = [
     title: 'Advanced RAG (The Optimizer)',
     description: 'Master enterprise-grade retrieval systems with hybrid search, re-ranking, and query optimization for high-precision, low-latency RAG at scale',
     objectives: [
-      'Implement hybrid retrieval combining semantic and keyword search for precision',
-      'Deploy re-ranking models to improve top-K accuracy by 20%+',
-      'Apply query transformation patterns (Multi-Query, HyDE, Decomposition)',
-      'Optimize context windows and prevent "Lost in the Middle" degradation',
-      'Build production RAG with sub-200ms latency and enterprise hardening'
+      'Architect Hybrid Retrieval: Master the fusion of semantic (vector) and keyword (BM25) search to eliminate "vector blur" in production environments',
+      'Deploy Neural Re-rankers: Implement cross-encoders to optimize Top-K precision and evaluate the critical "accuracy vs. latency" trade-off',
+      'Advanced Query Engineering: Apply Multi-Query, HyDE, and Decomposition patterns to translate complex user intent into actionable search paths',
+      'Context Window Optimization: Engineer context strategies to mitigate "Lost in the Middle" degradation and maximize LLM reasoning efficiency',
+      'Production Hardening & Scale: Build HIPAA-grade RAG systems featuring sub-200ms latency, semantic caching, and rigorous audit trails'
     ],
     concepts: [
       { slug: 'hybrid-retrieval-reranking', title: 'Hybrid Search & Re-Ranking', description: 'Combining vector and keyword precision.', minutes: 50 },
       { slug: 'query-transformation-patterns', title: 'Query Transformation', description: 'Patterns like HyDE and Multi-Query decomposition.', minutes: 45 },
       { slug: 'context-window-optimization', title: 'Context Optimization', description: 'Preventing degradation and managing window limits.', minutes: 40 },
       { slug: 'enterprise-rag-hardening', title: 'Enterprise RAG Hardening', description: 'Security, evaluation, and robustness for production.', minutes: 55 },
-      { slug: 'observability-basics', title: 'AI Observability', description: 'Deep tracing and insight into system reasoning.', minutes: 30 },
-      { slug: 'monitoring-ai-systems', title: 'LLM Monitoring', description: 'Tracking live performance, drift, and latency.', minutes: 35 },
+      { slug: 'observability-basics', title: 'Request Tracing', description: 'Single-request debugging with spans and traces.', minutes: 30 },
+      { slug: 'monitoring-ai-systems', title: 'System Metrics', description: 'Aggregated monitoring for drift, cost, and health.', minutes: 35 },
       { slug: 'performance-optimization', title: 'Performance & Caching', description: 'Low-latency engineering with semantic caching.', minutes: 40 },
       { slug: 'production-deployment', title: 'Production Deployment', description: 'Scaling and infrastructure best practices.', minutes: 35 }
     ],
