@@ -131,10 +131,10 @@ export default async function Week3Page() {
           </p>
         </div>
 
-        {/* Learning Objectives */}
+        {/* Technical Milestones */}
         <Card>
           <CardHeader>
-            <CardTitle>Learning Objectives</CardTitle>
+            <CardTitle>Technical Milestones</CardTitle>
           </CardHeader>
           <CardContent>
             <ul className="space-y-2">

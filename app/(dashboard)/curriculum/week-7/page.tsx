@@ -17,6 +17,8 @@ import {
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { LearningObjectives } from './components/LearningObjectives'
+import { WeekHeader } from './components/WeekHeader'
 
 // Concept visualization icons - Week 7: Observability & Production (The Reliability)
 // Using amber/yellow theme to match Week 7's gradient (from-amber-50 to-yellow-50)
@@ -38,7 +40,7 @@ function getConceptIllustration(slug: string) {
         </div>
       </div>
     ),
-    'llm-as-judge': (
+    'automated-evaluation': (
       <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
           <Gavel className="h-7 w-7 text-amber-600" />
@@ -108,31 +110,11 @@ export default async function Week7Page() {
   return (
     <div className="container max-w-4xl py-8">
       <div className="space-y-8">
-        {/* Header */}
-        <div>
-          <div className="text-sm text-muted-foreground mb-2">Week 7</div>
-          <h1 className="text-4xl font-bold">{week.title}</h1>
-          <p className="text-lg text-muted-foreground mt-2">
-            {week.description}
-          </p>
-        </div>
+        {/* Header with Overview Tooltip */}
+        <WeekHeader title={week.title} description={week.description || ''} />
 
-        {/* Learning Objectives */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Learning Objectives</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-2">
-              {objectives.map((objective, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>{objective}</span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
+        {/* Technical Milestones - Premium Collapsible */}
+        <LearningObjectives objectives={objectives} />
 
         {/* Progress Overview */}
         {progress && (

@@ -166,7 +166,7 @@ export default async function Week6Page() {
         {/* Header with Overview Tooltip */}
         <WeekHeader title={week.title} description={week.description || ''} />
 
-        {/* Learning Objectives - Premium Collapsible */}
+        {/* Technical Milestones - Premium Collapsible */}
         <LearningObjectives objectives={objectives} />
 
         {/* Progress Overview */}
