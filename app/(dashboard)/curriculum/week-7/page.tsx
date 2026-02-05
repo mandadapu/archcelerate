@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 
 export const metadata: Metadata = {
   title: 'Week 7: Observability & Production (The Reliability)',
-  description: 'Plan and build your capstone AI application from scratch'
+  description: 'Harden AI systems for production with observability, guardrails, and automated evaluation'
 }
 
 export default async function Week7Page() {
