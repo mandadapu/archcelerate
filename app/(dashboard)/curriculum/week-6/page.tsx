@@ -30,73 +30,73 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 
 // Concept visualization icons - Week 6: Advanced RAG (The Optimizer)
-// Using red/orange theme to match Week 6's primary color
+// Using rose/coral theme to match Week 6's gradient (from-red-50 to-rose-50)
 function getConceptIllustration(slug: string) {
   const illustrations: Record<string, JSX.Element> = {
     'hybrid-retrieval-reranking': (
-      <div className="flex items-center justify-center opacity-75">
+      <div className="flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <Search className="h-7 w-7 text-red-600" />
-          <ArrowUpDown className="h-5 w-5 text-orange-500" />
+          <Search className="h-7 w-7 text-rose-600" />
+          <ArrowUpDown className="h-5 w-5 text-rose-500" />
           <Database className="h-6 w-6 text-red-500" />
         </div>
       </div>
     ),
     'query-transformation-patterns': (
-      <div className="flex items-center justify-center opacity-75">
+      <div className="flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <Settings className="h-7 w-7 text-red-600" />
-          <GitBranch className="h-6 w-6 text-orange-500" />
+          <Settings className="h-7 w-7 text-rose-600" />
+          <GitBranch className="h-6 w-6 text-rose-500" />
         </div>
       </div>
     ),
     'context-window-optimization': (
-      <div className="flex items-center justify-center opacity-75">
+      <div className="flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <Filter className="h-7 w-7 text-red-600" />
-          <Columns className="h-6 w-6 text-orange-500" />
+          <Filter className="h-7 w-7 text-rose-600" />
+          <Columns className="h-6 w-6 text-rose-500" />
         </div>
       </div>
     ),
     'enterprise-rag-hardening': (
-      <div className="flex items-center justify-center opacity-75">
+      <div className="flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <Shield className="h-7 w-7 text-red-600" />
-          <Activity className="h-6 w-6 text-orange-500" />
+          <Shield className="h-7 w-7 text-rose-600" />
+          <Activity className="h-6 w-6 text-rose-500" />
           <BarChart3 className="h-5 w-5 text-red-500" />
         </div>
       </div>
     ),
     'observability-basics': (
-      <div className="flex items-center justify-center opacity-75">
+      <div className="flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <Eye className="h-7 w-7 text-red-600" />
-          <Activity className="h-6 w-6 text-orange-500" />
+          <Eye className="h-7 w-7 text-rose-600" />
+          <Activity className="h-6 w-6 text-rose-500" />
         </div>
       </div>
     ),
     'monitoring-ai-systems': (
-      <div className="flex items-center justify-center opacity-75">
+      <div className="flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <BarChart3 className="h-7 w-7 text-red-600" />
-          <Gauge className="h-6 w-6 text-orange-500" />
+          <BarChart3 className="h-7 w-7 text-rose-600" />
+          <Gauge className="h-6 w-6 text-rose-500" />
         </div>
       </div>
     ),
     'performance-optimization': (
-      <div className="flex items-center justify-center opacity-75">
+      <div className="flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <Zap className="h-7 w-7 text-orange-500" />
-          <Database className="h-6 w-6 text-red-600" />
+          <Zap className="h-7 w-7 text-rose-500" />
+          <Database className="h-6 w-6 text-rose-600" />
           <TrendingUp className="h-5 w-5 text-red-500" />
         </div>
       </div>
     ),
     'production-deployment': (
-      <div className="flex items-center justify-center opacity-75">
+      <div className="flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
           <Server className="h-6 w-6 text-gray-500" />
-          <Rocket className="h-7 w-7 text-red-600" />
+          <Rocket className="h-7 w-7 text-rose-600" />
           <CheckCircle2 className="h-6 w-6 text-green-600" />
         </div>
       </div>
