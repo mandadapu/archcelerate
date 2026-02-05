@@ -493,57 +493,22 @@ export default async function DashboardPage() {
               <CardDescription>Enterprise-grade protection framework</CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Framework Overview Diagram */}
-              <div className="rounded-lg mb-4 overflow-hidden bg-slate-900 border border-green-200">
+              <div className="aspect-video rounded-lg mb-4 overflow-hidden relative">
                 <Image
-                  src="/images/security/framework-overview.svg"
-                  alt="AI Security Framework: DATA → MODEL → USE with INFRA and GOV layers"
-                  width={800}
-                  height={400}
-                  className="w-full h-auto"
+                  src="/images/cards/security.svg"
+                  alt="AI Security"
+                  fill
+                  className="object-cover"
                 />
               </div>
-
-              {/* Detailed Threats & Defenses Diagram */}
-              <div className="rounded-lg mb-4 overflow-hidden bg-slate-900 border border-green-200">
-                <Image
-                  src="/images/security/threats-defenses.svg"
-                  alt="Security threats and defenses for DATA, MODEL, and USAGE layers"
-                  width={800}
-                  height={400}
-                  className="w-full h-auto"
-                />
-              </div>
-
-              {/* Quick Reference */}
-              <div className="space-y-2 mb-4 p-3 bg-green-50 rounded-lg border border-green-200">
-                <div className="text-xs font-semibold text-green-800 uppercase tracking-wide">
-                  Protection Layers
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div>
-                    <div className="font-semibold text-green-900">DATA</div>
-                    <div className="text-green-700 text-[10px]">Poison, Exfil, Leak</div>
-                  </div>
-                  <div>
-                    <div className="font-semibold text-green-900">MODEL</div>
-                    <div className="text-green-700 text-[10px]">SCM, API, Priv Esc</div>
-                  </div>
-                  <div>
-                    <div className="font-semibold text-green-900">USAGE</div>
-                    <div className="text-green-700 text-[10px]">Prompt, DoS, Theft</div>
-                  </div>
-                </div>
-              </div>
-
-              <p className="text-xs text-slate-600 mb-4">
+              <p className="text-sm text-slate-600 mb-4">
                 Complete security framework covering data protection, model security,
-                and usage monitoring with infrastructure (CIA Triad) and governance
-                layers. Implements OWASP Top 10 for LLMs defenses.
+                and usage monitoring. Implements OWASP Top 10 for LLMs defenses with
+                enterprise-grade infrastructure and governance.
               </p>
               <Link href="/security">
                 <Button size="sm" variant="outline" className="w-full border-green-300 text-green-700 hover:bg-green-50">
-                  Learn Security Framework →
+                  Learn Security Framework
                 </Button>
               </Link>
             </CardContent>
