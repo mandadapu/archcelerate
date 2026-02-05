@@ -31,6 +31,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { LearningObjectives } from './components/LearningObjectives'
+import { WeekHeader } from './components/WeekHeader'
 
 // Concept visualization icons - Week 6: Advanced RAG (The Optimizer)
 // Using teal/cyan theme for technical "optimizer/filter" feel, distinguishing from Week 5's indigo/blue
@@ -166,14 +167,8 @@ export default async function Week6Page() {
   return (
     <div className="container max-w-4xl py-8">
       <div className="space-y-8">
-        {/* Header */}
-        <div>
-          <div className="text-sm text-muted-foreground mb-2">Week 6</div>
-          <h1 className="text-4xl font-bold">{week.title}</h1>
-          <p className="text-lg text-muted-foreground mt-2">
-            {week.description}
-          </p>
-        </div>
+        {/* Header with Overview Tooltip */}
+        <WeekHeader title={week.title} description={week.description} />
 
         {/* Learning Objectives - Premium Collapsible */}
         <LearningObjectives objectives={objectives} />
