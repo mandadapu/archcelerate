@@ -23,7 +23,7 @@ const startTime = Date.now()
 const response = await callClaude(prompt)  // Takes 8 seconds
 const latency = Date.now() - startTime     // 8000ms
 
-if (latency > 2000) {
+if (latency &gt; 2000) {
   // Too late! User already abandoned request
   // SLA: "95% of requests < 2s" → VIOLATED
 }
@@ -307,7 +307,7 @@ class SLACircuitBreaker {
       this.recordMetric({ latency, success: true, timestamp: Date.now() })
 
       // Step 4: Check if latency exceeds SLA
-      if (latency > SLA_CIRCUIT_BREAKER.latencyThreshold) {
+      if (latency &gt; SLA_CIRCUIT_BREAKER.latencyThreshold) {
         await this.checkAndTripCircuit()
         // Too late for this request, but circuit will trip for next ones
       }
@@ -367,7 +367,7 @@ class SLACircuitBreaker {
     this.recentMetrics.push(metric)
 
     // Keep only last 1000 metrics
-    if (this.recentMetrics.length > 1000) {
+    if (this.recentMetrics.length &gt; 1000) {
       this.recentMetrics = this.recentMetrics.slice(-1000)
     }
   }
@@ -463,12 +463,12 @@ class CostCircuitBreaker {
     this.resetWindowsIfNeeded()
 
     // Step 2: Check if over budget
-    if (this.currentHourSpend >= COST_SLA.hourlyBudget) {
+    if (this.currentHourSpend &gt;= COST_SLA.hourlyBudget) {
       // Hourly budget exceeded → refuse request (or use free local model)
       throw new Error(`Hourly budget exceeded: $${this.currentHourSpend.toFixed(2)}/$${COST_SLA.hourlyBudget}`)
     }
 
-    if (this.currentDaySpend >= COST_SLA.dailyBudget) {
+    if (this.currentDaySpend &gt;= COST_SLA.dailyBudget) {
       throw new Error(`Daily budget exceeded: $${this.currentDaySpend.toFixed(2)}/$${COST_SLA.dailyBudget}`)
     }
 
@@ -507,9 +507,9 @@ class CostCircuitBreaker {
 
   private selectModelByBudget(remainingBudget: number): string {
     // Dynamic model selection based on budget
-    if (remainingBudget > 0.02) {
+    if (remainingBudget &gt; 0.02) {
       return 'claude-sonnet-4.5'  // Normal budget → use Sonnet
-    } else if (remainingBudget > 0.002) {
+    } else if (remainingBudget &gt; 0.002) {
       return 'claude-haiku-4.5'   // Low budget → use Haiku
     } else {
       throw new Error('Insufficient budget for request')
@@ -520,19 +520,19 @@ class CostCircuitBreaker {
     const now = Date.now()
 
     // Reset hourly counter
-    if (now - this.lastHourReset > 3600000) {
+    if (now - this.lastHourReset &gt; 3600000) {
       this.currentHourSpend = 0
       this.lastHourReset = now
     }
 
     // Reset daily counter
-    if (now - this.lastDayReset > 86400000) {
+    if (now - this.lastDayReset &gt; 86400000) {
       this.currentDaySpend = 0
       this.lastDayReset = now
     }
 
     // Reset monthly counter (30 days)
-    if (now - this.lastMonthReset > 2592000000) {
+    if (now - this.lastMonthReset &gt; 2592000000) {
       this.currentMonthSpend = 0
       this.lastMonthReset = now
     }
@@ -551,7 +551,7 @@ class CostCircuitBreaker {
 **SLA Circuit Breaker Pattern**:
 ```typescript
 // The Contract:
-if (avgLatency > 2000ms || errorRate > 5%) {
+if (avgLatency &gt; 2000ms || errorRate &gt; 5%) {
   state = 'open'
   model = fallbackModel  // Automatic, no manual intervention
 }
@@ -699,7 +699,7 @@ describe('LLM Integration', () => {
 
     // Should have backed off due to rate limits
     expect(elapsed).toBeGreaterThan(1000)  // At least 1 second
-    expect(responses.every(r => r.text.length > 0)).toBe(true)
+    expect(responses.every(r => r.text.length &gt; 0)).toBe(true)
   })
 })
 ```
@@ -840,7 +840,7 @@ class RegressionSuite {
           goldenOutput,
           newOutput: newOutput.text,
           similarity,
-          passed: similarity > 0.85  // 85% similarity threshold
+          passed: similarity &gt; 0.85  // 85% similarity threshold
         }
       })
     )
@@ -927,7 +927,7 @@ class CircuitBreaker {
       this.failures++
       this.lastFailureTime = new Date()
 
-      if (this.failures >= this.threshold) {
+      if (this.failures &gt;= this.threshold) {
         this.state = 'open'
       }
 
@@ -1046,7 +1046,7 @@ class ErrorBudget {
   }
 
   get budgetExhausted(): boolean {
-    return this.errorRate >= this.budgetPercentage
+    return this.errorRate &gt;= this.budgetPercentage
   }
 
   private reset() {
@@ -1198,7 +1198,7 @@ async function batchEvaluate(testCases: TestCase[]) {
       excellent: results.filter(r => r.score === 5).length,
       good: results.filter(r => r.score === 4).length,
       acceptable: results.filter(r => r.score === 3).length,
-      poor: results.filter(r => r.score <= 2).length
+      poor: results.filter(r => r.score &lt;= 2).length
     },
     results
   }
@@ -1267,7 +1267,7 @@ class LatencyTracker {
     this.measurements.push(latencyMs)
 
     // Keep only last 1000 measurements
-    if (this.measurements.length > 1000) {
+    if (this.measurements.length &gt; 1000) {
       this.measurements.shift()
     }
   }
@@ -1308,7 +1308,7 @@ async function callLLMWithTracking(prompt: string) {
     latencyTracker.record(latency)
 
     // Alert if p99 latency exceeds SLA
-    if (latencyTracker.p99 > 5000) {
+    if (latencyTracker.p99 &gt; 5000) {
       await alertOncall('P99 latency exceeded 5s SLA')
     }
 
@@ -1334,7 +1334,7 @@ class BatchProcessor {
     return new Promise((resolve) => {
       this.queue.push({ prompt, resolve })
 
-      if (this.queue.length >= this.batchSize) {
+      if (this.queue.length &gt;= this.batchSize) {
         this.flush()
       } else {
         setTimeout(() => this.flush(), this.maxWaitMs)
@@ -1421,12 +1421,12 @@ class CostTracker {
     const metrics = this.getMetrics()
     const recommendations = []
 
-    if (metrics.costPerRequest > 0.10) {
+    if (metrics.costPerRequest &gt; 0.10) {
       recommendations.push('Consider using a cheaper model (Haiku vs Sonnet)')
     }
 
     const inputOutputRatio = metrics.outputTokens / metrics.inputTokens
-    if (inputOutputRatio > 2) {
+    if (inputOutputRatio &gt; 2) {
       recommendations.push('High output/input ratio - consider reducing max_tokens')
     }
 

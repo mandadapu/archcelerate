@@ -408,7 +408,7 @@ interface ErrorRoute {
 export function routeAfterHunter(state: NewsletterState): RoutingDecision {
   // Check if Hunter found articles
   if (state.raw_articles.length === 0) {
-    if (state.hunter_iteration >= 2) {
+    if (state.hunter_iteration &gt;= 2) {
       return 'to_human_escalation'  // Can't find articles after 2 tries
     }
     return 'to_hunter'  // Retry
@@ -424,13 +424,13 @@ export function routeAfterFactCheck(state: NewsletterState): RoutingDecision {
   console.log(`  Iteration: ${state.iteration_count}`)
 
   // BUDGET/SAFETY: Max iterations reached
-  if (state.iteration_count >= state.max_iterations) {
+  if (state.iteration_count &gt;= state.max_iterations) {
     console.log(`  ❌ Max iterations (${state.max_iterations}) reached`)
     return 'to_human_escalation'
   }
 
   // BUDGET/SAFETY: Cost exceeded
-  if (state.total_cost > 0.20) {
+  if (state.total_cost &gt; 0.20) {
     console.log(`  ❌ Budget exceeded ($${state.total_cost.toFixed(4)})`)
     return 'to_human_escalation'
   }
@@ -810,8 +810,8 @@ By the end of this lab, your system should be able to:
 | **Cost per newsletter** | < $0.20 | Production viability |
 | **API calls** | < 10 | Efficiency |
 | **Iterations** | 1-2 avg | Self-healing effectiveness |
-| **Quality score** | > 0.8 | Content credibility |
-| **Success rate** | > 90% | Reliability |
+| **Quality score** | &gt; 0.8 | Content credibility |
+| **Success rate** | &gt; 90% | Reliability |
 
 ---
 
@@ -831,13 +831,13 @@ After completing this lab:
 
 **Diagnosis**: Prompt is too strict or Hunter is searching wrong sources
 
-**Fix**: Adjust Fact-Checker prompt to be more lenient (score > 0.6 instead of 0.8)
+**Fix**: Adjust Fact-Checker prompt to be more lenient (score &gt; 0.6 instead of 0.8)
 
 ### Issue: Infinite loop between Hunter and Fact-Checker
 
 **Diagnosis**: `max_iterations` not enforced or correction_prompt not being used
 
-**Fix**: Verify routing logic checks `iteration_count >= max_iterations`
+**Fix**: Verify routing logic checks `iteration_count &gt;= max_iterations`
 
 ### Issue: Cost exceeds $0.20
 
@@ -1111,7 +1111,7 @@ Output JSON array:
   }
 ]
 
-**Quality Threshold**: Include papers with methodology_quality="high" OR (methodology_quality="medium" AND sample_size > 100 AND clinical_relevance >= 7)`
+**Quality Threshold**: Include papers with methodology_quality="high" OR (methodology_quality="medium" AND sample_size &gt; 100 AND clinical_relevance &gt;= 7)`
 
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-5-20250929',
@@ -1270,7 +1270,7 @@ export async function runMedicalResearchWorkflow(
     state = { ...state, ...criticResult }
 
     // Step 3: Routing Decision
-    if (state.quality_score >= 0.4) {
+    if (state.quality_score &gt;= 0.4) {
       console.log('  ✅ Quality sufficient - proceeding to Writer')
 
       // Step 4: Writer
@@ -1293,7 +1293,7 @@ export async function runMedicalResearchWorkflow(
     }
   }
 
-  if (state.iteration_count >= state.max_iterations) {
+  if (state.iteration_count &gt;= state.max_iterations) {
     console.log('  ⚠️ Max iterations reached - escalating to human')
     state.requires_human_review = true
   }
@@ -1332,7 +1332,7 @@ Replace the newsletter agents with medical research equivalents:
 - Writer with clinical brief format (10pts)
 
 **3. Supervisor & Quality Gates (25 points)**
-- Quality threshold enforcement (quality_score >= 0.4)
+- Quality threshold enforcement (quality_score &gt;= 0.4)
 - Human-in-the-loop for insufficient evidence
 - Budget and iteration limits
 

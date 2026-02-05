@@ -52,9 +52,9 @@ async function semanticCache(
     }
   )
 
-  if (similar.documents.length > 0) {
+  if (similar.documents.length &gt; 0) {
     const doc = similar.documents[0]
-    if (parseFloat(doc.value.score) >= threshold) {
+    if (parseFloat(doc.value.score) &gt;= threshold) {
       return doc.value.content as string
     }
   }
@@ -266,7 +266,7 @@ function compressContext(docs: Document[]): string {
   const unique = deduplicateContent(docs)
 
   // Summarize if too long
-  if (totalTokens(unique) > 10000) {
+  if (totalTokens(unique) &gt; 10000) {
     return summarize(unique, maxTokens: 5000)
   }
 
@@ -301,12 +301,12 @@ async function getWithStaleRevalidate(key: string, fn: () => Promise<any>) {
   const ttl = await redis.ttl(key)
 
   // If cached and not stale, return immediately
-  if (cached && ttl > 300) {
+  if (cached && ttl &gt; 300) {
     return JSON.parse(cached)
   }
 
   // If stale, return cached but revalidate in background
-  if (cached && ttl > 0) {
+  if (cached && ttl &gt; 0) {
     // Revalidate asynchronously
     fn().then(fresh => redis.setex(key, 3600, JSON.stringify(fresh)))
     return JSON.parse(cached)

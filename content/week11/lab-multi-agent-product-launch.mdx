@@ -260,7 +260,7 @@ export class SemanticCircuitBreaker {
     taskDescription: string
   ): Promise<{ break: boolean; reason?: string }> {
     // Rule 1: Total iteration limit
-    if (this.executionHistory.length >= this.config.maxTotalIterations) {
+    if (this.executionHistory.length &gt;= this.config.maxTotalIterations) {
       return {
         break: true,
         reason: `Total iteration limit exceeded (${this.config.maxTotalIterations})`
@@ -269,7 +269,7 @@ export class SemanticCircuitBreaker {
 
     // Rule 2: Duplicate task detection (semantic similarity)
     const duplicateCount = await this.countDuplicateTasks(agentName, taskDescription)
-    if (duplicateCount >= this.config.maxDuplicateTasks) {
+    if (duplicateCount &gt;= this.config.maxDuplicateTasks) {
       return {
         break: true,
         reason: `Duplicate task detected ${duplicateCount} times: "${taskDescription.substring(0, 50)}..."`
@@ -278,7 +278,7 @@ export class SemanticCircuitBreaker {
 
     // Rule 3: Clarification loop detection
     const clarificationCount = this.countClarificationLoops()
-    if (clarificationCount >= this.config.maxClarificationLoops) {
+    if (clarificationCount &gt;= this.config.maxClarificationLoops) {
       return {
         break: true,
         reason: `Clarification loop detected (${clarificationCount} requests for clarification)`
@@ -287,7 +287,7 @@ export class SemanticCircuitBreaker {
 
     // Rule 4: Back-and-forth detection (rapid alternation between agents)
     const backAndForthCount = this.detectBackAndForth()
-    if (backAndForthCount >= this.config.maxBackAndForth) {
+    if (backAndForthCount &gt;= this.config.maxBackAndForth) {
       return {
         break: true,
         reason: `Rapid back-and-forth detected between agents (${backAndForthCount} times)`
@@ -295,10 +295,10 @@ export class SemanticCircuitBreaker {
     }
 
     // Rule 5: Cost threshold
-    if (this.totalCost >= this.config.costThreshold) {
+    if (this.totalCost &gt;= this.config.costThreshold) {
       return {
         break: true,
-        reason: `Cost threshold exceeded ($${this.totalCost.toFixed(2)} >= $${this.config.costThreshold})`
+        reason: `Cost threshold exceeded ($${this.totalCost.toFixed(2)} &gt;= $${this.config.costThreshold})`
       }
     }
 
@@ -323,7 +323,7 @@ export class SemanticCircuitBreaker {
     const similarTasks = this.executionHistory.filter(
       (exec) =>
         exec.agentName === agentName &&
-        this.calculateSimilarity(exec.taskDescription, taskDescription) > 0.8
+        this.calculateSimilarity(exec.taskDescription, taskDescription) &gt; 0.8
     )
 
     return similarTasks.length

@@ -231,15 +231,15 @@ function selectEmbeddingModel(requirements: {
   const models = Object.values(EMBEDDING_MODELS)
 
   // Filter by quality requirement
-  let candidates = models.filter(m => m.qualityScore >= requirements.qualityThreshold)
+  let candidates = models.filter(m => m.qualityScore &gt;= requirements.qualityThreshold)
 
   // Filter by latency requirement
-  candidates = candidates.filter(m => m.p95Latency <= requirements.latencyBudget)
+  candidates = candidates.filter(m => m.p95Latency &lt;= requirements.latencyBudget)
 
   // Calculate monthly cost
   const costsWithinBudget = candidates.filter(m => {
     const monthlyCost = (requirements.expectedQueriesPerMonth / 1_000_000) * m.costPer1MTokens
-    return monthlyCost <= requirements.monthlyBudget
+    return monthlyCost &lt;= requirements.monthlyBudget
   })
 
   if (costsWithinBudget.length === 0) {

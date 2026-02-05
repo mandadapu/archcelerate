@@ -73,7 +73,7 @@ function selectModel(
   for (const tier of TIER_SYSTEM) {
     const taskQuality = getTaskQuality(taskType, tier.name)
 
-    if (taskQuality >= qualityThreshold) {
+    if (taskQuality &gt;= qualityThreshold) {
       console.log(`Selected ${tier.name} (quality: ${taskQuality}, cost: $${tier.costPerMTok.input}/MTok)`)
       return tier.name
     }
@@ -211,7 +211,7 @@ function calculateNaiveCosts(): TurnCost[] {
   const costs: TurnCost[] = []
   let cumulativeTokens = SYSTEM_PROMPT
 
-  for (let turn = 1; turn <= 20; turn++) {
+  for (let turn = 1; turn &lt;= 20; turn++) {
     cumulativeTokens += TURN_SIZE
     costs.push({
       turn,
@@ -282,7 +282,7 @@ async function summarizeAndCompress(
   messages: Message[],
   turnThreshold: number = 10
 ): Promise<Message[]> {
-  if (messages.length <= turnThreshold * 2) {
+  if (messages.length &lt;= turnThreshold * 2) {
     return messages  // Not long enough to summarize
   }
 
@@ -358,7 +358,7 @@ async function optimizeContext(
 ): Promise<Message[]> {
   const turnCount = messages.filter(m => m.role !== 'system').length / 2
 
-  if (sessionType === 'short' || turnCount <= 15) {
+  if (sessionType === 'short' || turnCount &lt;= 15) {
     // Short sessions: Truncate (simpler, faster)
     return truncateHistory(messages, 10)
   } else {
@@ -524,7 +524,7 @@ class BatchProcessor {
     }
 
     // Batch normal/low priority requests
-    if (!this.processing && this.queue.length >= 10) {
+    if (!this.processing && this.queue.length &gt;= 10) {
       this.processBatch()
     }
   }
@@ -547,7 +547,7 @@ class BatchProcessor {
     this.processing = false
 
     // Process next batch if queue has items
-    if (this.queue.length >= 10) {
+    if (this.queue.length &gt;= 10) {
       this.processBatch()
     }
   }
@@ -662,7 +662,7 @@ async function detectCostAnomalies() {
     FROM ai_costs
     WHERE timestamp > NOW() - INTERVAL '24 hours'
     GROUP BY userId, endpoint
-    HAVING SUM(cost) > 100  -- Alert if user costs > $100/day
+    HAVING SUM(cost) &gt; 100  -- Alert if user costs > $100/day
     ORDER BY total_cost DESC
   `
 
@@ -711,11 +711,11 @@ async function checkBudget(userId: string): Promise<boolean> {
   }
 
   // Check if over budget
-  if (budget.currentDailySpend >= budget.dailyLimit) {
+  if (budget.currentDailySpend &gt;= budget.dailyLimit) {
     throw new Error('Daily budget exceeded. Upgrade to Pro for higher limits.')
   }
 
-  if (budget.currentMonthlySpend >= budget.monthlyLimit) {
+  if (budget.currentMonthlySpend &gt;= budget.monthlyLimit) {
     throw new Error('Monthly budget exceeded.')
   }
 
@@ -849,7 +849,7 @@ async function triageQuery(userQuery: string): Promise<TriageResult> {
   // TIER 1: Fast classifier (Haiku 4.5) - determines complexity
   const classification = await classifyQueryComplexity(userQuery)
 
-  if (classification.type === 'simple' && classification.confidence > 0.9) {
+  if (classification.type === 'simple' && classification.confidence &gt; 0.9) {
     // Handle with Haiku 4.5: password resets, appointment booking, basic FAQs
     const response = await callHaiku(userQuery)
 
@@ -983,11 +983,11 @@ class TriageMonitor {
       (this.metrics.avgLatency * (totalQueries - 1) + result.latency) / totalQueries
 
     // Alert on anomalies
-    if (result.cost > 0.50) {
+    if (result.cost &gt; 0.50) {
       console.warn(`⚠️  High-cost query: $${result.cost.toFixed(4)} - "${query.substring(0, 50)}..."`)
     }
 
-    if (result.latency > 5000) {
+    if (result.latency &gt; 5000) {
       console.warn(`⚠️  Slow query: ${result.latency}ms - "${query.substring(0, 50)}..."`)
     }
 

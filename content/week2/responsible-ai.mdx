@@ -159,15 +159,15 @@ async function runBiasDetection(
           group1,
           group2,
           difference: equivalence.score,
-          significance: equivalence.score > 0.7 ? 'high' :
-                       equivalence.score > 0.4 ? 'medium' : 'low'
+          significance: equivalence.score &gt; 0.7 ? 'high' :
+                       equivalence.score &gt; 0.4 ? 'medium' : 'low'
         })
       }
     }
   }
 
   // Step 3: Calculate bias score
-  const biasScore = violations.length > 0
+  const biasScore = violations.length &gt; 0
     ? Math.max(...violations.map(v => v.difference))
     : 0
 
@@ -573,13 +573,13 @@ async function validateReasoningManifest(
   const violations: string[] = []
 
   // Check 1: Protected attributes must not be used
-  if (manifest.protectedAttributesUsed.length > 0) {
+  if (manifest.protectedAttributesUsed.length &gt; 0) {
     violations.push(`Protected attributes used: ${manifest.protectedAttributesUsed.join(', ')}`)
   }
 
   // Check 2: Weights should sum to ~1.0
   const totalWeight = manifest.primaryReasons.reduce((sum, r) => sum + r.weight, 0)
-  if (Math.abs(totalWeight - 1.0) > 0.15) {
+  if (Math.abs(totalWeight - 1.0) &gt; 0.15) {
     violations.push(`Weights sum to ${totalWeight.toFixed(2)}, expected ~1.0`)
   }
 
@@ -592,7 +592,7 @@ async function validateReasoningManifest(
   }
 
   // Check 4: Confidence should match decision clarity
-  if (manifest.confidence > 0.95 && manifest.alternativeOutcomes.some(a => a.probability > 0.8)) {
+  if (manifest.confidence &gt; 0.95 && manifest.alternativeOutcomes.some(a => a.probability &gt; 0.8)) {
     violations.push('High confidence (&gt;0.95) but alternative outcomes show uncertainty')
   }
 
@@ -760,7 +760,7 @@ interface FairnessMetrics {
   demographicParity: number    // Difference in positive rates
   equalOpportunity: number     // Difference in TPR
   equalizedOdds: number        // Max difference in TPR and FPR
-  disparateImpact: number      // Ratio of positive rates (should be > 0.8)
+  disparateImpact: number      // Ratio of positive rates (should be &gt; 0.8)
 }
 
 async function calculateFairnessMetrics(
@@ -841,7 +841,7 @@ function equalizeOpportunity(predictions: Prediction[], groups: string[]) {
       threshold,
       adjustedPredictions: groupPreds.map(p => ({
         ...p,
-        decision: p.score >= threshold ? 1 : 0
+        decision: p.score &gt;= threshold ? 1 : 0
       }))
     }
   })
@@ -880,7 +880,7 @@ function analyzeBias(applications: LoanApplication[]) {
   // Demographic parity violation?
   const disparity = Math.abs(maleApprovals - femaleApprovals)
 
-  return { disparity, isBiased: disparity > 0.2 }
+  return { disparity, isBiased: disparity &gt; 0.2 }
 }`}
 />
 
@@ -1096,7 +1096,7 @@ async function explainPrediction(
 **Human-readable explanation**:
 ```typescript
 function generateExplanation(shap: SHAPExplanation): string {
-  const approved = shap.prediction > 0.5
+  const approved = shap.prediction &gt; 0.5
   const confidence = Math.abs(shap.prediction - 0.5) * 2 * 100
 
   const explanation = [
@@ -1107,7 +1107,7 @@ function generateExplanation(shap: SHAPExplanation): string {
   ]
 
   shap.topContributors.forEach(({ feature, contribution }) => {
-    const direction = contribution > 0 ? 'increased' : 'decreased'
+    const direction = contribution &gt; 0 ? 'increased' : 'decreased'
     const impact = Math.abs(contribution * 100).toFixed(0)
     explanation.push(`  • ${feature}: ${direction} approval by ${impact}%`)
   })
@@ -1143,7 +1143,7 @@ async function generateCounterfactual(
     const newInstance = { ...instance, creditScore: 700 }
     const newPrediction = await model.predict(newInstance)
 
-    if (newPrediction > 0.5 && originalPrediction <= 0.5) {
+    if (newPrediction &gt; 0.5 && originalPrediction &lt;= 0.5) {
       changes.push(`Increase credit score to 700 (+${700 - instance.creditScore} points)`)
     }
   }
@@ -1152,12 +1152,12 @@ async function generateCounterfactual(
     const newInstance = { ...instance, income: 60000 }
     const newPrediction = await model.predict(newInstance)
 
-    if (newPrediction > 0.5 && originalPrediction <= 0.5) {
+    if (newPrediction &gt; 0.5 && originalPrediction &lt;= 0.5) {
       changes.push(`Increase annual income to $60,000`)
     }
   }
 
-  return changes.length > 0
+  return changes.length &gt; 0
     ? `To get approved, you would need to: ${changes.join(' OR ')}`
     : 'Application meets approval criteria'
 }
@@ -1193,14 +1193,14 @@ class ResponsibleAISystem {
     await this.logDecision({
       applicationId: application.id,
       score,
-      decision: score > 0.5,
+      decision: score &gt; 0.5,
       explanation,
       fairnessCheck,
       timestamp: new Date()
     })
 
     return {
-      decision: score > 0.5 ? 'approved' : 'declined',
+      decision: score &gt; 0.5 ? 'approved' : 'declined',
       confidence: Math.abs(score - 0.5) * 2,
       explanation: generateExplanation(explanation),
       topFactors: explanation.topContributors,

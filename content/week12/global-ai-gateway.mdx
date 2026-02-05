@@ -293,7 +293,7 @@ app.post('/v1/ai/chat/completions', async (req, res) => {
 
     if (customerBudget && customerSpend) {
       const budgetRemaining = parseFloat(customerBudget) - parseFloat(customerSpend)
-      if (budgetRemaining <= 0) {
+      if (budgetRemaining &lt;= 0) {
         return res.status(429).json({
           error: 'Customer budget exceeded',
           budget_remaining: budgetRemaining
@@ -749,7 +749,7 @@ class HierarchicalRateLimiter {
     bucket.lastRefill = timestamp
 
     // Try to consume 1 token
-    if (bucket.tokens < 1) {
+    if (bucket.tokens &lt; 1) {
       const refillTime = ((1 - bucket.tokens) / (config.rateLimit / 3600)) * 1000
 
       return {
@@ -1480,8 +1480,8 @@ class FinOpsTracker {
         COUNT(*) as request_count
       FROM ai_usage
       WHERE ${dimension}_id = $1
-        AND timestamp >= $2
-        AND timestamp <= $3
+        AND timestamp &gt;= $2
+        AND timestamp &lt;= $3
       GROUP BY date, model
       ORDER BY date DESC
     `
@@ -1558,7 +1558,7 @@ class FinOpsTracker {
 
     const tenantBudget = await this.getTenantBudget(tenantId)
 
-    if (tenantCosts._sum.totalCost! >= tenantBudget * 0.8) {
+    if (tenantCosts._sum.totalCost! &gt;= tenantBudget * 0.8) {
       await this.sendAlert({
         type: 'budget_warning',
         level: 'tenant',
@@ -1578,7 +1578,7 @@ class FinOpsTracker {
 
     const userBudget = await this.getUserBudget(userId)
 
-    if (userCosts && userCosts.totalCost >= userBudget * 0.8) {
+    if (userCosts && userCosts.totalCost &gt;= userBudget * 0.8) {
       await this.sendAlert({
         type: 'budget_warning',
         level: 'user',
@@ -1638,7 +1638,7 @@ class FinOpsTracker {
       previousMonth: previous,
       change,
       percentChange,
-      trend: change > 0 ? 'increasing' : 'decreasing'
+      trend: change &gt; 0 ? 'increasing' : 'decreasing'
     }
   }
 
@@ -1832,12 +1832,12 @@ class ZeroDowntimeDeployer {
       // Update load balancer weights
       await this.updateLoadBalancer(targetEndpoint, step.percent)
 
-      if (step.duration > 0) {
+      if (step.duration &gt; 0) {
         // Monitor error rates during canary period
         await this.sleep(step.duration)
 
         const errorRate = await this.checkErrorRate(targetEndpoint)
-        if (errorRate > 0.05) {
+        if (errorRate &gt; 0.05) {
           // 5% error rate threshold
           throw new Error(`High error rate detected: ${(errorRate * 100).toFixed(2)}%`)
         }

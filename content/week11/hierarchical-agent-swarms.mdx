@@ -297,13 +297,13 @@ async function supervisorAgent(
   let decision: 'include' | 'exclude' | 'human_review' = 'exclude'
   let reasoning = ''
 
-  if (quality.score >= 8 && clinical.relevance_score >= 7) {
+  if (quality.score &gt;= 8 && clinical.relevance_score &gt;= 7) {
     decision = 'include'
     reasoning = 'High-quality research with strong clinical relevance'
-  } else if (quality.score >= 7 && clinical.novelty === 'breakthrough') {
+  } else if (quality.score &gt;= 7 && clinical.novelty === 'breakthrough') {
     decision = 'include'
     reasoning = 'Breakthrough finding despite moderate quality score'
-  } else if (clinical.relevance_score >= 9 && quality.score >= 5) {
+  } else if (clinical.relevance_score &gt;= 9 && quality.score &gt;= 5) {
     decision = 'human_review'
     reasoning = 'Highly relevant but methodology concerns - flagging for expert review'
   } else if (quality.methodological_concerns.some(c => c.includes('bias') || c.includes('p-hacking'))) {
@@ -360,7 +360,7 @@ async function runOncologyResearchSwarm(
     briefs.push(brief)
 
     // Stop early if budget exceeded (circuit breaker)
-    if (briefs.length >= 100) {
+    if (briefs.length &gt;= 100) {
       console.log('  ⚠️ Budget limit reached, stopping early')
       break
     }
@@ -451,7 +451,7 @@ const circuitBreakers = {
   humanReviewFlag: true  // Escalate ambiguous cases
 }
 
-if (totalCost >= circuitBreakers.budgetLimit) {
+if (totalCost &gt;= circuitBreakers.budgetLimit) {
   console.log('⚠️ Budget limit reached, stopping swarm')
   return briefs
 }
@@ -462,7 +462,7 @@ if (totalCost >= circuitBreakers.budgetLimit) {
 // If Reviewer consistently disagrees with Statistician scores, retrain Statistician
 async function feedbackLoop(briefs: ResearchBrief[]) {
   const disagreements = briefs.filter(b =>
-    Math.abs(b.quality.score - b.clinical.relevance_score) >= 4
+    Math.abs(b.quality.score - b.clinical.relevance_score) &gt;= 4
   )
 
   if (disagreements.length > briefs.length * 0.2) {
@@ -851,7 +851,7 @@ class SemanticCircuitBreaker {
     this.totalCalls++
 
     // Rule 1: Total iteration limit
-    if (this.totalCalls >= this.config.max_total_iterations) {
+    if (this.totalCalls &gt;= this.config.max_total_iterations) {
       return {
         break: true,
         reason: `Max iterations reached (${this.config.max_total_iterations})`
@@ -864,7 +864,7 @@ class SemanticCircuitBreaker {
     for (const historyEntry of this.callHistory) {
       const similarity = this.cosineSimilarity(taskEmbedding, historyEntry.embedding)
 
-      if (similarity > this.config.similarity_threshold) {
+      if (similarity &gt; this.config.similarity_threshold) {
         return {
           break: true,
           reason: `Duplicate task detected (similarity: ${similarity.toFixed(2)}). Previous: "${historyEntry.task}"`
@@ -874,7 +874,7 @@ class SemanticCircuitBreaker {
 
     // Rule 3: Detect clarification loops (same agent asked 3+ times)
     const sameAgentCalls = this.callHistory.filter(h => h.agent === agent)
-    if (sameAgentCalls.length >= this.config.max_clarification_loops) {
+    if (sameAgentCalls.length &gt;= this.config.max_clarification_loops) {
       return {
         break: true,
         reason: `Agent ${agent} called ${sameAgentCalls.length} times (max: ${this.config.max_clarification_loops})`
@@ -882,7 +882,7 @@ class SemanticCircuitBreaker {
     }
 
     // Rule 4: Detect rapid back-and-forth (same 2 agents alternating)
-    if (this.callHistory.length >= 4) {
+    if (this.callHistory.length &gt;= 4) {
       const recent4 = this.callHistory.slice(-4)
       const agent1 = recent4[0].agent
       const agent2 = recent4[1].agent
@@ -1042,7 +1042,7 @@ class SelfCorrectingManagerAgent extends SafeManagerAgent {
     let revisionCount = 0
     let result: string
 
-    while (revisionCount <= this.maxRevisions) {
+    while (revisionCount &lt;= this.maxRevisions) {
       // Execute task
       result = await super.executeWorkerTask(worker, task)
 
@@ -1348,7 +1348,7 @@ Finance Analyst:
 
 **Production Checklist:**
 - [ ] Implement circuit breaker with max iterations (20)
-- [ ] Add semantic duplicate detection (similarity > 0.9)
+- [ ] Add semantic duplicate detection (similarity &gt; 0.9)
 - [ ] Enable self-verification with revision loops (max 2)
 - [ ] Track costs per agent and per task
 - [ ] Monitor for rapid back-and-forth between agents

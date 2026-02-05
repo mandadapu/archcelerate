@@ -318,7 +318,7 @@ async function executeWithCrossProviderCascade(
       const latency = Date.now() - startTime
 
       // Check latency SLA
-      if (latency > tier.maxLatency) {
+      if (latency &gt; tier.maxLatency) {
         console.warn(`⚠️ Latency ${latency}ms exceeded ${tier.maxLatency}ms SLA. Cascading...`)
 
         // Save partial result in case all cascades fail
@@ -515,12 +515,12 @@ async function selectTierByLoad(
   budgetRemaining: number
 ): Promise<ModelTier> {
   // High load + budget available → use premium tier
-  if (currentLoad > 1000 && budgetRemaining > 100) {
+  if (currentLoad &gt; 1000 && budgetRemaining &gt; 100) {
     return CROSS_PROVIDER_CASCADE[0]  // GPT-5
   }
 
   // Medium load → balanced tier
-  if (currentLoad > 100) {
+  if (currentLoad &gt; 100) {
     return CROSS_PROVIDER_CASCADE[1]  // Claude Haiku
   }
 
@@ -564,7 +564,7 @@ class CircuitBreaker {
     this.failures++
     this.lastFailure = Date.now()
 
-    if (this.failures >= 5) {
+    if (this.failures &gt;= 5) {
       this.state = 'open'  // Stop hitting failing service
       console.warn('Circuit breaker opened')
     }
@@ -589,7 +589,7 @@ async function callWithRetry<T>(
       lastError = error
 
       // Don't retry on client errors (400, 401, 403)
-      if (error.status >= 400 && error.status < 500 && error.status !== 429) {
+      if (error.status &gt;= 400 && error.status < 500 && error.status !== 429) {
         throw error
       }
 
@@ -665,7 +665,7 @@ export async function checkRateLimit(
   // Count requests in current window
   const count = await redis.zcard(key)
 
-  if (count >= limit) {
+  if (count &gt;= limit) {
     return { allowed: false, remaining: 0 }
   }
 
@@ -873,7 +873,7 @@ class MultiTenantRateLimiter {
     const suggestCascade = remaining < limit * 0.1 ? 'haiku' : undefined
 
     return {
-      allowed: count <= limit,
+      allowed: count &lt;= limit,
       remaining,
       resetAt,
       suggestCascade
@@ -916,7 +916,7 @@ class MultiTenantRateLimiter {
     const remaining = Math.max(0, limit - current)
 
     return {
-      allowed: current <= limit,
+      allowed: current &lt;= limit,
       remaining,
       resetAt: new Date(Date.now() + 60000)  // Reset after requests complete
     }
