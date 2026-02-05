@@ -90,7 +90,7 @@ export default function Home() {
               </h1>
               <p className="text-xl md:text-2xl text-gray-600 leading-relaxed max-w-2xl mx-auto">
                 The <span className="font-semibold text-gray-900">12-week roadmap</span> for software engineers to master the <span className="font-semibold text-gray-900">physics of LLMs</span>, build <span className="font-semibold text-gray-900">sovereign security frameworks</span>,
-                and ship <span className="font-semibold text-gray-900">7 production-grade systems</span>.
+                and ship <span className="font-semibold text-gray-900">production-grade systems</span>.
               </p>
             </div>
           </div>
