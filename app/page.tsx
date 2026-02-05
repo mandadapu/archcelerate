@@ -70,36 +70,40 @@ export default function Home() {
       )}
 
       {/* Hero Section */}
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-16">
-        <div className="flex flex-col items-center justify-center min-h-screen py-12">
-          {/* Metrics Badge */}
-          <div className="mb-8 inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-50 to-cyan-50 border border-purple-100 rounded-full">
-            <span className="text-sm font-semibold text-gray-900">
-              Join 500+ engineers becoming AI Architects
-            </span>
-          </div>
-
-          {/* Headline - The "Architect" Hook */}
-          <div className="text-center mb-8 max-w-3xl">
-            <h1 className="font-display text-4xl md:text-6xl font-bold text-gray-900 mb-6 tracking-tight leading-[1.2]">
-              Build AI Products. Harden Systems.{' '}
-              <span className="inline-block bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent pb-2">
-                Become an AI Architect.
+      <section className="pt-16">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col items-center justify-center min-h-[60vh] py-12">
+            {/* Metrics Badge */}
+            <div className="mb-8 inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-50 to-cyan-50 border border-purple-100 rounded-full">
+              <span className="text-sm font-semibold text-gray-900">
+                Join 500+ engineers becoming AI Architects
               </span>
-            </h1>
-            <p className="text-xl md:text-2xl text-gray-600 leading-relaxed max-w-2xl mx-auto">
-              The <span className="font-semibold text-gray-900">12-week roadmap</span> for software engineers to master the <span className="font-semibold text-gray-900">physics of LLMs</span>, build <span className="font-semibold text-gray-900">sovereign security frameworks</span>,
-              and ship <span className="font-semibold text-gray-900">7 production-grade systems</span>.
-            </p>
-          </div>
+            </div>
 
-          {/* System Diagram */}
-          <div className="system-diagram-section mt-12">
-            <SystemDiagram />
+            {/* Headline - The "Architect" Hook */}
+            <div className="text-center mb-8 max-w-3xl">
+              <h1 className="font-display text-4xl md:text-6xl font-bold text-gray-900 mb-6 tracking-tight leading-[1.2]">
+                Build AI Products. Harden Systems.{' '}
+                <span className="inline-block bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent pb-2">
+                  Become an AI Architect.
+                </span>
+              </h1>
+              <p className="text-xl md:text-2xl text-gray-600 leading-relaxed max-w-2xl mx-auto">
+                The <span className="font-semibold text-gray-900">12-week roadmap</span> for software engineers to master the <span className="font-semibold text-gray-900">physics of LLMs</span>, build <span className="font-semibold text-gray-900">sovereign security frameworks</span>,
+                and ship <span className="font-semibold text-gray-900">7 production-grade systems</span>.
+              </p>
+            </div>
           </div>
+        </div>
 
-          {/* Quick Stats */}
-          <div className="mt-12 grid grid-cols-3 gap-8 text-center">
+        {/* System Diagram - Full Width */}
+        <div className="w-full">
+          <SystemDiagram />
+        </div>
+
+        {/* Quick Stats */}
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="mt-12 mb-12 grid grid-cols-3 gap-8 text-center">
             <div>
               <div className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent">
                 12
@@ -120,7 +124,7 @@ export default function Home() {
             </div>
           </div>
         </div>
-      </main>
+      </section>
 
       {/* Tech Stack Carousel - 80px spacing */}
       <TechStack />
