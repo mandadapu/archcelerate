@@ -21,10 +21,10 @@ const testimonials = [
 
 export function Testimonials() {
   return (
-    <section className="py-24 bg-gray-50">
+    <section className="py-24 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+        <div className="mb-16">
+          <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4">
             What Developers Are Saying
           </h2>
         </div>
@@ -33,10 +33,10 @@ export function Testimonials() {
           {testimonials.map((testimonial, index) => (
             <div
               key={index}
-              className="bg-white rounded-2xl p-8 shadow-sm border border-gray-200 transition-all duration-300 hover:shadow-lg hover:-translate-y-1"
+              className="bg-white rounded-2xl p-8 border border-gray-200 transition-all duration-300 hover:shadow-lg"
             >
-              {/* Avatar */}
-              <div className="w-16 h-16 rounded-full bg-gradient-to-r from-purple-600 to-cyan-500 flex items-center justify-center mb-6">
+              {/* Avatar - matching Command Center icon style */}
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-600 to-cyan-500 flex items-center justify-center mb-6">
                 <span className="text-white font-bold text-xl">
                   {testimonial.avatar}
                 </span>
