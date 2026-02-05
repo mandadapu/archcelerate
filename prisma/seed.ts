@@ -210,21 +210,23 @@ const weekData = [
   {
     weekNumber: 5,
     title: 'Agentic Frameworks & Multi-Agent Orchestration (The Logic)',
-    description: 'Build systems that reason, plan, and execute using multi-agent architectures and reliability patterns',
+    description: 'Designing systems that reason, plan, and execute using multi-agent architectures and stateful reliability patterns',
     objectives: [
-      'Master the three core agent architectures (Sequential, Supervisor, Collaborative)',
-      'Implement reliability patterns (Reflection, Planning, Human-in-the-Loop)',
-      'Choose the right framework (LangGraph, CrewAI, AutoGen) based on requirements',
-      'Build production-grade multi-agent systems with state management',
-      'Implement error routing and self-healing workflows',
-      'Use the Model Context Protocol (MCP) for unified tool integration',
-      'Achieve "zero-waste" execution with cycle detection and token trimming',
-      'Deploy multi-agent systems with checkpointing and observability'
+      'Engineer task decomposition with Planner agents that break complex intents into executable sub-tasks',
+      'Implement stateful orchestration with LangGraph to manage shared state across agent hand-offs',
+      'Deploy Supervisor pattern with Manager agents that delegate, validate, and orchestrate specialist workers',
+      'Build collaborative swarms using Blackboard architecture for parallel problem-solving',
+      'Architect self-reflection loops where agents critique their own work before submission',
+      'Design Human-in-the-Loop interrupt points for high-stakes actions requiring human approval',
+      'Implement database-backed state checkpointing for resumable agent threads across crashes',
+      'Build time-travel debugging capability to rewind agent state and diagnose reasoning failures'
     ],
     concepts: [
-      { slug: 'agent-architectures', title: 'Agent Architectures', description: 'Sequential, Supervisor, and Collaborative patterns.', minutes: 45 },
-      { slug: 'reliability-patterns', title: 'Reliability Patterns', description: 'Reflection, planning, and self-healing.', minutes: 50 },
-      { slug: 'framework-comparison', title: 'Framework Comparison', description: 'LangGraph, CrewAI, and AutoGen evaluation.', minutes: 40 }
+      { slug: 'agentic-architectures', title: 'Agentic Architectures & Planning: ReAct and Task Decomposition', minutes: 45 },
+      { slug: 'supervisor-patterns', title: 'Supervisor & Collaborative Patterns: Manager Agents and Swarms', minutes: 40 },
+      { slug: 'reliability-patterns', title: 'Reliability Patterns: Self-Reflection and HITL', minutes: 50 },
+      { slug: 'state-checkpointing', title: 'Persistence & State Checkpointing: Resumable Agent Threads', minutes: 45 },
+      { slug: 'framework-selection', title: 'Framework Selection: LangGraph vs. CrewAI Performance', minutes: 35 }
     ],
     lab: {
       slug: 'newsletter-team',
