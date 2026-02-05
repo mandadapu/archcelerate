@@ -18,7 +18,7 @@ export function LearningObjectives({ objectives }: LearningObjectivesProps) {
           <ul className="space-y-3 mt-2">
             {objectives.map((objective, i) => (
               <li key={i} className="flex items-start gap-3">
-                <CheckCircle2 className="h-5 w-5 text-teal-600 mt-0.5 flex-shrink-0" />
+                <CheckCircle2 className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
                 <span className="text-sm leading-relaxed">{objective}</span>
               </li>
             ))}
