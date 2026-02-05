@@ -117,7 +117,7 @@ export default async function Week5Page() {
           </p>
         </div>
 
-        {/* Learning Objectives */}
+        {/* Technical Milestones */}
         <Card>
           <CardHeader>
             <CardTitle>Technical Milestones</CardTitle>
