@@ -11,6 +11,52 @@ objectives:
   - Master state management and checkpointing
 ---
 
+# Reliability Patterns (Implementation Guide)
+
+This module covers how to engineer systems that reason, plan, and execute with high reliability.
+
+## Overview: The Four Reliability Patterns
+
+### 1. Self-Correction & Reflection
+
+**Definition**: Implementing a "Critic" loop where the agent reviews its own output against a set of constraints before finalizing.
+
+**Architectural Pattern**: The Reflection Pattern uses a two-step process: Generation followed by Evaluation.
+
+**Production Benefit**: Significant reduction in hallucinations and "lazy" outputs by forcing the model to re-examine its logic.
+
+### 2. Planning & Re-Planning
+
+**Definition**: Breaking down complex user requests into a step-by-step execution graph before any tools are called.
+
+**Self-Healing**: If a specific tool or step fails, the agent uses an Error Routing pattern to re-plan the remaining steps rather than crashing.
+
+**State Management**: Using Checkpointing to save the state of a multi-step workflow so it can be resumed if a process is interrupted.
+
+### 3. Human-in-the-Loop (HITL)
+
+**Definition**: Strategic insertion of human approval steps for high-stakes actions, such as database writes or API calls with side effects.
+
+**Pattern**: The agent pauses execution and waits for a "Resume" signal or an "Override" from a human operator.
+
+**Safety & Governance**: Ensures that the system remains under human control as it executes autonomous tasks.
+
+### 4. "Zero-Waste" Execution
+
+**Cycle Detection**: Implementing logic to identify if an agent is stuck in an infinite loop of the same tool calls.
+
+**Token Trimming**: Automatically cleaning the message history (context window) to keep only essential information, ensuring low latency and cost.
+
+## Week 5 Lab: The Multi-Agent Newsroom
+
+To apply these patterns, the lab involves building a collaborative team:
+
+- **Hunter Agent**: Searches for information using tools.
+- **Fact-Checker Agent**: Applies Reliability Patterns to verify the Hunter's findings.
+- **Writer Agent**: Consolidates the verified data into a final newsletter using a Supervisor pattern.
+
+---
+
 # Design Patterns for Reliability
 
 Teach these "Architectural Guardrails" to prevent agents from going off the rails.
