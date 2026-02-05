@@ -246,25 +246,37 @@ export default async function Week6Page() {
               <Link
                 key={concept.id}
                 href={`/curriculum/week-6/concepts/${concept.slug}`}
-                className="group border rounded-lg p-4 hover:border-red-600 transition-colors bg-red-50/50 dark:bg-red-950/50"
+                className="group border rounded-lg p-4 hover:border-primary hover:shadow-md transition-all bg-gradient-to-r from-primary/5 to-transparent dark:from-primary/10"
               >
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="text-sm text-muted-foreground mb-1">
-                      Concept {i + 1}
-                    </div>
-                    <h3 className="font-semibold text-lg">{concept.title}</h3>
-                    {concept.estimatedMinutes && (
-                      <div className="flex items-center gap-1 mt-2 text-sm text-muted-foreground">
-                        <Clock className="h-4 w-4" />
-                        <span>{concept.estimatedMinutes} minutes</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3">
+                <div className="flex items-center gap-4">
+                  {/* Icon first */}
+                  <div className="flex-shrink-0">
                     {getConceptIllustration(concept.slug)}
-                    <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-red-600 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
                   </div>
+
+                  {/* Label and title together */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-2 mb-1">
+                      <span className="text-xs font-medium text-primary uppercase tracking-wide">
+                        Concept {i + 1}
+                      </span>
+                      {concept.estimatedMinutes && (
+                        <>
+                          <span className="text-xs text-muted-foreground">•</span>
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {concept.estimatedMinutes} min
+                          </span>
+                        </>
+                      )}
+                    </div>
+                    <h3 className="font-semibold text-lg leading-tight text-foreground">
+                      {concept.title}
+                    </h3>
+                  </div>
+
+                  {/* Arrow */}
+                  <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
                 </div>
               </Link>
             ))}
