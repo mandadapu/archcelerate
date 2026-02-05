@@ -21,41 +21,42 @@ import { Button } from '@/components/ui/button'
 function getConceptIllustration(slug: string) {
   const illustrations: Record<string, JSX.Element> = {
     'safety-governance-fundamentals': (
-      <div className="flex items-center gap-2 opacity-50">
-        <Shield className="h-9 w-9 text-primary" />
-        <div className="flex flex-col gap-1">
-          <Lock className="h-5 w-5 text-success" />
-          <Eye className="h-5 w-5 text-info" />
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <Shield className="h-7 w-7 text-primary" />
+          <Lock className="h-6 w-6 text-success" />
         </div>
       </div>
     ),
     'jailbreak-defense': (
-      <div className="flex items-center gap-2 opacity-50">
-        <Lock className="h-9 w-9 text-error" />
-        <Shield className="h-7 w-7 text-success" />
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <Lock className="h-7 w-7 text-error" />
+          <Shield className="h-6 w-6 text-warning" />
+        </div>
       </div>
     ),
     'ai-testing-nfrs': (
-      <div className="flex items-center gap-2 opacity-50">
-        <TestTube2 className="h-8 w-8 text-primary" />
-        <div className="flex flex-col gap-1">
-          <CheckCircle2 className="h-5 w-5 text-success" />
-          <FileCheck className="h-5 w-5 text-primary/70" />
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <TestTube2 className="h-7 w-7 text-info" />
+          <CheckCircle2 className="h-6 w-6 text-success" />
         </div>
       </div>
     ),
     'compliance-patterns': (
-      <div className="flex items-center gap-2 opacity-50">
-        <FileCheck className="h-9 w-9 text-primary" />
-        <Shield className="h-7 w-7 text-success" />
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <FileCheck className="h-7 w-7 text-primary" />
+          <Shield className="h-6 w-6 text-success" />
+        </div>
       </div>
     ),
     'transparency-explainability': (
-      <div className="flex items-center gap-2 opacity-50">
-        <Eye className="h-9 w-9 text-info" />
-        <div className="flex flex-col gap-1">
-          <FileCheck className="h-5 w-5 text-primary" />
-          <Shield className="h-5 w-5 text-success/70" />
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <Eye className="h-7 w-7 text-info" />
+          <FileCheck className="h-6 w-6 text-primary" />
         </div>
       </div>
     ),
@@ -199,35 +200,30 @@ export default async function Week2Page() {
                 href={`/curriculum/week-2/concepts/${concept.slug}`}
                 className="group border rounded-lg p-4 hover:border-primary hover:shadow-md transition-all bg-gradient-to-r from-primary/5 to-transparent dark:from-primary/10"
               >
-                <div className="flex items-center gap-4">
-                  {/* Icon first */}
-                  <div className="flex-shrink-0">
+                <div className="flex items-start gap-4">
+                  {/* Icon */}
+                  <div className="flex-shrink-0 pt-1">
                     {getConceptIllustration(concept.slug)}
                   </div>
 
-                  {/* Label and title together */}
+                  {/* Content column */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2 mb-1">
-                      <span className="text-xs font-medium text-primary uppercase tracking-wide">
-                        Concept {i + 1}
-                      </span>
-                      {concept.estimatedMinutes && (
-                        <>
-                          <span className="text-xs text-muted-foreground">•</span>
-                          <span className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {concept.estimatedMinutes} min
-                          </span>
-                        </>
-                      )}
+                    <div className="text-xs font-medium text-primary uppercase tracking-wide mb-1">
+                      Concept {i + 1}
                     </div>
-                    <h3 className="font-semibold text-lg leading-tight text-foreground">
+                    <h3 className="font-semibold text-lg leading-tight text-foreground mb-2">
                       {concept.title}
                     </h3>
+                    {concept.estimatedMinutes && (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        <span>{concept.estimatedMinutes} minutes</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Arrow */}
-                  <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+                  <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0 mt-6" />
                 </div>
               </Link>
             ))}

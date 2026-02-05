@@ -22,52 +22,51 @@ import { Button } from '@/components/ui/button'
 function getConceptIllustration(slug: string) {
   const illustrations: Record<string, JSX.Element> = {
     'llm-fundamentals': (
-      <div className="flex items-center gap-2 opacity-50">
-        <Brain className="h-9 w-9 text-primary" />
-        <div className="flex flex-col gap-1">
-          <Code2 className="h-5 w-5 text-primary/80" />
-          <Layers className="h-5 w-5 text-primary/60" />
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <Brain className="h-7 w-7 text-primary" />
+          <Code2 className="h-6 w-6 text-info" />
         </div>
       </div>
     ),
     'prompt-engineering': (
-      <div className="flex items-center gap-2 opacity-50">
-        <Code2 className="h-8 w-8 text-primary" />
-        <div className="flex flex-col gap-1">
-          <CheckSquare className="h-5 w-5 text-success" />
-          <CheckSquare className="h-5 w-5 text-success/70" />
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <Code2 className="h-7 w-7 text-success" />
+          <CheckSquare className="h-6 w-6 text-primary" />
         </div>
       </div>
     ),
     'api-integration': (
-      <div className="flex items-center gap-2 opacity-50">
-        <Plug className="h-9 w-9 text-primary" />
-        <Code2 className="h-7 w-7 text-success" />
-        <Layers className="h-6 w-6 text-primary/70" />
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <Plug className="h-7 w-7 text-warning" />
+          <Layers className="h-6 w-6 text-primary" />
+        </div>
       </div>
     ),
     'production-readiness': (
-      <div className="flex items-center gap-2 opacity-50">
-        <CheckSquare className="h-8 w-8 text-success" />
-        <div className="flex flex-col gap-1">
-          <Layers className="h-5 w-5 text-primary" />
-          <CheckCircle2 className="h-5 w-5 text-success/80" />
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <CheckSquare className="h-7 w-7 text-success" />
+          <CheckCircle2 className="h-6 w-6 text-success" />
         </div>
       </div>
     ),
     'architecture-decisions': (
-      <div className="flex items-center gap-2 opacity-50">
-        <Layers className="h-9 w-9 text-primary" />
-        <div className="flex flex-col gap-1">
-          <Blocks className="h-5 w-5 text-primary/80" />
-          <Code2 className="h-5 w-5 text-primary/60" />
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <Layers className="h-7 w-7 text-info" />
+          <Blocks className="h-6 w-6 text-primary" />
         </div>
       </div>
     ),
     'visual-builders': (
-      <div className="flex items-center gap-2 opacity-50">
-        <Blocks className="h-9 w-9 text-primary" />
-        <Brain className="h-7 w-7 text-primary/70" />
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <Blocks className="h-7 w-7 text-warning" />
+          <Brain className="h-6 w-6 text-primary" />
+        </div>
       </div>
     ),
   }
@@ -252,35 +251,30 @@ export default async function Week1Page() {
                 href={`/curriculum/week-1/concepts/${concept.slug}`}
                 className="group border rounded-lg p-4 hover:border-primary hover:shadow-md transition-all bg-gradient-to-r from-primary/5 to-transparent dark:from-primary/10"
               >
-                <div className="flex items-center gap-4">
-                  {/* Icon first */}
-                  <div className="flex-shrink-0">
+                <div className="flex items-start gap-4">
+                  {/* Icon */}
+                  <div className="flex-shrink-0 pt-1">
                     {getConceptIllustration(concept.slug)}
                   </div>
 
-                  {/* Label and title together */}
+                  {/* Content column */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2 mb-1">
-                      <span className="text-xs font-medium text-primary uppercase tracking-wide">
-                        Concept {i + 1}
-                      </span>
-                      {concept.estimatedMinutes && (
-                        <>
-                          <span className="text-xs text-muted-foreground">•</span>
-                          <span className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {concept.estimatedMinutes} min
-                          </span>
-                        </>
-                      )}
+                    <div className="text-xs font-medium text-primary uppercase tracking-wide mb-1">
+                      Concept {i + 1}
                     </div>
-                    <h3 className="font-semibold text-lg leading-tight text-foreground">
+                    <h3 className="font-semibold text-lg leading-tight text-foreground mb-2">
                       {concept.title}
                     </h3>
+                    {concept.estimatedMinutes && (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        <span>{concept.estimatedMinutes} minutes</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Arrow */}
-                  <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+                  <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0 mt-6" />
                 </div>
               </Link>
             ))}

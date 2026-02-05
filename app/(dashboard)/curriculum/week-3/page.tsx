@@ -21,39 +21,43 @@ import { Button } from '@/components/ui/button'
 function getConceptIllustration(slug: string) {
   const illustrations: Record<string, JSX.Element> = {
     'rag-memory-fundamentals': (
-      <div className="flex items-center gap-2 opacity-50">
-        <Database className="h-9 w-9 text-primary" />
-        <Brain className="h-7 w-7 text-primary/70" />
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <Database className="h-7 w-7 text-primary" />
+          <Brain className="h-6 w-6 text-info" />
+        </div>
       </div>
     ),
     'vector-embeddings': (
-      <div className="flex items-center gap-2 opacity-50">
-        <Grid3x3 className="h-8 w-8 text-primary" />
-        <div className="flex flex-col gap-1">
-          <Database className="h-5 w-5 text-primary/80" />
-          <CheckCircle2 className="h-5 w-5 text-success" />
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <Grid3x3 className="h-7 w-7 text-warning" />
+          <Database className="h-6 w-6 text-primary" />
         </div>
       </div>
     ),
     'rag-pipelines': (
-      <div className="flex items-center gap-2 opacity-50">
-        <Workflow className="h-9 w-9 text-primary" />
-        <Database className="h-7 w-7 text-primary/70" />
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <Workflow className="h-7 w-7 text-success" />
+          <Database className="h-6 w-6 text-primary" />
+        </div>
       </div>
     ),
     'production-rag-architecture': (
-      <div className="flex items-center gap-2 opacity-50">
-        <Building2 className="h-9 w-9 text-primary" />
-        <div className="flex flex-col gap-1">
-          <Database className="h-5 w-5 text-primary/80" />
-          <Workflow className="h-5 w-5 text-primary/60" />
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <Building2 className="h-7 w-7 text-info" />
+          <Workflow className="h-6 w-6 text-primary" />
         </div>
       </div>
     ),
     'memory-systems': (
-      <div className="flex items-center gap-2 opacity-50">
-        <Brain className="h-9 w-9 text-primary" />
-        <Database className="h-7 w-7 text-primary/70" />
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <Brain className="h-7 w-7 text-warning" />
+          <Database className="h-6 w-6 text-primary" />
+        </div>
       </div>
     ),
   }
@@ -196,30 +200,30 @@ export default async function Week3Page() {
                 href={`/curriculum/week-3/concepts/${concept.slug}`}
                 className="group border rounded-lg p-4 hover:border-primary hover:shadow-md transition-all bg-gradient-to-r from-primary/5 to-transparent dark:from-primary/10"
               >
-                <div className="flex items-center gap-4">
-                  <div className="flex-shrink-0">
+                <div className="flex items-start gap-4">
+                  {/* Icon */}
+                  <div className="flex-shrink-0 pt-1">
                     {getConceptIllustration(concept.slug)}
                   </div>
+
+                  {/* Content column */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2 mb-1">
-                      <span className="text-xs font-medium text-primary uppercase tracking-wide">
-                        Concept {i + 1}
-                      </span>
-                      {concept.estimatedMinutes && (
-                        <>
-                          <span className="text-xs text-muted-foreground">•</span>
-                          <span className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {concept.estimatedMinutes} min
-                          </span>
-                        </>
-                      )}
+                    <div className="text-xs font-medium text-primary uppercase tracking-wide mb-1">
+                      Concept {i + 1}
                     </div>
-                    <h3 className="font-semibold text-lg leading-tight text-foreground">
+                    <h3 className="font-semibold text-lg leading-tight text-foreground mb-2">
                       {concept.title}
                     </h3>
+                    {concept.estimatedMinutes && (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        <span>{concept.estimatedMinutes} minutes</span>
+                      </div>
+                    )}
                   </div>
-                  <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+
+                  {/* Arrow */}
+                  <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0 mt-6" />
                 </div>
               </Link>
             ))}
