@@ -16,11 +16,13 @@ import {
   GitBranch,
   Filter,
   Columns,
+  Shield,
   Activity,
   BarChart3,
   Eye,
   Gauge,
   TrendingUp,
+  Zap,
   Server,
   Rocket
 } from 'lucide-react'
