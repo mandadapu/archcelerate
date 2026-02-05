@@ -8,7 +8,7 @@ estimatedMinutes: 50
 
 Build **high-speed redaction pipelines** that de-identify sensitive data before it reaches third-party LLM APIs—and design **Local-First inference patterns** to keep PII within your VPC.
 
-> **Architect Perspective**: Compliance isn't about legal documents—it's about **engineering data flow** to ensure PII/PHI **never** leaves your control perimeter. Build redaction as **zero-latency middleware** (<5ms overhead) and design Local-First patterns to **technically prevent** data residency violations.
+> **Architect Perspective**: Compliance isn't about legal documents—it's about **engineering data flow** to ensure PII/PHI **never** leaves your control perimeter. Build redaction as **zero-latency middleware** (&lt;5ms overhead) and design Local-First patterns to **technically prevent** data residency violations.
 
 ---
 
@@ -19,7 +19,7 @@ Build **high-speed redaction pipelines** that de-identify sensitive data before 
 **Business Constraints**:
 - **Compliance**: Must meet HIPAA data residency requirements (PHI stays in US, within HIPAA-certified infrastructure)
 - **Functionality**: Still needs advanced reasoning from frontier models (not available as on-premise deployments)
-- **Performance**: Cannot add >10ms latency—doctors expect instant responses
+- **Performance**: Cannot add &gt;10ms latency—doctors expect instant responses
 - **Auditability**: Must maintain complete audit trail for compliance inspections
 
 **Architectural Solution: The Sovereign PII Redactor**
@@ -27,12 +27,12 @@ Build **high-speed redaction pipelines** that de-identify sensitive data before 
 Deploy a **high-speed redaction pipeline** that sanitizes PHI before tokens leave your VPC:
 
 ```typescript
-// Step 1: Regex-based fast path (<1ms) - catches obvious patterns
+// Step 1: Regex-based fast path (&lt;1ms) - catches obvious patterns
 const fastRedacted = regexRedactor.sanitize(patientQuery)
 // "Patient John Doe, SSN 123-45-6789, glucose 180 mg/dL"
 // → "Patient [REDACTED_NAME], SSN [REDACTED_SSN], glucose 180 mg/dL"
 
-// Step 2: NER model (local, <3ms) - catches contextual PII
+// Step 2: NER model (local, &lt;3ms) - catches contextual PII
 const fullRedacted = await nerRedactor.sanitize(fastRedacted)
 // → "Patient [REDACTED_NAME], SSN [REDACTED_SSN], glucose [REDACTED_LAB_VALUE]"
 
@@ -69,7 +69,7 @@ const patientResponse = reverseRedaction(response.content, tokenMap)
 
 **Production Impact**:
 - **Compliance**: **100% HIPAA-compliant**—PHI technically cannot reach third-party servers
-- **Performance**: **4.2ms overhead** (within <10ms requirement)
+- **Performance**: **4.2ms overhead** (within &lt;10ms requirement)
 - **Auditability**: Every request logged with redaction details for SOC 2 / HIPAA audits
 - **Cost Avoidance**: **$1M+ in fines prevented** (average HIPAA violation settlement)
 - **Functionality Preserved**: Still access Opus/GPT-5 for advanced medical reasoning
@@ -92,7 +92,7 @@ const response = await localLLM.complete({
 | Local-First (Llama) | ✅ HIPAA | $8K/mo GPU | ⚠️ Good but not Opus | 2-3s inference |
 
 **When to Use Which**:
-- **Redaction Gateway**: High-volume (>10K queries/day), need best-in-class reasoning, cost-sensitive
+- **Redaction Gateway**: High-volume (&gt;10K queries/day), need best-in-class reasoning, cost-sensitive
 - **Local-First**: Ultra-sensitive data (psychiatric notes, genetic data), regulatory requirement for zero external transmission
 
 **[📚 Dive Deeper: Implement the Redaction Pipeline](#high-speed-piiphi-redaction-regex--nlp-pipeline)**
@@ -153,9 +153,9 @@ await anthropic.messages.create({
 
 ## High-Speed PII/PHI Redaction: Regex + NLP Pipeline
 
-**The Pattern**: Build a **two-phase** redaction pipeline that runs in <5ms—fast enough to be transparent to users.
+**The Pattern**: Build a **two-phase** redaction pipeline that runs in &lt;5ms—fast enough to be transparent to users.
 
-### Phase 1: Regex-Based Fast Path (<1ms)
+### Phase 1: Regex-Based Fast Path (&lt;1ms)
 
 ```typescript
 interface RedactionPattern {
@@ -261,12 +261,12 @@ Output: {
     { type: "PHI", name: "MRN", severity: "critical", count: 1 },
     { type: "PHI", name: "Date of Birth", severity: "critical", count: 1 }
   ],
-  latency: 0.8  // <1ms
+  latency: 0.8  // &lt;1ms
 }
 */
 ```
 
-### Phase 2: NLP-Based Names & Addresses (<5ms)
+### Phase 2: NLP-Based Names & Addresses (&lt;5ms)
 
 ```typescript
 import { pipeline } from '@xenova/transformers'  // Local NER model
@@ -339,7 +339,7 @@ Output: {
     { entity: "I-PER", type: "PERSON", text: "Doe", start: 13, end: 16 },
     { entity: "B-LOC", type: "LOC", text: "San Francisco", start: 26, end: 39 }
   ],
-  latency: 4.2  // <5ms
+  latency: 4.2  // &lt;5ms
 }
 */
 ```
@@ -375,9 +375,9 @@ async function redactionPipeline(text: string): Promise<{
 }
 
 /* Performance:
-- Regex phase: <1ms
-- NER phase: <5ms
-- Total: <6ms latency overhead
+- Regex phase: &lt;1ms
+- NER phase: &lt;5ms
+- Total: &lt;6ms latency overhead
 - Throughput: ~166 requests/second on single core
 - Cost: $0 (local NER model, no API calls)
 */
@@ -508,8 +508,8 @@ Break-even:
 - Local model cost: $500/month fixed
 - External model cost: $0.006 × requests
 - Break-even: 500 / 0.006 = 83,333 requests/month
-- If >83K requests/month with PII → local is cheaper
-- If <83K requests/month → redaction + external is cheaper
+- If &gt;83K requests/month with PII → local is cheaper
+- If &lt;83K requests/month → redaction + external is cheaper
 */
 ```
 
@@ -589,9 +589,9 @@ async function processHIPAAQuery(
 ## Key Takeaways
 
 **High-Speed Redaction Pipeline**:
-- **Phase 1**: Regex for structured PII/PHI (<1ms latency)
-- **Phase 2**: Local NER for names/locations (<5ms latency)
-- **Total overhead**: <6ms per request (transparent to users)
+- **Phase 1**: Regex for structured PII/PHI (&lt;1ms latency)
+- **Phase 2**: Local NER for names/locations (&lt;5ms latency)
+- **Total overhead**: &lt;6ms per request (transparent to users)
 - **Cost**: $0 (no API calls, local NER model)
 
 **Local-First Routing Decision**:
@@ -600,8 +600,8 @@ async function processHIPAAQuery(
 if (PHI detected) {
   route → local model (HIPAA requirement)
 } else if (PII detected) {
-  route → local model if >83K req/month (cost-effective)
-  route → external with redaction if <83K req/month
+  route → local model if &gt;83K req/month (cost-effective)
+  route → external with redaction if &lt;83K req/month
 } else {
   route → external API (best quality)
 }
@@ -1239,7 +1239,7 @@ async function enforceRetentionPolicy(
 - **Risk**: $50,000+ fine per violation, potential loss of medical license
 - **Volume**: 10,000 clinical notes/day requiring LLM processing
 - **Constraint**: External LLM APIs cannot see raw PHI (no BAA with most providers)
-- **Success Criteria**: Zero PHI exposure to external APIs, <20ms redaction overhead, 98%+ PHI detection accuracy
+- **Success Criteria**: Zero PHI exposure to external APIs, &lt;20ms redaction overhead, 98%+ PHI detection accuracy
 
 **The Architectural Solution**: Build a **local PII/PHI redaction middleware** that intercepts all API calls, removes sensitive data using placeholder tokens, and re-identifies the data in responses before returning to clinicians.
 
@@ -1265,7 +1265,7 @@ class HIPAAGateway {
     const placeholderMap: Record<string, string> = {}
     let redactedText = text
 
-    // PHASE 1: Regex-based detection (<1ms for structured data)
+    // PHASE 1: Regex-based detection (&lt;1ms for structured data)
     const patterns = [
       {
         type: 'NAME' as const,
@@ -1431,14 +1431,14 @@ Plan: Continue current medications, add prednisone taper
 - ✅ Production ready
 - **Redaction Speed**: 3.2ms average (regex-based)
 - **Accuracy**: 98.7% PHI detection on 1,000 test notes
-- **Latency Overhead**: <12ms total (imperceptible to users)
+- **Latency Overhead**: &lt;12ms total (imperceptible to users)
 - **Cost**: $38K/year infrastructure
 - **ROI**: Prevents $5M+ fine exposure = **131:1 ROI**
 
 **Business Impact**:
 - **Market Entry Enabled**: Product can now launch in healthcare vertical ($2.7B addressable market)
 - **Compliance Maintained**: Zero PHI violations since deployment
-- **User Experience**: <12ms latency overhead
+- **User Experience**: &lt;12ms latency overhead
 - **Scalability**: Handles 10,000 notes/day with 99.9% uptime
 
 **Key Decisions**:
