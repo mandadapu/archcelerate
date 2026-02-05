@@ -3,9 +3,52 @@ import Link from 'next/link'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { CheckCircle2, Circle, Clock, ChevronRight } from 'lucide-react'
+import {
+  CheckCircle2,
+  Circle,
+  Clock,
+  ChevronRight,
+  Network,
+  Users,
+  RefreshCw,
+  Shield,
+  GitCompare,
+  Code2
+} from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+
+// Concept visualization icons - Week 5: Agentic Frameworks
+function getConceptIllustration(slug: string) {
+  const illustrations: Record<string, JSX.Element> = {
+    'agent-architectures': (
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <Network className="h-7 w-7 text-primary" />
+          <Users className="h-6 w-6 text-info" />
+        </div>
+      </div>
+    ),
+    'reliability-patterns': (
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <RefreshCw className="h-7 w-7 text-success" />
+          <Shield className="h-6 w-6 text-primary" />
+        </div>
+      </div>
+    ),
+    'framework-comparison': (
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <GitCompare className="h-7 w-7 text-warning" />
+          <Code2 className="h-6 w-6 text-primary" />
+        </div>
+      </div>
+    ),
+  }
+
+  return illustrations[slug] || <ChevronRight className="h-8 w-8 text-muted-foreground opacity-40" />
+}
 
 export const metadata: Metadata = {
   title: 'Week 5: Agentic Frameworks & Multi-Agent Orchestration (The Logic)',
@@ -140,22 +183,32 @@ export default async function Week5Page() {
               <Link
                 key={concept.id}
                 href={`/curriculum/week-5/concepts/${concept.slug}`}
-                className="group border rounded-lg p-4 hover:border-red-600 transition-colors bg-red-50/50 dark:bg-red-950/50"
+                className="group border rounded-lg p-4 hover:border-primary hover:shadow-md transition-all bg-gradient-to-r from-primary/5 to-transparent dark:from-primary/10"
               >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="text-sm text-muted-foreground mb-1">
+                <div className="flex items-start gap-4">
+                  {/* Icon */}
+                  <div className="flex-shrink-0 pt-1">
+                    {getConceptIllustration(concept.slug)}
+                  </div>
+
+                  {/* Content column */}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium text-primary uppercase tracking-wide mb-1">
                       Concept {i + 1}
                     </div>
-                    <h3 className="font-semibold text-lg">{concept.title}</h3>
+                    <h3 className="font-semibold text-lg leading-tight text-foreground mb-2">
+                      {concept.title}
+                    </h3>
                     {concept.estimatedMinutes && (
-                      <div className="flex items-center gap-1 mt-2 text-sm text-muted-foreground">
-                        <Clock className="h-4 w-4" />
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3" />
                         <span>{concept.estimatedMinutes} minutes</span>
                       </div>
                     )}
                   </div>
-                  <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-red-600 group-hover:translate-x-0.5 transition-all" />
+
+                  {/* Arrow */}
+                  <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0 mt-6" />
                 </div>
               </Link>
             ))}
