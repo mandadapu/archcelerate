@@ -285,7 +285,7 @@ export default async function DashboardPage() {
         )}
 
         {week6Data?.week && (
-          <Card className="border-2 border-red-200 bg-gradient-to-br from-red-50 to-rose-50">
+          <Card className="border-2 border-teal-200 bg-gradient-to-br from-teal-50 to-cyan-50">
             <CardHeader>
               <CardTitle>Week 6</CardTitle>
               <CardDescription>{week6Data.week.title}</CardDescription>
@@ -295,7 +295,7 @@ export default async function DashboardPage() {
                 {week6Data.week.description}
               </p>
               <Link href="/curriculum/week-6">
-                <Button size="sm" variant="outline" className="border-red-300 text-red-700 hover:bg-red-50">
+                <Button size="sm" variant="outline" className="border-teal-300 text-teal-700 hover:bg-teal-50">
                   {week6Data.progress ? 'Continue' : 'Start'} Week 6
                 </Button>
               </Link>
