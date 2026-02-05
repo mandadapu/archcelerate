@@ -89,6 +89,28 @@ const activities = [
   },
   {
     weekNumber: 1,
+    activityType: 'lab',
+    slug: 'w1-multi-tier-triage-lab',
+    title: 'Multi-Tier Triage System',
+    description: 'Build intelligent query routing with model cascade (Haiku→Opus) for 80% cost reduction',
+    maxTotalPoints: 50,
+    domainMappings: [
+      {
+        domainSlug: 'systematic-prompting',
+        maxPoints: 40,
+        isPrimary: true,
+        description: 'Model selection logic, confidence scoring, escalation thresholds'
+      },
+      {
+        domainSlug: 'production-observability',
+        maxPoints: 10,
+        isPrimary: false,
+        description: 'Cost tracking per query type and routing metrics'
+      }
+    ]
+  },
+  {
+    weekNumber: 1,
     activityType: 'project',
     slug: 'w1-chat-assistant-project',
     title: 'Production Chat Assistant',
@@ -141,6 +163,28 @@ const activities = [
         maxPoints: 10,
         isPrimary: false,
         description: 'Audit trails and compliance monitoring'
+      }
+    ]
+  },
+  {
+    weekNumber: 2,
+    activityType: 'lab',
+    slug: 'w2-hipaa-gateway-lab',
+    title: 'HIPAA-Compliant Gateway',
+    description: 'Build PII redaction middleware with zero PHI leakage tolerance for HIPAA/GDPR compliance',
+    maxTotalPoints: 60,
+    domainMappings: [
+      {
+        domainSlug: 'sovereign-governance',
+        maxPoints: 50,
+        isPrimary: true,
+        description: 'PHI detection, placeholder replacement, re-identification, audit logging'
+      },
+      {
+        domainSlug: 'interface-engineering',
+        maxPoints: 10,
+        isPrimary: false,
+        description: 'Middleware design and request/response transformation'
       }
     ]
   },
@@ -305,6 +349,28 @@ const activities = [
   },
   {
     weekNumber: 5,
+    activityType: 'lab',
+    slug: 'w5-research-swarm-lab',
+    title: 'Autonomous Medical Research Swarm',
+    description: 'Build clinical research automation with Searcher, Critic, Writer agents achieving 96% time reduction',
+    maxTotalPoints: 60,
+    domainMappings: [
+      {
+        domainSlug: 'agentic-orchestration',
+        maxPoints: 50,
+        isPrimary: true,
+        description: 'Multi-agent supervisor orchestration, HITL approval gates, quality validation'
+      },
+      {
+        domainSlug: 'knowledge-architecture',
+        maxPoints: 10,
+        isPrimary: false,
+        description: 'PubMed/ArXiv API integration and research data extraction'
+      }
+    ]
+  },
+  {
+    weekNumber: 5,
     activityType: 'project',
     slug: 'w5-full-stack-dev-team-project',
     title: 'Multi-Agent Full-Stack Development Team',
@@ -351,6 +417,28 @@ const activities = [
         maxPoints: 10,
         isPrimary: false,
         description: 'Advanced chunking and embedding strategies'
+      }
+    ]
+  },
+  {
+    weekNumber: 6,
+    activityType: 'lab',
+    slug: 'w6-clinical-rag-lab',
+    title: 'Clinical RAG System',
+    description: 'Build FDA drug label diagnostic system with hybrid search achieving 94% precision',
+    maxTotalPoints: 60,
+    domainMappings: [
+      {
+        domainSlug: 'knowledge-architecture',
+        maxPoints: 40,
+        isPrimary: true,
+        description: 'RAG architecture for 10,000+ drug labels with source grounding'
+      },
+      {
+        domainSlug: 'retrieval-optimization',
+        maxPoints: 20,
+        isPrimary: false,
+        description: 'BM25 + vector fusion, neural re-ranking, context window optimization'
       }
     ]
   },
@@ -408,6 +496,28 @@ const activities = [
         maxPoints: 10,
         isPrimary: false,
         description: 'Input/output validation and safety guardrails'
+      }
+    ]
+  },
+  {
+    weekNumber: 7,
+    activityType: 'lab',
+    slug: 'w7-llm-judge-lab',
+    title: 'LLM-as-a-Judge Pipeline',
+    description: 'Build automated QA pipeline reducing deployment cycles from 2 weeks to 2 hours',
+    maxTotalPoints: 60,
+    domainMappings: [
+      {
+        domainSlug: 'production-observability',
+        maxPoints: 50,
+        isPrimary: true,
+        description: 'Golden dataset creation, judge evaluation, regression detection, compliance reporting'
+      },
+      {
+        domainSlug: 'systematic-prompting',
+        maxPoints: 10,
+        isPrimary: false,
+        description: 'Evaluation criteria design and judge prompt engineering'
       }
     ]
   },

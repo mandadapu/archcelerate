@@ -21,12 +21,12 @@ This is the difference between a proof-of-concept and a system you can deploy in
 
 | Optimization | Method | Target Metric | Achieved |
 |-------------|--------|---------------|----------|
-| **Search Quality** | Hybrid (Vector + Keyword) | Recall@10 > 0.80 | ✅ 0.85 |
-| **Precision** | Cross-Encoder Re-Ranking | MRR > 0.75 | ✅ 0.82 |
+| **Search Quality** | Hybrid (Vector + Keyword) | Recall@10 &gt; 0.80 | ✅ 0.85 |
+| **Precision** | Cross-Encoder Re-Ranking | MRR &gt; 0.75 | ✅ 0.82 |
 | **Latency** | Semantic Caching (Redis/GPTCache) | TTFT < 200ms | ✅ 165ms |
-| **Scale** | HNSW Indexing + Partitioning | QPS > 1000 | ✅ 1200 |
+| **Scale** | HNSW Indexing + Partitioning | QPS &gt; 1000 | ✅ 1200 |
 | **Cost** | Prompt Caching + Deduplication | Cost/1K queries < $10 | ✅ $8.50 |
-| **Reliability** | Circuit Breakers + Fallbacks | Uptime > 99.9% | ✅ 99.95% |
+| **Reliability** | Circuit Breakers + Fallbacks | Uptime &gt; 99.9% | ✅ 99.95% |
 | **Compliance** | Audit Logging + Tenant Isolation | Zero data leaks | ✅ Verified |
 
 Let's implement each of these.
@@ -98,7 +98,7 @@ async function calculateMRR(testSet: EvaluationDataset[]): Promise<number> {
       test.relevant_doc_ids.includes(r.id)
     )
 
-    if (firstRelevantPos >= 0) {
+    if (firstRelevantPos &gt;= 0) {
       const reciprocalRank = 1 / (firstRelevantPos + 1) // +1 because rank starts at 1
       totalRR += reciprocalRank
     }
@@ -243,7 +243,7 @@ class SemanticCache {
     // Search cache index for similar queries
     const similar = await vectorDb.search(queryVector, { limit: 1 })
 
-    if (similar.length > 0 && similar[0].score > this.similarityThreshold) {
+    if (similar.length &gt; 0 && similar[0].score > this.similarityThreshold) {
       return similar[0].metadata.cache_key
     }
 
@@ -311,9 +311,9 @@ await db.query(`
 | Search Latency (1M vectors) | 200ms | **50ms** | **HNSW** |
 | Recall@10 | 0.75 | **0.85** | **HNSW** |
 | Memory Usage | Low | High | IVFFlat |
-| Best For | &lt;100K vectors | >100K vectors | - |
+| Best For | &lt;100K vectors | &gt;100K vectors | - |
 
-**Production Recommendation**: Use HNSW for >100K documents.
+**Production Recommendation**: Use HNSW for &gt;100K documents.
 
 ### Partitioning for Multi-Tenancy
 
@@ -347,10 +347,10 @@ async function searchWithTenantIsolation(
 
   return await db.query(`
     SELECT id, content,
-           1 - (embedding <=> $1) AS score
+           1 - (embedding &lt;=&gt; $1) AS score
     FROM documents
     WHERE tenant_id = $2
-    ORDER BY embedding <=> $1
+    ORDER BY embedding &lt;=&gt; $1
     LIMIT 10
   `, [queryVector, tenantId])
 }
@@ -481,7 +481,7 @@ class CircuitBreaker {
     this.failureCount++
     this.lastFailureTime = Date.now()
 
-    if (this.failureCount >= this.threshold) {
+    if (this.failureCount &gt;= this.threshold) {
       this.state = 'open'
       console.error('Circuit breaker tripped to OPEN')
     }
@@ -642,7 +642,7 @@ export default function () {
   check(res, {
     'status is 200': (r) => r.status === 200,
     'response time < 200ms': (r) => r.timings.duration < 200,
-    'has sources': (r) => JSON.parse(r.body).sources.length > 0
+    'has sources': (r) => JSON.parse(r.body).sources.length &gt; 0
   })
 }
 ```
@@ -656,14 +656,14 @@ export default function () {
 ### Production Checklist
 
 #### Search Quality
-- [ ] Recall@10 > 0.80 (hybrid search + re-ranking)
-- [ ] MRR > 0.75 (first result is usually correct)
-- [ ] NDCG > 0.70 (ranking quality)
+- [ ] Recall@10 &gt; 0.80 (hybrid search + re-ranking)
+- [ ] MRR &gt; 0.75 (first result is usually correct)
+- [ ] NDCG &gt; 0.70 (ranking quality)
 
 #### Performance
 - [ ] TTFT < 200ms (p95 latency)
-- [ ] Semantic caching with >40% hit rate
-- [ ] HNSW indexing for >100K documents
+- [ ] Semantic caching with &gt;40% hit rate
+- [ ] HNSW indexing for &gt;100K documents
 
 #### Scale
 - [ ] Handles 1K+ QPS

@@ -111,7 +111,7 @@ interface PIIProxyResult {
 async function piiProxy(text: string): Promise<PIIProxyResult> {
   const detected = detectPII(text)
 
-  if (detected.length > 0) {
+  if (detected.length &gt; 0) {
     // Log PII detection event (without logging the actual PII!)
     await logSecurityEvent({
       event: 'pii_detected',
@@ -170,7 +170,7 @@ async function filterContent(
     .filter(([_, flagged]) => flagged)
     .map(([category]) => category)
 
-  if (flaggedCategories.length > 0) {
+  if (flaggedCategories.length &gt; 0) {
     // Log blocked attempt (critical for compliance)
     await logContentBlock({
       direction,
@@ -440,7 +440,7 @@ function truncateMessages(messages: Message[], maxTokens: number): Message[] {
   }
 
   // Keep most recent messages
-  for (let i = messages.length - 1; i >= 0; i--) {
+  for (let i = messages.length - 1; i &gt;= 0; i--) {
     const msg = messages[i]
     const msgTokens = estimateTokens(msg.content)
 
@@ -468,7 +468,7 @@ async function summarizeOldMessages(messages: Message[]): Promise<Message[]> {
   const KEEP_RECENT = 10 // Keep last 10 messages in full
   const MAX_TOKENS = 100000 // Claude Sonnet context window
 
-  if (messages.length <= KEEP_RECENT) {
+  if (messages.length &lt;= KEEP_RECENT) {
     return messages
   }
 
@@ -569,7 +569,7 @@ async function retryWithBackoff<T>(
 ): Promise<T> {
   let lastError: Error
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+  for (let attempt = 0; attempt &lt;= maxRetries; attempt++) {
     try {
       return await fn()
     } catch (error) {
@@ -752,7 +752,7 @@ function checkAlerts(metrics: Metrics) {
     const value = metrics[rule.metric]
 
     if (
-      (rule.comparison === 'gt' && value > rule.threshold) ||
+      (rule.comparison === 'gt' && value &gt; rule.threshold) ||
       (rule.comparison === 'lt' && value < rule.threshold)
     ) {
       rule.action()
@@ -840,7 +840,7 @@ class CircuitBreaker {
       this.failures++
       this.lastFailTime = Date.now()
 
-      if (this.failures >= this.threshold) {
+      if (this.failures &gt;= this.threshold) {
         this.state = 'open'
         console.error('Circuit breaker opened')
       }
@@ -939,17 +939,17 @@ try {
 
 - [ ] **Metrics Dashboard**
   - Requests per second
-  - Error rate (target: <1%)
-  - p50/p95/p99 latency (target: p95 <3s)
+  - Error rate (target: &lt;1%)
+  - p50/p95/p99 latency (target: p95 &lt;3s)
   - Token usage per hour
   - Cost per hour
 
 - [ ] **Alert Rules**
-  - Error rate >5% → page on-call
-  - p95 latency >5s → page on-call
+  - Error rate &gt;5% → page on-call
+  - p95 latency &gt;5s → page on-call
   - Cost >$1K/hour → page on-call
-  - PII detection rate >1% → investigate
-  - Content filter rate >5% → investigate
+  - PII detection rate &gt;1% → investigate
+  - Content filter rate &gt;5% → investigate
 
 ### Layer 5: Security (Mandatory)
 

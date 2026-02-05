@@ -31,20 +31,20 @@ Problem: "Generate SQL queries from natural language"
 
 Approach 1: Prompt Engineering
 → Input: "Convert to SQL: Show me all users over 18"
-→ Output: "SELECT * FROM users WHERE age > 18"
+→ Output: "SELECT * FROM users WHERE age &gt; 18"
 → Cost: $0.001 per query
 → Accuracy: 75%
 
 Approach 2: RAG (Retrieval-Augmented Generation)
 → Input: Query + Retrieved examples from SQL docs
-→ Output: "SELECT * FROM users WHERE age > 18"
+→ Output: "SELECT * FROM users WHERE age &gt; 18"
 → Cost: $0.003 per query (retrieval + LLM)
 → Accuracy: 85%
 
 Approach 3: Fine-Tuning
 → Train model on 10,000 SQL examples
 → Input: "Show me all users over 18"
-→ Output: "SELECT * FROM users WHERE age > 18"
+→ Output: "SELECT * FROM users WHERE age &gt; 18"
 → Setup Cost: $500 (training)
 → Per-query Cost: $0.0005 (smaller model works)
 → Accuracy: 92%
@@ -88,12 +88,12 @@ function recommendApproach(useCase: UseCase): Recommendation {
   if (useCase.volumePerMonth < 10000) {
     scores.promptEngineering += 3
     scores.rag += 2
-  } else if (useCase.volumePerMonth > 100000) {
+  } else if (useCase.volumePerMonth &gt; 100000) {
     scores.fineTuning += 3
   }
 
   // Rule 2: Accuracy requirements
-  if (useCase.accuracyRequirement > 0.9) {
+  if (useCase.accuracyRequirement &gt; 0.9) {
     scores.fineTuning += 3
     scores.rag += 2
   } else if (useCase.accuracyRequirement < 0.75) {
@@ -113,7 +113,7 @@ function recommendApproach(useCase: UseCase): Recommendation {
     scores.promptEngineering += 3
     scores.rag += 2
     scores.fineTuning -= 3
-  } else if (useCase.dataAvailable > 1000) {
+  } else if (useCase.dataAvailable &gt; 1000) {
     scores.fineTuning += 2
   }
 
@@ -135,7 +135,7 @@ function recommendApproach(useCase: UseCase): Recommendation {
   // Determine winner
   const maxScore = Math.max(scores.promptEngineering, scores.rag, scores.fineTuning)
 
-  if (scores.fineTuning === maxScore && scores.fineTuning >= 8) {
+  if (scores.fineTuning === maxScore && scores.fineTuning &gt;= 8) {
     return {
       approach: 'fine-tuning',
       reasoning: [
@@ -899,7 +899,7 @@ class CanaryDeployment {
 ## Common Pitfalls
 
 ### 1. Insufficient Training Data
-**Problem**: Fine-tuning with <100 examples leads to overfitting
+**Problem**: Fine-tuning with &lt;100 examples leads to overfitting
 ```typescript
 // ❌ Bad: Too few examples
 const trainingData = generateExamples(50) // Model memorizes, doesn't generalize
@@ -925,7 +925,7 @@ const test = data.slice(900) // 10%
 const baselineAccuracy = await evaluateBaseModel(testSet)
 console.log(`Baseline: ${baselineAccuracy}%`)
 
-if (baselineAccuracy > 85) {
+if (baselineAccuracy &gt; 85) {
   console.log('⚠️ Consider prompt engineering first')
 }
 ```
@@ -945,18 +945,18 @@ setInterval(async () => {
 ## Key Takeaways
 
 ### Decision Framework
-- **Prompt Engineering**: <10K queries/month, generic tasks, limited data
+- **Prompt Engineering**: &lt;10K queries/month, generic tasks, limited data
 - **RAG**: Knowledge-heavy, frequently changing information, 10K-100K/month
-- **Fine-Tuning**: >100K queries/month, consistent formatting, niche domain
+- **Fine-Tuning**: &gt;100K queries/month, consistent formatting, niche domain
 
 ### When to Fine-Tune
-- ✅ High volume (>100K/month) with stable requirements
-- ✅ Classification tasks needing >90% accuracy
+- ✅ High volume (&gt;100K/month) with stable requirements
+- ✅ Classification tasks needing &gt;90% accuracy
 - ✅ Consistent output formatting required
 - ✅ Domain-specific language/style
 - ❌ Knowledge retrieval tasks (use RAG)
-- ❌ Low volume (<10K/month)
-- ❌ Insufficient training data (<100 examples)
+- ❌ Low volume (&lt;10K/month)
+- ❌ Insufficient training data (&lt;100 examples)
 - ❌ Rapidly changing requirements
 
 ### Platform Selection

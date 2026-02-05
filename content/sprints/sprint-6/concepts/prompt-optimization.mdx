@@ -188,7 +188,7 @@ const testCases: PromptTestCase[] = [
       pattern: /heart rate|GPS|water resistant/i,
       validator: (output) => {
         const wordCount = output.split(/\s+/).length
-        return wordCount >= 40 && wordCount <= 60
+        return wordCount &gt;= 40 && wordCount &lt;= 60
       },
     },
     metadata: {
@@ -307,7 +307,7 @@ class PromptTestRunner {
           latencyMs,
           cost,
         },
-        failures: failures.length > 0 ? failures : undefined,
+        failures: failures.length &gt; 0 ? failures : undefined,
       }
 
       this.results.push(result)
@@ -464,7 +464,7 @@ class PromptTestRunner {
 
     // Add failed tests
     const failed = this.results.filter((r) => !r.passed)
-    if (failed.length > 0) {
+    if (failed.length &gt; 0) {
       lines.push('\nFailed Tests:')
       failed.forEach((result) => {
         lines.push(`  - ${result.testId}: ${result.failures?.join(', ')}`)
@@ -902,17 +902,17 @@ class PromptVersionManager {
 
     if (v1.performance.accuracy && v2.performance.accuracy) {
       const change = ((v2.performance.accuracy - v1.performance.accuracy) / v1.performance.accuracy) * 100
-      improvements.accuracy = `${change > 0 ? '+' : ''}${change.toFixed(1)}%`
+      improvements.accuracy = `${change &gt; 0 ? '+' : ''}${change.toFixed(1)}%`
     }
 
     if (v1.performance.avgTokens && v2.performance.avgTokens) {
       const change = ((v2.performance.avgTokens - v1.performance.avgTokens) / v1.performance.avgTokens) * 100
-      improvements.tokens = `${change > 0 ? '+' : ''}${change.toFixed(1)}%`
+      improvements.tokens = `${change &gt; 0 ? '+' : ''}${change.toFixed(1)}%`
     }
 
     if (v1.performance.avgCost && v2.performance.avgCost) {
       const change = ((v2.performance.avgCost - v1.performance.avgCost) / v1.performance.avgCost) * 100
-      improvements.cost = `${change > 0 ? '+' : ''}${change.toFixed(1)}%`
+      improvements.cost = `${change &gt; 0 ? '+' : ''}${change.toFixed(1)}%`
     }
 
     return {
@@ -1248,7 +1248,7 @@ class ABTestRunner {
   createTest(config: ABTestConfig): void {
     // Validate traffic allocation
     const totalTraffic = config.variantA.traffic + config.variantB.traffic
-    if (Math.abs(totalTraffic - 1.0) > 0.001) {
+    if (Math.abs(totalTraffic - 1.0) &gt; 0.001) {
       throw new Error('Traffic allocation must sum to 1.0')
     }
 
@@ -1337,14 +1337,14 @@ class ABTestRunner {
     // Simple comparison (in production, use statistical significance testing)
     const minSampleSize = config.minSampleSize
     if (
-      results.variantA.length >= minSampleSize &&
-      results.variantB.length >= minSampleSize
+      results.variantA.length &gt;= minSampleSize &&
+      results.variantB.length &gt;= minSampleSize
     ) {
       // Compare cost (lower is better)
       const costDiff = (variantBMetrics.avgCost - variantAMetrics.avgCost) / variantAMetrics.avgCost
 
-      if (Math.abs(costDiff) > 0.05) {
-        // >5% difference
+      if (Math.abs(costDiff) &gt; 0.05) {
+        // &gt;5% difference
         winner = costDiff < 0 ? 'B' : 'A'
         confidence = Math.min(Math.abs(costDiff) * 100, 95)
       }
@@ -1686,12 +1686,12 @@ class RegressionTestRunner {
     console.log(`\nPassed: ${results.passed}`)
     console.log(`Failed: ${results.failed}`)
 
-    if (results.regressions.length > 0) {
+    if (results.regressions.length &gt; 0) {
       console.log('\n⚠️ REGRESSIONS DETECTED:')
       results.regressions.forEach((r) => console.log(`  - ${r}`))
     }
 
-    if (results.improvements.length > 0) {
+    if (results.improvements.length &gt; 0) {
       console.log('\n✅ IMPROVEMENTS:')
       results.improvements.forEach((i) => console.log(`  - ${i}`))
     }
@@ -1799,7 +1799,7 @@ function accuracyScore(output: string, expected: any): number {
 
   const wordCount = output.split(/\s+/).length
   const wordCountValid =
-    wordCount >= expected.wordCount.min && wordCount <= expected.wordCount.max
+    wordCount &gt;= expected.wordCount.min && wordCount &lt;= expected.wordCount.max
 
   return containsAll && wordCountValid ? 1 : 0
 }
@@ -1808,7 +1808,7 @@ function qualityScore(output: string): number {
   // Assess quality (simplified)
   const hasNumbers = /\d/.test(output)
   const hasBenefits = /(improve|enhance|perfect|premium|quality)/i.test(output)
-  const isProperLength = output.split(/\s+/).length >= 40
+  const isProperLength = output.split(/\s+/).length &gt;= 40
 
   let score = 0
   if (hasNumbers) score += 0.3

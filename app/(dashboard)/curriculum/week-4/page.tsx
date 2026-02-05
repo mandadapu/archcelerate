@@ -109,6 +109,15 @@ export default async function Week4Page() {
   return (
     <div className="container max-w-4xl py-8">
       <div className="space-y-8">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Link href="/dashboard" className="hover:text-foreground">
+            Dashboard
+          </Link>
+          <span>/</span>
+          <span className="text-foreground">Week 4</span>
+        </div>
+
         {/* Header with Progress */}
         <div className="flex items-start justify-between gap-4">
           <div>

@@ -158,6 +158,291 @@ const results = await collection.query({
 })
 ```
 
+---
+
+## Embedding Model Selection: The Architect's Guide
+
+Choosing the right embedding model is a critical architectural decision that impacts accuracy, cost, and latency. This section provides a production-grade comparison framework.
+
+### Comprehensive Model Comparison (2026)
+
+| Model | Provider | Dimensions | Cost/1M Tokens | Latency (P95) | Quality Score | Best For |
+|-------|----------|------------|----------------|---------------|---------------|----------|
+| **text-embedding-3-large** | OpenAI | 3072 | $0.13 | 150ms | 95/100 | Highest accuracy RAG |
+| **text-embedding-3-small** | OpenAI | 1536 | $0.02 | 80ms | 88/100 | Cost-effective general use |
+| **text-embedding-ada-002** | OpenAI | 1536 | $0.10 | 100ms | 85/100 | Legacy (use v3-small instead) |
+| **voyage-large-2-instruct** | Voyage AI | 1024 | $0.12 | 120ms | 92/100 | Code search, technical docs |
+| **voyage-code-2** | Voyage AI | 1536 | $0.10 | 110ms | 91/100 | Codebase semantic search |
+| **cohere-embed-v3-multilingual** | Cohere | 1024 | $0.10 | 100ms | 90/100 | Non-English languages |
+| **bge-large-en-v1.5** | BAAI (open) | 1024 | Free (self-hosted) | 50ms (local) | 87/100 | Self-hosted, privacy-sensitive |
+| **e5-large-v2** | Microsoft (open) | 1024 | Free (self-hosted) | 45ms (local) | 86/100 | Open-source, customizable |
+| **all-MiniLM-L6-v2** | Sentence-BERT | 384 | Free (self-hosted) | 20ms (local) | 78/100 | Fast, low-resource environments |
+
+**Quality Score Methodology**: Averaged across MTEB benchmark (retrieval, classification, clustering, semantic similarity).
+
+### The Cost-Quality-Latency Triangle
+
+```typescript
+interface EmbeddingModelProfile {
+  model: string
+  dimensions: number
+  costPer1MTokens: number
+  p95Latency: number
+  qualityScore: number
+  throughput: number  // requests/second
+}
+
+const EMBEDDING_MODELS: Record<string, EmbeddingModelProfile> = {
+  'premium': {
+    model: 'text-embedding-3-large',
+    dimensions: 3072,
+    costPer1MTokens: 0.13,
+    p95Latency: 150,
+    qualityScore: 95,
+    throughput: 3000
+  },
+  'balanced': {
+    model: 'text-embedding-3-small',
+    dimensions: 1536,
+    costPer1MTokens: 0.02,
+    p95Latency: 80,
+    qualityScore: 88,
+    throughput: 8000
+  },
+  'fast': {
+    model: 'all-MiniLM-L6-v2',
+    dimensions: 384,
+    costPer1MTokens: 0.00,  // Self-hosted
+    p95Latency: 20,
+    qualityScore: 78,
+    throughput: 50000  // Local GPU
+  }
+}
+
+/**
+ * Choose embedding model based on requirements
+ */
+function selectEmbeddingModel(requirements: {
+  qualityThreshold: number
+  latencyBudget: number
+  monthlyBudget: number
+  expectedQueriesPerMonth: number
+}): EmbeddingModelProfile {
+  const models = Object.values(EMBEDDING_MODELS)
+
+  // Filter by quality requirement
+  let candidates = models.filter(m => m.qualityScore &gt;= requirements.qualityThreshold)
+
+  // Filter by latency requirement
+  candidates = candidates.filter(m => m.p95Latency &lt;= requirements.latencyBudget)
+
+  // Calculate monthly cost
+  const costsWithinBudget = candidates.filter(m => {
+    const monthlyCost = (requirements.expectedQueriesPerMonth / 1_000_000) * m.costPer1MTokens
+    return monthlyCost &lt;= requirements.monthlyBudget
+  })
+
+  if (costsWithinBudget.length === 0) {
+    throw new Error('No model meets all requirements - consider self-hosted options')
+  }
+
+  // Return highest quality model that meets constraints
+  return costsWithinBudget.sort((a, b) => b.qualityScore - a.qualityScore)[0]
+}
+
+// Example usage
+const model = selectEmbeddingModel({
+  qualityThreshold: 85,
+  latencyBudget: 100,  // ms
+  monthlyBudget: 500,  // USD
+  expectedQueriesPerMonth: 10_000_000
+})
+// Result: text-embedding-3-small (88 quality, 80ms, $200/month)
+```
+
+### Decision Framework: When to Use Which Model
+
+| Use Case | Recommended Model | Reasoning |
+|----------|------------------|-----------|
+| **High-stakes RAG** (legal, medical, financial) | text-embedding-3-large | Accuracy > Cost. Errors are expensive. |
+| **General-purpose RAG** (docs, support, internal tools) | text-embedding-3-small | Best balance of cost/quality for most use cases. |
+| **Code search** (GitHub Copilot-style) | voyage-code-2 | Trained on code, understands syntax and semantics. |
+| **Multi-language support** (global products) | cohere-embed-v3-multilingual | Handles 100+ languages with consistent quality. |
+| **Privacy-sensitive** (HIPAA, PII, on-prem) | bge-large-en-v1.5 (self-hosted) | No data leaves your infrastructure. |
+| **High-volume, cost-constrained** (startups, MVPs) | all-MiniLM-L6-v2 (self-hosted) | Free, fast, good enough for prototypes. |
+
+### ROI Analysis: Premium vs. Balanced Embedding Models
+
+**Scenario**: 10M queries/month RAG system for customer support
+
+| Metric | Premium (v3-large) | Balanced (v3-small) | Difference |
+|--------|-------------------|-------------------|------------|
+| **Cost/month** | $1,300 | $200 | -$1,100/month |
+| **Quality Score** | 95 | 88 | -7 points |
+| **Retrieval Accuracy** | 92% | 86% | -6% |
+| **Support Tickets Created** | 2,000/month | 2,600/month | +600 tickets |
+| **Support Cost** (@$5/ticket) | $10,000 | $13,000 | +$3,000/month |
+| **Net Cost** | $11,300 | $13,200 | **Premium CHEAPER by $1,900/month** |
+
+**Key Insight**: For high-stakes use cases (support, sales, compliance), premium models are often cheaper due to downstream cost savings from better accuracy.
+
+---
+
+## Distance Metrics: Choosing the Right Math
+
+Vector similarity can be measured in multiple ways. Choosing the wrong metric can degrade retrieval quality by 10-20%.
+
+### The Three Core Metrics
+
+```typescript
+/**
+ * Cosine Similarity: Measures angle between vectors
+ * Range: -1 (opposite) to 1 (identical)
+ * Use: When magnitude doesn't matter (most common)
+ */
+function cosineSimilarity(a: number[], b: number[]): number {
+  const dotProduct = a.reduce((sum, val, i) => sum + val * b[i], 0)
+  const magnitudeA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0))
+  const magnitudeB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0))
+
+  return dotProduct / (magnitudeA * magnitudeB)
+}
+
+/**
+ * Euclidean Distance: Straight-line distance in N-dimensional space
+ * Range: 0 (identical) to ∞ (very different)
+ * Use: When absolute magnitude matters
+ */
+function euclideanDistance(a: number[], b: number[]): number {
+  const squaredDiffs = a.map((val, i) => Math.pow(val - b[i], 2))
+  return Math.sqrt(squaredDiffs.reduce((sum, val) => sum + val, 0))
+}
+
+/**
+ * Dot Product: Sum of element-wise products
+ * Range: -∞ to ∞
+ * Use: When vectors are pre-normalized (fastest)
+ */
+function dotProduct(a: number[], b: number[]): number {
+  return a.reduce((sum, val, i) => sum + val * b[i], 0)
+}
+```
+
+### Visual Comparison: When Metrics Disagree
+
+Consider three document embeddings:
+- **Query**: `[1.0, 0.0]`
+- **Doc A**: `[0.9, 0.1]` (similar direction, similar magnitude)
+- **Doc B**: `[2.0, 0.0]` (exact same direction, 2x magnitude)
+
+| Metric | Doc A Score | Doc B Score | Winner |
+|--------|-------------|-------------|--------|
+| **Cosine** | 0.995 | 1.000 | Doc B (ignores magnitude) |
+| **Euclidean** | 0.141 | 1.000 | Doc A (penalizes magnitude difference) |
+| **Dot Product** | 0.900 | 2.000 | Doc B (rewards larger vectors) |
+
+### Decision Matrix: Which Metric to Use
+
+| Scenario | Recommended Metric | Reasoning |
+|----------|-------------------|-----------|
+| **General RAG** | Cosine Similarity | Most embedding models are NOT normalized - cosine handles varying magnitudes |
+| **Pre-normalized embeddings** | Dot Product | 2-3x faster than cosine, equivalent results when normalized |
+| **Image embeddings** | Euclidean Distance | Magnitude often encodes meaningful info (brightness, contrast) |
+| **Recommendation systems** | Dot Product | Favors popular items (higher magnitude = more interactions) |
+| **Anomaly detection** | Euclidean Distance | Absolute distance from cluster center matters |
+
+### The Normalization Trick: Make Cosine = Dot Product
+
+```typescript
+/**
+ * Normalize vector to unit length
+ * After normalization, dot product = cosine similarity (but 3x faster!)
+ */
+function normalize(vector: number[]): number[] {
+  const magnitude = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0))
+  return vector.map(v => v / magnitude)
+}
+
+// Performance comparison
+const query = await embed("machine learning")
+const doc = await embed("artificial intelligence")
+
+// Method 1: Cosine (slower)
+const cosine = cosineSimilarity(query, doc)  // 150 µs
+
+// Method 2: Dot product after normalization (faster)
+const normQuery = normalize(query)
+const normDoc = normalize(doc)
+const dotProd = dotProduct(normQuery, normDoc)  // 50 µs
+
+console.log(cosine === dotProd)  // true (within floating-point precision)
+```
+
+**Production Tip**: Normalize embeddings once during indexing, then use dot product for all searches. This is 3x faster than cosine and gives identical results.
+
+### Pgvector Operator Reference
+
+When using pgvector, choose the right operator:
+
+```sql
+-- Cosine Distance (most common)
+SELECT * FROM chunks ORDER BY embedding &lt;=&gt; query_vector LIMIT 5;
+
+-- Euclidean Distance (L2)
+SELECT * FROM chunks ORDER BY embedding <-> query_vector LIMIT 5;
+
+-- Dot Product (for normalized vectors)
+SELECT * FROM chunks ORDER BY embedding <#> query_vector LIMIT 5;
+
+-- Note: pgvector uses distance (lower = more similar), not similarity
+-- To convert: similarity = 1 - distance
+```
+
+### Production Performance: Index Choice Matters
+
+```typescript
+interface VectorIndexConfig {
+  type: 'hnsw' | 'ivfflat'
+  distanceMetric: 'cosine' | 'euclidean' | 'dot'
+  indexParams?: {
+    m?: number             // HNSW: connections per layer
+    efConstruction?: number // HNSW: build quality
+    lists?: number         // IVFFlat: number of clusters
+  }
+}
+
+/**
+ * Production index configuration for pgvector
+ */
+const PRODUCTION_CONFIG: VectorIndexConfig = {
+  type: 'hnsw',
+  distanceMetric: 'cosine',
+  indexParams: {
+    m: 16,               // Good balance of speed/recall
+    efConstruction: 64   // Higher = better quality, slower build
+  }
+}
+
+// SQL to create production index
+const createIndexSQL = `
+  CREATE INDEX embedding_idx ON chunks
+  USING hnsw (embedding vector_cosine_ops)
+  WITH (m = 16, ef_construction = 64);
+`
+```
+
+**Index Performance Comparison** (1M vectors, 1536 dimensions):
+
+| Index Type | Build Time | Query Latency (P95) | Recall@10 | Memory |
+|------------|-----------|-------------------|-----------|---------|
+| **HNSW** | 45 min | 15ms | 98% | 12 GB |
+| **IVFFlat** (100 lists) | 10 min | 25ms | 92% | 8 GB |
+| **No Index (brute force)** | 0 min | 8,000ms | 100% | 6 GB |
+
+**Key Takeaway**: HNSW is almost always the right choice for production. IVFFlat is only better if you have &lt;100K vectors or extreme memory constraints.
+
+---
+
 ## Embedding Best Practices
 
 ### 1. Chunk Size Matters

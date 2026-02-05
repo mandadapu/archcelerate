@@ -1,30 +1,648 @@
 ---
-title: "Domain Compliance Patterns"
-description: "Implement compliance for finance, healthcare, and regulated industries"
+title: "Domain Compliance & Redaction"
+description: "Engineer high-speed PII/PHI redaction pipelines and data residency patterns for regulated industries"
 estimatedMinutes: 50
 ---
 
-# Domain Compliance Patterns
+# Domain Compliance & Redaction: PII/PHI Protection
 
-Practical patterns for building compliant AI in regulated industries.
+Build **high-speed redaction pipelines** that de-identify sensitive data before it reaches third-party LLM APIs—and design **Local-First inference patterns** to keep PII within your VPC.
 
-> **Note**: This covers domain-specific compliance patterns. For detailed GDPR/HIPAA implementation, see Week 12.
-
-## Overview
-
-Different industries have different compliance requirements for AI systems:
-
-| Industry | Key Regulations | AI Requirements |
-|----------|----------------|-----------------|
-| **Finance** | ECOA, FCRA, Dodd-Frank | Fair lending, credit decision explainability |
-| **Healthcare** | HIPAA, HITECH, FDA | PHI protection, medical device approval |
-| **Insurance** | State regulations, NAIC | Risk assessment transparency, anti-discrimination |
-| **HR/Hiring** | EEOC, OFCCP | Fair hiring, no disparate impact |
-| **Government** | FISMA, FedRAMP | Security controls, auditability |
+> **Architect Perspective**: Compliance isn't about legal documents—it's about **engineering data flow** to ensure PII/PHI **never** leaves your control perimeter. Build redaction as **zero-latency middleware** (&lt;5ms overhead) and design Local-First patterns to **technically prevent** data residency violations.
 
 ---
 
-## Finance: Fair Lending & Credit Decisions
+## 🏥 Real-World Challenge: The HIPAA-Compliant AI Gateway
+
+**The Problem**: A telehealth startup wants to use frontier LLMs (Claude Opus, GPT-5) for medical diagnosis assistance. But sending raw patient data to third-party APIs violates HIPAA—Protected Health Information (PHI) cannot leave the company's controlled environment without risking **$50,000+ fines per violation**.
+
+**Business Constraints**:
+- **Compliance**: Must meet HIPAA data residency requirements (PHI stays in US, within HIPAA-certified infrastructure)
+- **Functionality**: Still needs advanced reasoning from frontier models (not available as on-premise deployments)
+- **Performance**: Cannot add &gt;10ms latency—doctors expect instant responses
+- **Auditability**: Must maintain complete audit trail for compliance inspections
+
+**Architectural Solution: The Sovereign PII Redactor**
+
+Deploy a **high-speed redaction pipeline** that sanitizes PHI before tokens leave your VPC:
+
+```typescript
+// Step 1: Regex-based fast path (&lt;1ms) - catches obvious patterns
+const fastRedacted = regexRedactor.sanitize(patientQuery)
+// "Patient John Doe, SSN 123-45-6789, glucose 180 mg/dL"
+// → "Patient [REDACTED_NAME], SSN [REDACTED_SSN], glucose 180 mg/dL"
+
+// Step 2: NER model (local, &lt;3ms) - catches contextual PII
+const fullRedacted = await nerRedactor.sanitize(fastRedacted)
+// → "Patient [REDACTED_NAME], SSN [REDACTED_SSN], glucose [REDACTED_LAB_VALUE]"
+
+// Step 3: Cryptographic placeholders for reversibility
+const tokenMap = generateReversibleTokens(fullRedacted)
+// [REDACTED_NAME] → crypto_placeholder_a7f3
+// Store mapping in secure database (never sent to API)
+
+// Step 4: Safe to send to external API
+const response = await anthropic.messages.create({
+  messages: [{ role: 'user', content: fullRedacted }]
+})
+
+// Step 5: Reverse redaction for display
+const patientResponse = reverseRedaction(response.content, tokenMap)
+```
+
+**Production Implementation**:
+
+**Layer 1: Pre-API Middleware** (adds 4.2ms latency)
+- Regex redaction: 0.8ms (SSN, emails, phone numbers)
+- NER model (local Transformer): 3.2ms (names, addresses, dates of birth)
+- Token mapping: 0.2ms (generate crypto placeholders)
+
+**Layer 2: Data Residency Enforcement**
+- VPC-hosted redaction service (never leaves your AWS/Azure environment)
+- Encrypted token maps stored in PostgreSQL (HIPAA-certified RDS)
+- Audit log of every redaction (required for compliance)
+
+**Layer 3: Reversibility for Display**
+- Decryption happens client-side or in trusted VPC
+- Original PHI never transmitted to external APIs
+- Complete audit trail: what was redacted, when, by whom
+
+**Production Impact**:
+- **Compliance**: **100% HIPAA-compliant**—PHI technically cannot reach third-party servers
+- **Performance**: **4.2ms overhead** (within &lt;10ms requirement)
+- **Auditability**: Every request logged with redaction details for SOC 2 / HIPAA audits
+- **Cost Avoidance**: **$1M+ in fines prevented** (average HIPAA violation settlement)
+- **Functionality Preserved**: Still access Opus/GPT-5 for advanced medical reasoning
+
+**Alternative: Local-First Architecture** (zero external data transmission)
+
+For ultimate data residency:
+```typescript
+// Deploy Llama 3.3 (70B) on-premise with vLLM
+const response = await localLLM.complete({
+  model: 'llama-3.3-70b',
+  prompt: rawPatientQuery  // No redaction needed—data never leaves VPC
+})
+```
+
+**Trade-off Matrix**:
+| Architecture | Compliance | Cost | Quality | Latency |
+|--------------|-----------|------|---------|---------|
+| Redaction Gateway | ✅ HIPAA | $200/mo | ✅ Opus 4.5 | 4.2ms overhead |
+| Local-First (Llama) | ✅ HIPAA | $8K/mo GPU | ⚠️ Good but not Opus | 2-3s inference |
+
+**When to Use Which**:
+- **Redaction Gateway**: High-volume (&gt;10K queries/day), need best-in-class reasoning, cost-sensitive
+- **Local-First**: Ultra-sensitive data (psychiatric notes, genetic data), regulatory requirement for zero external transmission
+
+**[📚 Dive Deeper: Implement the Redaction Pipeline](#high-speed-piiphi-redaction-regex--nlp-pipeline)**
+
+Below, you'll find the complete production implementation with:
+- Regex patterns for all common PII/PHI types
+- NER model integration for contextual redaction
+- Cryptographic token mapping for reversibility
+- Audit logging for compliance
+
+---
+
+## The Compliance Engineering Problem
+
+**Reality Check**: Sending raw user data to third-party LLM APIs is a compliance violation waiting to happen.
+
+**Example Violations**:
+```typescript
+// ❌ HIPAA Violation
+await anthropic.messages.create({
+  messages: [{ role: 'user', content: 'Patient John Doe, SSN 123-45-6789, diagnosed with diabetes' }]
+})
+// PHI (SSN, diagnosis) sent to Anthropic servers (outside HIPAA control) → $50K+ fine per violation
+
+// ❌ GDPR Violation
+await anthropic.messages.create({
+  messages: [{ role: 'user', content: 'User email: user@example.com requested account deletion' }]
+})
+// PII (email) sent to US servers without explicit consent → 4% of global revenue fine
+
+// ✅ Compliant
+await anthropic.messages.create({
+  messages: [{ role: 'user', content: 'Patient [REDACTED_ID], SSN [REDACTED_SSN], diagnosed with [REDACTED_CONDITION]' }]
+})
+// PHI redacted before API call → compliant
+```
+
+**Cost of Compliance Violations**:
+```typescript
+// HIPAA Violations
+- Tier 1 (unknowing): $100-$50,000 per violation
+- Tier 4 (willful neglect): $50,000+ per violation
+- Annual cap: $1.5M per violation type
+
+// GDPR Violations
+- Up to 4% of global annual revenue or €20M (whichever is higher)
+- Example: Meta fined €1.2B for GDPR violations (2023)
+
+// Engineering ROI
+- Redaction pipeline: $30K one-time + $5K/year
+- Local-First infrastructure: $50K one-time + $20K/year
+- Total: $80K prevents $1M+ fines → 12:1 ROI minimum
+```
+
+**Architectural Mandate**: **Never** send raw PII/PHI to external APIs. Build redaction as **mandatory middleware** and Local-First as **architectural isolation**.
+
+---
+
+## High-Speed PII/PHI Redaction: Regex + NLP Pipeline
+
+**The Pattern**: Build a **two-phase** redaction pipeline that runs in &lt;5ms—fast enough to be transparent to users.
+
+### Phase 1: Regex-Based Fast Path (&lt;1ms)
+
+```typescript
+interface RedactionPattern {
+  type: 'PII' | 'PHI'
+  name: string
+  regex: RegExp
+  replacement: string
+  severity: 'critical' | 'high' | 'medium'
+}
+
+const REDACTION_PATTERNS: RedactionPattern[] = [
+  // PII Patterns
+  {
+    type: 'PII',
+    name: 'SSN',
+    regex: /\b\d{3}-\d{2}-\d{4}\b/g,
+    replacement: '[REDACTED_SSN]',
+    severity: 'critical'
+  },
+  {
+    type: 'PII',
+    name: 'Credit Card',
+    regex: /\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b/g,
+    replacement: '[REDACTED_CC]',
+    severity: 'critical'
+  },
+  {
+    type: 'PII',
+    name: 'Email',
+    regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
+    replacement: '[REDACTED_EMAIL]',
+    severity: 'high'
+  },
+  {
+    type: 'PII',
+    name: 'Phone',
+    regex: /\b(\+\d{1,2}\s?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/g,
+    replacement: '[REDACTED_PHONE]',
+    severity: 'high'
+  },
+
+  // PHI Patterns (HIPAA)
+  {
+    type: 'PHI',
+    name: 'MRN (Medical Record Number)',
+    regex: /\bMRN[:\s]?\d{6,10}\b/gi,
+    replacement: '[REDACTED_MRN]',
+    severity: 'critical'
+  },
+  {
+    type: 'PHI',
+    name: 'Date of Birth',
+    regex: /\b(0?[1-9]|1[0-2])[\/\-](0?[1-9]|[12]\d|3[01])[\/\-](\d{4}|\d{2})\b/g,
+    replacement: '[REDACTED_DOB]',
+    severity: 'critical'
+  }
+]
+
+interface RedactionResult {
+  redactedText: string
+  detectedPII: Array<{
+    type: string
+    name: string
+    severity: string
+    count: number
+  }>
+  latency: number
+}
+
+function redactPIIRegex(text: string): RedactionResult {
+  const startTime = Date.now()
+  let redactedText = text
+  const detected: Map<string, { type: string; name: string; severity: string; count: number }> = new Map()
+
+  for (const pattern of REDACTION_PATTERNS) {
+    const matches = text.match(pattern.regex)
+    if (matches) {
+      const count = matches.length
+      detected.set(pattern.name, {
+        type: pattern.type,
+        name: pattern.name,
+        severity: pattern.severity,
+        count
+      })
+
+      redactedText = redactedText.replace(pattern.regex, pattern.replacement)
+    }
+  }
+
+  return {
+    redactedText,
+    detectedPII: Array.from(detected.values()),
+    latency: Date.now() - startTime
+  }
+}
+
+/* Example:
+Input: "Patient John Doe, SSN 123-45-6789, MRN: 1234567, DOB 01/15/1980"
+Output: {
+  redactedText: "Patient John Doe, [REDACTED_SSN], [REDACTED_MRN], [REDACTED_DOB]",
+  detectedPII: [
+    { type: "PII", name: "SSN", severity: "critical", count: 1 },
+    { type: "PHI", name: "MRN", severity: "critical", count: 1 },
+    { type: "PHI", name: "Date of Birth", severity: "critical", count: 1 }
+  ],
+  latency: 0.8  // &lt;1ms
+}
+*/
+```
+
+### Phase 2: NLP-Based Names & Addresses (&lt;5ms)
+
+```typescript
+import { pipeline } from '@xenova/transformers'  // Local NER model
+
+// Load NER model once at startup (not per request)
+const nerPipeline = await pipeline('ner', 'Xenova/bert-base-NER')
+
+interface NERRedactionResult extends RedactionResult {
+  entities: Array<{
+    entity: string
+    type: 'PERSON' | 'ORG' | 'LOC' | 'DATE'
+    text: string
+    start: number
+    end: number
+  }>
+}
+
+async function redactPIINER(text: string): Promise<NERRedactionResult> {
+  const startTime = Date.now()
+
+  // Step 1: Run NER model (local, no API call)
+  const entities = await nerPipeline(text)
+
+  // Step 2: Redact person names and locations
+  let redactedText = text
+  const detected: NERRedactionResult['entities'] = []
+
+  for (const entity of entities) {
+    if (entity.entity === 'B-PER' || entity.entity === 'I-PER') {
+      // Person name → PII
+      detected.push({
+        entity: entity.entity,
+        type: 'PERSON',
+        text: entity.word,
+        start: entity.start,
+        end: entity.end
+      })
+
+      redactedText = redactedText.replace(entity.word, '[REDACTED_NAME]')
+    }
+
+    if (entity.entity === 'B-LOC' || entity.entity === 'I-LOC') {
+      // Location → potential PHI (address)
+      detected.push({
+        entity: entity.entity,
+        type: 'LOC',
+        text: entity.word,
+        start: entity.start,
+        end: entity.end
+      })
+
+      redactedText = redactedText.replace(entity.word, '[REDACTED_LOC]')
+    }
+  }
+
+  return {
+    redactedText,
+    detectedPII: [],  // Populated by regex phase
+    entities: detected,
+    latency: Date.now() - startTime
+  }
+}
+
+/* Example:
+Input: "Patient John Doe lives in San Francisco and works at Acme Corp"
+Output: {
+  redactedText: "Patient [REDACTED_NAME] [REDACTED_NAME] lives in [REDACTED_LOC] and works at Acme Corp",
+  entities: [
+    { entity: "B-PER", type: "PERSON", text: "John", start: 8, end: 12 },
+    { entity: "I-PER", type: "PERSON", text: "Doe", start: 13, end: 16 },
+    { entity: "B-LOC", type: "LOC", text: "San Francisco", start: 26, end: 39 }
+  ],
+  latency: 4.2  // &lt;5ms
+}
+*/
+```
+
+### Production Redaction Pipeline
+
+```typescript
+async function redactionPipeline(text: string): Promise<{
+  redactedText: string
+  piiDetected: boolean
+  phiDetected: boolean
+  totalLatency: number
+}> {
+  const startTime = Date.now()
+
+  // Phase 1: Regex (fast path for structured PII/PHI)
+  const regexResult = redactPIIRegex(text)
+
+  // Phase 2: NER (for names and locations)
+  const nerResult = await redactPIINER(regexResult.redactedText)
+
+  // Combine results
+  const piiDetected = regexResult.detectedPII.some(d => d.type === 'PII') ||
+                      nerResult.entities.some(e => e.type === 'PERSON')
+  const phiDetected = regexResult.detectedPII.some(d => d.type === 'PHI')
+
+  return {
+    redactedText: nerResult.redactedText,
+    piiDetected,
+    phiDetected,
+    totalLatency: Date.now() - startTime
+  }
+}
+
+/* Performance:
+- Regex phase: &lt;1ms
+- NER phase: &lt;5ms
+- Total: &lt;6ms latency overhead
+- Throughput: ~166 requests/second on single core
+- Cost: $0 (local NER model, no API calls)
+*/
+```
+
+## Data Residency: Local-First Inference Pattern
+
+**The Problem**: Third-party LLM APIs route data through US servers, violating GDPR/HIPAA data residency requirements.
+
+**Example Violation**:
+```typescript
+// ❌ GDPR Violation - EU user data sent to US servers
+const europeanUserData = "User in Germany requested account deletion"
+await anthropic.messages.create({  // Routes through US servers
+  messages: [{ role: 'user', content: europeanUserData }]
+})
+// Violation: GDPR requires EU data stays in EU → €20M or 4% revenue fine
+```
+
+### Local-First Architecture: Keep PII in Your VPC
+
+**Pattern**: Run smaller open-source models **locally** for PII-intensive tasks, only send redacted data to external APIs.
+
+```typescript
+interface LocalFirstConfig {
+  piiThreshold: 'any' | 'critical' | 'none'
+  localModel: {
+    name: string
+    size: string
+    latency: number
+    quality: number
+  }
+  externalModel: {
+    name: string
+    costPerMTok: number
+    quality: number
+  }
+}
+
+const LOCAL_FIRST_CONFIG: LocalFirstConfig = {
+  piiThreshold: 'any',  // Route to local if ANY PII detected
+  localModel: {
+    name: 'mistral-7b-instruct',
+    size: '7B parameters',
+    latency: 500,   // ms p95
+    quality: 0.85   // vs. Claude Sonnet = 1.0
+  },
+  externalModel: {
+    name: 'claude-sonnet-4.5',
+    costPerMTok: 3.0,
+    quality: 1.0
+  }
+}
+
+async function routeWithLocalFirst(
+  userQuery: string
+): Promise<{ response: string; routed: 'local' | 'external'; reason: string }> {
+  // Step 1: Check for PII
+  const redactionResult = await redactionPipeline(userQuery)
+
+  // Step 2: Route decision
+  if (redactionResult.piiDetected || redactionResult.phiDetected) {
+    // PII detected → MUST use local model (data residency requirement)
+    const localResponse = await callLocalModel(userQuery)
+
+    return {
+      response: localResponse,
+      routed: 'local',
+      reason: 'PII/PHI detected - data residency requirement'
+    }
+  }
+
+  // Step 3: No PII → safe to use external API with redacted text
+  const externalResponse = await anthropic.messages.create({
+    model: 'claude-sonnet-4.5',
+    max_tokens: 1024,
+    messages: [{ role: 'user', content: redactionResult.redactedText }]
+  })
+
+  return {
+    response: externalResponse.content[0].text,
+    routed: 'external',
+    reason: 'No PII detected - external API for quality'
+  }
+}
+
+async function callLocalModel(query: string): Promise<string> {
+  // Option 1: Ollama (local inference server)
+  const response = await fetch('http://localhost:11434/api/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'mistral',
+      prompt: query,
+      stream: false
+    })
+  })
+
+  const result = await response.json()
+  return result.response
+
+  // Option 2: vLLM (production-grade local inference)
+  // const response = await fetch('http://localhost:8000/v1/completions', {
+  //   method: 'POST',
+  //   headers: { 'Content-Type': 'application/json' },
+  //   body: JSON.stringify({
+  //     model: 'mistralai/Mistral-7B-Instruct-v0.2',
+  //     prompt: query,
+  //     max_tokens: 1024
+  //   })
+  // })
+}
+
+/* Cost Analysis:
+Local Model (Mistral 7B):
+- Infrastructure: $500/month (GPU instance: g4dn.xlarge)
+- Inference cost: $0 per request
+- Throughput: ~10 requests/second
+- Quality: 85% of Claude Sonnet
+
+External Model (Claude Sonnet):
+- Infrastructure: $0
+- Inference cost: $0.006 per request (avg 2K tokens)
+- Throughput: Unlimited
+- Quality: 100% (baseline)
+
+Break-even:
+- Local model cost: $500/month fixed
+- External model cost: $0.006 × requests
+- Break-even: 500 / 0.006 = 83,333 requests/month
+- If &gt;83K requests/month with PII → local is cheaper
+- If &lt;83K requests/month → redaction + external is cheaper
+*/
+```
+
+### HIPAA-Compliant Local-First Pattern
+
+```typescript
+interface HIPAAComplianceConfig {
+  dataResidency: 'local' | 'us-only' | 'eu-only'
+  encryptionAtRest: boolean
+  encryptionInTransit: boolean
+  auditLogging: boolean
+  accessControls: 'strict' | 'standard'
+}
+
+const HIPAA_CONFIG: HIPAAComplianceConfig = {
+  dataResidency: 'local',         // PHI never leaves VPC
+  encryptionAtRest: true,         // AES-256 encryption
+  encryptionInTransit: true,      // TLS 1.3
+  auditLogging: true,             // Every access logged
+  accessControls: 'strict'        // Role-based access
+}
+
+async function processHIPAAQuery(
+  query: string,
+  userId: string
+): Promise<{ response: string; auditId: string }> {
+  // Step 1: Detect PHI
+  const redactionResult = await redactionPipeline(query)
+
+  if (redactionResult.phiDetected) {
+    // Step 2: PHI detected → LOCAL ONLY (HIPAA requirement)
+    const response = await callLocalModel(query)
+
+    // Step 3: Audit log (HIPAA requirement)
+    const auditId = await logHIPAAAccess({
+      userId,
+      accessType: 'llm_inference',
+      phiDetected: true,
+      dataResidency: 'local',
+      timestamp: new Date()
+    })
+
+    return { response, auditId }
+  }
+
+  // Step 4: No PHI → external API with redacted text
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4.5',
+    max_tokens: 1024,
+    messages: [{ role: 'user', content: redactionResult.redactedText }]
+  })
+
+  const auditId = await logHIPAAAccess({
+    userId,
+    accessType: 'llm_inference',
+    phiDetected: false,
+    dataResidency: 'external',
+    timestamp: new Date()
+  })
+
+  return {
+    response: response.content[0].text,
+    auditId
+  }
+}
+
+/* HIPAA Compliance Checklist:
+✅ PHI never sent to external APIs (local-first routing)
+✅ Encryption at rest (AES-256 for model weights and data)
+✅ Encryption in transit (TLS 1.3 for all connections)
+✅ Audit logging (every PHI access logged with timestamp, user, action)
+✅ Access controls (role-based access to local models)
+✅ Business Associate Agreement (BAA) with external API providers for non-PHI data
+*/
+```
+
+## Key Takeaways
+
+**High-Speed Redaction Pipeline**:
+- **Phase 1**: Regex for structured PII/PHI (&lt;1ms latency)
+- **Phase 2**: Local NER for names/locations (&lt;5ms latency)
+- **Total overhead**: &lt;6ms per request (transparent to users)
+- **Cost**: $0 (no API calls, local NER model)
+
+**Local-First Routing Decision**:
+```typescript
+// Decision tree:
+if (PHI detected) {
+  route → local model (HIPAA requirement)
+} else if (PII detected) {
+  route → local model if &gt;83K req/month (cost-effective)
+  route → external with redaction if &lt;83K req/month
+} else {
+  route → external API (best quality)
+}
+```
+
+**Data Residency Patterns**:
+- **GDPR (EU)**: EU user data must stay in EU → local model in EU region
+- **HIPAA (Healthcare)**: PHI must stay in controlled environment → local model in your VPC
+- **CCPA (California)**: PII requires explicit consent for third-party processing → redact or local
+
+**Cost Analysis**:
+```typescript
+// Redaction Pipeline
+- Regex phase: $0 (local)
+- NER phase: $0 (local model)
+- Total: $0 per request
+
+// Local-First Infrastructure
+- GPU instance (g4dn.xlarge): $500/month
+- Break-even: 83,333 requests/month
+- Quality trade-off: 85% of Claude Sonnet
+
+// ROI: Prevents $1M+ HIPAA/GDPR fines → 2,000:1 ROI minimum
+```
+
+**The Architect's Responsibility**:
+You **own** data residency. If PHI reaches external APIs and you didn't implement Local-First, **you're responsible** for the HIPAA violation. If EU user data routes through US servers and you didn't check, **you're responsible** for the GDPR fine.
+
+## Further Reading
+
+- **HIPAA Technical Safeguards**: 45 CFR § 164.312
+- **GDPR Article 44**: Transfers of personal data to third countries
+- **Ollama**: Local LLM inference (https://ollama.ai)
+- **vLLM**: Production-grade local inference (https://vllm.ai)
+- **Presidio**: Microsoft's PII detection library (https://microsoft.github.io/presidio/)
+
+## Next Concept
+
+- **[AI Testing & NFRs](./ai-testing-nfrs.mdx)**: Production telemetry and SLA circuit breakers
+
+## Compliance Patterns (Legacy Content)
 
 ### Equal Credit Opportunity Act (ECOA)
 
@@ -147,7 +765,7 @@ async function stressTestCreditModel(
       }))
 
       const predictions = await model.predictBatch(adjustedApps)
-      const approvalRate = predictions.filter(p => p > 0.5).length / predictions.length
+      const approvalRate = predictions.filter(p => p &gt; 0.5).length / predictions.length
 
       return {
         scenario: scenario.name,
@@ -173,7 +791,7 @@ async function stressTestCreditModel(
 const PHI_IDENTIFIERS = [
   'names',
   'geographic_subdivisions_smaller_than_state',
-  'dates',  // Except year for age > 89
+  'dates',  // Except year for age &gt; 89
   'telephone_numbers',
   'fax_numbers',
   'email_addresses',
@@ -398,7 +1016,7 @@ async function analyzeOutcomes(
   return {
     premiumsByGroup,
     maxDifference: maxDiff,
-    hasDisparateTreatment: maxDiff > 0.20  // 20% threshold
+    hasDisparateTreatment: maxDiff &gt; 0.20  // 20% threshold
   }
 }
 ```
@@ -459,7 +1077,7 @@ async function checkAdverseImpact(
     rate: groups[group].filter(a => a.hired).length / groups[group].length
   }))
 
-  // 80% rule: selection rate for protected group must be >= 80% of highest rate
+  // 80% rule: selection rate for protected group must be &gt;= 80% of highest rate
   const highestRate = Math.max(...selectionRates.map(r => r.rate))
 
   const violations = selectionRates.filter(rate =>
@@ -470,7 +1088,7 @@ async function checkAdverseImpact(
     selectionRates,
     passed: violations.length === 0,
     violations,
-    recommendation: violations.length > 0
+    recommendation: violations.length &gt; 0
       ? 'Manual review required: potential adverse impact detected'
       : 'No adverse impact detected'
   }
@@ -510,7 +1128,7 @@ async function screenResume(resume: Resume): Promise<ScreeningResult> {
 
   return {
     score,
-    recommendation: score > 0.7 ? 'interview' : 'reject',
+    recommendation: score &gt; 0.7 ? 'interview' : 'reject',
     explanation: await generateExplanation(score),
     complianceChecked: true
   }
@@ -607,6 +1225,229 @@ async function enforceRetentionPolicy(
   })
 }
 ```
+
+---
+
+## Real-World Industry Application
+
+### HIPAA-Compliant Gateway for Telehealth Platform
+
+**The Challenge**: A telehealth startup needs to use external LLM APIs for clinical documentation and patient communication, but **HIPAA requires** that Protected Health Information (PHI) never leaves the company's control without a Business Associate Agreement (BAA). Anthropic and OpenAI APIs are **not HIPAA-compliant by default**—sending patient data directly would be a violation.
+
+**Business Context**:
+- **Regulatory Requirement**: HIPAA Technical Safeguards (§164.312) mandate encryption and access controls for PHI
+- **Risk**: $50,000+ fine per violation, potential loss of medical license
+- **Volume**: 10,000 clinical notes/day requiring LLM processing
+- **Constraint**: External LLM APIs cannot see raw PHI (no BAA with most providers)
+- **Success Criteria**: Zero PHI exposure to external APIs, &lt;20ms redaction overhead, 98%+ PHI detection accuracy
+
+**The Architectural Solution**: Build a **local PII/PHI redaction middleware** that intercepts all API calls, removes sensitive data using placeholder tokens, and re-identifies the data in responses before returning to clinicians.
+
+#### Production Implementation
+
+```typescript
+interface RedactionResult {
+  redactedText: string
+  placeholderMap: Record<string, string>  // Maps placeholders → original values
+  phiDetected: Array<{
+    type: 'NAME' | 'DOB' | 'SSN' | 'MRN' | 'DIAGNOSIS' | 'MEDICATION'
+    value: string
+    startIndex: number
+    endIndex: number
+  }>
+  processingTime: number  // Latency tracking
+}
+
+class HIPAAGateway {
+  async redactPHI(text: string): Promise<RedactionResult> {
+    const startTime = Date.now()
+    const phiDetected: RedactionResult['phiDetected'] = []
+    const placeholderMap: Record<string, string> = {}
+    let redactedText = text
+
+    // PHASE 1: Regex-based detection (&lt;1ms for structured data)
+    const patterns = [
+      {
+        type: 'NAME' as const,
+        regex: /\b([A-Z][a-z]+ [A-Z][a-z]+)\b/g,
+        contextClues: ['patient', 'mr.', 'ms.', 'dr.']
+      },
+      {
+        type: 'DOB' as const,
+        regex: /\b(\d{1,2}\/\d{1,2}\/\d{4})\b/g
+      },
+      {
+        type: 'SSN' as const,
+        regex: /\b(\d{3}-\d{2}-\d{4})\b/g
+      },
+      {
+        type: 'MRN' as const,
+        regex: /\b(MRN:?\s*\d{6,10})\b/gi
+      }
+    ]
+
+    for (const pattern of patterns) {
+      const matches = [...text.matchAll(pattern.regex)]
+
+      for (const match of matches) {
+        const value = match[1] || match[0]
+        const startIndex = match.index!
+
+        // Context validation for names
+        if (pattern.contextClues) {
+          const context = text.substring(
+            Math.max(0, startIndex - 50),
+            Math.min(text.length, startIndex + 50)
+          ).toLowerCase()
+
+          const hasContext = pattern.contextClues.some(clue => context.includes(clue))
+          if (!hasContext) continue
+        }
+
+        const placeholder = `[${pattern.type}_${phiDetected.length + 1}]`
+        placeholderMap[placeholder] = value
+        phiDetected.push({
+          type: pattern.type,
+          value,
+          startIndex,
+          endIndex: startIndex + value.length
+        })
+
+        redactedText = redactedText.replace(value, placeholder)
+      }
+    }
+
+    return {
+      redactedText,
+      placeholderMap,
+      phiDetected,
+      processingTime: Date.now() - startTime
+    }
+  }
+
+  async reidentifyPHI(
+    llmResponse: string,
+    placeholderMap: Record<string, string>
+  ): Promise<string> {
+    let reidentified = llmResponse
+
+    for (const [placeholder, originalValue] of Object.entries(placeholderMap)) {
+      reidentified = reidentified.replace(
+        new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
+        originalValue
+      )
+    }
+
+    return reidentified
+  }
+
+  async processLLMRequest(clinicalNote: string): Promise<string> {
+    // Step 1: Redact PHI
+    const redactionResult = await this.redactPHI(clinicalNote)
+
+    // Step 2: Log for HIPAA audit trail (§164.312)
+    await this.logPHIAccess({
+      action: 'REDACT_BEFORE_LLM',
+      phiTypes: redactionResult.phiDetected.map(p => p.type),
+      timestamp: new Date()
+    })
+
+    // Step 3: Call external LLM (no PHI in request)
+    const llmResponse = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2048,
+      messages: [{ role: 'user', content: redactionResult.redactedText }]
+    })
+
+    const responseText = llmResponse.content[0].type === 'text'
+      ? llmResponse.content[0].text
+      : ''
+
+    // Step 4: Re-identify PHI for clinician
+    const reidentified = await this.reidentifyPHI(
+      responseText,
+      redactionResult.placeholderMap
+    )
+
+    return reidentified
+  }
+
+  private async logPHIAccess(record: {
+    action: string
+    phiTypes: string[]
+    timestamp: Date
+  }): Promise<void> {
+    await prisma.hipaaAuditLog.create({
+      data: {
+        action: record.action,
+        phiTypes: record.phiTypes,
+        timestamp: record.timestamp,
+        ipAddress: 'REDACTED',
+        userAgent: 'REDACTED'
+      }
+    })
+  }
+}
+```
+
+#### End-to-End Example
+
+```typescript
+const gateway = new HIPAAGateway()
+
+const clinicalNote = `
+Patient: John Doe, DOB 03/15/1975, MRN 123456789
+Chief Complaint: Patient reports persistent cough for 2 weeks
+History: Patient has a history of asthma and hypertension
+Current Medications: Albuterol inhaler, Lisinopril 10mg daily
+Assessment: Likely viral upper respiratory infection
+Plan: Continue current medications, add prednisone taper
+`
+
+const response = await gateway.processLLMRequest(clinicalNote)
+```
+
+**What the LLM sees (redacted)**:
+```
+Patient: [NAME_1], DOB [DOB_1], MRN [MRN_1]
+Chief Complaint: Patient reports persistent cough for 2 weeks
+History: Patient has a history of asthma and hypertension
+Current Medications: Albuterol inhaler, Lisinopril 10mg daily
+Assessment: Likely viral upper respiratory infection
+Plan: Continue current medications, add prednisone taper
+```
+
+**Zero PHI Exposure** ✅ - Anthropic never sees patient name, DOB, or MRN.
+
+#### Outcome Metrics
+
+**Before HIPAA Gateway**:
+- ❌ HIPAA violation (PHI sent to external provider)
+- ❌ Cannot deploy in production
+- Risk: $50,000+ fine per violation
+
+**After HIPAA Gateway**:
+- ✅ HIPAA compliant (no PHI leaves VPC)
+- ✅ Production ready
+- **Redaction Speed**: 3.2ms average (regex-based)
+- **Accuracy**: 98.7% PHI detection on 1,000 test notes
+- **Latency Overhead**: &lt;12ms total (imperceptible to users)
+- **Cost**: $38K/year infrastructure
+- **ROI**: Prevents $5M+ fine exposure = **131:1 ROI**
+
+**Business Impact**:
+- **Market Entry Enabled**: Product can now launch in healthcare vertical ($2.7B addressable market)
+- **Compliance Maintained**: Zero PHI violations since deployment
+- **User Experience**: &lt;12ms latency overhead
+- **Scalability**: Handles 10,000 notes/day with 99.9% uptime
+
+**Key Decisions**:
+1. **Middleware Pattern**: Enforced at network level (VPC blocks direct API access)
+2. **Placeholder Tokens**: Preserve sentence structure for coherent LLM responses
+3. **Local Processing**: PHI never leaves private subnet (HIPAA requirement)
+4. **Audit Trail**: Every PHI access logged (§164.312 compliance)
+
+**The Architect's Principle**: Compliance is not a legal checkbox—it's **architecting data flow** to make violations **technically impossible**. Build PHI redaction as **mandatory middleware** enforced at the network layer.
 
 ---
 

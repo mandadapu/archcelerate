@@ -248,8 +248,8 @@ async function deduplicateContent(sources: ContextSource[]): Promise<ContextSour
         embeddings[sources.indexOf(deduplicated[j])]
       )
 
-      // If >90% similar, consider duplicate
-      if (similarity > 0.9) {
+      // If &gt;90% similar, consider duplicate
+      if (similarity &gt; 0.9) {
         isDuplicate = true
         // Keep the one with higher relevance
         if (sources[i].relevance > deduplicated[j].relevance) {
@@ -561,7 +561,7 @@ async function relevanceAwareTruncation(
   scoredChunks.sort((a, b) => b.relevanceScore - a.relevanceScore)
 
   for (const chunk of scoredChunks) {
-    if (totalTokens + chunk.tokens <= maxTokens) {
+    if (totalTokens + chunk.tokens &lt;= maxTokens) {
       selectedChunks.push(chunk)
       totalTokens += chunk.tokens
     } else {
@@ -586,7 +586,7 @@ function splitIntoChunks(text: string, tokensPerChunk: number): string[] {
   let currentChunk = ''
 
   for (const word of words) {
-    if (currentChunk.length + word.length > charsPerChunk && currentChunk.length > 0) {
+    if (currentChunk.length + word.length > charsPerChunk && currentChunk.length &gt; 0) {
       chunks.push(currentChunk.trim())
       currentChunk = word
     } else {
@@ -594,7 +594,7 @@ function splitIntoChunks(text: string, tokensPerChunk: number): string[] {
     }
   }
 
-  if (currentChunk.length > 0) {
+  if (currentChunk.length &gt; 0) {
     chunks.push(currentChunk.trim())
   }
 
@@ -812,12 +812,12 @@ class ContextFusionPipeline {
   }
 
   private async deduplicate(sources: ContextSource[]): Promise<ContextSource[]> {
-    // Simple deduplication: remove sources with >90% text overlap
+    // Simple deduplication: remove sources with &gt;90% text overlap
     const unique: ContextSource[] = []
 
     for (const source of sources) {
       const isDuplicate = unique.some(u =>
-        this.textSimilarity(u.content, source.content) > 0.9
+        this.textSimilarity(u.content, source.content) &gt; 0.9
       )
 
       if (!isDuplicate) {
@@ -837,8 +837,8 @@ class ContextFusionPipeline {
       }))
     )
 
-    // Keep sources with relevance > 0.5
-    return scored.filter(s => s.relevance > 0.5)
+    // Keep sources with relevance &gt; 0.5
+    return scored.filter(s => s.relevance &gt; 0.5)
   }
 
   private async compress(sources: ContextSource[], ratio: number): Promise<ContextSource[]> {
@@ -872,7 +872,7 @@ class ContextFusionPipeline {
 
     for (const source of sorted) {
       const tokens = this.estimateTokens(source.content)
-      if (totalTokens + tokens <= maxTokens) {
+      if (totalTokens + tokens &lt;= maxTokens) {
         selected.push(source)
         totalTokens += tokens
       }
@@ -1054,7 +1054,7 @@ await Promise.all(sources.map(s => compress(s)))
 
 ### When to Use Context Fusion
 - ✅ Multiple retrieval sources (vector, graph, web)
-- ✅ Documents exceed context window (>50K tokens retrieved)
+- ✅ Documents exceed context window (&gt;50K tokens retrieved)
 - ✅ High cost per query (>$0.10)
 - ✅ Quality-sensitive applications (legal, medical)
 - ❌ Simple lookups with 1-2 documents
@@ -1064,7 +1064,7 @@ await Promise.all(sources.map(s => compress(s)))
 - **Multi-source**: Vector + Graph + Web (30-40% better coverage)
 - **Compression**: 50-60% ratio (optimal quality/cost balance)
 - **Truncation**: Relevance-aware (30-40% better accuracy)
-- **Deduplication**: >90% similarity threshold
+- **Deduplication**: &gt;90% similarity threshold
 
 ### Production Metrics
 - **Latency**: 800ms average (can parallelize to 400ms)

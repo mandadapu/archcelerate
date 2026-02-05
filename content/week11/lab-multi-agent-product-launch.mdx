@@ -1,0 +1,1087 @@
+---
+title: "Lab: Multi-Agent Product Launch Swarm"
+description: "Build an autonomous multi-agent system to launch a product end-to-end"
+estimatedMinutes: 240
+week: 11
+labType: "hands-on"
+difficulty: advanced
+points: 70
+objectives:
+  - Implement a hierarchical manager-worker agent architecture
+  - Build specialized agents for market research, code generation, and marketing
+  - Deploy semantic circuit breakers to prevent infinite loops
+  - Orchestrate autonomous end-to-end product launch workflow
+---
+
+# Lab: Multi-Agent Product Launch Swarm
+
+## Overview
+
+In this lab, you'll build an autonomous multi-agent system that can **launch a new product from scratch**. The system will coordinate multiple specialized agents (market research, code generation, marketing) to research competitors, build an MVP, and create marketing materials - all autonomously.
+
+**What You'll Build**:
+```
+User: "Launch a new AI-powered task manager for remote teams"
+
+Multi-Agent System:
+  ├─ Manager Agent (orchestrates everything)
+  │
+  ├─ Market Research Agent
+  │  ├─ Analyze competitors (Asana, Trello, Monday)
+  │  ├─ Identify gaps in market
+  │  └─ Define target audience
+  │
+  ├─ Code Generation Agent
+  │  ├─ Design database schema
+  │  ├─ Generate API endpoints
+  │  ├─ Build React UI components
+  │  └─ Write tests
+  │
+  └─ Marketing Agent
+     ├─ Create landing page copy
+     ├─ Generate social media posts
+     ├─ Draft product announcement
+     └─ Design email campaign
+
+Output:
+  ✅ Market research report (competitors, audience, positioning)
+  ✅ Working MVP code (database, API, UI)
+  ✅ Marketing materials (landing page, social posts, emails)
+  ✅ Complete in 5-10 minutes (vs weeks manually)
+```
+
+**Real-World Use Case**: This pattern is used by:
+- **GitHub Copilot Workspace**: Multi-agent system that generates entire codebases
+- **Replit Agent**: Autonomous coding assistant that builds full-stack apps
+- **Vercel v0**: UI generation with specialized design/code agents
+
+---
+
+## Scenario
+
+You're building **LaunchPad AI**, a SaaS platform that helps startups launch products 10x faster. Your core feature is the **Product Launch Swarm** - an autonomous multi-agent system.
+
+**User Input**: Product idea description
+**System Output**: Complete product launch package (research + code + marketing)
+
+**Example Use Cases**:
+1. "Launch a Slack bot that tracks team happiness"
+2. "Launch a Chrome extension for YouTube video transcription"
+3. "Launch a mobile app for tracking daily water intake"
+
+---
+
+## Architecture
+
+### Agent Hierarchy
+
+```typescript
+/**
+ * Hierarchical Agent Architecture
+ *
+ * ManagerAgent
+ *   ├─ Decomposes high-level goal into tasks
+ *   ├─ Assigns tasks to specialized workers
+ *   ├─ Monitors progress and handles failures
+ *   └─ Synthesizes results into final output
+ *
+ * WorkerAgents (Specialists)
+ *   ├─ MarketResearchAgent: Competitor analysis, customer research
+ *   ├─ CodeGenerationAgent: MVP implementation
+ *   └─ MarketingAgent: Copy, social posts, campaigns
+ *
+ * Circuit Breaker
+ *   └─ Prevents infinite loops, runaway costs
+ */
+```
+
+---
+
+## Part 1: Setup (10 minutes)
+
+### Install Dependencies
+
+```bash
+npm install @anthropic-ai/sdk zod openai p-retry p-queue
+```
+
+### Create Project Structure
+
+```
+lab-multi-agent/
+├── src/
+│   ├── agents/
+│   │   ├── manager.ts
+│   │   ├── market-research.ts
+│   │   ├── code-generation.ts
+│   │   └── marketing.ts
+│   ├── circuit-breaker.ts
+│   ├── types.ts
+│   └── index.ts
+├── package.json
+└── .env
+```
+
+### Environment Variables
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...  # Optional, for embeddings
+```
+
+---
+
+## Part 2: Define Types (10 minutes)
+
+Create `src/types.ts`:
+
+```typescript
+import { z } from 'zod'
+
+// Task definition
+export const TaskSchema = z.object({
+  id: z.string(),
+  type: z.enum(['market_research', 'code_generation', 'marketing']),
+  description: z.string(),
+  status: z.enum(['pending', 'in_progress', 'completed', 'failed']),
+  assignedTo: z.string().optional(),
+  result: z.any().optional(),
+  dependencies: z.array(z.string()).default([]),
+  retries: z.number().default(0),
+  maxRetries: z.number().default(3)
+})
+
+export type Task = z.infer<typeof TaskSchema>
+
+// Agent interface
+export interface Agent {
+  name: string
+  capabilities: string[]
+  execute(task: Task): Promise<AgentResult>
+}
+
+export interface AgentResult {
+  success: boolean
+  output: any
+  metadata: {
+    tokensUsed: number
+    latency: number
+    cost: number
+  }
+  error?: string
+}
+
+// Product launch output
+export interface ProductLaunchPackage {
+  marketResearch: {
+    competitors: Competitor[]
+    targetAudience: Audience
+    positioning: string
+    gaps: string[]
+  }
+  mvpCode: {
+    schema: string
+    apiEndpoints: string
+    uiComponents: string
+    tests: string
+  }
+  marketing: {
+    landingPageCopy: string
+    socialPosts: string[]
+    productAnnouncement: string
+    emailCampaign: string
+  }
+  metadata: {
+    totalCost: number
+    totalLatency: number
+    agentExecutions: number
+  }
+}
+
+export interface Competitor {
+  name: string
+  strengths: string[]
+  weaknesses: string[]
+  pricing: string
+}
+
+export interface Audience {
+  segment: string
+  painPoints: string[]
+  size: string
+}
+```
+
+---
+
+## Part 3: Implement Circuit Breaker (20 minutes)
+
+Create `src/circuit-breaker.ts`:
+
+```typescript
+/**
+ * Semantic Circuit Breaker
+ * Prevents infinite loops and runaway costs in agent systems
+ */
+
+interface CircuitBreakerConfig {
+  maxTotalIterations: number
+  maxDuplicateTasks: number
+  maxClarificationLoops: number
+  maxBackAndForth: number
+  costThreshold: number
+}
+
+interface TaskExecution {
+  agentName: string
+  taskDescription: string
+  timestamp: number
+  cost: number
+}
+
+export class SemanticCircuitBreaker {
+  private config: CircuitBreakerConfig
+  private executionHistory: TaskExecution[] = []
+  private totalCost: number = 0
+
+  constructor(config?: Partial<CircuitBreakerConfig>) {
+    this.config = {
+      maxTotalIterations: 50,
+      maxDuplicateTasks: 3,
+      maxClarificationLoops: 5,
+      maxBackAndForth: 10,
+      costThreshold: 10.0, // $10
+      ...config
+    }
+  }
+
+  async shouldBreak(
+    agentName: string,
+    taskDescription: string
+  ): Promise<{ break: boolean; reason?: string }> {
+    // Rule 1: Total iteration limit
+    if (this.executionHistory.length &gt;= this.config.maxTotalIterations) {
+      return {
+        break: true,
+        reason: `Total iteration limit exceeded (${this.config.maxTotalIterations})`
+      }
+    }
+
+    // Rule 2: Duplicate task detection (semantic similarity)
+    const duplicateCount = await this.countDuplicateTasks(agentName, taskDescription)
+    if (duplicateCount &gt;= this.config.maxDuplicateTasks) {
+      return {
+        break: true,
+        reason: `Duplicate task detected ${duplicateCount} times: "${taskDescription.substring(0, 50)}..."`
+      }
+    }
+
+    // Rule 3: Clarification loop detection
+    const clarificationCount = this.countClarificationLoops()
+    if (clarificationCount &gt;= this.config.maxClarificationLoops) {
+      return {
+        break: true,
+        reason: `Clarification loop detected (${clarificationCount} requests for clarification)`
+      }
+    }
+
+    // Rule 4: Back-and-forth detection (rapid alternation between agents)
+    const backAndForthCount = this.detectBackAndForth()
+    if (backAndForthCount &gt;= this.config.maxBackAndForth) {
+      return {
+        break: true,
+        reason: `Rapid back-and-forth detected between agents (${backAndForthCount} times)`
+      }
+    }
+
+    // Rule 5: Cost threshold
+    if (this.totalCost &gt;= this.config.costThreshold) {
+      return {
+        break: true,
+        reason: `Cost threshold exceeded ($${this.totalCost.toFixed(2)} &gt;= $${this.config.costThreshold})`
+      }
+    }
+
+    return { break: false }
+  }
+
+  recordExecution(agentName: string, taskDescription: string, cost: number) {
+    this.executionHistory.push({
+      agentName,
+      taskDescription,
+      timestamp: Date.now(),
+      cost
+    })
+    this.totalCost += cost
+  }
+
+  private async countDuplicateTasks(
+    agentName: string,
+    taskDescription: string
+  ): Promise<number> {
+    // Semantic similarity check (simplified - use embeddings in production)
+    const similarTasks = this.executionHistory.filter(
+      (exec) =>
+        exec.agentName === agentName &&
+        this.calculateSimilarity(exec.taskDescription, taskDescription) &gt; 0.8
+    )
+
+    return similarTasks.length
+  }
+
+  private calculateSimilarity(text1: string, text2: string): number {
+    // Simplified Jaccard similarity
+    const words1 = new Set(text1.toLowerCase().split(/\s+/))
+    const words2 = new Set(text2.toLowerCase().split(/\s+/))
+
+    const intersection = new Set([...words1].filter((x) => words2.has(x)))
+    const union = new Set([...words1, ...words2])
+
+    return intersection.size / union.size
+  }
+
+  private countClarificationLoops(): number {
+    // Count how many times agents asked for clarification
+    const clarificationKeywords = ['clarify', 'unclear', 'need more info', 'can you explain']
+
+    return this.executionHistory.filter((exec) =>
+      clarificationKeywords.some((keyword) =>
+        exec.taskDescription.toLowerCase().includes(keyword)
+      )
+    ).length
+  }
+
+  private detectBackAndForth(): number {
+    // Detect rapid alternation between same two agents
+    if (this.executionHistory.length < 4) return 0
+
+    let count = 0
+    for (let i = 0; i < this.executionHistory.length - 3; i++) {
+      const agent1 = this.executionHistory[i].agentName
+      const agent2 = this.executionHistory[i + 1].agentName
+      const agent3 = this.executionHistory[i + 2].agentName
+      const agent4 = this.executionHistory[i + 3].agentName
+
+      // Check for A-B-A-B pattern
+      if (agent1 === agent3 && agent2 === agent4 && agent1 !== agent2) {
+        count++
+      }
+    }
+
+    return count
+  }
+
+  getMetrics() {
+    return {
+      totalIterations: this.executionHistory.length,
+      totalCost: this.totalCost,
+      agentBreakdown: this.getAgentBreakdown()
+    }
+  }
+
+  private getAgentBreakdown() {
+    const breakdown = new Map<string, { count: number; cost: number }>()
+
+    for (const exec of this.executionHistory) {
+      const current = breakdown.get(exec.agentName) || { count: 0, cost: 0 }
+      breakdown.set(exec.agentName, {
+        count: current.count + 1,
+        cost: current.cost + exec.cost
+      })
+    }
+
+    return Object.fromEntries(breakdown)
+  }
+
+  reset() {
+    this.executionHistory = []
+    this.totalCost = 0
+  }
+}
+```
+
+**✅ Checkpoint**: Test circuit breaker
+```typescript
+const breaker = new SemanticCircuitBreaker({ maxTotalIterations: 5 })
+
+for (let i = 0; i < 10; i++) {
+  const check = await breaker.shouldBreak('TestAgent', 'Test task')
+  console.log(`Iteration ${i}:`, check)
+
+  if (check.break) {
+    console.log('Circuit breaker triggered!')
+    break
+  }
+
+  breaker.recordExecution('TestAgent', 'Test task', 0.01)
+}
+```
+
+---
+
+## Part 4: Implement Specialized Agents (60 minutes)
+
+### Market Research Agent
+
+Create `src/agents/market-research.ts`:
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+import { Agent, Task, AgentResult } from '../types'
+
+export class MarketResearchAgent implements Agent {
+  name = 'MarketResearchAgent'
+  capabilities = ['competitor_analysis', 'customer_research', 'market_gaps']
+
+  private anthropic: Anthropic
+
+  constructor() {
+    this.anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY
+    })
+  }
+
+  async execute(task: Task): Promise<AgentResult> {
+    console.log(`[${this.name}] Executing: ${task.description}`)
+
+    const startTime = Date.now()
+
+    try {
+      const response = await this.anthropic.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 4000,
+        messages: [
+          {
+            role: 'user',
+            content: `You are a market research analyst. Analyze the market for this product:
+
+${task.description}
+
+Provide a comprehensive analysis in JSON format:
+{
+  "competitors": [
+    {
+      "name": "Competitor name",
+      "strengths": ["strength 1", "strength 2"],
+      "weaknesses": ["weakness 1", "weakness 2"],
+      "pricing": "pricing model"
+    }
+  ],
+  "targetAudience": {
+    "segment": "Primary audience segment",
+    "painPoints": ["pain 1", "pain 2"],
+    "size": "Estimated market size"
+  },
+  "positioning": "Recommended positioning strategy",
+  "gaps": ["market gap 1", "market gap 2"]
+}`
+          }
+        ]
+      })
+
+      const content = response.content[0].text
+
+      // Extract JSON from response
+      const jsonMatch = content.match(/\{[\s\S]*\}/)
+      const analysis = jsonMatch ? JSON.parse(jsonMatch[0]) : {}
+
+      const latency = Date.now() - startTime
+      const cost = this.calculateCost(response.usage)
+
+      return {
+        success: true,
+        output: analysis,
+        metadata: {
+          tokensUsed: response.usage.input_tokens + response.usage.output_tokens,
+          latency,
+          cost
+        }
+      }
+    } catch (error) {
+      return {
+        success: false,
+        output: null,
+        error: error.message,
+        metadata: {
+          tokensUsed: 0,
+          latency: Date.now() - startTime,
+          cost: 0
+        }
+      }
+    }
+  }
+
+  private calculateCost(usage: { input_tokens: number; output_tokens: number }): number {
+    return (usage.input_tokens / 1000) * 0.003 + (usage.output_tokens / 1000) * 0.015
+  }
+}
+```
+
+### Code Generation Agent
+
+Create `src/agents/code-generation.ts`:
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+import { Agent, Task, AgentResult } from '../types'
+
+export class CodeGenerationAgent implements Agent {
+  name = 'CodeGenerationAgent'
+  capabilities = ['database_design', 'api_generation', 'ui_components', 'testing']
+
+  private anthropic: Anthropic
+
+  constructor() {
+    this.anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY
+    })
+  }
+
+  async execute(task: Task): Promise<AgentResult> {
+    console.log(`[${this.name}] Executing: ${task.description}`)
+
+    const startTime = Date.now()
+
+    try {
+      const response = await this.anthropic.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 8000,
+        messages: [
+          {
+            role: 'user',
+            content: `You are a senior full-stack engineer. Generate MVP code for this product:
+
+${task.description}
+
+Provide complete implementation in JSON format:
+{
+  "schema": "PostgreSQL schema with tables and relationships",
+  "apiEndpoints": "Express.js API endpoints (TypeScript)",
+  "uiComponents": "React components (TypeScript + Tailwind)",
+  "tests": "Jest tests for API and components"
+}
+
+Make the code production-ready, well-commented, and following best practices.`
+          }
+        ]
+      })
+
+      const content = response.content[0].text
+
+      // Extract JSON from response
+      const jsonMatch = content.match(/\{[\s\S]*\}/)
+      const code = jsonMatch ? JSON.parse(jsonMatch[0]) : {}
+
+      const latency = Date.now() - startTime
+      const cost = this.calculateCost(response.usage)
+
+      return {
+        success: true,
+        output: code,
+        metadata: {
+          tokensUsed: response.usage.input_tokens + response.usage.output_tokens,
+          latency,
+          cost
+        }
+      }
+    } catch (error) {
+      return {
+        success: false,
+        output: null,
+        error: error.message,
+        metadata: {
+          tokensUsed: 0,
+          latency: Date.now() - startTime,
+          cost: 0
+        }
+      }
+    }
+  }
+
+  private calculateCost(usage: { input_tokens: number; output_tokens: number }): number {
+    return (usage.input_tokens / 1000) * 0.003 + (usage.output_tokens / 1000) * 0.015
+  }
+}
+```
+
+### Marketing Agent
+
+Create `src/agents/marketing.ts`:
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+import { Agent, Task, AgentResult } from '../types'
+
+export class MarketingAgent implements Agent {
+  name = 'MarketingAgent'
+  capabilities = ['copywriting', 'social_media', 'email_campaigns', 'announcements']
+
+  private anthropic: Anthropic
+
+  constructor() {
+    this.anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY
+    })
+  }
+
+  async execute(task: Task): Promise<AgentResult> {
+    console.log(`[${this.name}] Executing: ${task.description}`)
+
+    const startTime = Date.now()
+
+    try {
+      const response = await this.anthropic.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 4000,
+        messages: [
+          {
+            role: 'user',
+            content: `You are a marketing expert. Create marketing materials for this product:
+
+${task.description}
+
+Provide comprehensive marketing content in JSON format:
+{
+  "landingPageCopy": "Hero headline, subheadline, 3 feature sections, CTA",
+  "socialPosts": [
+    "Twitter post (280 chars)",
+    "LinkedIn post (longer form)",
+    "Facebook post"
+  ],
+  "productAnnouncement": "Product Hunt style announcement",
+  "emailCampaign": "Launch email with subject line and body"
+}
+
+Make the copy compelling, benefit-focused, and conversion-optimized.`
+          }
+        ]
+      })
+
+      const content = response.content[0].text
+
+      // Extract JSON from response
+      const jsonMatch = content.match(/\{[\s\S]*\}/)
+      const marketing = jsonMatch ? JSON.parse(jsonMatch[0]) : {}
+
+      const latency = Date.now() - startTime
+      const cost = this.calculateCost(response.usage)
+
+      return {
+        success: true,
+        output: marketing,
+        metadata: {
+          tokensUsed: response.usage.input_tokens + response.usage.output_tokens,
+          latency,
+          cost
+        }
+      }
+    } catch (error) {
+      return {
+        success: false,
+        output: null,
+        error: error.message,
+        metadata: {
+          tokensUsed: 0,
+          latency: Date.now() - startTime,
+          cost: 0
+        }
+      }
+    }
+  }
+
+  private calculateCost(usage: { input_tokens: number; output_tokens: number }): number {
+    return (usage.input_tokens / 1000) * 0.003 + (usage.output_tokens / 1000) * 0.015
+  }
+}
+```
+
+**✅ Checkpoint**: Test individual agents
+```typescript
+const marketAgent = new MarketResearchAgent()
+const task: Task = {
+  id: '1',
+  type: 'market_research',
+  description: 'Launch a Slack bot that tracks team happiness',
+  status: 'pending',
+  dependencies: [],
+  retries: 0,
+  maxRetries: 3
+}
+
+const result = await marketAgent.execute(task)
+console.log('Market research result:', result.output)
+```
+
+---
+
+## Part 5: Implement Manager Agent (60 minutes)
+
+Create `src/agents/manager.ts`:
+
+```typescript
+import { Agent, Task, ProductLaunchPackage } from '../types'
+import { MarketResearchAgent } from './market-research'
+import { CodeGenerationAgent } from './code-generation'
+import { MarketingAgent } from './marketing'
+import { SemanticCircuitBreaker } from '../circuit-breaker'
+
+export class ManagerAgent {
+  private workers: Map<string, Agent>
+  private circuitBreaker: SemanticCircuitBreaker
+
+  constructor() {
+    this.workers = new Map([
+      ['market_research', new MarketResearchAgent()],
+      ['code_generation', new CodeGenerationAgent()],
+      ['marketing', new MarketingAgent()]
+    ])
+
+    this.circuitBreaker = new SemanticCircuitBreaker({
+      maxTotalIterations: 20,
+      costThreshold: 5.0
+    })
+  }
+
+  async launch(productIdea: string): Promise<ProductLaunchPackage> {
+    console.log(`\n🚀 Starting product launch for: "${productIdea}"\n`)
+
+    // Step 1: Decompose goal into tasks
+    const tasks = this.decompose(productIdea)
+
+    console.log(`📋 Created ${tasks.length} tasks:\n`)
+    tasks.forEach((task) => {
+      console.log(`  [${task.type}] ${task.description}`)
+    })
+    console.log()
+
+    // Step 2: Execute tasks with circuit breaker
+    const results = await this.executeTasks(tasks)
+
+    // Step 3: Synthesize results into final package
+    const launchPackage = this.synthesize(results)
+
+    // Step 4: Print metrics
+    const metrics = this.circuitBreaker.getMetrics()
+    console.log(`\n📊 Launch Complete!`)
+    console.log(`  Total Cost: $${metrics.totalCost.toFixed(2)}`)
+    console.log(`  Total Iterations: ${metrics.totalIterations}`)
+    console.log(`  Agent Breakdown:`)
+    Object.entries(metrics.agentBreakdown).forEach(([agent, stats]) => {
+      console.log(`    ${agent}: ${stats.count} executions ($${stats.cost.toFixed(2)})`)
+    })
+    console.log()
+
+    return launchPackage
+  }
+
+  private decompose(productIdea: string): Task[] {
+    // Decompose high-level goal into specific tasks
+    return [
+      {
+        id: '1',
+        type: 'market_research',
+        description: `Conduct market research for: ${productIdea}. Analyze competitors, target audience, and market gaps.`,
+        status: 'pending',
+        dependencies: [],
+        retries: 0,
+        maxRetries: 3
+      },
+      {
+        id: '2',
+        type: 'code_generation',
+        description: `Generate MVP code for: ${productIdea}. Include database schema, API endpoints, UI components, and tests.`,
+        status: 'pending',
+        dependencies: ['1'], // Wait for market research
+        retries: 0,
+        maxRetries: 3
+      },
+      {
+        id: '3',
+        type: 'marketing',
+        description: `Create marketing materials for: ${productIdea}. Include landing page copy, social posts, product announcement, and email campaign.`,
+        status: 'pending',
+        dependencies: ['1'], // Wait for market research
+        retries: 0,
+        maxRetries: 3
+      }
+    ]
+  }
+
+  private async executeTasks(tasks: Task[]): Promise<Map<string, any>> {
+    const results = new Map<string, any>()
+    const completed = new Set<string>()
+
+    // Execute tasks in dependency order
+    while (completed.size < tasks.length) {
+      const readyTasks = tasks.filter(
+        (task) =>
+          !completed.has(task.id) &&
+          task.dependencies.every((depId) => completed.has(depId))
+      )
+
+      if (readyTasks.length === 0) {
+        throw new Error('Deadlock detected - no tasks can proceed')
+      }
+
+      // Execute ready tasks in parallel
+      const executions = readyTasks.map(async (task) => {
+        // Check circuit breaker
+        const check = await this.circuitBreaker.shouldBreak(task.type, task.description)
+
+        if (check.break) {
+          throw new Error(`Circuit breaker triggered: ${check.reason}`)
+        }
+
+        // Get appropriate worker
+        const worker = this.workers.get(task.type)
+        if (!worker) {
+          throw new Error(`No worker found for task type: ${task.type}`)
+        }
+
+        // Execute task
+        console.log(`⚡ Executing [${task.type}]: ${task.description.substring(0, 60)}...`)
+
+        const result = await worker.execute(task)
+
+        // Record execution for circuit breaker
+        this.circuitBreaker.recordExecution(
+          worker.name,
+          task.description,
+          result.metadata.cost
+        )
+
+        if (!result.success) {
+          // Retry logic
+          if (task.retries < task.maxRetries) {
+            console.log(`  ⚠️  Task failed, retrying (${task.retries + 1}/${task.maxRetries})`)
+            task.retries++
+            return null // Will retry in next iteration
+          }
+
+          throw new Error(`Task failed after ${task.maxRetries} retries: ${result.error}`)
+        }
+
+        console.log(`  ✅ Completed in ${result.metadata.latency}ms ($${result.metadata.cost.toFixed(4)})`)
+
+        return { taskId: task.id, result: result.output }
+      })
+
+      const batchResults = await Promise.all(executions)
+
+      // Store results and mark completed
+      batchResults.forEach((item) => {
+        if (item) {
+          results.set(item.taskId, item.result)
+          completed.add(item.taskId)
+        }
+      })
+    }
+
+    return results
+  }
+
+  private synthesize(results: Map<string, any>): ProductLaunchPackage {
+    // Combine results from all agents into final package
+    const metrics = this.circuitBreaker.getMetrics()
+
+    return {
+      marketResearch: results.get('1') || {
+        competitors: [],
+        targetAudience: { segment: '', painPoints: [], size: '' },
+        positioning: '',
+        gaps: []
+      },
+      mvpCode: results.get('2') || {
+        schema: '',
+        apiEndpoints: '',
+        uiComponents: '',
+        tests: ''
+      },
+      marketing: results.get('3') || {
+        landingPageCopy: '',
+        socialPosts: [],
+        productAnnouncement: '',
+        emailCampaign: ''
+      },
+      metadata: {
+        totalCost: metrics.totalCost,
+        totalLatency: 0, // Sum of all latencies
+        agentExecutions: metrics.totalIterations
+      }
+    }
+  }
+}
+```
+
+---
+
+## Part 6: Main Entry Point (10 minutes)
+
+Create `src/index.ts`:
+
+```typescript
+import { ManagerAgent } from './agents/manager'
+import * as fs from 'fs'
+
+async function main() {
+  // Get product idea from command line or use default
+  const productIdea =
+    process.argv[2] || 'Launch a Slack bot that tracks team happiness with daily surveys'
+
+  console.log(`\n${'='.repeat(80)}`)
+  console.log(`🎯 PRODUCT LAUNCH SWARM`)
+  console.log(`${'='.repeat(80)}\n`)
+
+  // Create manager and launch product
+  const manager = new ManagerAgent()
+
+  try {
+    const launchPackage = await manager.launch(productIdea)
+
+    // Save results to file
+    const outputPath = `./launch-output-${Date.now()}.json`
+    fs.writeFileSync(outputPath, JSON.stringify(launchPackage, null, 2))
+
+    console.log(`\n✅ Launch package saved to: ${outputPath}`)
+
+    // Display summary
+    console.log(`\n📦 Launch Package Summary:`)
+    console.log(`  • Competitors analyzed: ${launchPackage.marketResearch.competitors.length}`)
+    console.log(`  • Market gaps identified: ${launchPackage.marketResearch.gaps.length}`)
+    console.log(`  • Code artifacts generated: 4 (schema, API, UI, tests)`)
+    console.log(`  • Marketing pieces created: 4 (landing, social, announcement, email)`)
+    console.log(`  • Total cost: $${launchPackage.metadata.totalCost.toFixed(2)}`)
+    console.log(`  • Agent executions: ${launchPackage.metadata.agentExecutions}`)
+  } catch (error) {
+    console.error(`\n❌ Launch failed:`, error.message)
+    process.exit(1)
+  }
+}
+
+main()
+```
+
+---
+
+## Part 7: Testing & Validation (30 minutes)
+
+### Test 1: Basic Launch
+
+```bash
+npm run start "Launch a Chrome extension for YouTube video transcription"
+```
+
+**Expected Output**:
+```
+🚀 Starting product launch for: "Launch a Chrome extension for YouTube video transcription"
+
+📋 Created 3 tasks:
+  [market_research] Conduct market research for...
+  [code_generation] Generate MVP code for...
+  [marketing] Create marketing materials for...
+
+⚡ Executing [market_research]: Conduct market research...
+  ✅ Completed in 2840ms ($0.0420)
+
+⚡ Executing [code_generation]: Generate MVP code...
+  ✅ Completed in 5120ms ($0.0980)
+
+⚡ Executing [marketing]: Create marketing materials...
+  ✅ Completed in 3200ms ($0.0560)
+
+📊 Launch Complete!
+  Total Cost: $0.20
+  Total Iterations: 3
+  Agent Breakdown:
+    MarketResearchAgent: 1 executions ($0.04)
+    CodeGenerationAgent: 1 executions ($0.10)
+    MarketingAgent: 1 executions ($0.06)
+
+✅ Launch package saved to: ./launch-output-1234567890.json
+```
+
+### Test 2: Circuit Breaker Trigger
+
+Modify circuit breaker config to trigger easily:
+
+```typescript
+this.circuitBreaker = new SemanticCircuitBreaker({
+  maxTotalIterations: 2, // Very low threshold
+  costThreshold: 5.0
+})
+```
+
+Run again and verify circuit breaker triggers:
+```
+❌ Launch failed: Circuit breaker triggered: Total iteration limit exceeded (2)
+```
+
+### Test 3: Agent Retry on Failure
+
+Simulate failure by temporarily breaking API key, verify retry logic works.
+
+---
+
+## Evaluation Rubric (70 points)
+
+| Component | Points | Criteria |
+|-----------|--------|----------|
+| **Circuit Breaker** | 15 | - All 5 rules implemented (3pts each)<br>- Proper execution tracking<br>- Accurate metrics |
+| **Specialized Agents** | 25 | - Market Research Agent (8pts)<br>- Code Generation Agent (9pts)<br>- Marketing Agent (8pts)<br>- Proper error handling |
+| **Manager Agent** | 20 | - Task decomposition (5pts)<br>- Dependency handling (5pts)<br>- Parallel execution (5pts)<br>- Result synthesis (5pts) |
+| **Output Quality** | 10 | - Complete launch package<br>- Valid JSON output<br>- Sensible content |
+| **Production Readiness** | 10 | - TypeScript types (3pts)<br>- Error handling (3pts)<br>- Cost tracking (2pts)<br>- Logging (2pts) |
+
+**Bonus Points** (+10):
+- Implement streaming responses
+- Add human-in-the-loop approval step
+- Create visualization of agent execution graph
+- Deploy as API endpoint
+
+---
+
+## Submission
+
+Submit your GitHub repository containing:
+
+1. **Code**: Complete implementation with all agents
+2. **Output**: Sample launch package JSON file
+3. **README**: Instructions to run, example outputs
+4. **Metrics**: Screenshot of successful launch with cost/latency metrics
+
+**Example README section**:
+```markdown
+## Results
+
+Launched product: "Slack bot for team happiness tracking"
+
+- **Market Research**: Identified 3 competitors (Officevibe, TINYpulse, 15Five)
+- **Target Audience**: Remote teams of 10-50 people
+- **MVP Code**: Generated 1,200+ lines of production-ready TypeScript
+- **Marketing**: Created landing page, 3 social posts, announcement, email
+- **Cost**: $0.18
+- **Time**: 8.2 seconds
+```
+
+---
+
+## Extension Ideas
+
+1. **Self-Correcting Agents**: Add feedback loops where agents can review and revise each other's work
+2. **Multi-Turn Collaboration**: Allow agents to ask each other questions
+3. **Human-in-the-Loop**: Pause for human approval at key decision points
+4. **Adaptive Routing**: Manager learns which agents perform best for different product types
+5. **Cost Optimization**: Manager dynamically chooses cheaper models (Haiku) for simpler subtasks
+
+---
+
+## Resources
+
+- [Anthropic Claude API](https://docs.anthropic.com/claude/reference/getting-started-with-the-api)
+- [Agent Design Patterns](https://www.anthropic.com/research/building-effective-agents)
+- [Multi-Agent Systems](https://arxiv.org/abs/2308.08155)
+- [Production Agent Architecture](https://www.deeplearning.ai/short-courses/ai-agents-in-langgraph/)
+
+---
+
+**Next Steps**: After completing this lab, move on to Week 12 where you'll deploy this system at enterprise scale with global gateways, multi-region failover, and FinOps tracking.
