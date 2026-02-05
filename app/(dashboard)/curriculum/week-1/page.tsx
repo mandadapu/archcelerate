@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { LearningObjectives } from './components/LearningObjectives'
 
 // Concept visualization icons - Week 1: LLM Fundamentals
 function getConceptIllustration(slug: string) {
@@ -128,118 +129,51 @@ export default async function Week1Page() {
 
   const objectives = week.objectives as string[]
 
-  // Organize objectives by category
-  const objectiveCategories = [
-    {
-      title: "Core Technical Understanding",
-      icon: "🎯",
-      objectives: objectives.slice(0, 4)
-    },
-    {
-      title: "Architecture & Design",
-      icon: "🏗️",
-      objectives: objectives.slice(4, 8)
-    },
-    {
-      title: "Production Readiness",
-      icon: "🔒",
-      objectives: objectives.slice(8, 14)
-    },
-    {
-      title: "Cost & Performance",
-      icon: "💰",
-      objectives: objectives.slice(14, 18)
-    },
-    {
-      title: "Week 1 Capstone",
-      icon: "🚀",
-      objectives: objectives.slice(18)
-    }
-  ]
-
   return (
     <div className="container max-w-4xl py-8">
       <div className="space-y-8">
-        {/* Header */}
-        <div>
-          <div className="text-sm text-muted-foreground mb-2">Week 1</div>
-          <h1 className="text-4xl font-bold">{week.title}</h1>
-          <p className="text-lg text-muted-foreground mt-2">
-            {week.description}
-          </p>
+        {/* Header with Progress */}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-sm text-muted-foreground mb-2">Week 1</div>
+            <h1 className="text-4xl font-bold">{week.title}</h1>
+            <p className="text-lg text-muted-foreground mt-2">
+              {week.description}
+            </p>
+          </div>
+
+          {progress && (
+            <div className="flex flex-col items-end gap-1 text-xs text-muted-foreground pt-1">
+              <div className="flex items-center gap-1.5">
+                {progress.conceptsCompleted === progress.conceptsTotal ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                ) : (
+                  <Circle className="h-3.5 w-3.5 text-gray-400" />
+                )}
+                <span>{progress.conceptsCompleted}/{progress.conceptsTotal} Concepts</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {progress.labCompleted ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                ) : (
+                  <Circle className="h-3.5 w-3.5 text-gray-400" />
+                )}
+                <span>Lab</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {progress.projectCompleted ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                ) : (
+                  <Circle className="h-3.5 w-3.5 text-gray-400" />
+                )}
+                <span>Project</span>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Technical Milestones */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Technical Milestones</CardTitle>
-            <CardDescription>
-              This week covers {objectives.length} key objectives across {objectiveCategories.length} focus areas
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              {objectiveCategories.map((category, categoryIndex) => (
-                <div key={categoryIndex}>
-                  <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
-                    <span className="text-lg">{category.icon}</span>
-                    {category.title}
-                  </h3>
-                  <ul className="space-y-2 ml-7">
-                    {category.objectives.map((objective, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm">
-                        <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span className="text-muted-foreground">{objective}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Progress Overview */}
-        {progress && (
-          <Card className="bg-blue-50 dark:bg-blue-950 border-blue-200">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Your Progress</CardTitle>
-                <div className="text-sm text-muted-foreground">
-                  {progress.conceptsCompleted} / {progress.conceptsTotal} concepts
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  {progress.conceptsCompleted === progress.conceptsTotal ? (
-                    <CheckCircle2 className="h-5 w-5 text-green-600" />
-                  ) : (
-                    <Circle className="h-5 w-5 text-gray-400" />
-                  )}
-                  <span>Concepts</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {progress.labCompleted ? (
-                    <CheckCircle2 className="h-5 w-5 text-green-600" />
-                  ) : (
-                    <Circle className="h-5 w-5 text-gray-400" />
-                  )}
-                  <span>Lab</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {progress.projectCompleted ? (
-                    <CheckCircle2 className="h-5 w-5 text-green-600" />
-                  ) : (
-                    <Circle className="h-5 w-5 text-gray-400" />
-                  )}
-                  <span>Project</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {/* Technical Milestones - Premium Collapsible */}
+        <LearningObjectives objectives={objectives} />
 
         {/* Concepts */}
         <div>
@@ -265,6 +199,11 @@ export default async function Week1Page() {
                     <h3 className="font-semibold text-lg leading-tight text-foreground mb-2">
                       {concept.title}
                     </h3>
+                    {concept.description && (
+                      <p className="text-sm text-muted-foreground mb-2">
+                        {concept.description}
+                      </p>
+                    )}
                     {concept.estimatedMinutes && (
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Clock className="h-3 w-3" />
