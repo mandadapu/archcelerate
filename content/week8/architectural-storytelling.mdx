@@ -1,0 +1,484 @@
+---
+title: "Architectural Storytelling: System Design Documents"
+week: 8
+concept: 4
+description: "Packaging technical complexity for stakeholders: authoring System Design Documents that justify every architectural decision"
+estimatedMinutes: 35
+objectives:
+  - Author comprehensive System Design Documents (SDD) explaining the 'Why' behind tech stack
+  - Justify vector database, model, and orchestration framework selections against requirements
+  - Generate Skill Diagnosis Brief proving mastery across 7 core domains
+  - Package architectural authority for hiring managers and technical stakeholders
+---
+
+# Architectural Storytelling
+
+Packaging technical complexity for stakeholders and hiring managers.
+
+## The Core Challenge
+
+**You built a production-ready AI system. Can you explain WHY you made those choices?**
+
+Without documentation:
+- Stakeholders don't understand why you chose Pinecone over pgvector
+- Hiring managers can't evaluate your architectural thinking
+- Future maintainers don't know the constraints that drove decisions
+
+**Architect's Mandate**: Document decisions **with justification**, not just implementation details.
+
+---
+
+## Pattern 1: The System Design Document (SDD)
+
+**The Pattern**: A technical brief that explains **WHY** behind every major architectural decision, justified against requirements and constraints.
+
+### SDD Template
+
+```markdown
+# System Design Document: [Project Name]
+
+**Author**: [Your Name]
+**Date**: [Date]
+**Version**: 1.0
+**Status**: Production-Ready
+
+---
+
+## Executive Summary
+
+**Problem**: [What business problem does this solve?]
+
+**Solution**: [High-level architecture in 2-3 sentences]
+
+**Key Results**:
+- **Performance**: P95 latency <2s, 99.5% availability
+- **Quality**: 95% faithfulness on golden dataset, 0 safety violations
+- **Cost**: $0.08 per request (70% below budget target)
+
+---
+
+## Requirements & Constraints
+
+### Functional Requirements
+1. **Multi-tenant SaaS**: Support 100+ customers with strict data isolation
+2. **RAG Pipeline**: Answer queries using proprietary document corpus
+3. **Safety Guardrails**: Block jailbreaks and prompt injections (100% rate)
+4. **Audit Trail**: Complete logs for regulatory compliance (HIPAA)
+
+### Non-Functional Requirements
+1. **Latency**: P95 <3s (user abandonment threshold)
+2. **Cost**: <$0.10 per request (commercial viability)
+3. **Availability**: 99.5% uptime (4.4 hours downtime/year max)
+4. **Scale**: Handle 10x traffic spike without degradation
+
+### Constraints
+1. **Regulatory**: HIPAA compliance (PHI must stay in VPC)
+2. **Budget**: $2K/month infrastructure (seed-stage startup)
+3. **Team**: 2 engineers (minimal ops overhead)
+
+---
+
+## Architecture Overview
+
+```
+User Request
+    ↓
+[API Gateway + Auth]
+    ↓
+[Tenant Context Extraction]
+    ↓
+[Safety Proxy] → [Jailbreak Detection]
+    ↓
+[RAG Pipeline]
+    ├─ [Query Rewriting]
+    ├─ [Hybrid Search: Vector + BM25]
+    ├─ [Re-ranking (top 100 → top 10)]
+    └─ [Context Window Optimization]
+    ↓
+[LLM: Claude 4.5 Sonnet]
+    ↓
+[Output Validation]
+    ↓
+[Audit Logging]
+    ↓
+Response
+```
+
+---
+
+## Decision Log (ADRs)
+
+### ADR-001: Vector Database Selection
+
+**Decision**: Pinecone over pgvector
+
+**Context**:
+- Need multi-tenant namespaces for data isolation
+- Expecting 10M+ vectors across all tenants
+- Team has no PostgreSQL ops expertise
+
+**Options Considered**:
+
+| Option | Pros | Cons | Cost (10M vectors) |
+|--------|------|------|-------------------|
+| **Pinecone** | Managed service, namespaces, auto-scaling | Higher cost, vendor lock-in | $200/mo |
+| **pgvector** | Open-source, full control, lower cost | Requires Postgres ops, no native multi-tenancy | $100/mo + ops time |
+| **Weaviate** | Open-source, multi-tenant, rich features | Self-hosted complexity, learning curve | $150/mo + ops |
+
+**Justification**:
+- Chose **Pinecone** because:
+  1. Native namespace support eliminates custom tenant isolation code
+  2. Managed service = 0 ops overhead (meets constraint: 2-engineer team)
+  3. $200/mo fits within $2K infrastructure budget
+  4. Auto-scaling handles 10x traffic spike requirement
+
+**Trade-offs Accepted**:
+- Higher cost vs pgvector (2x)
+- Vendor lock-in risk (mitigated: standard embedding format enables migration)
+
+---
+
+### ADR-002: Model Selection
+
+**Decision**: Claude 4.5 Sonnet over GPT-4o
+
+**Context**:
+- Medical domain requires high accuracy (faithfulness >95%)
+- Latency budget: <3s end-to-end
+- Cost target: <$0.10 per request
+
+**Benchmarks**:
+
+| Model | Faithfulness | Avg Latency | Cost/Request | Decision |
+|-------|-------------|-------------|--------------|----------|
+| **Claude Opus** | 98% | 2.8s | $0.15 | ❌ Over budget |
+| **Claude Sonnet** | 96% | 1.2s | $0.08 | ✅ Selected |
+| **GPT-4o** | 94% | 1.5s | $0.06 | ❌ Below accuracy threshold |
+| **Haiku** | 89% | 0.6s | $0.02 | ❌ Too many hallucinations |
+
+**Justification**:
+- **Sonnet** is the only model meeting ALL requirements:
+  1. Faithfulness 96% > threshold 95%
+  2. Latency 1.2s → end-to-end 2.5s < 3s SLA
+  3. Cost $0.08 < $0.10 budget
+
+**Fallback Strategy**:
+- Use **Opus** for high-stakes queries (risk score >80)
+- Use **Haiku** for simple lookups (caching hit rate >70%)
+- Projected blended cost: $0.09 per request
+
+---
+
+### ADR-003: Agent Orchestration Framework
+
+**Decision**: LangGraph over CrewAI
+
+**Context**:
+- Need state checkpointing for long-running tasks
+- Deterministic execution required for audit compliance
+- Cost control critical (token budget: 8K per request)
+
+**Comparison**:
+
+| Framework | Checkpointing | Deterministic | Overhead | Decision |
+|-----------|--------------|---------------|----------|----------|
+| **LangGraph** | ✅ Built-in | ✅ Explicit graph | 1.4% tokens | ✅ Selected |
+| **CrewAI** | ❌ None | ❌ Opaque routing | 6.5% tokens | ❌ Too much overhead |
+| **Custom** | Manual | ✅ Full control | 0% | ❌ Too much eng time |
+
+**Justification**:
+- **LangGraph** meets requirements:
+  1. Built-in checkpointing → resumable workflows (crash recovery)
+  2. Explicit state machine → audit trail visibility
+  3. 1.4% overhead → minimal cost impact ($0.001 per request)
+
+**Trade-offs Accepted**:
+- Steeper learning curve vs CrewAI
+- More setup code (20 lines for graph definition)
+
+---
+
+## Security Architecture
+
+### Threat Model
+
+| Threat | Mitigation | Status |
+|--------|-----------|--------|
+| Prompt Injection | Safety Proxy with jailbreak detection | ✅ Tested (100% block rate) |
+| Data Leakage (Cross-tenant) | Namespace isolation + tenantId filtering | ✅ Verified (red-team passed) |
+| PHI Exposure in Logs | PII/PHI redaction before logging | ✅ HIPAA compliant |
+| Recursive Loops | Max iteration limits + cycle detection | ✅ Tested (no infinite loops) |
+
+### Compliance Certifications
+- **HIPAA**: PHI stays in VPC, audit logs maintained for 7 years
+- **SOC 2 Type II**: In progress (expected Q3 2025)
+
+---
+
+## Performance Validation
+
+### Load Testing Results
+
+| Metric | Baseline (10 users) | Spike (100 users) | SLA | Status |
+|--------|-------------------|-------------------|-----|--------|
+| P50 Latency | 1.2s | 1.8s | <2s | ✅ |
+| P95 Latency | 2.1s | 2.9s | <3s | ✅ |
+| Error Rate | 0.1% | 0.3% | <1% | ✅ |
+| Throughput | 8.3 req/s | 83 req/s | 10x scale | ✅ |
+
+### Golden Dataset Evaluation
+
+| Category | Pass Rate | Target | Status |
+|----------|-----------|--------|--------|
+| Happy Path | 98% | >95% | ✅ |
+| Edge Cases | 92% | >85% | ✅ |
+| Adversarial | 100% | 100% | ✅ |
+| Regressions | 100% | 100% | ✅ |
+
+---
+
+## Cost Analysis
+
+### Monthly Infrastructure Costs
+
+| Service | Usage | Cost | % of Budget |
+|---------|-------|------|-------------|
+| Anthropic API | 100K requests × $0.08 | $8,000 | 80% |
+| Pinecone | 10M vectors | $200 | 2% |
+| Postgres (Supabase) | 50GB storage | $100 | 1% |
+| Redis (Upstash) | 1GB cache | $50 | 0.5% |
+| Vercel (hosting) | Pro plan | $20 | 0.2% |
+| **Total** | | **$8,370** | 84% |
+
+### Unit Economics
+
+- **Cost per request**: $0.08
+- **Revenue per request**: $0.15 (avg across tiers)
+- **Gross margin**: 47%
+- **Break-even**: 56K requests/month
+
+---
+
+## Operational Runbook
+
+### Deployment Process
+1. Run golden dataset evaluation → must pass >90%
+2. Red-team security tests → 100% block rate required
+3. Load test (10x spike) → P95 <3s required
+4. Deploy to staging → smoke tests
+5. Canary deployment (5% traffic) → monitor for 1 hour
+6. Full rollout
+
+### Monitoring & Alerts
+
+| Alert | Threshold | Action |
+|-------|-----------|--------|
+| P95 Latency | >3s for 5 minutes | Page on-call engineer |
+| Error Rate | >1% for 10 minutes | Auto-rollback |
+| Cost Spike | >$15K/day | Circuit breaker triggers |
+| Security Violation | Any jailbreak success | Immediate incident response |
+
+### Incident Response
+1. Rollback to previous version (1-click)
+2. Notify customers (status page update)
+3. Debug using time-travel checkpoints
+4. Add regression test to golden dataset
+5. Post-mortem within 24 hours
+
+---
+
+## Future Improvements (Tech Debt)
+
+| Priority | Item | Est. Effort | Impact |
+|----------|------|-------------|--------|
+| P0 | Add semantic caching (10% cost reduction) | 3 days | High |
+| P1 | Migrate to self-hosted Weaviate (save $100/mo) | 2 weeks | Medium |
+| P2 | Implement adaptive routing (Opus for hard queries) | 1 week | High |
+| P3 | A/B test GPT-4.5 Turbo (if faithfulness improves) | 2 days | Medium |
+
+---
+
+## Appendix: Alternatives Considered
+
+### Why NOT OpenAI Embeddings?
+- Anthropic's models showed 8% better faithfulness in our domain
+- Cost difference negligible ($0.0001 vs $0.00013 per 1K tokens)
+- Reduced vendor risk (multi-LLM strategy)
+
+### Why NOT Chroma?
+- No managed hosting option (ops overhead)
+- Multi-tenancy requires custom implementation
+- Team unfamiliar with Chroma's query language
+
+---
+
+## References
+
+- [HIPAA Technical Safeguards](https://www.hhs.gov/hipaa/for-professionals/security/laws-regulations/index.html)
+- [Pinecone Namespaces Documentation](https://docs.pinecone.io/docs/namespaces)
+- [LangGraph Checkpointing](https://langchain-ai.github.io/langgraph/concepts/#checkpointing)
+```
+
+---
+
+## Pattern 2: Skill Diagnosis Brief
+
+**The Pattern**: Generate a verified telemetry report proving mastery across the 7 core domains.
+
+### Skill Diagnosis Report Template
+
+```markdown
+# AI Architect Skill Diagnosis
+
+**Candidate**: [Your Name]
+**Assessment Date**: [Date]
+**Overall Score**: 87/100 (Senior-level proficiency)
+
+---
+
+## Domain Scores
+
+| Domain | Score | Level | Evidence |
+|--------|-------|-------|----------|
+| **LLM Fundamentals** | 92/100 | Expert | Implemented multi-model fallback (Opus→Sonnet→Haiku) with cost optimization |
+| **Prompt Engineering** | 88/100 | Advanced | Designed system prompts as immutable policy with semantic tracing |
+| **RAG Systems** | 90/100 | Expert | Built hybrid search (vector + BM25) with re-ranking achieving 95% faithfulness |
+| **Agentic Systems** | 85/100 | Advanced | Implemented Supervisor pattern with 3 specialists + state checkpointing |
+| **Safety & Governance** | 95/100 | Expert | 100% adversarial attack block rate, HIPAA-compliant audit trails |
+| **Production Engineering** | 82/100 | Advanced | Load tested at 10x spike, P95 <3s, 99.5% availability |
+| **Multimodal AI** | 75/100 | Intermediate | Image analysis for document OCR (limited deployment experience) |
+
+**Overall Assessment**: **Senior AI Architect** - Ready for production-grade system ownership
+
+---
+
+## Project Portfolio
+
+### Project 1: Multi-Tenant Medical AI Assistant
+- **Tech Stack**: Claude 4.5 Sonnet, Pinecone, LangGraph, Next.js
+- **Scale**: 100+ tenants, 10M+ vectors, 100K requests/month
+- **Key Achievements**:
+  - 96% faithfulness on medical queries (golden dataset: 100+ cases)
+  - <3s P95 latency under 10x load spike
+  - 100% HIPAA compliance (PHI redaction, audit trails)
+  - $0.08 cost per request (20% under budget)
+
+### Project 2: Legal Document Analysis Platform
+- **Tech Stack**: GPT-4o, pgvector, Custom React Dashboard
+- **Scale**: 50K documents, 5M embeddings
+- **Key Achievements**:
+  - Jurisdiction-specific precedent matching (98% accuracy)
+  - Risky term detection (92% recall on test set)
+  - Sub-200ms vector search latency
+
+---
+
+## Architectural Decisions (Highlights)
+
+### 1. Vector Database Selection: Pinecone vs pgvector
+**Decision**: Pinecone for managed multi-tenancy
+**Justification**: Native namespaces + 0 ops overhead justifies 2x cost vs pgvector
+
+### 2. Agent Framework: LangGraph vs CrewAI
+**Decision**: LangGraph for production control
+**Justification**: Built-in checkpointing + explicit state machine vs 3.4x lower overhead
+
+### 3. Safety Architecture: Multi-Layer Defense
+**Implementation**: Safety Proxy → Jailbreak Detection → Output Validation
+**Result**: 100% block rate on 50+ adversarial test cases
+
+---
+
+## Production Metrics (Verified)
+
+| Metric | Value | Industry Benchmark | Percentile |
+|--------|-------|-------------------|------------|
+| Faithfulness | 96% | 85% | 95th |
+| P95 Latency | 2.1s | 3.5s | 80th |
+| Cost Efficiency | $0.08/req | $0.12/req | 75th |
+| Security Score | 98/100 | 85/100 | 90th |
+| Availability | 99.5% | 99.0% | 70th |
+
+---
+
+## Code Samples
+
+### Sample 1: Safety Proxy with Jailbreak Detection
+[Link to GitHub: safety-proxy.ts]
+
+**Highlights**:
+- Pattern matching for DAN attacks, role hijacking, delimiter confusion
+- <5ms detection latency (regex-based fast path)
+- 100% block rate on adversarial test suite (50+ cases)
+
+### Sample 2: Hybrid Search with Re-ranking
+[Link to GitHub: hybrid-search.ts]
+
+**Highlights**:
+- Vector (semantic) + BM25 (keyword) fusion
+- Cross-encoder re-ranking (top 100 → top 10)
+- 15% accuracy improvement vs vector-only search
+
+### Sample 3: State Checkpointing for Agent Threads
+[Link to GitHub: checkpointed-agent.ts]
+
+**Highlights**:
+- Postgres + Redis hybrid (3.8x faster than Postgres-only)
+- Time-travel debugging (replay from any checkpoint)
+- 38% cost reduction on crash recovery
+
+---
+
+## Recommendations for Growth
+
+1. **Multimodal Mastery**: Gain production experience with vision models (current: intermediate level)
+2. **Fine-Tuning**: Implement domain-specific fine-tuned models for cost reduction
+3. **Distributed Systems**: Architect for multi-region deployment (global latency optimization)
+
+---
+
+## References
+
+- Portfolio: [yourportfolio.com]
+- GitHub: [github.com/yourname]
+- LinkedIn: [linkedin.com/in/yourname]
+- System Design Doc: [Attached]
+```
+
+---
+
+## Key Takeaways
+
+**System Design Document (SDD)**:
+- Explain **WHY** behind every major decision (not just WHAT you built)
+- Justify choices against requirements and constraints
+- Use Architectural Decision Records (ADRs) for vector DB, model, framework selections
+- Include performance validation (load tests, golden dataset results)
+- Document trade-offs accepted (cost vs accuracy, latency vs quality)
+
+**Skill Diagnosis Brief**:
+- Prove mastery across 7 domains with concrete evidence
+- Portfolio projects with scale metrics (users, vectors, requests)
+- Production metrics (faithfulness, latency, cost, security score)
+- Code samples demonstrating architectural thinking
+- Growth areas showing self-awareness
+
+**Packaging for Stakeholders**:
+- **Executives**: Executive summary with business metrics (ROI, cost per request, availability)
+- **Technical Leaders**: ADRs with benchmarks and trade-off analysis
+- **Hiring Managers**: Skill diagnosis with verified production metrics
+- **Engineers**: Code samples with architectural patterns
+
+**The Architect's Responsibility**:
+You **own** the story. If stakeholders don't understand your decisions, **you failed to communicate**. If hiring managers can't evaluate your work, **you didn't provide evidence**. If future maintainers break your system, **you didn't document constraints**.
+
+**Impact**:
+- **Without SDD**: "It works" (no justification, future maintainers break it)
+- **With SDD**: "Here's why Pinecone over pgvector for our multi-tenant use case" (informed decisions, maintainable systems)
+
+**Portfolio ROI**:
+- Time investment: 2 days for comprehensive SDD + Skill Diagnosis
+- Interview conversion: 3x higher (employers see architectural thinking)
+- Salary impact: $20K+ higher offers (demonstrated senior-level capability)
+
+Week 8 Complete: You've proven **Architectural Authority** through production-ready systems, comprehensive stress-testing, automated evaluation, and compelling documentation.
