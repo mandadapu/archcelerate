@@ -115,11 +115,17 @@ export default async function ConceptPage({ params }: Props) {
     <div className="container max-w-4xl py-8">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+        <Link href="/dashboard" className="hover:text-foreground">
+          Dashboard
+        </Link>
+        <span>/</span>
         <Link href="/curriculum/week-9" className="hover:text-foreground">
           Week 9
         </Link>
         <span>/</span>
-        <span>Concepts</span>
+        <Link href="/curriculum/week-9" className="hover:text-foreground">
+          Concepts
+        </Link>
         <span>/</span>
         <span className="text-foreground">{concept.title}</span>
       </div>
