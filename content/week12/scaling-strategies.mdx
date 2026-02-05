@@ -111,7 +111,7 @@ class LoadBalancedLLM {
 
     for (const provider of availableProviders) {
       random -= provider.weight
-      if (random <= 0) return provider
+      if (random &lt;= 0) return provider
     }
 
     return availableProviders[0]
@@ -250,7 +250,7 @@ interface ScalingConfig {
   minPods: number          // Always keep this many running
   maxPods: number          // Never exceed this many
   targetCPU: number        // Scale up if CPU > this percent
-  targetLatency: number    // Scale up if latency > this ms
+  targetLatency: number    // Scale up if latency &gt; this ms
   scaleUpCooldown: number  // Wait this long before scaling up again (ms)
   scaleDownCooldown: number // Wait this long before scaling down (ms)
 }
@@ -358,7 +358,7 @@ class AutoScaler {
     }
 
     // Trigger 3: Queue depth
-    if (metrics.queueDepth > 100) {
+    if (metrics.queueDepth &gt; 100) {
       triggers.push({
         name: 'high_queue_depth',
         severity: metrics.queueDepth / 100,
@@ -367,7 +367,7 @@ class AutoScaler {
     }
 
     // Trigger 4: Error rate
-    if (metrics.errorRate > 0.05) {  // 5%
+    if (metrics.errorRate &gt; 0.05) {  // 5%
       triggers.push({
         name: 'high_error_rate',
         severity: metrics.errorRate,
@@ -376,7 +376,7 @@ class AutoScaler {
     }
 
     // Any triggers? Scale up!
-    if (triggers.length > 0) {
+    if (triggers.length &gt; 0) {
       const maxDesiredPods = Math.max(...triggers.map(t => t.desiredPods))
       const podDelta = maxDesiredPods - currentPods
 
@@ -477,7 +477,7 @@ spec:
 ```
 Time    Traffic    CPU    Pods    Action
 08:00   100 req/m  30%    2       None (baseline)
-09:00   500 req/m  75%    2       Scale up to 4 (CPU > 70%)
+09:00   500 req/m  75%    2       Scale up to 4 (CPU &gt; 70%)
 09:05   500 req/m  40%    4       None (cooldown)
 12:00   2000 req/m 85%    4       Scale up to 8 (high CPU + queue)
 14:00   1500 req/m 60%    8       None (metrics okay)
@@ -534,7 +534,7 @@ class CacheHierarchy {
 
     // L3: Check semantic cache (~50ms)
     const semanticResult = await this.findSimilarQuery(query)
-    if (semanticResult && semanticResult.similarity > 0.95) {
+    if (semanticResult && semanticResult.similarity &gt; 0.95) {
       console.log('L3 cache hit (semantic)')
 
       // Backfill L2 and L1
@@ -677,7 +677,7 @@ class DistributedRateLimiter {
     }
 
     // Check limit
-    const allowed = count <= limit.requests
+    const allowed = count &lt;= limit.requests
 
     if (!allowed) {
       const ttl = await this.redis.ttl(key)

@@ -35,7 +35,7 @@ Query → Embed → Vector Search → Top-K Results → LLM
 ┌──────────────────────────────────────────────────┐
 │ Layer 2: SEMANTIC CACHE CHECK                    │
 │ - Check Redis for similar queries               │
-│ - Return cached result if similarity > 0.95      │
+│ - Return cached result if similarity &gt; 0.95      │
 └──────────────────┬───────────────────────────────┘
                    │ (cache miss)
                    ▼
@@ -330,7 +330,7 @@ function chooseVectorDatabase(req: ProjectRequirements): {
   }
 
   // Rule 2: Already using Postgres
-  if (req.teamSize > 0 && usesPostgres()) {
+  if (req.teamSize &gt; 0 && usesPostgres()) {
     return {
       recommendation: 'pgvector',
       reasoning: 'Leverage existing Postgres infrastructure and expertise',
@@ -348,7 +348,7 @@ function chooseVectorDatabase(req: ProjectRequirements): {
   }
 
   // Rule 4: Cost-constrained + large scale
-  if (req.expectedVectors > 10_000_000 && req.budgetPerMonth < 500) {
+  if (req.expectedVectors &gt; 10_000_000 && req.budgetPerMonth < 500) {
     return {
       recommendation: 'chroma',
       reasoning: 'Self-hosted open-source minimizes per-vector costs at scale',
@@ -357,7 +357,7 @@ function chooseVectorDatabase(req: ProjectRequirements): {
   }
 
   // Rule 5: High QPS + budget available
-  if (req.queriesPerSecond > 1000 && req.budgetPerMonth > 2000) {
+  if (req.queriesPerSecond &gt; 1000 && req.budgetPerMonth &gt; 2000) {
     return {
       recommendation: 'pinecone',
       reasoning: 'Best performance and reliability for high-traffic production',
@@ -407,8 +407,8 @@ Phase 4 (Hyper-scale): Custom solution → Sub-10ms latency at billions of vecto
 
 **When to migrate**:
 - Chroma → Pinecone: When you need production SLA (&gt;100K queries/day)
-- Pinecone → pgvector: When cost > $1K/month and you have Postgres expertise
-- pgvector → Milvus/Qdrant: When latency > 200ms or vectors > 50M
+- Pinecone → pgvector: When cost &gt; $1K/month and you have Postgres expertise
+- pgvector → Milvus/Qdrant: When latency &gt; 200ms or vectors &gt; 50M
 
 ### Key Takeaways
 
@@ -1186,7 +1186,7 @@ class SemanticCache {
       // Calculate similarity
       const similarity = cosineSimilarity(queryEmbedding, cachedEmbedding)
 
-      if (similarity >= this.similarityThreshold) {
+      if (similarity &gt;= this.similarityThreshold) {
         console.log(`Cache hit for query: "${query}" (similarity: ${similarity})`)
         return cached.result
       }
@@ -1476,7 +1476,7 @@ async function selectOptimalChunks(
 
   // 2. Apply quality threshold
   const minRelevanceScore = 0.7
-  const highQuality = reranked.filter(doc => doc.score >= minRelevanceScore)
+  const highQuality = reranked.filter(doc => doc.score &gt;= minRelevanceScore)
 
   // 3. Return top-K high-quality chunks (max 3-5)
   return highQuality.slice(0, maxChunks)
@@ -1527,7 +1527,7 @@ Answer based on the context above:`
 - **Retrieve broadly**: Get 20-30 candidates from vector DB
 - **Rerank aggressively**: Filter to top-3 high-quality chunks
 - **Position strategically**: Put most relevant at start/end
-- **Quality threshold**: Reject chunks with relevance < 0.7
+- **Quality threshold**: Reject chunks with relevance &lt; 0.7
 
 ---
 
@@ -1739,10 +1739,10 @@ class RAGEvaluator {
 ```
 
 **Quality Thresholds**:
-- **Faithfulness**: > 0.8 (no hallucinations)
-- **Answer Relevance**: > 0.8 (answers the question)
-- **Context Precision**: > 0.7 (good retrieval)
-- **Context Recall**: > 0.9 (comprehensive coverage)
+- **Faithfulness**: &gt; 0.8 (no hallucinations)
+- **Answer Relevance**: &gt; 0.8 (answers the question)
+- **Context Precision**: &gt; 0.7 (good retrieval)
+- **Context Recall**: &gt; 0.9 (comprehensive coverage)
 
 **Best Practices**:
 - **Sample evaluation**: Evaluate 1-5% of queries (not all, too expensive)

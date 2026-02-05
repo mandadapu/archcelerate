@@ -28,7 +28,7 @@ const classification = await classifyQueryComplexity(patientQuery)
 // → "simple" (password reset), "complex" (drug interaction), or "critical" (chest pain)
 
 // Step 2: Route to appropriate model based on classification
-if (classification.type === 'simple' && classification.confidence > 0.90) {
+if (classification.type === 'simple' && classification.confidence &gt; 0.90) {
   return await callHaiku(patientQuery)      // Fast & cheap: $0.001/query
 } else if (classification.type === 'critical') {
   return await escalateToHuman(patientQuery) // Safety: Always HITL
@@ -170,11 +170,11 @@ function analyzeContextDensity(
   const densityScore = informationChunks / totalTokens
 
   let recommendation: string
-  if (densityScore > 0.25) {
+  if (densityScore &gt; 0.25) {
     recommendation = '✅ Excellent density - all information is relevant'
-  } else if (densityScore >= 0.15) {
+  } else if (densityScore &gt;= 0.15) {
     recommendation = '✅ Good density - optimal for precision'
-  } else if (densityScore >= 0.10) {
+  } else if (densityScore &gt;= 0.10) {
     recommendation = '⚠️ Moderate density - consider summarizing'
   } else {
     recommendation = '❌ Poor density - high risk of Lost-in-the-Middle. Aggressive pruning needed.'
@@ -229,7 +229,7 @@ async function buildPromptWithDensityCheck(
   query: string
 ): Promise<string> {
   // Estimate information chunks (simplified: count sentences)
-  const chunks = userContext.split(/[.!?]/).filter(s => s.trim().length > 10).length
+  const chunks = userContext.split(/[.!?]/).filter(s => s.trim().length &gt; 10).length
 
   const analysis = analyzeContextDensity(userContext, chunks)
 
@@ -280,7 +280,7 @@ function selectModel(useCase: UseCase): Model {
   }
 
   // Constraint #2: Cost Budget
-  if (useCase.requestVolume > 1_000_000 && useCase.budgetPerRequest < 0.01) {
+  if (useCase.requestVolume &gt; 1_000_000 && useCase.budgetPerRequest < 0.01) {
     return 'claude-haiku-4.5' // Economic constraint forces choice
   }
 
@@ -303,7 +303,7 @@ async function processWithCascade(input: string) {
   try {
     // Try fast + cheap first
     const result = await callHaiku(input)
-    if (result.confidence > 0.9) return result
+    if (result.confidence &gt; 0.9) return result
 
     // Fall back to quality if uncertain
     return await callSonnet(input)
@@ -398,7 +398,7 @@ async function runTokenCountingExercise() {
     {
       name: 'Code snippet',
       text: \`function fibonacci(n) {
-  if (n <= 1) return n
+  if (n &lt;= 1) return n
   return fibonacci(n - 1) + fibonacci(n - 2)
 }\`
     },

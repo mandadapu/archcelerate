@@ -43,7 +43,7 @@ async function generateSummary(text: string): Promise<string> {
     max_tokens: 200,
     messages: [{ role: 'user', content: `Summarize: ${text}` }],
   })
-  // Same input → Different outputs (temperature > 0)
+  // Same input → Different outputs (temperature &gt; 0)
   // Variable latency, token usage, costs
   // Potential rate limits, API errors
   return response.content[0].text
@@ -105,7 +105,7 @@ class LatencyTracker {
     this.measurements.push(latencyMs)
 
     // Keep only recent measurements (last 1000)
-    if (this.measurements.length > 1000) {
+    if (this.measurements.length &gt; 1000) {
       this.measurements.shift()
     }
   }
@@ -234,7 +234,7 @@ class TokenUsageTracker {
     const totalCost = recent.reduce((sum, m) => sum + m.cost, 0)
     const totalTokens = recent.reduce((sum, m) => sum + m.totalTokens, 0)
     const requestCount = recent.length
-    const avgTokensPerRequest = requestCount > 0 ? totalTokens / requestCount : 0
+    const avgTokensPerRequest = requestCount &gt; 0 ? totalTokens / requestCount : 0
 
     return {
       totalCost,
@@ -367,11 +367,11 @@ class ErrorTracker {
   shouldAlert(): boolean {
     const stats = this.getErrorRate(300000) // Last 5 minutes
 
-    // Alert if error rate > 1 error per second
-    if (stats.errorRate > 1) return true
+    // Alert if error rate &gt; 1 error per second
+    if (stats.errorRate &gt; 1) return true
 
     // Alert if rate limits hit
-    if (stats.byType.rate_limit > 0) return true
+    if (stats.byType.rate_limit &gt; 0) return true
 
     return false
   }
@@ -810,7 +810,7 @@ class LogAnalyzer {
   }
 
   async getExpensiveRequests(thresholdCost: number = 0.01): Promise<any[]> {
-    // Query logs where cost > threshold
+    // Query logs where cost &gt; threshold
     return []
   }
 
@@ -1110,7 +1110,7 @@ class MetricsCollector {
   private calculateSuccessRate(): number {
     const stats = errorTracker.getErrorRate(this.window)
     const totalRequests = stats.totalErrors + 100 // Assume 100 successful
-    return totalRequests > 0 ? (100 / totalRequests) : 1
+    return totalRequests &gt; 0 ? (100 / totalRequests) : 1
   }
 
   private async getCacheHitRate(): Promise<number> {
@@ -1210,7 +1210,7 @@ class AlertManager {
     warning: number
     critical: number
   }): Promise<void> {
-    if (currentCost >= thresholds.critical) {
+    if (currentCost &gt;= thresholds.critical) {
       await this.sendAlert({
         level: 'critical',
         category: 'cost',
@@ -1218,7 +1218,7 @@ class AlertManager {
         timestamp: Date.now(),
         metadata: { currentCost, threshold: thresholds.critical },
       })
-    } else if (currentCost >= thresholds.warning) {
+    } else if (currentCost &gt;= thresholds.warning) {
       await this.sendAlert({
         level: 'warning',
         category: 'cost',
@@ -1233,7 +1233,7 @@ class AlertManager {
     warning: number
     critical: number
   }): Promise<void> {
-    if (p95Latency >= thresholds.critical) {
+    if (p95Latency &gt;= thresholds.critical) {
       await this.sendAlert({
         level: 'critical',
         category: 'performance',
@@ -1241,7 +1241,7 @@ class AlertManager {
         timestamp: Date.now(),
         metadata: { p95Latency, threshold: thresholds.critical },
       })
-    } else if (p95Latency >= thresholds.warning) {
+    } else if (p95Latency &gt;= thresholds.warning) {
       await this.sendAlert({
         level: 'warning',
         category: 'performance',

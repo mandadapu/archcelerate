@@ -522,7 +522,7 @@ export interface JudgeResult {
     tone: number                // 0-10
   }
   weighted_score: number        // 0-10 (weighted average)
-  passed: boolean               // true if weighted_score >= 9.0
+  passed: boolean               // true if weighted_score &gt;= 9.0
   feedback: string              // Explanation of score
   violations: string[]          // List of specific failures
   cost: number                  // API cost for this evaluation
@@ -609,7 +609,7 @@ CRITICAL: If the response hallucinates account data (balances, account numbers, 
       tone: judgeOutput.tone
     },
     weighted_score: weightedScore,
-    passed: weightedScore >= 9.0,  // 90% threshold for pass
+    passed: weightedScore &gt;= 9.0,  // 90% threshold for pass
     feedback: judgeOutput.feedback,
     violations: judgeOutput.violations,
     cost
@@ -933,7 +933,7 @@ export async function detectRegressions(
   // Determine if regression detected
   const regressionDetected =
     newPassRate < baseline.aggregate_metrics.overall_pass_rate ||
-    newFailures.length > 0
+    newFailures.length &gt; 0
 
   // Determine if deploy should be blocked
   const deployBlocked =
@@ -973,16 +973,16 @@ export async function detectRegressions(
   console.log(`${report.deploy_blocked ? '🚫 DEPLOYMENT BLOCKED' : '✅ DEPLOYMENT APPROVED'}\n`)
 
   console.log('Overall Metrics:')
-  console.log(`  Pass Rate:      ${baseline.aggregate_metrics.overall_pass_rate.toFixed(1)}% → ${newPassRate.toFixed(1)}% (${report.comparison.overall_pass_rate.delta >= 0 ? '+' : ''}${report.comparison.overall_pass_rate.delta.toFixed(1)}%)`)
-  console.log(`  Avg Score:      ${baseline.aggregate_metrics.avg_weighted_score.toFixed(2)} → ${newAvgScore.toFixed(2)} (${report.comparison.avg_weighted_score.delta >= 0 ? '+' : ''}${report.comparison.avg_weighted_score.delta.toFixed(2)})`)
+  console.log(`  Pass Rate:      ${baseline.aggregate_metrics.overall_pass_rate.toFixed(1)}% → ${newPassRate.toFixed(1)}% (${report.comparison.overall_pass_rate.delta &gt;= 0 ? '+' : ''}${report.comparison.overall_pass_rate.delta.toFixed(1)}%)`)
+  console.log(`  Avg Score:      ${baseline.aggregate_metrics.avg_weighted_score.toFixed(2)} → ${newAvgScore.toFixed(2)} (${report.comparison.avg_weighted_score.delta &gt;= 0 ? '+' : ''}${report.comparison.avg_weighted_score.delta.toFixed(2)})`)
 
   console.log('\nCategory Deltas:')
   Object.entries(categoryDeltas).forEach(([category, delta]) => {
-    const emoji = delta >= 0 ? '✅' : '❌'
-    console.log(`  ${emoji} ${category.padEnd(15)}: ${delta >= 0 ? '+' : ''}${delta.toFixed(1)}%`)
+    const emoji = delta &gt;= 0 ? '✅' : '❌'
+    console.log(`  ${emoji} ${category.padEnd(15)}: ${delta &gt;= 0 ? '+' : ''}${delta.toFixed(1)}%`)
   })
 
-  if (newFailures.length > 0) {
+  if (newFailures.length &gt; 0) {
     console.log('\n⚠️  New Failures (tests that passed before but fail now):')
     newFailures.forEach(f => {
       console.log(`  - ${f.test_case_id} [${f.category}]: ${f.baseline_score.toFixed(2)} → ${f.new_score.toFixed(2)} (${f.delta.toFixed(2)})`)
@@ -1130,7 +1130,7 @@ export async function generateComplianceReport(
       passed,
       failed,
       pass_rate: passRate,
-      deployment_status: passRate >= 95.0 && failureDetails.filter(f => f.category === 'safety' || f.category === 'compliance').length === 0 ? 'APPROVED' : 'BLOCKED'
+      deployment_status: passRate &gt;= 95.0 && failureDetails.filter(f => f.category === 'safety' || f.category === 'compliance').length === 0 ? 'APPROVED' : 'BLOCKED'
     },
     regulatory_coverage: regulationCoverage,
     failure_details: failureDetails,
@@ -1230,7 +1230,7 @@ ${reg.regulation}
   Critical Failures: ${reg.critical_failures}
 `).join('\n')}
 
-${report.failure_details.length > 0 ? `
+${report.failure_details.length &gt; 0 ? `
 ────────────────────────────────────────────────────────────────────
 FAILURE DETAILS
 ────────────────────────────────────────────────────────────────────

@@ -213,12 +213,12 @@ export const ragQuery = traceable(
 
 | Metric | Good | Warning | Critical |
 |--------|------|---------|----------|
-| **Total Latency** | < 2s | 2-5s | > 5s |
-| **Retrieval** | < 500ms | 500-1000ms | > 1000ms |
-| **LLM Call** | < 2s | 2-3s | > 3s |
+| **Total Latency** | < 2s | 2-5s | &gt; 5s |
+| **Retrieval** | < 500ms | 500-1000ms | &gt; 1000ms |
+| **LLM Call** | < 2s | 2-3s | &gt; 3s |
 | **Cost per Query** | < $0.05 | $0.05-$0.10 | > $0.10 |
 
-**Production alert**: If retrieval latency > 1s, investigate database indexes or vector store performance.
+**Production alert**: If retrieval latency &gt; 1s, investigate database indexes or vector store performance.
 
 ---
 
@@ -335,7 +335,7 @@ export async function evaluateToxicity(text: string): Promise<number> {
   const toxicKeywords = ['hate', 'kill', 'stupid', 'idiot']
   const matches = toxicKeywords.filter(word => text.toLowerCase().includes(word))
 
-  return matches.length > 0 ? 0.8 : 0.0
+  return matches.length &gt; 0 ? 0.8 : 0.0
 }
 
 // Eval 5: Context Precision (Retrieved docs are relevant)
@@ -421,10 +421,10 @@ console.log('Evaluation Results:', metrics)
 
 | Metric | Formula | Target | Red Flag |
 |--------|---------|--------|----------|
-| **Tokens per User** | Avg tokens across all user sessions | < 50K/month | > 100K/month |
+| **Tokens per User** | Avg tokens across all user sessions | < 50K/month | &gt; 100K/month |
 | **Cost per Query** | Total cost / Total queries | < $0.05 | > $0.10 |
-| **Cache Hit Rate** | Cached responses / Total queries | > 40% | < 20% |
-| **Queries per Dollar** | Total queries / Total cost | > 20 | < 10 |
+| **Cache Hit Rate** | Cached responses / Total queries | &gt; 40% | < 20% |
+| **Queries per Dollar** | Total queries / Total cost | &gt; 20 | < 10 |
 
 ### Tracking Unit Economics
 
@@ -515,7 +515,7 @@ export async function checkCostAlerts() {
   const totalCost = monthlyCost._sum.cost_usd || 0
 
   // Alert if monthly cost exceeds budget
-  if (totalCost > 500) {
+  if (totalCost &gt; 500) {
     await sendAlert({
       severity: 'critical',
       message: `Monthly AI cost exceeded $500: $${totalCost.toFixed(2)}`,
@@ -525,7 +525,7 @@ export async function checkCostAlerts() {
 
   // Alert if cost per query is high
   const avgCostPerQuery = totalCost / (await prisma.queryMetrics.count())
-  if (avgCostPerQuery > 0.10) {
+  if (avgCostPerQuery &gt; 0.10) {
     await sendAlert({
       severity: 'warning',
       message: `Cost per query is high: $${avgCostPerQuery.toFixed(4)}`,
@@ -804,8 +804,8 @@ async function monitorDistributedTraces() {
   for (const trace of recentTraces) {
     const metrics = await analyzeDistributedTrace(trace.traceId)
 
-    // Alert 1: Total latency > 10s
-    if (metrics.total_latency_ms > 10000) {
+    // Alert 1: Total latency &gt; 10s
+    if (metrics.total_latency_ms &gt; 10000) {
       await alertSlack({
         channel: '#ai-alerts',
         text: `⚠️ Slow distributed trace: ${metrics.total_latency_ms}ms
@@ -827,7 +827,7 @@ Trace ID: ${trace.traceId}`
     // Alert 3: Agent consistently slow
     const agentAvgLatencies = await calculateAgentAverages()
     for (const [agent, latency] of Object.entries(metrics.agent_latencies)) {
-      if (latency > agentAvgLatencies[agent] * 2) {
+      if (latency &gt; agentAvgLatencies[agent] * 2) {
         await alertSlack({
           channel: '#ai-alerts',
           text: `⚠️ Agent ${agent} is 2x slower than average: ${latency}ms vs ${agentAvgLatencies[agent]}ms
@@ -938,7 +938,7 @@ async function alertOnTenantOverspend() {
     // Alert if tenant exceeds plan budget
     const budgetLimit = tenant.plan.monthly_budget_usd
 
-    if (monthlyCosts.total_cost > budgetLimit * 1.2) { // 120% of budget
+    if (monthlyCosts.total_cost &gt; budgetLimit * 1.2) { // 120% of budget
       await alertSlack({
         channel: '#billing-alerts',
         text: `⚠️ Tenant ${tenant.name} is over budget:

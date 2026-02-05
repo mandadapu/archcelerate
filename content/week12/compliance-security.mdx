@@ -144,7 +144,7 @@ class PrivacyCompliance {
 
     // 3. Delete from cache
     const userCacheKeys = await redis.keys(`user:${userId}:*`)
-    if (userCacheKeys.length > 0) {
+    if (userCacheKeys.length &gt; 0) {
       await redis.del(...userCacheKeys)
     }
     deletionReport.deleted.push('cache_entries')
@@ -238,7 +238,7 @@ class PIIProtection {
       original: text,
       anonymized,
       detected,
-      containsPII: detected.length > 0
+      containsPII: detected.length &gt; 0
     }
   }
 
@@ -364,7 +364,7 @@ class AuditLogger {
 
     // Anomaly 1: Too many failed attempts
     const failures = recentActions.filter(a => a.result === 'failure')
-    if (failures.length >= 5) {
+    if (failures.length &gt;= 5) {
       await this.alertSecurityTeam({
         alert: 'multiple_failures',
         userId: event.userId,
@@ -374,7 +374,7 @@ class AuditLogger {
 
     // Anomaly 2: Access from unusual location
     const ipAddresses = new Set(recentActions.map(a => a.ipAddress))
-    if (ipAddresses.size > 3) {
+    if (ipAddresses.size &gt; 3) {
       await this.alertSecurityTeam({
         alert: 'multiple_ip_addresses',
         userId: event.userId,
@@ -384,7 +384,7 @@ class AuditLogger {
 
     // Anomaly 3: Bulk data export
     const exports = recentActions.filter(a => a.action === 'data_export')
-    if (exports.length >= 3) {
+    if (exports.length &gt;= 3) {
       await this.alertSecurityTeam({
         alert: 'bulk_export',
         userId: event.userId,
@@ -628,7 +628,7 @@ ${sanitizedInput}`
       output.toLowerCase().includes(pattern.toLowerCase())
     )
 
-    if (violations.length > 0) {
+    if (violations.length &gt; 0) {
       console.error('Output validation failed:', violations)
 
       await auditLogger.log({
@@ -728,7 +728,7 @@ class SecureOutputHandler {
       generatedCode.includes(pattern)
     )
 
-    if (violations.length > 0) {
+    if (violations.length &gt; 0) {
       return {
         safe: false,
         violations,
@@ -742,7 +742,7 @@ class SecureOutputHandler {
     return {
       safe: lintResults.errors.length === 0,
       violations: lintResults.errors,
-      message: lintResults.errors.length > 0 ? 'Code has linting errors' : 'Code passed validation'
+      message: lintResults.errors.length &gt; 0 ? 'Code has linting errors' : 'Code passed validation'
     }
   }
 
@@ -810,7 +810,7 @@ class SensitiveDataProtection {
       }
     }
 
-    if (leaks.length > 0) {
+    if (leaks.length &gt; 0) {
       // CRITICAL: Log and alert
       await auditLogger.log({
         userId: 'system',
@@ -835,7 +835,7 @@ class SensitiveDataProtection {
     }
 
     return {
-      hasLeaks: leaks.length > 0,
+      hasLeaks: leaks.length &gt; 0,
       leaks,
       sanitizedText: this.redactLeaks(text, leaks)
     }
@@ -924,7 +924,7 @@ class AgencyController {
 
     // 2. Check risk level
     const riskLevel = this.RISK_LEVELS[action.type]
-    if (riskLevel >= 3) {
+    if (riskLevel &gt;= 3) {
       // High-risk actions require human approval
       return {
         approved: false,
@@ -935,7 +935,7 @@ class AgencyController {
 
     // 3. Rate limiting
     const recentActions = await this.getRecentActions(userId, action.type)
-    if (recentActions.length >= this.getRateLimit(action.type)) {
+    if (recentActions.length &gt;= this.getRateLimit(action.type)) {
       return {
         approved: false,
         reason: 'Rate limit exceeded'
@@ -954,8 +954,8 @@ class AgencyController {
     // Approved with conditions
     return {
       approved: true,
-      requiresConfirmation: riskLevel >= 2,
-      auditLevel: riskLevel >= 2 ? 'detailed' : 'standard'
+      requiresConfirmation: riskLevel &gt;= 2,
+      auditLevel: riskLevel &gt;= 2 ? 'detailed' : 'standard'
     }
   }
 
@@ -1094,9 +1094,9 @@ try {
 ```typescript
 class ModelTheftPrevention {
   private readonly SUSPICIOUS_PATTERNS = {
-    highFrequency: 100,      // > 100 requests/minute
-    bulkQueries: 50,         // > 50 similar queries
-    systematicProbing: 20    // > 20 queries testing edge cases
+    highFrequency: 100,      // &gt; 100 requests/minute
+    bulkQueries: 50,         // &gt; 50 similar queries
+    systematicProbing: 20    // &gt; 20 queries testing edge cases
   }
 
   async detectTheftAttempt(userId: string): Promise<TheftDetection> {
@@ -1115,7 +1115,7 @@ class ModelTheftPrevention {
     const repetitionRate = 1 - (uniqueQueries / recentRequests.length)
 
     const isHighFrequency = requestsPerMinute > this.SUSPICIOUS_PATTERNS.highFrequency / 60
-    const isBulkQueries = repetitionRate > 0.8
+    const isBulkQueries = repetitionRate &gt; 0.8
     const isSystematicProbing = await this.detectSystematicProbing(recentRequests)
 
     const suspicious = isHighFrequency || isBulkQueries || isSystematicProbing
@@ -1160,7 +1160,7 @@ class ModelTheftPrevention {
       edgeCaseKeywords.some(keyword => q.includes(keyword))
     ).length
 
-    return edgeCaseCount / requests.length > 0.3  // > 30% edge case testing
+    return edgeCaseCount / requests.length &gt; 0.3  // &gt; 30% edge case testing
   }
 
   private async throttleUser(userId: string, reason: string): Promise<void> {
@@ -1211,7 +1211,7 @@ app.use(async (req, res, next) => {
 1. **Rate Limiting**: Cap requests per user/IP
 2. **Authentication**: Require API keys, monitor usage
 3. **Query Monitoring**: Detect bulk extraction attempts
-4. **Model Obfuscation**: Add slight randomness to outputs (temperature > 0)
+4. **Model Obfuscation**: Add slight randomness to outputs (temperature &gt; 0)
 5. **Watermarking**: Embed invisible signatures in outputs
 6. **Legal Protection**: Terms of service prohibiting model extraction
 
@@ -1394,7 +1394,7 @@ class EgressMonitor {
     // Step 4: Advanced PII detection (NER model)
     if (this.config.piiDetection) {
       const piiDetected = await this.detectPII(response)
-      if (piiDetected.length > 0) {
+      if (piiDetected.length &gt; 0) {
         await this.logSecurityEvent({
           userId,
           conversationId,
@@ -1580,10 +1580,10 @@ class AntiTheftMonitor {
     // Step 3: Check for probing patterns
     const probingIndicators = {
       // High request frequency (&gt;100 req/hour)
-      highFrequency: profile.requestCount > 100,
+      highFrequency: profile.requestCount &gt; 100,
 
       // Systematic exploration (many unique prompts)
-      systematicExploration: profile.uniquePrompts / profile.requestCount > 0.8,
+      systematicExploration: profile.uniquePrompts / profile.requestCount &gt; 0.8,
 
       // Short prompts (probing questions)
       shortPrompts: profile.avgPromptLength < 50,
@@ -1606,7 +1606,7 @@ class AntiTheftMonitor {
     profile.riskScore = riskScore
 
     // Step 4: Decision
-    if (riskScore >= 60) {
+    if (riskScore &gt;= 60) {
       // Block user
       await this.flagUser(userId, 'model_probing_detected', probingIndicators)
 
@@ -1615,7 +1615,7 @@ class AntiTheftMonitor {
         reason: 'Suspicious activity detected - account temporarily restricted',
         riskScore
       }
-    } else if (riskScore >= 40) {
+    } else if (riskScore &gt;= 40) {
       // Add CAPTCHA challenge
       await this.logSecurityEvent({
         userId,
@@ -1956,7 +1956,7 @@ class SOC2Controls {
    - **Fix**: Sanitize logs before writing
 
 2. **Storing Passwords in Plain Text**: Always hash with bcrypt/argon2
-   - **Fix**: Use bcrypt with salt rounds >= 12
+   - **Fix**: Use bcrypt with salt rounds &gt;= 12
 
 3. **No Rate Limiting**: Allows brute force attacks
    - **Fix**: Implement rate limiting (see Week 12, Scaling)
