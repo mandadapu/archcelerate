@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { Header } from '@/components/landing/Header'
-import { VideoDemo } from '@/components/landing/VideoDemo'
+import { SystemDiagram } from '@/components/landing/SystemDiagram'
 import { TechStack } from '@/components/landing/TechStack'
 import { SocialProof } from '@/components/landing/SocialProof'
 import { ProjectShowcase } from '@/components/landing/ProjectShowcase'
@@ -98,13 +98,8 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Video Demo */}
-          <div className="video-demo-section">
-            <VideoDemo />
-          </div>
-
           {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 items-center">
+          <div className="flex flex-col sm:flex-row gap-4 items-center mb-8">
             <Link href="/diagnosis">
               <button className="px-12 py-4 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-lg font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
                 Start Skill Diagnosis
@@ -112,13 +107,18 @@ export default function Home() {
             </Link>
             <button
               onClick={() => {
-                const videoSection = document.querySelector('.video-demo-section')
-                videoSection?.scrollIntoView({ behavior: 'smooth' })
+                const diagramSection = document.querySelector('.system-diagram-section')
+                diagramSection?.scrollIntoView({ behavior: 'smooth' })
               }}
               className="px-12 py-4 bg-white text-gray-900 text-lg font-semibold rounded-full border-2 border-gray-200 hover:border-gray-300 hover:shadow-lg transition-all duration-200"
             >
-              Watch the System Tour
+              View System Architecture
             </button>
+          </div>
+
+          {/* System Diagram */}
+          <div className="system-diagram-section">
+            <SystemDiagram />
           </div>
 
           {/* Quick Stats */}
