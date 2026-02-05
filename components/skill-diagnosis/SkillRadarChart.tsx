@@ -76,7 +76,9 @@ export function SkillRadarChart({ data, proficiencyLevel = 'mid' }: SkillRadarCh
                 borderRadius: '8px',
                 color: '#fff'
               }}
-              formatter={(value: number) => [`${value.toFixed(1)}%`, 'Score']}
+              formatter={(value: number | undefined) =>
+                value !== undefined ? [`${value.toFixed(1)}%`, 'Score'] : ['N/A', 'Score']
+              }
             />
           </RadarChart>
         </ResponsiveContainer>
