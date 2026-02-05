@@ -110,53 +110,42 @@ export default async function Week7Page() {
   return (
     <div className="container max-w-4xl py-8">
       <div className="space-y-8">
-        {/* Header with Overview Tooltip */}
-        <WeekHeader title={week.title} description={week.description || ''} />
+        {/* Header with Progress */}
+        <div className="flex items-start justify-between gap-4">
+          <WeekHeader title={week.title} description={week.description || ''} />
+
+          {progress && (
+            <div className="flex flex-col items-end gap-1 text-xs text-muted-foreground pt-1">
+              <div className="flex items-center gap-1.5">
+                {progress.conceptsCompleted === progress.conceptsTotal ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                ) : (
+                  <Circle className="h-3.5 w-3.5 text-gray-400" />
+                )}
+                <span>{progress.conceptsCompleted}/{progress.conceptsTotal} Concepts</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {progress.labCompleted ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                ) : (
+                  <Circle className="h-3.5 w-3.5 text-gray-400" />
+                )}
+                <span>Lab</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {progress.projectCompleted ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                ) : (
+                  <Circle className="h-3.5 w-3.5 text-gray-400" />
+                )}
+                <span>Project</span>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Technical Milestones - Premium Collapsible */}
         <LearningObjectives objectives={objectives} />
-
-        {/* Progress Overview */}
-        {progress && (
-          <Card className="bg-amber-50 dark:bg-amber-950 border-amber-200">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Your Progress</CardTitle>
-                <div className="text-sm text-muted-foreground">
-                  {progress.conceptsCompleted} / {progress.conceptsTotal} concepts
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  {progress.conceptsCompleted === progress.conceptsTotal ? (
-                    <CheckCircle2 className="h-5 w-5 text-green-600" />
-                  ) : (
-                    <Circle className="h-5 w-5 text-gray-400" />
-                  )}
-                  <span>Concepts</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {progress.labCompleted ? (
-                    <CheckCircle2 className="h-5 w-5 text-green-600" />
-                  ) : (
-                    <Circle className="h-5 w-5 text-gray-400" />
-                  )}
-                  <span>Lab</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {progress.projectCompleted ? (
-                    <CheckCircle2 className="h-5 w-5 text-green-600" />
-                  ) : (
-                    <Circle className="h-5 w-5 text-gray-400" />
-                  )}
-                  <span>Project</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Concepts */}
         <div>
