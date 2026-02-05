@@ -18,30 +18,31 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
-// Concept visualization icons - Week 7: Observability & Production
+// Concept visualization icons - Week 7: Observability & Production (The Reliability)
+// Using amber/yellow theme to match Week 7's gradient (from-amber-50 to-yellow-50)
 function getConceptIllustration(slug: string) {
   const illustrations: Record<string, JSX.Element> = {
     'observability-pillars': (
-      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+      <div className="w-20 flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <Eye className="h-7 w-7 text-primary" />
-          <Activity className="h-6 w-6 text-info" />
+          <Eye className="h-7 w-7 text-amber-600" />
+          <Activity className="h-6 w-6 text-yellow-500" />
         </div>
       </div>
     ),
     'guardrails': (
-      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+      <div className="w-20 flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <Shield className="h-7 w-7 text-success" />
-          <AlertTriangle className="h-6 w-6 text-warning" />
+          <Shield className="h-7 w-7 text-amber-600" />
+          <AlertTriangle className="h-6 w-6 text-yellow-500" />
         </div>
       </div>
     ),
     'llm-as-judge': (
-      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+      <div className="w-20 flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <Gavel className="h-7 w-7 text-primary" />
-          <FileCheck className="h-6 w-6 text-success" />
+          <Gavel className="h-7 w-7 text-amber-600" />
+          <FileCheck className="h-6 w-6 text-yellow-500" />
         </div>
       </div>
     ),
@@ -135,7 +136,7 @@ export default async function Week7Page() {
 
         {/* Progress Overview */}
         {progress && (
-          <Card className="bg-red-50 dark:bg-red-950 border-red-200">
+          <Card className="bg-amber-50 dark:bg-amber-950 border-amber-200">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Your Progress</CardTitle>

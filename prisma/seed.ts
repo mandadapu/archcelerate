@@ -356,9 +356,9 @@ const weekData = [
       'Create golden datasets for regression testing'
     ],
     concepts: [
-      { slug: 'observability-pillars', title: 'The Three Pillars of AI Observability', minutes: 50 },
-      { slug: 'guardrails', title: 'Guardrails: Pre-Flight & Post-Flight Checks', minutes: 45 },
-      { slug: 'llm-as-judge', title: 'LLM-as-a-Judge: Automated Evaluation Pipelines', minutes: 45 }
+      { slug: 'observability-pillars', title: 'Observability Pillars', minutes: 50 },
+      { slug: 'guardrails', title: 'Guardrails', minutes: 45 },
+      { slug: 'llm-as-judge', title: 'LLM-as-a-Judge', minutes: 45 }
     ],
     lab: {
       slug: 'production-dashboard',
