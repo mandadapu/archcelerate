@@ -164,14 +164,14 @@ export default async function DashboardPage() {
                 </div>
                 <Link href="/curriculum/week-1">
                   <Button size="sm" variant="outline" className="w-full border-purple-300 text-purple-700 hover:bg-purple-50">
-                    Continue Week 1
+                    Continue
                   </Button>
                 </Link>
               </div>
             ) : (
               <Link href="/curriculum/week-1">
                 <Button size="sm" variant="outline" className="border-purple-300 text-purple-700 hover:bg-purple-50">
-                  Start Week 1
+                  Start
                 </Button>
               </Link>
             )}
@@ -191,7 +191,7 @@ export default async function DashboardPage() {
               </p>
               <Link href="/curriculum/week-2">
                 <Button size="sm" variant="outline" className="border-green-300 text-green-700 hover:bg-green-50">
-                  {week2Data.progress ? 'Continue' : 'Start'} Week 2
+                  {week2Data.progress ? 'Continue' : 'Start'}
                 </Button>
               </Link>
             </CardContent>
@@ -210,7 +210,7 @@ export default async function DashboardPage() {
               </p>
               <Link href="/curriculum/week-3">
                 <Button size="sm" variant="outline" className="border-teal-300 text-teal-700 hover:bg-teal-50">
-                  {week3Data.progress ? 'Continue' : 'Start'} Week 3
+                  {week3Data.progress ? 'Continue' : 'Start'}
                 </Button>
               </Link>
             </CardContent>
@@ -229,7 +229,7 @@ export default async function DashboardPage() {
               </p>
               <Link href="/curriculum/week-4">
                 <Button size="sm" variant="outline" className="border-orange-300 text-orange-700 hover:bg-orange-50">
-                  {week4Data.progress ? 'Continue' : 'Start'} Week 4
+                  {week4Data.progress ? 'Continue' : 'Start'}
                 </Button>
               </Link>
             </CardContent>
@@ -269,14 +269,14 @@ export default async function DashboardPage() {
                   </div>
                   <Link href="/curriculum/week-5">
                     <Button size="sm" variant="outline" className="w-full border-indigo-300 text-indigo-700 hover:bg-indigo-50">
-                      Continue Week 5
+                      Continue
                     </Button>
                   </Link>
                 </div>
               ) : (
                 <Link href="/curriculum/week-5">
                   <Button size="sm" variant="outline" className="border-indigo-300 text-indigo-700 hover:bg-indigo-50">
-                    Start Week 5
+                    Start
                   </Button>
                 </Link>
               )}
@@ -296,7 +296,7 @@ export default async function DashboardPage() {
               </p>
               <Link href="/curriculum/week-6">
                 <Button size="sm" variant="outline" className="border-teal-300 text-teal-700 hover:bg-teal-50">
-                  {week6Data.progress ? 'Continue' : 'Start'} Week 6
+                  {week6Data.progress ? 'Continue' : 'Start'}
                 </Button>
               </Link>
             </CardContent>
@@ -315,7 +315,7 @@ export default async function DashboardPage() {
               </p>
               <Link href="/curriculum/week-7">
                 <Button size="sm" variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-50">
-                  {week7Data.progress ? 'Continue' : 'Start'} Week 7
+                  {week7Data.progress ? 'Continue' : 'Start'}
                 </Button>
               </Link>
             </CardContent>
@@ -334,7 +334,7 @@ export default async function DashboardPage() {
               </p>
               <Link href="/curriculum/week-8">
                 <Button size="sm" variant="outline" className="border-cyan-300 text-cyan-700 hover:bg-cyan-50">
-                  {week8Data.progress ? 'Continue' : 'Start'} Week 8
+                  {week8Data.progress ? 'Continue' : 'Start'}
                 </Button>
               </Link>
             </CardContent>
@@ -353,7 +353,7 @@ export default async function DashboardPage() {
               </p>
               <Link href="/curriculum/week-9">
                 <Button size="sm" variant="outline" className="border-violet-300 text-violet-700 hover:bg-violet-50">
-                  {week9Data.progress ? 'Continue' : 'Start'} Week 9
+                  {week9Data.progress ? 'Continue' : 'Start'}
                 </Button>
               </Link>
             </CardContent>
@@ -372,7 +372,7 @@ export default async function DashboardPage() {
               </p>
               <Link href="/curriculum/week-10">
                 <Button size="sm" variant="outline" className="border-fuchsia-300 text-fuchsia-700 hover:bg-fuchsia-50">
-                  {week10Data.progress ? 'Continue' : 'Start'} Week 10
+                  {week10Data.progress ? 'Continue' : 'Start'}
                 </Button>
               </Link>
             </CardContent>
@@ -391,7 +391,7 @@ export default async function DashboardPage() {
               </p>
               <Link href="/curriculum/week-11">
                 <Button size="sm" variant="outline" className="border-lime-300 text-lime-700 hover:bg-lime-50">
-                  {week11Data.progress ? 'Continue' : 'Start'} Week 11
+                  {week11Data.progress ? 'Continue' : 'Start'}
                 </Button>
               </Link>
             </CardContent>
@@ -410,7 +410,7 @@ export default async function DashboardPage() {
               </p>
               <Link href="/curriculum/week-12">
                 <Button size="sm" variant="outline" className="border-slate-300 text-slate-700 hover:bg-slate-50">
-                  {week12Data.progress ? 'Continue' : 'Start'} Week 12
+                  {week12Data.progress ? 'Continue' : 'Start'}
                 </Button>
               </Link>
             </CardContent>
