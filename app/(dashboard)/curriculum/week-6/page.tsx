@@ -78,8 +78,8 @@ function getConceptIllustration(slug: string) {
     'monitoring-ai-systems': (
       <div className="flex items-center justify-center opacity-75">
         <div className="flex items-center gap-1.5">
-          <Gauge className="h-7 w-7 text-orange-600" />
-          <TrendingUp className="h-6 w-6 text-red-500" />
+          <BarChart3 className="h-7 w-7 text-red-600" />
+          <Gauge className="h-6 w-6 text-orange-500" />
         </div>
       </div>
     ),
