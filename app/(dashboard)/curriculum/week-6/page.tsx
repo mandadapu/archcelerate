@@ -3,9 +3,115 @@ import Link from 'next/link'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { CheckCircle2, Circle, Clock, ChevronRight } from 'lucide-react'
+import {
+  CheckCircle2,
+  Circle,
+  Clock,
+  ChevronRight,
+  Search,
+  Database,
+  Sparkles,
+  ArrowUpDown,
+  BarChart3,
+  Zap,
+  FileText,
+  CheckSquare,
+  MessageSquare,
+  Network,
+  Activity,
+  Shield,
+  Eye,
+  TrendingUp,
+  Gauge,
+  Server,
+  Rocket
+} from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+
+// Concept visualization icons
+function getConceptIllustration(slug: string) {
+  const illustrations: Record<string, JSX.Element> = {
+    'hybrid-retrieval-reranking': (
+      <div className="flex items-center gap-2 opacity-40">
+        <div className="relative">
+          <Search className="h-8 w-8 text-blue-500" />
+          <ArrowUpDown className="h-4 w-4 text-green-500 absolute -bottom-1 -right-1" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Database className="h-6 w-6 text-purple-500" />
+          <Sparkles className="h-6 w-6 text-amber-500" />
+        </div>
+      </div>
+    ),
+    'query-transformation-patterns': (
+      <div className="flex items-center gap-2 opacity-40">
+        <div className="flex flex-col gap-1">
+          <FileText className="h-6 w-6 text-blue-500" />
+          <Zap className="h-5 w-5 text-yellow-500" />
+        </div>
+        <BarChart3 className="h-8 w-8 text-green-500" />
+        <Shield className="h-7 w-7 text-red-500" />
+      </div>
+    ),
+    'context-window-optimization': (
+      <div className="flex items-center gap-2 opacity-40">
+        <div className="flex flex-col gap-1">
+          <MessageSquare className="h-6 w-6 text-green-500" />
+          <MessageSquare className="h-6 w-6 text-blue-500" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <CheckSquare className="h-5 w-5 text-green-600" />
+          <CheckSquare className="h-5 w-5 text-green-600" />
+          <CheckSquare className="h-5 w-5 text-gray-400" />
+        </div>
+        <FileText className="h-7 w-7 text-emerald-500" />
+      </div>
+    ),
+    'enterprise-rag-hardening': (
+      <div className="flex items-center gap-2 opacity-40">
+        <Network className="h-10 w-10 text-blue-500" />
+        <div className="flex flex-col gap-1">
+          <Activity className="h-5 w-5 text-green-500" />
+          <Shield className="h-5 w-5 text-red-500" />
+          <MessageSquare className="h-5 w-5 text-blue-500" />
+        </div>
+      </div>
+    ),
+    'observability-basics': (
+      <div className="flex items-center gap-2 opacity-40">
+        <Eye className="h-8 w-8 text-blue-500" />
+        <Activity className="h-8 w-8 text-green-500" />
+        <BarChart3 className="h-8 w-8 text-purple-500" />
+      </div>
+    ),
+    'monitoring-ai-systems': (
+      <div className="flex items-center gap-2 opacity-40">
+        <Gauge className="h-9 w-9 text-orange-500" />
+        <div className="flex flex-col gap-1">
+          <TrendingUp className="h-5 w-5 text-green-500" />
+          <Activity className="h-5 w-5 text-blue-500" />
+        </div>
+      </div>
+    ),
+    'performance-optimization': (
+      <div className="flex items-center gap-2 opacity-40">
+        <Zap className="h-9 w-9 text-yellow-500" />
+        <Database className="h-8 w-8 text-blue-500" />
+        <TrendingUp className="h-7 w-7 text-green-500" />
+      </div>
+    ),
+    'production-deployment': (
+      <div className="flex items-center gap-2 opacity-40">
+        <Server className="h-8 w-8 text-gray-600" />
+        <Rocket className="h-9 w-9 text-blue-500" />
+        <CheckCircle2 className="h-7 w-7 text-green-500" />
+      </div>
+    ),
+  }
+
+  return illustrations[slug] || <ChevronRight className="h-8 w-8 text-gray-400 opacity-40" />
+}
 
 export const metadata: Metadata = {
   title: 'Week 6: Advanced RAG (The Optimizer)',
@@ -142,8 +248,8 @@ export default async function Week6Page() {
                 href={`/curriculum/week-6/concepts/${concept.slug}`}
                 className="group border rounded-lg p-4 hover:border-red-600 transition-colors bg-red-50/50 dark:bg-red-950/50"
               >
-                <div className="flex items-start justify-between">
-                  <div>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex-1">
                     <div className="text-sm text-muted-foreground mb-1">
                       Concept {i + 1}
                     </div>
@@ -155,7 +261,10 @@ export default async function Week6Page() {
                       </div>
                     )}
                   </div>
-                  <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-red-600 group-hover:translate-x-0.5 transition-all" />
+                  <div className="flex items-center gap-3">
+                    {getConceptIllustration(concept.slug)}
+                    <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-red-600 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+                  </div>
                 </div>
               </Link>
             ))}
