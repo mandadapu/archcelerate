@@ -593,6 +593,415 @@ export async function getProductionDashboard() {
 
 ---
 
+## 7. Distributed Tracing: Multi-Agent Systems
+
+### The Challenge
+
+Multi-agent systems have complex execution flows:
+- Agent A calls Agent B calls Agent C
+- Parallel tool execution
+- Cross-service communication
+- Nested RAG queries
+
+**Without distributed tracing:** You only see the total latency (8 seconds) but don't know which agent is slow.
+
+**With distributed tracing:** You see the full execution tree and identify bottlenecks.
+
+### Trace Context Propagation
+
+```typescript
+/**
+ * Distributed Tracing Across Multiple Agents
+ * Propagate trace context through agent calls
+ */
+import { trace, context, propagation, SpanStatusCode } from '@opentelemetry/api'
+
+interface TraceContext {
+  traceId: string
+  spanId: string
+  traceFlags: number
+}
+
+// Parent agent: Research Coordinator
+async function researchCoordinator(query: string): Promise<string> {
+  return await tracer.startActiveSpan('research_coordinator', async (parentSpan) => {
+    parentSpan.setAttribute('query', query)
+    parentSpan.setAttribute('agent_type', 'coordinator')
+
+    // Step 1: Decompose query into sub-tasks
+    const subTasks = await tracer.startActiveSpan('decompose_query', async (span) => {
+      const tasks = await decomposeQuery(query)
+      span.setAttribute('task_count', tasks.length)
+      span.end()
+      return tasks
+    })
+
+    // Step 2: Execute sub-tasks in parallel with trace context
+    const results = await Promise.all(
+      subTasks.map(async (task, index) => {
+        // Each sub-task gets its own child span
+        return await tracer.startActiveSpan(`sub_task_${index}`, async (taskSpan) => {
+          taskSpan.setAttribute('task_type', task.type)
+          taskSpan.setAttribute('task_query', task.query)
+
+          // Route to specialized agent based on task type
+          let result: string
+          if (task.type === 'technical') {
+            result = await technicalAgent(task.query, { parentSpan: taskSpan })
+          } else if (task.type === 'medical') {
+            result = await medicalAgent(task.query, { parentSpan: taskSpan })
+          } else {
+            result = await generalAgent(task.query, { parentSpan: taskSpan })
+          }
+
+          taskSpan.setAttribute('result_length', result.length)
+          taskSpan.end()
+          return result
+        })
+      })
+    )
+
+    // Step 3: Synthesize results
+    const synthesis = await tracer.startActiveSpan('synthesize', async (synthSpan) => {
+      const final = await synthesizeResults(query, results)
+      synthSpan.setAttribute('synthesis_length', final.length)
+      synthSpan.end()
+      return final
+    })
+
+    parentSpan.setStatus({ code: SpanStatusCode.OK })
+    parentSpan.end()
+
+    return synthesis
+  })
+}
+
+// Child agent: Technical Agent
+async function technicalAgent(
+  query: string,
+  options: { parentSpan?: any }
+): Promise<string> {
+  return await tracer.startActiveSpan(
+    'technical_agent',
+    { links: options.parentSpan ? [{ context: options.parentSpan.spanContext() }] : [] },
+    async (agentSpan) => {
+      agentSpan.setAttribute('agent_type', 'technical')
+      agentSpan.setAttribute('query', query)
+
+      // This agent's RAG flow
+      const ragResult = await tracer.startActiveSpan('technical_rag', async (ragSpan) => {
+        // Embed → Search → Rerank → LLM
+        const embedding = await embed(query)
+        ragSpan.setAttribute('embedding_done', true)
+
+        const docs = await vectorDb.search(embedding, { limit: 10 })
+        ragSpan.setAttribute('docs_retrieved', docs.length)
+
+        const reranked = await rerank(query, docs, { topK: 3 })
+        ragSpan.setAttribute('docs_reranked', reranked.length)
+
+        const llmResponse = await callLLM(query, reranked, { model: 'claude-3-5-sonnet-20241022' })
+        ragSpan.setAttribute('llm_tokens', llmResponse.usage.total_tokens)
+
+        ragSpan.end()
+        return llmResponse.content[0].text
+      })
+
+      agentSpan.setStatus({ code: SpanStatusCode.OK })
+      agentSpan.end()
+
+      return ragResult
+    }
+  )
+}
+```
+
+### Visualizing Distributed Traces
+
+**Trace output in Jaeger/Zipkin:**
+
+```
+research_coordinator (8.2s)
+├─ decompose_query (0.5s)
+├─ sub_task_0 (2.8s)
+│  └─ technical_agent (2.7s)
+│     └─ technical_rag (2.5s)
+│        ├─ embed_query (0.2s)
+│        ├─ vector_search (0.8s)
+│        ├─ rerank (0.5s)
+│        └─ llm_call (1.0s)
+├─ sub_task_1 (3.5s) ← BOTTLENECK!
+│  └─ medical_agent (3.4s)
+│     └─ medical_rag (3.2s)
+│        ├─ embed_query (0.2s)
+│        ├─ vector_search (2.5s) ← SLOW!
+│        ├─ rerank (0.3s)
+│        └─ llm_call (0.2s)
+└─ synthesize (1.4s)
+```
+
+**Insight:** Medical agent's vector search is 3x slower (2.5s vs 0.8s). Investigate index size or query optimization.
+
+### Production Metrics from Distributed Traces
+
+```typescript
+/**
+ * Aggregate metrics across distributed traces
+ */
+interface DistributedTraceMetrics {
+  total_latency_ms: number
+  agent_latencies: Record<string, number>
+  bottleneck_agent: string
+  parallel_efficiency: number // 0-1, how well parallel tasks are balanced
+}
+
+async function analyzeDistributedTrace(traceId: string): Promise<DistributedTraceMetrics> {
+  // Fetch all spans for this trace
+  const spans = await traceStore.getSpansByTraceId(traceId)
+
+  // Find root span (research_coordinator)
+  const rootSpan = spans.find(s => !s.parentSpanId)
+  const totalLatency = rootSpan.endTime - rootSpan.startTime
+
+  // Calculate per-agent latencies
+  const agentSpans = spans.filter(s => s.name.includes('_agent'))
+  const agentLatencies: Record<string, number> = {}
+
+  for (const agentSpan of agentSpans) {
+    const agentType = agentSpan.attributes.agent_type
+    const latency = agentSpan.endTime - agentSpan.startTime
+    agentLatencies[agentType] = latency
+  }
+
+  // Find bottleneck
+  const bottleneck = Object.entries(agentLatencies)
+    .sort((a, b) => b[1] - a[1])[0]
+
+  // Calculate parallel efficiency
+  const parallelTasks = spans.filter(s => s.name.startsWith('sub_task_'))
+  const maxParallelLatency = Math.max(...parallelTasks.map(s => s.endTime - s.startTime))
+  const sumParallelLatency = parallelTasks.reduce((sum, s) => sum + (s.endTime - s.startTime), 0)
+  const parallelEfficiency = maxParallelLatency / sumParallelLatency // Ideal: 1.0 (perfect load balancing)
+
+  return {
+    total_latency_ms: totalLatency,
+    agent_latencies: agentLatencies,
+    bottleneck_agent: bottleneck[0],
+    parallel_efficiency: parallelEfficiency
+  }
+}
+```
+
+### Alert on Distributed Trace Anomalies
+
+```typescript
+/**
+ * Alert when distributed traces show anomalies
+ */
+async function monitorDistributedTraces() {
+  const recentTraces = await traceStore.getRecentTraces({ limit: 100 })
+
+  for (const trace of recentTraces) {
+    const metrics = await analyzeDistributedTrace(trace.traceId)
+
+    // Alert 1: Total latency > 10s
+    if (metrics.total_latency_ms > 10000) {
+      await alertSlack({
+        channel: '#ai-alerts',
+        text: `⚠️ Slow distributed trace: ${metrics.total_latency_ms}ms
+Bottleneck: ${metrics.bottleneck_agent} (${metrics.agent_latencies[metrics.bottleneck_agent]}ms)
+Trace ID: ${trace.traceId}`
+      })
+    }
+
+    // Alert 2: Poor parallel efficiency (<0.5)
+    if (metrics.parallel_efficiency < 0.5) {
+      await alertSlack({
+        channel: '#ai-alerts',
+        text: `⚠️ Poor parallel efficiency: ${(metrics.parallel_efficiency * 100).toFixed(1)}%
+Load imbalance detected in parallel agent execution
+Trace ID: ${trace.traceId}`
+      })
+    }
+
+    // Alert 3: Agent consistently slow
+    const agentAvgLatencies = await calculateAgentAverages()
+    for (const [agent, latency] of Object.entries(metrics.agent_latencies)) {
+      if (latency > agentAvgLatencies[agent] * 2) {
+        await alertSlack({
+          channel: '#ai-alerts',
+          text: `⚠️ Agent ${agent} is 2x slower than average: ${latency}ms vs ${agentAvgLatencies[agent]}ms
+Trace ID: ${trace.traceId}`
+        })
+      }
+    }
+  }
+}
+```
+
+---
+
+## 8. Cost Attribution by User/Tenant
+
+### The Multi-Tenant Problem
+
+**Scenario:** Healthcare SaaS with 50 enterprise customers.
+
+**Questions:**
+- Which customer is driving the most cost?
+- Is Customer A's $500/month cost justified by their plan?
+- Should we throttle Customer B's usage?
+
+**Solution:** Attribute costs to user/tenant in traces.
+
+```typescript
+/**
+ * Cost Attribution in Traces
+ * Track which user/tenant generated each trace
+ */
+async function tracedQueryWithCostAttribution(
+  query: string,
+  userId: string,
+  tenantId: string
+): Promise<string> {
+  return await tracer.startActiveSpan('query', async (span) => {
+    // Step 1: Add user/tenant to trace metadata
+    span.setAttribute('user_id', userId)
+    span.setAttribute('tenant_id', tenantId)
+    span.setAttribute('timestamp', Date.now())
+
+    // Step 2: Execute RAG query
+    const embedding = await embed(query)
+    const docs = await vectorDb.search(embedding, { limit: 10 })
+    const response = await callLLM(query, docs)
+
+    // Step 3: Calculate cost
+    const cost = calculateCost(response.usage)
+
+    // Step 4: Attribute cost to user/tenant
+    span.setAttribute('cost_usd', cost)
+    span.setAttribute('input_tokens', response.usage.input_tokens)
+    span.setAttribute('output_tokens', response.usage.output_tokens)
+
+    // Step 5: Record cost attribution in database
+    await prisma.costAttribution.create({
+      data: {
+        user_id: userId,
+        tenant_id: tenantId,
+        trace_id: span.spanContext().traceId,
+        cost_usd: cost,
+        tokens: response.usage.total_tokens,
+        timestamp: new Date()
+      }
+    })
+
+    span.end()
+    return response.content[0].text
+  })
+}
+
+// Query cost by tenant
+async function getTenantCosts(tenantId: string, startDate: Date, endDate: Date) {
+  const costs = await prisma.costAttribution.aggregate({
+    where: {
+      tenant_id: tenantId,
+      timestamp: {
+        gte: startDate,
+        lte: endDate
+      }
+    },
+    _sum: { cost_usd: true, tokens: true },
+    _count: { _all: true }
+  })
+
+  return {
+    total_cost: costs._sum.cost_usd,
+    total_tokens: costs._sum.tokens,
+    total_queries: costs._count._all,
+    avg_cost_per_query: costs._sum.cost_usd / costs._count._all
+  }
+}
+
+// Alert on tenant overspend
+async function alertOnTenantOverspend() {
+  const tenants = await prisma.tenant.findMany({
+    include: { plan: true }
+  })
+
+  for (const tenant of tenants) {
+    const monthlyCosts = await getTenantCosts(
+      tenant.id,
+      new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+      new Date()
+    )
+
+    // Alert if tenant exceeds plan budget
+    const budgetLimit = tenant.plan.monthly_budget_usd
+
+    if (monthlyCosts.total_cost > budgetLimit * 1.2) { // 120% of budget
+      await alertSlack({
+        channel: '#billing-alerts',
+        text: `⚠️ Tenant ${tenant.name} is over budget:
+Cost this month: $${monthlyCosts.total_cost.toFixed(2)}
+Budget limit: $${budgetLimit.toFixed(2)}
+Overage: $${(monthlyCosts.total_cost - budgetLimit).toFixed(2)} (${((monthlyCosts.total_cost / budgetLimit - 1) * 100).toFixed(1)}%)
+
+Consider:
+- Throttling requests
+- Upgrading tenant plan
+- Reaching out for contract renewal`
+      })
+    }
+  }
+}
+```
+
+### Cost Dashboard by Tenant
+
+```typescript
+/**
+ * Cost attribution dashboard for SaaS products
+ */
+async function getCostDashboard(startDate: Date, endDate: Date) {
+  // Top 10 most expensive tenants
+  const topTenants = await prisma.costAttribution.groupBy({
+    by: ['tenant_id'],
+    where: {
+      timestamp: { gte: startDate, lte: endDate }
+    },
+    _sum: { cost_usd: true, tokens: true },
+    _count: { _all: true },
+    orderBy: { _sum: { cost_usd: 'desc' } },
+    take: 10
+  })
+
+  // Cost breakdown by model
+  const costsByModel = await prisma.trace.groupBy({
+    by: ['model'],
+    where: {
+      timestamp: { gte: startDate, lte: endDate }
+    },
+    _sum: { cost_usd: true },
+    orderBy: { _sum: { cost_usd: 'desc' } }
+  })
+
+  return {
+    top_tenants: topTenants.map(t => ({
+      tenant_id: t.tenant_id,
+      total_cost: t._sum.cost_usd,
+      total_tokens: t._sum.tokens,
+      query_count: t._count._all
+    })),
+    costs_by_model: costsByModel.map(m => ({
+      model: m.model,
+      total_cost: m._sum.cost_usd
+    }))
+  }
+}
+```
+
+---
+
 ## Key Takeaways
 
 1. **Three Pillars**: Traces (flow), Evaluations (quality), Unit Economics (cost)
@@ -601,6 +1010,8 @@ export async function getProductionDashboard() {
 4. **LLM-as-a-Judge**: Use stronger model to evaluate weaker model
 5. **Unit Economics**: Track tokens, cost, and cache hit rate
 6. **Production Alerts**: Set thresholds for cost, latency, and quality
+7. **Distributed Tracing**: Trace context propagation across multi-agent systems reveals bottlenecks
+8. **Cost Attribution**: Track costs by user/tenant for SaaS billing and throttling
 
 ---
 
