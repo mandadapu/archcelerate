@@ -296,7 +296,7 @@ const weekData = [
     lab: {
       slug: 'medical-records-navigator',
       title: 'Lab: The Precision Retrieval Challenge',
-      description: 'Experiment with advanced techniques: Act as AI Architect for a Clinical Search tool - prove the value of Parent-Document Retrieval and Hybrid Search through side-by-side comparison',
+      description: 'Role: AI Architect for a Clinical Search tool. Core Objective: Prove the quantitative value of advanced retrieval techniques over basic vector search through side-by-side architectural comparison. Key Techniques: Parent-Document Retrieval (balance granular search with full-context retrieval) and Hybrid Search (integrate semantic vector + keyword BM25 for clinical precision). Success Metrics: Hit Rate (Recall@K) to verify correct clinical documents in top results, and MRR (Mean Reciprocal Rank) to evaluate ranking quality. 10 specialized exercises.',
       exercises: [
         { number: 1, title: 'Setup: Index 5,000 pages of simulated clinical notes (PDFs)', type: 'setup' },
         { number: 2, title: 'Phase 1: Build "Naive" RAG baseline (fixed 200-token chunks, vector-only)', type: 'coding' },
