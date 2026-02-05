@@ -93,6 +93,111 @@ const prompt = `
 ` // Total: 26K tokens → stays in high-precision zone
 ```
 
+### Measuring Context Density: The Information-per-Token Ratio
+
+**Architectural Tool**: Calculate the "information density" of your context to predict precision degradation.
+
+```typescript
+interface ContextAnalysis {
+  totalTokens: number
+  informationChunks: number  // Distinct pieces of information
+  densityScore: number       // 0-1, higher is better
+  recommendation: string
+}
+
+function analyzeContextDensity(
+  context: string,
+  informationChunks: number
+): ContextAnalysis {
+  // Estimate token count (rough: 4 chars per token)
+  const totalTokens = Math.ceil(context.length / 4)
+
+  // Information density: how much useful info per token?
+  // Optimal: 0.15-0.25 (15-25% of tokens carry key information)
+  const densityScore = informationChunks / totalTokens
+
+  let recommendation: string
+  if (densityScore > 0.25) {
+    recommendation = '✅ Excellent density - all information is relevant'
+  } else if (densityScore >= 0.15) {
+    recommendation = '✅ Good density - optimal for precision'
+  } else if (densityScore >= 0.10) {
+    recommendation = '⚠️ Moderate density - consider summarizing'
+  } else {
+    recommendation = '❌ Poor density - high risk of Lost-in-the-Middle. Aggressive pruning needed.'
+  }
+
+  return {
+    totalTokens,
+    informationChunks,
+    densityScore,
+    recommendation
+  }
+}
+
+// Example: Customer support context
+const customerHistory = `
+  [2024-01-10] User asked about pricing
+  [2024-01-12] User requested trial extension
+  [2024-01-15] User reported bug in dashboard
+  [2024-01-20] User escalated to premium support
+  [2024-01-22] Bug fixed, user satisfied
+` // 5 key information chunks
+
+const analysis = analyzeContextDensity(customerHistory, 5)
+console.log(analysis)
+// {
+//   totalTokens: 58,
+//   informationChunks: 5,
+//   densityScore: 0.086,
+//   recommendation: '❌ Poor density - high risk of Lost-in-the-Middle...'
+// }
+
+// Solution: Condense to higher density
+const condensed = `
+Customer: trial → bug → escalation → resolved → satisfied
+Critical: Dashboard bug (ID #1234) fixed on 2024-01-22
+` // Same 5 chunks, fewer tokens
+
+const improvedAnalysis = analyzeContextDensity(condensed, 5)
+// {
+//   totalTokens: 23,
+//   informationChunks: 5,
+//   densityScore: 0.217,  // ✅ In optimal range
+//   recommendation: '✅ Good density - optimal for precision'
+// }
+```
+
+**Production Pattern: Pre-flight Context Check**
+```typescript
+async function buildPromptWithDensityCheck(
+  systemPrompt: string,
+  userContext: string,
+  query: string
+): Promise<string> {
+  // Estimate information chunks (simplified: count sentences)
+  const chunks = userContext.split(/[.!?]/).filter(s => s.trim().length > 10).length
+
+  const analysis = analyzeContextDensity(userContext, chunks)
+
+  if (analysis.densityScore < 0.10) {
+    console.warn('⚠️ Low context density detected. Summarizing...')
+    // Trigger summarization pipeline
+    userContext = await summarizeContext(userContext, chunks)
+  }
+
+  return `${systemPrompt}\n\nContext:\n${userContext}\n\nQuery: ${query}`
+}
+```
+
+**Architectural Insight**: Context density inversely correlates with "Lost-in-the-Middle" risk:
+- **High density (>0.20)**: Information-packed, minimal fluff → model stays focused
+- **Low density (<0.10)**: Too much prose, key facts buried → model loses precision
+
+**Cost Impact**: Improving density from 0.08 to 0.20 means 60% token reduction → 60% cost savings while improving accuracy.
+
+---
+
 ## The Model Selection Matrix: Architectural Decision Framework
 
 **Architect Perspective**: Model selection isn't about "which is best"—it's about **matching the constraint** that matters most for your specific use case.
