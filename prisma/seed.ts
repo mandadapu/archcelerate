@@ -61,19 +61,20 @@ const weekData = [
   {
     weekNumber: 2,
     title: 'AI Safety & Governance (The Guardrails)',
-    description: 'Build production AI with proper governance, fairness, compliance, and safety controls',
+    description: 'Building the "Hardened Shell" around your engine to ensure enterprise compliance and adversarial resilience',
     objectives: [
-      'Implement AI governance and content moderation',
-      'Build fair, transparent, and explainable AI systems',
-      'Apply compliance patterns for regulated industries',
-      'Test and validate AI systems with NFRs'
+      'Engineer the Safety Proxy pattern for input/output sanitization and jailbreak detection',
+      'Implement immutable system prompts as technical policy with semantic tracing for auditability',
+      'Build bias detection pipelines and self-correction mechanisms for responsible AI',
+      'Deploy high-speed PII/PHI redaction with data residency patterns for domain compliance',
+      'Establish production telemetry with SLA circuit breakers for non-functional requirement validation'
     ],
     concepts: [
-      { slug: 'governance-frameworks', title: 'AI Governance Frameworks', minutes: 45 },
-      { slug: 'governance-foundations', title: 'AI Governance Foundations', minutes: 35 },
-      { slug: 'responsible-ai', title: 'Responsible AI: Fairness, Transparency & Explainability', minutes: 60 },
-      { slug: 'compliance-patterns', title: 'Domain Compliance Patterns', minutes: 50 },
-      { slug: 'ai-testing-nfrs', title: 'AI Testing & Non-Functional Requirements', minutes: 55 }
+      { slug: 'governance-frameworks', title: 'AI Governance & Shielding Frameworks: Safety Proxy Implementation', minutes: 45 },
+      { slug: 'governance-foundations', title: 'AI Governance Foundations: System Prompts as Policy', minutes: 35 },
+      { slug: 'responsible-ai', title: 'Responsible AI: Bias Detection & Self-Correction Patterns', minutes: 60 },
+      { slug: 'compliance-patterns', title: 'Domain Compliance & Redaction: PII/PHI Protection', minutes: 50 },
+      { slug: 'ai-testing-nfrs', title: 'Testing & Non-Functional Requirements: Production Telemetry', minutes: 55 }
     ],
     lab: {
       slug: 'governance-compliance-lab',
