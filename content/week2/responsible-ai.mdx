@@ -361,6 +361,348 @@ Final Response: "I'll evaluate the candidate based on qualifications only: [expe
 */
 ```
 
+## Explainable AI (XAI): Engineering the Reasoning Manifest
+
+**The Pattern**: For high-stakes decisions (loan denials, medical triage, hiring recommendations), the model must output a **structured JSON "Reasoning Manifest"** that explains **why** it made that decision—engineered for regulatory compliance and human review.
+
+### Why XAI Matters for Architects
+
+**Regulatory Requirements**:
+- **EU AI Act Article 13**: High-risk AI systems must provide explanations for decisions
+- **GDPR Article 22**: Right to explanation for automated decision-making
+- **US Equal Credit Opportunity Act (ECOA)**: Lenders must explain credit denials
+- **HIPAA**: Medical decisions must have audit trails
+
+**Without XAI**, your system is **non-compliant** and **legally undeployable** in regulated industries.
+
+### Reasoning Manifest Architecture
+
+```typescript
+interface ReasoningManifest {
+  decisionId: string
+  timestamp: Date
+  decisionType: 'loan_approval' | 'medical_triage' | 'hiring_recommendation' | 'credit_limit'
+  outcome: 'approved' | 'denied' | 'escalated'
+
+  // Core explanation
+  primaryReasons: {
+    factor: string
+    weight: number     // 0-1, contribution to decision
+    direction: 'positive' | 'negative'
+    evidence: string   // What data supported this
+  }[]
+
+  // Regulatory compliance
+  protectedAttributesUsed: string[]  // Should be empty
+  sensitiveFactorsConsidered: string[]
+  alternativeOutcomes: {
+    scenario: string
+    outcome: string
+    probability: number
+  }[]
+
+  // Human-readable explanation
+  summary: string
+  detailedReasoning: string
+
+  // Audit metadata
+  modelVersion: string
+  promptHash: string
+  confidence: number
+}
+
+async function generateDecisionWithExplanation(
+  applicantData: ApplicantData,
+  decisionType: 'loan_approval' | 'medical_triage' | 'hiring_recommendation'
+): Promise<{ decision: string; manifest: ReasoningManifest }> {
+
+  const explanationPrompt = `You are an AI decision system. Evaluate this application and provide:
+1. Your decision (approved/denied/escalated)
+2. A structured reasoning manifest explaining WHY
+
+Applicant Data:
+${JSON.stringify(applicantData, null, 2)}
+
+Return JSON in this exact format:
+{
+  "decision": "approved|denied|escalated",
+  "primaryReasons": [
+    {
+      "factor": "credit_score",
+      "weight": 0.35,
+      "direction": "positive",
+      "evidence": "Credit score of 780 exceeds minimum threshold of 650"
+    },
+    {
+      "factor": "debt_to_income_ratio",
+      "weight": 0.25,
+      "direction": "negative",
+      "evidence": "DTI of 45% exceeds recommended maximum of 40%"
+    }
+  ],
+  "protectedAttributesUsed": [],  // NEVER use: race, gender, age, religion
+  "sensitiveFactorsConsidered": ["credit_score", "income", "debt_to_income_ratio"],
+  "alternativeOutcomes": [
+    {
+      "scenario": "If DTI were below 40%",
+      "outcome": "approved",
+      "probability": 0.85
+    }
+  ],
+  "summary": "Application denied due to high debt-to-income ratio (45%) despite strong credit score (780).",
+  "detailedReasoning": "The applicant has excellent creditworthiness (780 score) but current debt obligations represent 45% of gross income, exceeding our 40% policy threshold. This indicates potential repayment risk.",
+  "confidence": 0.92
+}
+
+CRITICAL RULES:
+1. NEVER consider race, gender, age, religion, disability, national origin
+2. Weight should sum to ~1.0 across all factors
+3. Provide actionable feedback in alternativeOutcomes
+4. Summary must be clear enough for a non-technical person to understand`
+
+  const response = await anthropic.messages.create({
+    model: 'claude-4.5-sonnet',
+    max_tokens: 2048,
+    messages: [{ role: 'user', content: explanationPrompt }]
+  })
+
+  const result = JSON.parse(response.content[0].text)
+
+  // Construct full manifest
+  const manifest: ReasoningManifest = {
+    decisionId: generateUUID(),
+    timestamp: new Date(),
+    decisionType,
+    outcome: result.decision,
+    primaryReasons: result.primaryReasons,
+    protectedAttributesUsed: result.protectedAttributesUsed,
+    sensitiveFactorsConsidered: result.sensitiveFactorsConsidered,
+    alternativeOutcomes: result.alternativeOutcomes,
+    summary: result.summary,
+    detailedReasoning: result.detailedReasoning,
+    modelVersion: 'claude-4.5-sonnet-20250929',
+    promptHash: hashPrompt(explanationPrompt),
+    confidence: result.confidence
+  }
+
+  // Audit: Store manifest for regulatory compliance
+  await storeManifestForAudit(manifest)
+
+  return {
+    decision: result.decision,
+    manifest
+  }
+}
+
+/* Example Output:
+
+Applicant: Jane Doe applying for $250K mortgage
+
+Reasoning Manifest:
+{
+  "decisionId": "dec_8f7a3b2c",
+  "timestamp": "2025-02-05T14:23:45Z",
+  "decisionType": "loan_approval",
+  "outcome": "denied",
+  "primaryReasons": [
+    {
+      "factor": "debt_to_income_ratio",
+      "weight": 0.40,
+      "direction": "negative",
+      "evidence": "DTI of 48% exceeds policy maximum of 40%"
+    },
+    {
+      "factor": "credit_score",
+      "weight": 0.30,
+      "direction": "positive",
+      "evidence": "Credit score of 780 is excellent (exceeds 650 threshold)"
+    },
+    {
+      "factor": "employment_history",
+      "weight": 0.20,
+      "direction": "positive",
+      "evidence": "Stable employment for 8 years with consistent income"
+    },
+    {
+      "factor": "loan_to_value_ratio",
+      "weight": 0.10,
+      "direction": "positive",
+      "evidence": "LTV of 75% is within acceptable range (<80%)"
+    }
+  ],
+  "protectedAttributesUsed": [],  // Compliance: no protected attributes
+  "sensitiveFactorsConsidered": [
+    "credit_score",
+    "debt_to_income_ratio",
+    "employment_history",
+    "loan_amount",
+    "property_value"
+  ],
+  "alternativeOutcomes": [
+    {
+      "scenario": "Reduce loan amount to $200K (reducing DTI to 38%)",
+      "outcome": "approved",
+      "probability": 0.92
+    },
+    {
+      "scenario": "Pay off $15K credit card debt (reducing DTI to 39%)",
+      "outcome": "approved",
+      "probability": 0.88
+    }
+  ],
+  "summary": "Loan denied due to debt-to-income ratio of 48% exceeding policy limit of 40%, despite excellent credit score and stable employment.",
+  "detailedReasoning": "The applicant demonstrates strong creditworthiness with a 780 credit score and 8 years of stable employment. However, current debt obligations represent 48% of gross monthly income, exceeding our risk threshold of 40%. This indicates potential difficulty meeting additional mortgage payments. The applicant could reapply with a lower loan amount or after reducing existing debt.",
+  "confidence": 0.94,
+  "modelVersion": "claude-4.5-sonnet-20250929",
+  "promptHash": "sha256:7f8b3a2d..."
+}
+*/
+```
+
+### XAI Validation: Ensuring Explanations Are Truthful
+
+**Problem**: LLMs can hallucinate reasons that sound plausible but aren't actually how the decision was made.
+
+**Solution**: Validate that the explanation matches the actual decision logic.
+
+```typescript
+async function validateReasoningManifest(
+  manifest: ReasoningManifest,
+  applicantData: ApplicantData
+): Promise<{ valid: boolean; violations: string[] }> {
+  const violations: string[] = []
+
+  // Check 1: Protected attributes must not be used
+  if (manifest.protectedAttributesUsed.length > 0) {
+    violations.push(`Protected attributes used: ${manifest.protectedAttributesUsed.join(', ')}`)
+  }
+
+  // Check 2: Weights should sum to ~1.0
+  const totalWeight = manifest.primaryReasons.reduce((sum, r) => sum + r.weight, 0)
+  if (Math.abs(totalWeight - 1.0) > 0.15) {
+    violations.push(`Weights sum to ${totalWeight.toFixed(2)}, expected ~1.0`)
+  }
+
+  // Check 3: Evidence must reference actual data
+  for (const reason of manifest.primaryReasons) {
+    const evidenceMatchesData = verifyEvidenceAgainstData(reason, applicantData)
+    if (!evidenceMatchesData) {
+      violations.push(`Evidence for ${reason.factor} doesn't match applicant data: "${reason.evidence}"`)
+    }
+  }
+
+  // Check 4: Confidence should match decision clarity
+  if (manifest.confidence > 0.95 && manifest.alternativeOutcomes.some(a => a.probability > 0.8)) {
+    violations.push('High confidence (>0.95) but alternative outcomes show uncertainty')
+  }
+
+  return {
+    valid: violations.length === 0,
+    violations
+  }
+}
+
+function verifyEvidenceAgainstData(
+  reason: { factor: string; evidence: string },
+  data: ApplicantData
+): boolean {
+  // Extract numeric values from evidence string
+  const evidenceValue = extractNumericValue(reason.evidence)
+
+  // Check if it matches actual data
+  switch (reason.factor) {
+    case 'credit_score':
+      return Math.abs(evidenceValue - data.creditScore) < 5
+    case 'debt_to_income_ratio':
+      return Math.abs(evidenceValue - data.dtiRatio) < 2
+    // ... other factors
+    default:
+      return true
+  }
+}
+```
+
+### Human-in-the-Loop Review Dashboard
+
+For high-stakes decisions, enable human reviewers to audit AI reasoning:
+
+```typescript
+interface ReviewDashboard {
+  pendingReviews: ReasoningManifest[]
+  flaggedDecisions: ReasoningManifest[]
+
+  displayManifest(manifest: ReasoningManifest): {
+    decisionCard: {
+      outcome: string
+      confidence: number
+      timestamp: string
+    }
+    reasonsBreakdown: {
+      factor: string
+      weight: number
+      impact: 'positive' | 'negative'
+      evidence: string
+    }[]
+    alternativesPanel: {
+      scenario: string
+      wouldChangeOutcome: boolean
+      probability: number
+    }[]
+    complianceCheck: {
+      protectedAttributesUsed: boolean  // Red flag if true
+      explanationQuality: 'clear' | 'unclear' | 'missing'
+      auditTrail: string
+    }
+  }
+}
+
+// Human reviewer can:
+// 1. Approve manifest (decision stands)
+// 2. Override decision (with justification)
+// 3. Request model retrain if pattern of bad reasoning detected
+```
+
+### Cost Analysis: XAI Overhead
+
+```typescript
+// Standard Decision (without XAI)
+- Input: 500 tokens
+- Output: 50 tokens ("approved" or "denied")
+- Cost: (500 × $3/MTok) + (50 × $15/MTok) = $0.0015 + $0.00075 = $0.00225
+
+// Decision with Reasoning Manifest (XAI)
+- Input: 800 tokens (applicant data + explanation instructions)
+- Output: 1500 tokens (structured JSON manifest)
+- Cost: (800 × $3/MTok) + (1500 × $15/MTok) = $0.0024 + $0.0225 = $0.0249
+
+// XAI Overhead: $0.0249 - $0.00225 = $0.02265 per decision (~10x cost increase)
+
+// ROI Calculation:
+// - 1000 loan decisions/month × $0.02265 = $22.65/month for XAI
+// - Prevents 1 wrongful denial lawsuit ($50K settlement) = 2,208:1 ROI
+// - Enables EU deployment (regulatory compliance) = priceless
+```
+
+**The Architect's Decision**: For **non-regulated, low-stakes** decisions (product recommendations, content suggestions), skip XAI to save costs. For **high-stakes or regulated** decisions (loans, medical, hiring), XAI is **mandatory** for compliance.
+
+### XAI Anti-Patterns to Avoid
+
+❌ **Generating explanation after decision is made**: LLM will rationalize any decision, even if wrong
+
+✅ **Force explanation during decision process**: Reasoning shapes the decision itself
+
+❌ **Using vague factors**: "Based on your profile" or "Risk assessment"
+
+✅ **Specific, quantified factors**: "Credit score of 780 (weight: 0.35)" with evidence
+
+❌ **Technical jargon in summary**: "DTI ratio exceeds actuarial risk threshold"
+
+✅ **Plain language**: "Your debt payments are 48% of income; our limit is 40%"
+
+❌ **No actionable feedback**: "Application denied due to risk factors"
+
+✅ **Clear next steps**: "Pay off $15K credit card debt to reduce DTI to 39% and reapply"
+
 ## Key Takeaways
 
 **Bias Detection as Infrastructure**:
@@ -374,6 +716,14 @@ Final Response: "I'll evaluate the candidate based on qualifications only: [expe
 - LLM reviews its own reasoning for bias
 - Block or escalate if self-check detects issues
 - Log safety blocks for audit trail
+
+**Explainable AI (XAI) for High-Stakes Decisions**:
+- Generate structured "Reasoning Manifest" as JSON for regulatory compliance
+- Include weighted factors with evidence, alternative outcomes, and plain-language explanations
+- Validate explanations match actual data (prevent hallucinated reasoning)
+- Mandatory for regulated industries (EU AI Act, GDPR, ECOA, HIPAA)
+- Cost: ~10x increase per decision ($0.02 vs $0.002), but required for compliance
+- Human-in-the-loop review for flagged decisions
 
 **Cost Analysis**:
 ```typescript
@@ -392,7 +742,14 @@ Final Response: "I'll evaluate the candidate based on qualifications only: [expe
 - High-stakes queries: ~10% of traffic
 - At 10K requests/day: 1K × $0.0165 = $16.50/day = $495/month
 
-// ROI: $500/month prevents $10M+ bias lawsuit → 20,000:1 ROI
+// XAI Reasoning Manifest (High-Stakes Decisions Only)
+- Manifest generation: 800 input + 1500 output tokens
+- Cost per decision: (800 × $3/MTok) + (1500 × $15/MTok) = $0.0249
+- High-stakes decisions: 1000/month (loans, medical, hiring)
+- Monthly cost: 1000 × $0.0249 = $24.90
+
+// Total Monthly Cost: $2.25 (bias tests) + $495 (self-correction) + $24.90 (XAI) = $522
+// ROI: $522/month prevents $10M+ bias lawsuit + enables EU compliance → 19,157:1 ROI
 ```
 
 **The Architect's Responsibility**:

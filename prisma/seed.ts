@@ -72,7 +72,7 @@ const weekData = [
     concepts: [
       { slug: 'governance-frameworks', title: 'AI Governance & Shielding Frameworks: Safety Proxy Implementation', minutes: 45 },
       { slug: 'governance-foundations', title: 'AI Governance Foundations: System Prompts as Policy', minutes: 35 },
-      { slug: 'responsible-ai', title: 'Responsible AI: Bias Detection & Self-Correction Patterns', minutes: 60 },
+      { slug: 'responsible-ai', title: 'Responsible AI: Bias Detection, XAI & Self-Correction', minutes: 60 },
       { slug: 'compliance-patterns', title: 'Domain Compliance & Redaction: PII/PHI Protection', minutes: 50 },
       { slug: 'ai-testing-nfrs', title: 'Testing & Non-Functional Requirements: Production Telemetry', minutes: 55 }
     ],
