@@ -464,17 +464,12 @@ export default function Home() {
             Start your transformation today. Master the technical depth that gets you hired and the business impact that gets you promoted.
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
-            <Link href="/diagnosis">
-              <button className="px-12 py-4 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-lg font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
-                Start Skill Diagnosis
-              </button>
-            </Link>
+          <div className="flex justify-center">
             <button
               onClick={() => setShowLoginModal(true)}
-              className="px-12 py-4 bg-white text-gray-900 text-lg font-semibold rounded-full border-2 border-gray-200 hover:border-gray-300 hover:shadow-lg transition-all duration-200"
+              className="px-12 py-4 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-lg font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
             >
-              Sign Up Free
+              Start Skill Diagnosis
             </button>
           </div>
 
