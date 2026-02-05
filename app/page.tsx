@@ -7,7 +7,6 @@ import Image from 'next/image'
 import { Header } from '@/components/landing/Header'
 import { SystemDiagram } from '@/components/landing/SystemDiagram'
 import { TechStack } from '@/components/landing/TechStack'
-import { SocialProof } from '@/components/landing/SocialProof'
 import { ProjectShowcase } from '@/components/landing/ProjectShowcase'
 import { Testimonials } from '@/components/landing/Testimonials'
 import { LoginModal } from '@/components/auth/LoginModal'
@@ -72,7 +71,7 @@ export default function Home() {
 
       {/* Hero Section */}
       <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-16">
-        <div className="flex flex-col items-center justify-center min-h-screen py-20">
+        <div className="flex flex-col items-center justify-center min-h-screen py-12">
           {/* Metrics Badge */}
           <div className="mb-8 inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-50 to-cyan-50 border border-purple-100 rounded-full">
             <span className="text-sm font-semibold text-gray-900">
@@ -126,8 +125,8 @@ export default function Home() {
       {/* Tech Stack Carousel - 80px spacing */}
       <TechStack />
 
-      {/* The Command Center - System Modules - 80px spacing */}
-      <section id="features" className="py-20 bg-white">
+      {/* The Command Center - System Modules */}
+      <section id="features" className="py-12 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4">
@@ -243,13 +242,13 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Project Showcase - 80px spacing */}
-      <section id="projects" className="py-20">
+      {/* Project Showcase */}
+      <section id="projects" className="py-12">
         <ProjectShowcase />
       </section>
 
       {/* The 12-Week Production Roadmap - Visual Timeline */}
-      <section className="py-20 bg-gradient-to-br from-slate-50 to-slate-100">
+      <section className="py-12 bg-gradient-to-br from-slate-50 to-slate-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4">
@@ -453,8 +452,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Final CTA Section - 80px spacing */}
-      <section className="py-20 bg-gradient-to-br from-purple-50 to-cyan-50">
+      {/* Final CTA Section */}
+      <section className="py-12 bg-gradient-to-br from-purple-50 to-cyan-50">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-6 tracking-tight">
             Ready to Become an AI Architect?
@@ -497,7 +496,7 @@ export default function Home() {
       </section>
 
       {/* Trust & Social Proof: The Hiring Brief */}
-      <section className="py-20 bg-gradient-to-br from-slate-50 to-slate-100">
+      <section className="py-12 bg-gradient-to-br from-slate-50 to-slate-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4">
@@ -679,13 +678,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Social Proof Strip - 80px spacing */}
-      <div className="py-20">
-        <SocialProof />
-      </div>
-
-      {/* Testimonials - 80px spacing */}
-      <section id="testimonials" className="py-20">
+      {/* Testimonials */}
+      <section id="testimonials" className="py-12">
         <Testimonials />
       </section>
 
