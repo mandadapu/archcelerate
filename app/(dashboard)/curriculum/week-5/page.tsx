@@ -200,6 +200,11 @@ export default async function Week5Page() {
                     <h3 className="font-semibold text-lg leading-tight text-foreground mb-2">
                       {concept.title}
                     </h3>
+                    {concept.description && (
+                      <p className="text-sm text-muted-foreground mb-2">
+                        {concept.description}
+                      </p>
+                    )}
                     {concept.estimatedMinutes && (
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Clock className="h-3 w-3" />

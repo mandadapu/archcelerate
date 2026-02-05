@@ -168,9 +168,9 @@ const weekData = [
       'Validate LLM outputs with type safety'
     ],
     concepts: [
-      { slug: 'structured-output', title: 'Structured Output', minutes: 40 },
-      { slug: 'function-calling', title: 'Function Calling', minutes: 45 },
-      { slug: 'schema-design', title: 'Schema Design', minutes: 45 }
+      { slug: 'structured-output', title: 'Structured Output', description: 'JSON mode and type-safe responses.', minutes: 40 },
+      { slug: 'function-calling', title: 'Function Calling', description: 'Tool integration and external system connections.', minutes: 45 },
+      { slug: 'schema-design', title: 'Schema Design', description: 'Type systems and validation patterns.', minutes: 45 }
     ],
     lab: {
       slug: 'support-ticket-router',
@@ -221,9 +221,9 @@ const weekData = [
       'Deploy multi-agent systems with checkpointing and observability'
     ],
     concepts: [
-      { slug: 'agent-architectures', title: 'Agent Architectures', minutes: 45 },
-      { slug: 'reliability-patterns', title: 'Reliability Patterns', minutes: 50 },
-      { slug: 'framework-comparison', title: 'Framework Comparison', minutes: 40 }
+      { slug: 'agent-architectures', title: 'Agent Architectures', description: 'Sequential, Supervisor, and Collaborative patterns.', minutes: 45 },
+      { slug: 'reliability-patterns', title: 'Reliability Patterns', description: 'Reflection, planning, and self-healing.', minutes: 50 },
+      { slug: 'framework-comparison', title: 'Framework Comparison', description: 'LangGraph, CrewAI, and AutoGen evaluation.', minutes: 40 }
     ],
     lab: {
       slug: 'newsletter-team',
@@ -284,14 +284,14 @@ const weekData = [
       'Build production RAG with sub-200ms latency and enterprise hardening'
     ],
     concepts: [
-      { slug: 'hybrid-retrieval-reranking', title: 'Hybrid Search & Re-Ranking', minutes: 50 },
-      { slug: 'query-transformation-patterns', title: 'Query Transformation', minutes: 45 },
-      { slug: 'context-window-optimization', title: 'Context Optimization', minutes: 40 },
-      { slug: 'enterprise-rag-hardening', title: 'Enterprise RAG Hardening', minutes: 55 },
-      { slug: 'observability-basics', title: 'AI Observability', minutes: 30 },
-      { slug: 'monitoring-ai-systems', title: 'LLM Monitoring', minutes: 35 },
-      { slug: 'performance-optimization', title: 'Performance & Caching', minutes: 40 },
-      { slug: 'production-deployment', title: 'Production Deployment', minutes: 35 }
+      { slug: 'hybrid-retrieval-reranking', title: 'Hybrid Search & Re-Ranking', description: 'Combining vector and keyword precision.', minutes: 50 },
+      { slug: 'query-transformation-patterns', title: 'Query Transformation', description: 'Patterns like HyDE and Multi-Query decomposition.', minutes: 45 },
+      { slug: 'context-window-optimization', title: 'Context Optimization', description: 'Preventing degradation and managing window limits.', minutes: 40 },
+      { slug: 'enterprise-rag-hardening', title: 'Enterprise RAG Hardening', description: 'Security, evaluation, and robustness for production.', minutes: 55 },
+      { slug: 'observability-basics', title: 'AI Observability', description: 'Deep tracing and insight into system reasoning.', minutes: 30 },
+      { slug: 'monitoring-ai-systems', title: 'LLM Monitoring', description: 'Tracking live performance, drift, and latency.', minutes: 35 },
+      { slug: 'performance-optimization', title: 'Performance & Caching', description: 'Low-latency engineering with semantic caching.', minutes: 40 },
+      { slug: 'production-deployment', title: 'Production Deployment', description: 'Scaling and infrastructure best practices.', minutes: 35 }
     ],
     lab: {
       slug: 'medical-records-navigator',
@@ -356,9 +356,9 @@ const weekData = [
       'Create golden datasets for regression testing'
     ],
     concepts: [
-      { slug: 'observability-pillars', title: 'Observability Pillars', minutes: 50 },
-      { slug: 'guardrails', title: 'Guardrails', minutes: 45 },
-      { slug: 'llm-as-judge', title: 'LLM-as-a-Judge', minutes: 45 }
+      { slug: 'observability-pillars', title: 'Observability Pillars', description: 'Traces, evaluations, and unit economics.', minutes: 50 },
+      { slug: 'guardrails', title: 'Guardrails', description: 'Input/output validation and safety checks.', minutes: 45 },
+      { slug: 'llm-as-judge', title: 'LLM-as-a-Judge', description: 'Automated evaluation and quality assurance.', minutes: 45 }
     ],
     lab: {
       slug: 'production-dashboard',
@@ -649,6 +649,7 @@ async function main() {
           orderIndex: i + 1,
           slug: concept.slug,
           title: concept.title,
+          description: concept.description,
           contentPath: `content/week${week.weekNumber}/${concept.slug}.mdx`,
           estimatedMinutes: concept.minutes
         }
