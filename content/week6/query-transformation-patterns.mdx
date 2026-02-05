@@ -1,0 +1,470 @@
+---
+title: 'Query Transformation Patterns'
+description: 'Multi-Query expansion, Decomposition, and HyDE (Hypothetical Document Embeddings) for robust retrieval'
+---
+
+# Query Transformation Patterns
+
+## The User Query Problem
+
+**Reality**: Users are notoriously bad at writing search queries.
+
+When a doctor searches for "patient glucose trends," they might actually need:
+- "What were the HbA1c values over the last 6 months?"
+- "Show me all glucose measurements and their dates"
+- "Has this patient's diabetes control improved?"
+
+**The Architect's Solution**: Use the LLM to "fix" the query **before** it hits the database.
+
+---
+
+## 1. Multi-Query Expansion
+
+### The Pattern
+
+Generate 3-5 variations of the user's question to capture more context and improve recall.
+
+```typescript
+/**
+ * Multi-Query Expansion
+ * Generate multiple perspectives of the same question
+ */
+async function multiQueryExpansion(userQuery: string): Promise<string[]> {
+  const prompt = `You are an AI assistant helping improve search queries.
+Given the user's question, generate 3 different versions that capture:
+1. The literal question
+2. A broader context version
+3. A more specific technical version
+
+User Question: "${userQuery}"
+
+Return only the 3 questions, one per line.`
+
+  const response = await llm.complete(prompt)
+  const queries = response.split('\n').filter(q => q.trim())
+
+  return [userQuery, ...queries] // Include original + variations
+}
+
+// Usage
+const originalQuery = "patient glucose trends"
+const expandedQueries = await multiQueryExpansion(originalQuery)
+// Result:
+// [
+//   "patient glucose trends",
+//   "What is the trend of this patient's blood sugar levels over time?",
+//   "Show me all glucose and HbA1c measurements for the past year",
+//   "Has the patient's glycemic control improved or worsened?"
+// ]
+
+// Search with all variations
+const allResults = await Promise.all(
+  expandedQueries.map(q => vectorDb.search(embed(q), { limit: 10 }))
+)
+
+// Deduplicate and merge
+const mergedResults = deduplicateByDocId(allResults.flat())
+```
+
+### When to Use
+
+| Use Case | Single Query | Multi-Query | Reason |
+|----------|-------------|-------------|--------|
+| Exact code search | ✅ | ❌ | Specific function names work best |
+| Conceptual questions | ❌ | ✅ | Need multiple perspectives |
+| Medical symptom search | ❌ | ✅ | Symptoms described many ways |
+| Legal document retrieval | ❌ | ✅ | Legal concepts have precise + colloquial terms |
+
+**Architect's Trade-off**: Multi-Query increases retrieval cost by 3-5x but improves **Recall@10 by 15-25%**.
+
+---
+
+## 2. Query Decomposition
+
+### The Pattern
+
+Break complex questions into smaller sub-questions, retrieve for each, then synthesize.
+
+```typescript
+/**
+ * Query Decomposition
+ * Break complex questions into atomic sub-questions
+ */
+async function decomposeQuery(complexQuery: string): Promise<string[]> {
+  const prompt = `Break this complex question into 2-4 simple sub-questions that can be answered independently.
+
+Complex Question: "${complexQuery}"
+
+Return only the sub-questions, one per line.`
+
+  const response = await llm.complete(prompt)
+  return response.split('\n').filter(q => q.trim())
+}
+
+// Example: Complex question
+const complexQuery = "Compare the patient's kidney function before and after starting ACE inhibitor therapy"
+
+const subQuestions = await decomposeQuery(complexQuery)
+// Result:
+// [
+//   "What were the patient's creatinine and eGFR values before ACE inhibitor?",
+//   "When did the patient start ACE inhibitor therapy?",
+//   "What are the patient's current creatinine and eGFR values?",
+//   "What is the normal trend for kidney function with ACE inhibitors?"
+// ]
+
+// Retrieve for each sub-question
+const subAnswers = await Promise.all(
+  subQuestions.map(async (q) => {
+    const docs = await hybridSearch(q, { limit: 3 })
+    return { question: q, context: docs }
+  })
+)
+
+// Synthesize final answer
+const finalPrompt = `Answer this question by synthesizing the information below:
+
+Question: ${complexQuery}
+
+${subAnswers.map((a, i) => `
+Sub-Question ${i + 1}: ${a.question}
+Context: ${a.context.map(d => d.content).join('\n')}
+`).join('\n---\n')}
+
+Provide a comprehensive answer.`
+
+const finalAnswer = await llm.complete(finalPrompt)
+```
+
+### The Sequential vs Parallel Trade-off
+
+```typescript
+// Sequential: Each sub-question depends on the previous answer
+async function sequentialDecomposition(complexQuery: string) {
+  const subQuestions = await decomposeQuery(complexQuery)
+  const answers = []
+
+  for (const question of subQuestions) {
+    // Use previous answers as context
+    const context = answers.map(a => a.answer).join('\n')
+    const answer = await retrieveAndAnswer(question, context)
+    answers.push({ question, answer })
+  }
+
+  return synthesize(complexQuery, answers)
+}
+
+// Parallel: Sub-questions are independent
+async function parallelDecomposition(complexQuery: string) {
+  const subQuestions = await decomposeQuery(complexQuery)
+
+  // All sub-questions answered in parallel
+  const answers = await Promise.all(
+    subQuestions.map(q => retrieveAndAnswer(q))
+  )
+
+  return synthesize(complexQuery, answers)
+}
+```
+
+| Approach | Latency | Accuracy | Best For |
+|----------|---------|----------|----------|
+| Sequential | High (3x) | Higher | Dependent questions (timeline queries) |
+| Parallel | Low (1x) | Good | Independent questions (comparison queries) |
+
+---
+
+## 3. HyDE (Hypothetical Document Embeddings)
+
+### The Pattern
+
+Have the LLM write a "fake" answer first, then use that fake answer to find **real** documents.
+
+**Why this works**: The LLM's fake answer uses terminology and structure similar to the real documents you're looking for.
+
+```typescript
+/**
+ * HyDE: Hypothetical Document Embeddings
+ * Generate a fake answer, then search for real docs that match it
+ */
+async function hydeRetrieval(userQuery: string) {
+  // Step 1: Generate hypothetical answer
+  const hydePrompt = `Write a detailed answer to this question as if you had access to the relevant documents:
+
+Question: "${userQuery}"
+
+Write a paragraph (100-200 words) with specific details, terminology, and structure.`
+
+  const hypotheticalAnswer = await llm.complete(hydePrompt)
+
+  // Step 2: Embed the fake answer
+  const hypotheticalEmbedding = await embed(hypotheticalAnswer)
+
+  // Step 3: Search using the fake answer's embedding
+  const realDocs = await vectorDb.search(hypotheticalEmbedding, { limit: 5 })
+
+  // Step 4: Use real docs as context for final answer
+  const finalPrompt = `Answer this question using only the context below:
+
+Question: ${userQuery}
+
+Context:
+${realDocs.map(d => d.content).join('\n\n---\n\n')}
+
+Answer:`
+
+  return await llm.complete(finalPrompt)
+}
+```
+
+### HyDE Example: Medical Query
+
+```typescript
+// User Query
+const query = "What are the contraindications for metformin?"
+
+// Step 1: LLM generates hypothetical answer
+const fakeAnswer = `
+Metformin is contraindicated in patients with severe renal impairment
+(eGFR <30 mL/min/1.73m²), acute or chronic metabolic acidosis, and
+hypersensitivity to the drug. It should be temporarily discontinued
+before procedures involving iodinated contrast agents due to risk of
+lactic acidosis. Patients with hepatic impairment or excessive alcohol
+intake should also avoid metformin.
+`
+
+// Step 2: Embed fake answer → Search
+// Result: Finds clinical guidelines that use similar medical terminology
+
+// Step 3: Real documents retrieved
+const realDocs = [
+  "FDA Label: Metformin contraindications include renal dysfunction...",
+  "Clinical Guidelines: Discontinue metformin before contrast imaging...",
+  "Safety Data: Lactic acidosis risk in hepatic impairment..."
+]
+```
+
+### When HyDE Outperforms Standard RAG
+
+| Scenario | Standard RAG | HyDE | Winner |
+|----------|-------------|------|--------|
+| User uses colloquial language | ❌ Misses technical docs | ✅ LLM translates to technical terms | **HyDE** |
+| Query is very specific | ✅ Direct match | ⚠️ Overcomplicates | Standard |
+| Domain has specialized jargon | ❌ Poor embedding match | ✅ LLM knows jargon | **HyDE** |
+| User misspells terms | ❌ No match | ✅ LLM corrects | **HyDE** |
+
+---
+
+## 4. Combining All Three Patterns
+
+### The Enterprise Query Router
+
+```typescript
+/**
+ * Intelligent Query Router
+ * Decides which pattern(s) to use based on query complexity
+ */
+async function routeQuery(userQuery: string, options: {
+  complexityThreshold: number
+  useHyDE: boolean
+}) {
+  // Analyze query complexity
+  const analysis = await analyzeQuery(userQuery)
+
+  if (analysis.complexity === 'simple') {
+    // Single query with optional HyDE
+    return options.useHyDE
+      ? await hydeRetrieval(userQuery)
+      : await standardRetrieval(userQuery)
+  }
+
+  if (analysis.complexity === 'moderate') {
+    // Multi-Query expansion
+    const queries = await multiQueryExpansion(userQuery)
+    const results = await Promise.all(
+      queries.map(q => standardRetrieval(q))
+    )
+    return deduplicateAndMerge(results)
+  }
+
+  if (analysis.complexity === 'complex') {
+    // Decomposition + HyDE for each sub-question
+    const subQuestions = await decomposeQuery(userQuery)
+    const subAnswers = await Promise.all(
+      subQuestions.map(q => hydeRetrieval(q))
+    )
+    return synthesize(userQuery, subAnswers)
+  }
+}
+
+// Query Complexity Classifier
+async function analyzeQuery(query: string) {
+  const prompt = `Classify this query's complexity:
+- Simple: Single fact lookup
+- Moderate: Broad topic, needs multiple perspectives
+- Complex: Multiple sub-questions, requires synthesis
+
+Query: "${query}"
+
+Return only: simple, moderate, or complex`
+
+  const complexity = await llm.complete(prompt)
+  return { complexity: complexity.trim().toLowerCase() }
+}
+```
+
+### Decision Tree
+
+```
+User Query
+    ↓
+Analyze Complexity
+    ↓
+┌───────────────┬─────────────────┬──────────────────┐
+Simple          Moderate          Complex
+↓               ↓                 ↓
+Standard        Multi-Query       Decomposition
+or HyDE         Expansion         + HyDE
+↓               ↓                 ↓
+Retrieve        Deduplicate       Synthesize
+↓               ↓                 ↓
+Answer          Answer            Answer
+```
+
+---
+
+## 5. Evaluation & Optimization
+
+### Measuring Impact
+
+```typescript
+/**
+ * A/B Test Query Transformation Patterns
+ */
+interface QueryMetrics {
+  recall_at_10: number
+  precision_at_5: number
+  latency_ms: number
+  cost_per_query: number
+}
+
+async function evaluateQueryPatterns(testQueries: string[]) {
+  const results = {
+    standard: { recall_at_10: 0, precision_at_5: 0, latency_ms: 0, cost_per_query: 0 },
+    multiQuery: { recall_at_10: 0, precision_at_5: 0, latency_ms: 0, cost_per_query: 0 },
+    hyde: { recall_at_10: 0, precision_at_5: 0, latency_ms: 0, cost_per_query: 0 },
+    decomposition: { recall_at_10: 0, precision_at_5: 0, latency_ms: 0, cost_per_query: 0 }
+  }
+
+  for (const query of testQueries) {
+    // Test each pattern
+    results.standard = await testPattern(query, 'standard')
+    results.multiQuery = await testPattern(query, 'multi-query')
+    results.hyde = await testPattern(query, 'hyde')
+    results.decomposition = await testPattern(query, 'decomposition')
+  }
+
+  return normalizeMetrics(results, testQueries.length)
+}
+```
+
+### Benchmark Results (Healthcare Domain)
+
+| Pattern | Recall@10 | Precision@5 | Latency | Cost/Query | Use When |
+|---------|-----------|-------------|---------|------------|----------|
+| Standard | 0.72 | 0.85 | 150ms | $0.002 | Simple lookups |
+| Multi-Query | **0.88** | 0.82 | 450ms | $0.008 | Broad topics |
+| HyDE | **0.85** | **0.90** | 350ms | $0.010 | Jargon-heavy domains |
+| Decomposition | 0.80 | **0.92** | 900ms | $0.020 | Complex multi-part questions |
+
+---
+
+## 6. Production Implementation
+
+### The Complete Query Transformation Pipeline
+
+```typescript
+/**
+ * Production Query Transformation Service
+ */
+class QueryTransformer {
+  async transform(userQuery: string, strategy: 'auto' | 'multi-query' | 'hyde' | 'decomposition' = 'auto') {
+    // Step 1: Preprocess query
+    const cleaned = this.preprocessQuery(userQuery)
+
+    // Step 2: Determine strategy
+    const chosenStrategy = strategy === 'auto'
+      ? await this.selectStrategy(cleaned)
+      : strategy
+
+    // Step 3: Apply transformation
+    switch (chosenStrategy) {
+      case 'multi-query':
+        return await this.multiQuery(cleaned)
+      case 'hyde':
+        return await this.hyde(cleaned)
+      case 'decomposition':
+        return await this.decompose(cleaned)
+      default:
+        return [cleaned] // Standard single query
+    }
+  }
+
+  private preprocessQuery(query: string): string {
+    // Remove extra whitespace, fix common typos
+    return query.trim().replace(/\s+/g, ' ')
+  }
+
+  private async selectStrategy(query: string): Promise<string> {
+    // Use fast classifier (cache common patterns)
+    const cacheKey = `strategy:${hash(query)}`
+    const cached = await redis.get(cacheKey)
+    if (cached) return cached
+
+    const strategy = await this.analyzeComplexity(query)
+    await redis.setex(cacheKey, 3600, strategy) // Cache 1 hour
+    return strategy
+  }
+}
+```
+
+### Caching Strategy Results
+
+```typescript
+// Cache strategy decisions to avoid repeated LLM calls
+const strategyCache = new Map<string, string>()
+
+async function getCachedStrategy(query: string): Promise<string> {
+  const normalized = normalizeQuery(query)
+  const cached = strategyCache.get(normalized)
+
+  if (cached) return cached
+
+  const strategy = await analyzeQuery(query)
+  strategyCache.set(normalized, strategy)
+
+  return strategy
+}
+```
+
+---
+
+## Summary
+
+**Query Transformation = Better Retrieval Without Changing Your Vector DB**
+
+1. **Multi-Query Expansion**: Generate 3-5 variations → +15-25% Recall@10
+2. **Decomposition**: Break complex questions into sub-questions → +10-15% Precision@5
+3. **HyDE**: LLM writes fake answer → Search with better embeddings → +8-12% in jargon-heavy domains
+
+**Architect's Decision Framework**:
+- **Simple queries** (<10 words, single fact): Standard retrieval
+- **Moderate queries** (broad topics): Multi-Query expansion
+- **Complex queries** (2+ sub-questions): Decomposition
+- **Jargon-heavy domains** (medical, legal, technical): Add HyDE
+
+In the lab, you'll implement all three patterns and measure their impact on the Medical Records Navigator.
+
+---
+
+**Next**: Context Window Management & Optimization
