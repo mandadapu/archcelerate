@@ -240,48 +240,6 @@ const result = await coordinator.run({
   sharedMemory
 });`
   },
-  {
-    id: 'portfolio-deployment',
-    title: 'Portfolio Deployment',
-    week: 12,
-    description: 'Ship all 7 projects to production with CI/CD',
-    tags: ['Vercel', 'GitHub Actions', 'Docker'],
-    outcome: 'Full-stack portfolio live',
-    milestone: 'Final "Gold Version" launch with CI/CD, Docker, and Vercel',
-    architecture: `GitHub Repo → GitHub Actions → Build → Tests
-                                           ↓
-                                      Deploy
-                                           ↓
-                                  [Vercel + Docker]
-                                           ↓
-                                   Production URLs`,
-    techStack: {
-      cicd: 'GitHub Actions workflows',
-      hosting: 'Vercel (frontend), Railway (backend)',
-      containers: 'Docker, docker-compose',
-      monitoring: 'Vercel Analytics, LogDrain',
-      domain: 'Custom domain with SSL'
-    },
-    implementation: [
-      'Set up monorepo structure for all 7 projects',
-      'Create CI/CD pipelines (lint, test, build)',
-      'Configure deployment environments (staging, prod)',
-      'Add health checks and monitoring',
-      'Set up custom domains for each project',
-      'Implement automated rollback on failures'
-    ],
-    codeSnippet: `# GitHub Actions workflow
-name: Deploy Portfolio
-on: [push]
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - run: npm test
-      - run: npm run build
-      - uses: vercel/action@v20`
-  }
 ]
 
 function getEmojiForProject(projectId: string): string {
@@ -292,7 +250,6 @@ function getEmojiForProject(projectId: string): string {
     'ai-code-reviewer': '🔍',
     'content-generator': '✨',
     'data-analyst': '📊',
-    'portfolio-deployment': '🚀',
   }
   return emojiMap[projectId] || '🎯'
 }
@@ -309,7 +266,7 @@ export function ProjectShowcase() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
           <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-            7 Milestone Projects:{' '}
+            Milestone Projects:{' '}
             <span className="bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent">
               Your Proof of Mastery
             </span>
@@ -319,8 +276,8 @@ export function ProjectShowcase() {
           </p>
         </div>
 
-        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3 mb-8">
-          {projects.slice(0, 6).map((project, index) => (
+        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+          {projects.map((project, index) => (
             <ProjectCard
               key={index}
               project={project}
@@ -328,17 +285,6 @@ export function ProjectShowcase() {
               onToggle={() => toggleExpand(index)}
             />
           ))}
-        </div>
-
-        {/* Last project centered */}
-        <div className="flex justify-center">
-          <div className="w-full md:w-1/2 lg:w-1/3">
-            <ProjectCard
-              project={projects[6]}
-              isExpanded={expandedIndex === 6}
-              onToggle={() => toggleExpand(6)}
-            />
-          </div>
         </div>
       </div>
     </section>
