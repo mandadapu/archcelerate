@@ -296,7 +296,7 @@ const weekData = [
     lab: {
       slug: 'medical-records-navigator',
       title: 'Lab: The Precision Retrieval Challenge',
-      description: 'Role: AI Architect for a Clinical Search tool. Core Objective: Prove the quantitative value of advanced retrieval techniques over basic vector search through side-by-side architectural comparison. Key Techniques: Parent-Document Retrieval (balance granular search with full-context retrieval) and Hybrid Search (integrate semantic vector + keyword BM25 for clinical precision). Success Metrics: Hit Rate (Recall@K) to verify correct clinical documents in top results, and MRR (Mean Reciprocal Rank) to evaluate ranking quality. 10 specialized exercises.',
+      description: 'Role: AI Architect for a Clinical Search tool. Objective: Conduct a side-by-side comparison of baseline vector search versus parent-document and hybrid retrieval to prove the quantitative value of advanced techniques in a high-stakes environment. Scope: 10 specialized exercises covering implementation and evaluation. Key Metrics: Focus on Hit Rate (Recall@K) and Mean Reciprocal Rank (MRR) to provide objective architectural proof of system performance.',
       exercises: [
         { number: 1, title: 'Setup: Index 5,000 pages of simulated clinical notes (PDFs)', type: 'setup' },
         { number: 2, title: 'Phase 1: Build "Naive" RAG baseline (fixed 200-token chunks, vector-only)', type: 'coding' },
@@ -312,8 +312,8 @@ const weekData = [
     },
     project: {
       slug: 'enterprise-rag-system',
-      title: 'Project: Production RAG System for Regulated Industry',
-      description: 'Build a full production system: HIPAA-grade RAG with hybrid retrieval, re-ranking, semantic caching, and enterprise evaluation metrics',
+      title: 'Project: Production RAG for Regulated Industry',
+      description: 'The capstone forces you to deal with real-world enterprise constraints. Use Case: Building a HIPAA-grade RAG system. Technical Requirements: Integration of hybrid retrieval, re-ranking, and semantic caching. Compliance: Implementation of enterprise evaluation metrics and audit trails. Scope: 14 hours of build time with 11 core architectural requirements.',
       requirements: [
         'Hybrid Search: Combine pgvector (semantic) + pg_trgm or ElasticSearch (BM25)',
         'Re-Ranking: Cohere Rerank API or BGE-Reranker model for top-50 → top-5',
