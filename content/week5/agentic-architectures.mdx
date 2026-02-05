@@ -1,0 +1,604 @@
+---
+title: "Agentic Architectures & Planning: ReAct and Task Decomposition"
+week: 5
+concept: 1
+description: "Engineering autonomous reasoning loops that decompose complex tasks into executable sub-tasks with stateful orchestration"
+estimatedMinutes: 45
+objectives:
+  - Implement ReAct (Reasoning + Acting) loops for autonomous decision-making
+  - Engineer Planner agents that decompose complex intents into sub-tasks
+  - Build stateful orchestration with LangGraph for reliable agent hand-offs
+---
+
+# Agentic Architectures & Planning
+
+Moving beyond single-shot prompting to **Autonomous Workflows** that reason, plan, and execute.
+
+## The Architectural Shift
+
+**Traditional LLM**: User prompt → Single response
+**Agentic System**: User intent → **Reasoning loop** → Tool execution → **Re-evaluation** → Action → Result
+
+The key difference: **Agents think before they act, then adjust based on outcomes.**
+
+---
+
+## Pattern 1: ReAct (Reasoning + Acting)
+
+**The Problem**: Single-shot prompting fails for multi-step problems that require observing intermediate results.
+
+**Example Failure**:
+```typescript
+// ❌ Single-shot: Can't adapt to real-world data
+const prompt = "What's the weather in the user's location and suggest an outfit?"
+// → LLM hallucinates location and weather data
+```
+
+**The Solution**: ReAct loop where the agent:
+1. **Reasons** about what to do next
+2. **Acts** by calling a tool
+3. **Observes** the result
+4. **Re-reasons** based on observation
+5. Repeats until task complete
+
+### ReAct Architecture
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+interface ReActStep {
+  thought: string      // "I need to get the user's location first"
+  action: string       // "get_location"
+  actionInput: any     // {}
+  observation: string  // "User is in Seattle, WA"
+}
+
+interface ReActState {
+  userQuery: string
+  steps: ReActStep[]
+  finalAnswer: string | null
+  maxIterations: number
+  currentIteration: number
+}
+
+// Available Tools
+const tools = [
+  {
+    name: 'get_location',
+    description: 'Gets the user\'s current location based on IP',
+    input_schema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'get_weather',
+    description: 'Gets current weather for a city',
+    input_schema: {
+      type: 'object',
+      properties: {
+        city: { type: 'string', description: 'City name' }
+      },
+      required: ['city']
+    }
+  },
+  {
+    name: 'finish',
+    description: 'Call this when you have the final answer',
+    input_schema: {
+      type: 'object',
+      properties: {
+        answer: { type: 'string', description: 'The final answer to return to the user' }
+      },
+      required: ['answer']
+    }
+  }
+]
+
+async function reactLoop(userQuery: string): Promise<ReActState> {
+  const state: ReActState = {
+    userQuery,
+    steps: [],
+    finalAnswer: null,
+    maxIterations: 10,
+    currentIteration: 0
+  }
+
+  while (state.currentIteration < state.maxIterations && !state.finalAnswer) {
+    state.currentIteration++
+
+    // Build context from previous steps
+    const context = state.steps.length > 0
+      ? `Previous steps:\n${state.steps.map(s =>
+          `Thought: ${s.thought}\nAction: ${s.action}(${JSON.stringify(s.actionInput)})\nObservation: ${s.observation}`
+        ).join('\n\n')}`
+      : ''
+
+    const prompt = `You are solving this query: "${userQuery}"
+
+${context}
+
+Think step-by-step. What should you do next?
+
+Use this format:
+Thought: [Your reasoning about what to do next]
+Action: [Tool name to call, or "finish" if you have the final answer]
+
+Available tools: ${tools.map(t => t.name).join(', ')}`
+
+    // Reasoning step: Agent decides what to do
+    const response = await anthropic.messages.create({
+      model: 'claude-4.5-sonnet',
+      max_tokens: 1024,
+      tools,
+      messages: [{ role: 'user', content: prompt }]
+    })
+
+    // Extract thought and action
+    const textContent = response.content.find(c => c.type === 'text')?.text || ''
+    const toolUse = response.content.find(c => c.type === 'tool_use')
+
+    if (!toolUse) {
+      // No tool called, agent is confused
+      throw new Error('Agent did not call a tool. Reasoning failed.')
+    }
+
+    const thought = textContent.match(/Thought: (.+)/)?.[1] || 'Proceeding with next action'
+    const action = toolUse.name
+    const actionInput = toolUse.input
+
+    // Acting step: Execute the tool
+    let observation: string
+
+    if (action === 'get_location') {
+      observation = 'Seattle, WA'  // Mock tool execution
+    } else if (action === 'get_weather') {
+      const city = actionInput.city
+      observation = `Weather in ${city}: 52°F, Rainy`  // Mock
+    } else if (action === 'finish') {
+      state.finalAnswer = actionInput.answer
+      observation = 'Task complete'
+    } else {
+      observation = `Unknown tool: ${action}`
+    }
+
+    // Record step
+    state.steps.push({ thought, action, actionInput, observation })
+
+    console.log(`\nIteration ${state.currentIteration}:`)
+    console.log(`Thought: ${thought}`)
+    console.log(`Action: ${action}(${JSON.stringify(actionInput)})`)
+    console.log(`Observation: ${observation}`)
+  }
+
+  if (!state.finalAnswer) {
+    throw new Error(`Agent exceeded max iterations (${state.maxIterations})`)
+  }
+
+  return state
+}
+
+/* Example Execution:
+
+Query: "What's the weather in my location and suggest an outfit?"
+
+Iteration 1:
+Thought: I need to first get the user's location
+Action: get_location({})
+Observation: Seattle, WA
+
+Iteration 2:
+Thought: Now I can get the weather for Seattle
+Action: get_weather({ city: "Seattle, WA" })
+Observation: Weather in Seattle: 52°F, Rainy
+
+Iteration 3:
+Thought: Based on 52°F and rainy weather, I can suggest appropriate clothing
+Action: finish({ answer: "It's 52°F and rainy in Seattle. I suggest: waterproof jacket, long pants, closed-toe shoes with good traction, and an umbrella." })
+Observation: Task complete
+
+Final Answer: "It's 52°F and rainy in Seattle. I suggest: waterproof jacket, long pants, closed-toe shoes with good traction, and an umbrella."
+*/
+```
+
+### ReAct: Why It Works
+
+| Without ReAct | With ReAct |
+|---------------|------------|
+| Hallucinates location | Calls `get_location` tool |
+| Invents weather data | Calls `get_weather` with real city |
+| Generic outfit advice | Tailors recommendation to 52°F + rain |
+| Single LLM call (200 tokens) | 3 iterations (800 tokens) but accurate |
+
+**Cost Trade-off**: ReAct uses 4x tokens but delivers **accurate, grounded results** instead of hallucinations.
+
+---
+
+## Pattern 2: Plan-and-Execute (Task Decomposition)
+
+**The Problem**: Complex tasks require breaking down user intent into atomic sub-tasks before execution.
+
+**Example**:
+```
+User: "Research competitors in the AI agents space and write a market analysis report"
+```
+
+A naive ReAct loop would thrash between research and writing. **Better approach**: Decompose first, execute sequentially.
+
+### Planner Agent Architecture
+
+```typescript
+interface Task {
+  id: string
+  description: string
+  dependencies: string[]  // Task IDs that must complete first
+  status: 'pending' | 'in_progress' | 'completed' | 'failed'
+  result?: string
+}
+
+interface Plan {
+  tasks: Task[]
+  metadata: {
+    totalEstimatedSteps: number
+    complexity: 'low' | 'medium' | 'high'
+  }
+}
+
+async function plannerAgent(userIntent: string): Promise<Plan> {
+  const prompt = `You are a task planner. Break down this user intent into atomic, executable tasks.
+
+User Intent: "${userIntent}"
+
+Rules:
+1. Each task should be independently executable
+2. Specify dependencies (which tasks must complete first)
+3. Keep tasks granular (5-10 tasks is ideal)
+4. Order matters: earlier tasks should enable later ones
+
+Output JSON:
+{
+  "tasks": [
+    {
+      "id": "task_1",
+      "description": "Research competitors: LangChain, CrewAI, AutoGen",
+      "dependencies": []
+    },
+    {
+      "id": "task_2",
+      "description": "Analyze each competitor's strengths and weaknesses",
+      "dependencies": ["task_1"]
+    },
+    ...
+  ],
+  "metadata": {
+    "totalEstimatedSteps": 5,
+    "complexity": "medium"
+  }
+}`
+
+  const response = await anthropic.messages.create({
+    model: 'claude-4.5-sonnet',
+    max_tokens: 2048,
+    messages: [{ role: 'user', content: prompt }]
+  })
+
+  const planText = response.content[0].text
+  const jsonMatch = planText.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) throw new Error('Planner failed to generate valid JSON')
+
+  const plan: Plan = JSON.parse(jsonMatch[0])
+
+  // Initialize all tasks as pending
+  plan.tasks = plan.tasks.map(t => ({ ...t, status: 'pending' as const }))
+
+  return plan
+}
+
+/* Example Plan Output:
+
+{
+  "tasks": [
+    {
+      "id": "task_1",
+      "description": "Research competitors: LangChain, CrewAI, AutoGen, LlamaIndex",
+      "dependencies": [],
+      "status": "pending"
+    },
+    {
+      "id": "task_2",
+      "description": "For each competitor, analyze: features, pricing, community size, GitHub activity",
+      "dependencies": ["task_1"],
+      "status": "pending"
+    },
+    {
+      "id": "task_3",
+      "description": "Identify market gaps and opportunities",
+      "dependencies": ["task_2"],
+      "status": "pending"
+    },
+    {
+      "id": "task_4",
+      "description": "Draft market analysis with SWOT for each competitor",
+      "dependencies": ["task_3"],
+      "status": "pending"
+    },
+    {
+      "id": "task_5",
+      "description": "Format report with executive summary and recommendations",
+      "dependencies": ["task_4"],
+      "status": "pending"
+    }
+  ],
+  "metadata": {
+    "totalEstimatedSteps": 5,
+    "complexity": "medium"
+  }
+}
+*/
+```
+
+### Executor Agent
+
+```typescript
+async function executorAgent(task: Task, context: string): Promise<string> {
+  const prompt = `You are an executor agent. Complete this task:
+
+Task: ${task.description}
+
+Context from previous tasks:
+${context}
+
+Provide your result. Be specific and actionable.`
+
+  const response = await anthropic.messages.create({
+    model: 'claude-4.5-sonnet',
+    max_tokens: 3000,
+    messages: [{ role: 'user', content: prompt }]
+  })
+
+  return response.content[0].text
+}
+
+async function planAndExecute(userIntent: string): Promise<Plan> {
+  // Step 1: Generate plan
+  console.log('🧠 Planning...')
+  const plan = await plannerAgent(userIntent)
+  console.log(`✅ Plan created: ${plan.tasks.length} tasks, ${plan.metadata.complexity} complexity\n`)
+
+  // Step 2: Execute tasks in dependency order
+  let context = ''
+
+  for (const task of plan.tasks) {
+    // Wait for dependencies
+    const dependenciesComplete = task.dependencies.every(depId =>
+      plan.tasks.find(t => t.id === depId)?.status === 'completed'
+    )
+
+    if (!dependenciesComplete) {
+      task.status = 'failed'
+      task.result = 'Dependencies not met'
+      continue
+    }
+
+    console.log(`⚙️  Executing: ${task.description}`)
+    task.status = 'in_progress'
+
+    try {
+      const result = await executorAgent(task, context)
+      task.status = 'completed'
+      task.result = result
+      context += `\n\nTask ${task.id} result:\n${result}`
+      console.log(`✅ Completed: ${task.id}\n`)
+    } catch (error) {
+      task.status = 'failed'
+      task.result = `Error: ${error.message}`
+      console.log(`❌ Failed: ${task.id}\n`)
+    }
+  }
+
+  return plan
+}
+
+// Usage
+const result = await planAndExecute(
+  "Research competitors in the AI agents space and write a market analysis report"
+)
+
+console.log('\n📊 Final Results:')
+result.tasks.forEach(t => {
+  console.log(`${t.id}: ${t.status} - ${t.description}`)
+})
+```
+
+### Plan-and-Execute: Benefits
+
+| Benefit | Why It Matters |
+|---------|----------------|
+| **Predictable cost** | Planner estimates total steps upfront (no runaway loops) |
+| **Parallelizable** | Tasks without dependencies can execute in parallel |
+| **Resumable** | Can checkpoint after each task (see Concept 4) |
+| **Debuggable** | Clear task boundaries make failures easy to isolate |
+
+**Cost Analysis**:
+```typescript
+// Plan-and-Execute (5 tasks)
+- Planner: 500 input + 800 output = 1300 tokens × $3/$15 = $0.0135
+- Executor: 5 tasks × (1000 input + 2000 output) = 15K tokens = $0.285
+- Total: $0.30 for complete market analysis
+
+// Single-shot prompt (no planning)
+- Single call: 500 input + 5000 output = 5500 tokens = $0.083
+- But: Quality is terrible, no structure, missing steps
+- Real cost: Wasted $0.083 + human time to redo
+
+// Verdict: Planning adds 3.6x cost but ensures quality
+```
+
+---
+
+## Pattern 3: Stateful Orchestration with LangGraph
+
+**The Problem**: As agents hand off work, **state must be preserved** across calls. Naive implementations lose context.
+
+**Bad Example** (Stateless):
+```typescript
+// ❌ State lost between calls
+const draft = await draftAgent(userQuery)
+const review = await reviewAgent(draft)  // No knowledge of userQuery
+const final = await polishAgent(review)  // No knowledge of draft or review criteria
+```
+
+**The Solution**: Use **LangGraph** to maintain a shared state object that all agents can read and update.
+
+### LangGraph State Architecture
+
+```typescript
+import { StateGraph, Annotation } from '@langchain/langgraph'
+
+// Define the state schema
+const AgentState = Annotation.Root({
+  userQuery: Annotation<string>(),
+  plan: Annotation<Task[]>(),
+  currentTaskId: Annotation<string | null>(),
+  completedTasks: Annotation<Record<string, string>>(),  // task_id → result
+  finalOutput: Annotation<string | null>()
+})
+
+type AgentStateType = typeof AgentState.State
+
+// Planner node
+async function plannerNode(state: AgentStateType): Promise<Partial<AgentStateType>> {
+  const plan = await plannerAgent(state.userQuery)
+  return {
+    plan: plan.tasks,
+    currentTaskId: plan.tasks[0].id  // Start with first task
+  }
+}
+
+// Executor node
+async function executorNode(state: AgentStateType): Promise<Partial<AgentStateType>> {
+  const currentTask = state.plan.find(t => t.id === state.currentTaskId)
+  if (!currentTask) throw new Error('No current task')
+
+  // Build context from completed tasks
+  const context = Object.entries(state.completedTasks)
+    .map(([id, result]) => `Task ${id} result:\n${result}`)
+    .join('\n\n')
+
+  const result = await executorAgent(currentTask, context)
+
+  // Update state
+  const newCompletedTasks = { ...state.completedTasks, [currentTask.id]: result }
+  const nextTask = state.plan.find(t =>
+    !newCompletedTasks[t.id] &&
+    t.dependencies.every(depId => newCompletedTasks[depId])
+  )
+
+  return {
+    completedTasks: newCompletedTasks,
+    currentTaskId: nextTask?.id || null
+  }
+}
+
+// Finalizer node
+async function finalizerNode(state: AgentStateType): Promise<Partial<AgentStateType>> {
+  const allResults = Object.entries(state.completedTasks)
+    .map(([id, result]) => `**${id}**:\n${result}`)
+    .join('\n\n---\n\n')
+
+  return {
+    finalOutput: `# ${state.userQuery}\n\n${allResults}`
+  }
+}
+
+// Router: Decide which node to execute next
+function router(state: AgentStateType): string {
+  if (!state.plan) return 'planner'
+  if (state.currentTaskId) return 'executor'
+  if (Object.keys(state.completedTasks).length === state.plan.length) return 'finalizer'
+  return '__end__'
+}
+
+// Build the graph
+const workflow = new StateGraph(AgentState)
+  .addNode('planner', plannerNode)
+  .addNode('executor', executorNode)
+  .addNode('finalizer', finalizerNode)
+  .addConditionalEdges('planner', router, {
+    executor: 'executor',
+    finalizer: 'finalizer',
+    __end__: '__end__'
+  })
+  .addConditionalEdges('executor', router, {
+    executor: 'executor',
+    finalizer: 'finalizer',
+    __end__: '__end__'
+  })
+  .addEdge('finalizer', '__end__')
+  .setEntryPoint('planner')
+
+const app = workflow.compile()
+
+// Execute
+const result = await app.invoke({
+  userQuery: "Research competitors and write market analysis",
+  plan: null,
+  currentTaskId: null,
+  completedTasks: {},
+  finalOutput: null
+})
+
+console.log(result.finalOutput)
+```
+
+### LangGraph: Key Advantages
+
+| Feature | Benefit |
+|---------|---------|
+| **Typed state** | TypeScript ensures all agents access valid state |
+| **Atomic updates** | Each node returns state changes (no race conditions) |
+| **Conditional routing** | Router function decides next node based on state |
+| **Persistence** | State can be checkpointed to database (Concept 4) |
+| **Visualization** | LangGraph can render workflow as a diagram |
+
+**Cost**: LangGraph adds ~50 tokens overhead per node transition (router logic). For 5-node workflow: 250 tokens = $0.004.
+
+---
+
+## Key Takeaways
+
+**ReAct Loops**:
+- Use for tasks requiring observation of intermediate results
+- Cost: 3-5x token overhead vs single-shot, but eliminates hallucinations
+- Mandatory for tool-calling workflows (search, APIs, database queries)
+
+**Plan-and-Execute**:
+- Use for complex, multi-step tasks requiring coordination
+- Planner agent decomposes intent into atomic tasks with dependencies
+- Executor agents complete tasks sequentially or in parallel
+- 3.6x cost increase but ensures structured, complete output
+
+**Stateful Orchestration (LangGraph)**:
+- Required when agents need to share state across hand-offs
+- Prevents "context loss" between agent calls
+- Enables checkpointing, resumability, and debugging (see Concept 4)
+- ~$0.004 overhead per workflow, negligible for multi-step tasks
+
+**The Architect's Responsibility**:
+You **own** the reasoning loop. If your agent loops infinitely, **you failed to set maxIterations**. If your planner generates 100 tasks for a simple query, **you failed to constrain the prompt**. If state is lost between agents, **you skipped stateful orchestration**.
+
+**Cost Analysis**:
+```typescript
+// Single-shot (no planning)
+- Cost: $0.08
+- Quality: 40% (incomplete, hallucinated data)
+- Architect verdict: ❌ False economy
+
+// ReAct + Plan-and-Execute + LangGraph
+- Cost: $0.30
+- Quality: 95% (accurate, structured, complete)
+- Architect verdict: ✅ Production-ready
+
+// ROI: $0.22 extra prevents $5K+ in wasted human review time
+```
+
+**Next Concept**: Now that you can build reasoning loops, Concept 2 covers **Supervisor patterns** for managing teams of specialist agents and **Collaborative Swarms** for parallel problem-solving.
