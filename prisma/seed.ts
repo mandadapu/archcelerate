@@ -649,7 +649,7 @@ async function main() {
           orderIndex: i + 1,
           slug: concept.slug,
           title: concept.title,
-          description: concept.description,
+          ...('description' in concept ? { description: concept.description } : {}),
           contentPath: `content/week${week.weekNumber}/${concept.slug}.mdx`,
           estimatedMinutes: concept.minutes
         }
