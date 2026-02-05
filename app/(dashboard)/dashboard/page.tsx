@@ -162,18 +162,22 @@ export default async function DashboardPage() {
                     />
                   </div>
                 </div>
+                <div className="flex justify-end">
+                  <Link href="/curriculum/week-1">
+                    <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white">
+                      Continue
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="flex justify-end">
                 <Link href="/curriculum/week-1">
-                  <Button size="sm" variant="outline" className="w-full border-purple-300 text-purple-700 hover:bg-purple-50">
-                    Continue
+                  <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white">
+                    Start
                   </Button>
                 </Link>
               </div>
-            ) : (
-              <Link href="/curriculum/week-1">
-                <Button size="sm" variant="outline" className="border-purple-300 text-purple-700 hover:bg-purple-50">
-                  Start
-                </Button>
-              </Link>
             )}
           </CardContent>
         </Card>
@@ -189,11 +193,13 @@ export default async function DashboardPage() {
               <p className="text-sm text-slate-600 mb-4">
                 {week2Data.week.description}
               </p>
-              <Link href="/curriculum/week-2">
-                <Button size="sm" variant="outline" className="border-green-300 text-green-700 hover:bg-green-50">
-                  {week2Data.progress ? 'Continue' : 'Start'}
-                </Button>
-              </Link>
+              <div className="flex justify-end">
+                <Link href="/curriculum/week-2">
+                  <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+                    {week2Data.progress ? 'Continue' : 'Start'}
+                  </Button>
+                </Link>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -208,11 +214,13 @@ export default async function DashboardPage() {
               <p className="text-sm text-slate-600 mb-4">
                 {week3Data.week.description}
               </p>
-              <Link href="/curriculum/week-3">
-                <Button size="sm" variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50">
-                  {week3Data.progress ? 'Continue' : 'Start'}
-                </Button>
-              </Link>
+              <div className="flex justify-end">
+                <Link href="/curriculum/week-3">
+                  <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
+                    {week3Data.progress ? 'Continue' : 'Start'}
+                  </Button>
+                </Link>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -227,11 +235,13 @@ export default async function DashboardPage() {
               <p className="text-sm text-slate-600 mb-4">
                 {week4Data.week.description}
               </p>
-              <Link href="/curriculum/week-4">
-                <Button size="sm" variant="outline" className="border-orange-300 text-orange-700 hover:bg-orange-50">
-                  {week4Data.progress ? 'Continue' : 'Start'}
-                </Button>
-              </Link>
+              <div className="flex justify-end">
+                <Link href="/curriculum/week-4">
+                  <Button size="sm" className="bg-orange-600 hover:bg-orange-700 text-white">
+                    {week4Data.progress ? 'Continue' : 'Start'}
+                  </Button>
+                </Link>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -267,18 +277,22 @@ export default async function DashboardPage() {
                       />
                     </div>
                   </div>
+                  <div className="flex justify-end">
+                    <Link href="/curriculum/week-5">
+                      <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                        Continue
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex justify-end">
                   <Link href="/curriculum/week-5">
-                    <Button size="sm" variant="outline" className="w-full border-indigo-300 text-indigo-700 hover:bg-indigo-50">
-                      Continue
+                    <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                      Start
                     </Button>
                   </Link>
                 </div>
-              ) : (
-                <Link href="/curriculum/week-5">
-                  <Button size="sm" variant="outline" className="border-indigo-300 text-indigo-700 hover:bg-indigo-50">
-                    Start
-                  </Button>
-                </Link>
               )}
             </CardContent>
           </Card>
@@ -294,11 +308,13 @@ export default async function DashboardPage() {
               <p className="text-sm text-slate-600 mb-4">
                 {week6Data.week.description}
               </p>
-              <Link href="/curriculum/week-6">
-                <Button size="sm" variant="outline" className="border-teal-300 text-teal-700 hover:bg-teal-50">
-                  {week6Data.progress ? 'Continue' : 'Start'}
-                </Button>
-              </Link>
+              <div className="flex justify-end">
+                <Link href="/curriculum/week-6">
+                  <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white">
+                    {week6Data.progress ? 'Continue' : 'Start'}
+                  </Button>
+                </Link>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -313,11 +329,13 @@ export default async function DashboardPage() {
               <p className="text-sm text-slate-600 mb-4">
                 {week7Data.week.description}
               </p>
-              <Link href="/curriculum/week-7">
-                <Button size="sm" variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-50">
-                  {week7Data.progress ? 'Continue' : 'Start'}
-                </Button>
-              </Link>
+              <div className="flex justify-end">
+                <Link href="/curriculum/week-7">
+                  <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white">
+                    {week7Data.progress ? 'Continue' : 'Start'}
+                  </Button>
+                </Link>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -332,11 +350,13 @@ export default async function DashboardPage() {
               <p className="text-sm text-slate-600 mb-4">
                 {week8Data.week.description}
               </p>
-              <Link href="/curriculum/week-8">
-                <Button size="sm" variant="outline" className="border-rose-300 text-rose-700 hover:bg-rose-50">
-                  {week8Data.progress ? 'Continue' : 'Start'}
-                </Button>
-              </Link>
+              <div className="flex justify-end">
+                <Link href="/curriculum/week-8">
+                  <Button size="sm" className="bg-pink-600 hover:bg-pink-700 text-white">
+                    {week8Data.progress ? 'Continue' : 'Start'}
+                  </Button>
+                </Link>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -351,11 +371,13 @@ export default async function DashboardPage() {
               <p className="text-sm text-slate-600 mb-4">
                 {week9Data.week.description}
               </p>
-              <Link href="/curriculum/week-9">
-                <Button size="sm" variant="outline" className="border-red-300 text-red-700 hover:bg-red-50">
-                  {week9Data.progress ? 'Continue' : 'Start'}
-                </Button>
-              </Link>
+              <div className="flex justify-end">
+                <Link href="/curriculum/week-9">
+                  <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white">
+                    {week9Data.progress ? 'Continue' : 'Start'}
+                  </Button>
+                </Link>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -370,11 +392,13 @@ export default async function DashboardPage() {
               <p className="text-sm text-slate-600 mb-4">
                 {week10Data.week.description}
               </p>
-              <Link href="/curriculum/week-10">
-                <Button size="sm" variant="outline" className="border-fuchsia-300 text-fuchsia-700 hover:bg-fuchsia-50">
-                  {week10Data.progress ? 'Continue' : 'Start'}
-                </Button>
-              </Link>
+              <div className="flex justify-end">
+                <Link href="/curriculum/week-10">
+                  <Button size="sm" className="bg-sky-600 hover:bg-sky-700 text-white">
+                    {week10Data.progress ? 'Continue' : 'Start'}
+                  </Button>
+                </Link>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -389,11 +413,13 @@ export default async function DashboardPage() {
               <p className="text-sm text-slate-600 mb-4">
                 {week11Data.week.description}
               </p>
-              <Link href="/curriculum/week-11">
-                <Button size="sm" variant="outline" className="border-lime-300 text-lime-700 hover:bg-lime-50">
-                  {week11Data.progress ? 'Continue' : 'Start'}
-                </Button>
-              </Link>
+              <div className="flex justify-end">
+                <Link href="/curriculum/week-11">
+                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                    {week11Data.progress ? 'Continue' : 'Start'}
+                  </Button>
+                </Link>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -408,11 +434,13 @@ export default async function DashboardPage() {
               <p className="text-sm text-slate-600 mb-4">
                 {week12Data.week.description}
               </p>
-              <Link href="/curriculum/week-12">
-                <Button size="sm" variant="outline" className="border-slate-300 text-slate-700 hover:bg-slate-50">
-                  {week12Data.progress ? 'Continue' : 'Start'}
-                </Button>
-              </Link>
+              <div className="flex justify-end">
+                <Link href="/curriculum/week-12">
+                  <Button size="sm" className="bg-slate-600 hover:bg-slate-700 text-white">
+                    {week12Data.progress ? 'Continue' : 'Start'}
+                  </Button>
+                </Link>
+              </div>
             </CardContent>
           </Card>
         )}
