@@ -95,26 +95,8 @@ export default function Home() {
             </p>
           </div>
 
-          {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 items-center mb-8">
-            <Link href="/diagnosis">
-              <button className="px-12 py-4 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-lg font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
-                Start Skill Diagnosis
-              </button>
-            </Link>
-            <button
-              onClick={() => {
-                const diagramSection = document.querySelector('.system-diagram-section')
-                diagramSection?.scrollIntoView({ behavior: 'smooth' })
-              }}
-              className="px-12 py-4 bg-white text-gray-900 text-lg font-semibold rounded-full border-2 border-gray-200 hover:border-gray-300 hover:shadow-lg transition-all duration-200"
-            >
-              View System Architecture
-            </button>
-          </div>
-
           {/* System Diagram */}
-          <div className="system-diagram-section">
+          <div className="system-diagram-section mt-12">
             <SystemDiagram />
           </div>
 
