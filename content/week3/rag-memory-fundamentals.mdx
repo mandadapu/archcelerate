@@ -47,6 +47,215 @@ RAG systems operate in three distinct phases: **Ingestion**, **Retrieval**, and 
 
 ---
 
+## Semantic Search vs. Lexical Search: The Architect's Decision
+
+Before diving into implementation, architects must understand when to use **semantic search** (vector-based) versus **lexical search** (keyword-based) and how to justify the added latency.
+
+### The Trade-Off: Meaning vs. Speed
+
+| Dimension | Lexical Search (BM25, Elasticsearch) | Semantic Search (Vector Embeddings) |
+|-----------|-------------------------------------|-------------------------------------|
+| **Match Type** | Exact keywords | Semantic meaning |
+| **Query**: "reset password" | Matches only "reset password" | Matches "password recovery", "change credentials", "forgot login" |
+| **Latency** | 10-50ms | 200-500ms (embedding + vector search) |
+| **Cost** | $0.001/query | $0.005-0.015/query (embedding + LLM) |
+| **Use Case** | IDs, codes, exact terms | Natural language, paraphrasing |
+| **Accuracy (paraphrased)** | Low (30-40%) | High (80-90%) |
+| **Accuracy (exact match)** | Very High (95%+) | Medium (70-80%) |
+
+### Decision Framework: When to Use Which
+
+```typescript
+interface SearchDecision {
+  queryType: 'exact' | 'semantic' | 'hybrid'
+  reasoning: string
+  expectedAccuracy: number
+  latencyBudget: number
+}
+
+/**
+ * Decide search strategy based on query characteristics
+ */
+function chooseSearchStrategy(query: string, context: {
+  userExpectsInstantResults: boolean
+  queryHasIDs: boolean
+  budgetConstraint: 'tight' | 'normal' | 'flexible'
+}): SearchDecision {
+  // Rule 1: Exact matches for IDs, part numbers, error codes
+  if (/\b[A-Z0-9-]{5,}\b/.test(query) || context.queryHasIDs) {
+    return {
+      queryType: 'exact',
+      reasoning: 'Query contains ID-like patterns - lexical search will be faster and more accurate',
+      expectedAccuracy: 95,
+      latencyBudget: 50 // ms
+    }
+  }
+
+  // Rule 2: Tight budget + speed requirement = lexical only
+  if (context.userExpectsInstantResults && context.budgetConstraint === 'tight') {
+    return {
+      queryType: 'exact',
+      reasoning: 'Latency and cost constraints favor keyword search',
+      expectedAccuracy: 60,
+      latencyBudget: 50
+    }
+  }
+
+  // Rule 3: Natural language queries = semantic
+  if (query.split(' ').length > 5 && !context.queryHasIDs) {
+    return {
+      queryType: 'semantic',
+      reasoning: 'Natural language query benefits from semantic understanding',
+      expectedAccuracy: 85,
+      latencyBudget: 500
+    }
+  }
+
+  // Rule 4: Default = hybrid (best of both worlds)
+  return {
+    queryType: 'hybrid',
+    reasoning: 'Hybrid search combines exact match precision with semantic recall',
+    expectedAccuracy: 90,
+    latencyBudget: 400
+  }
+}
+```
+
+### Justifying Latency to Stakeholders
+
+**The Business Case for Semantic Search** (present this to your PM/CTO):
+
+1. **Accuracy Improvement**: 80-90% vs 30-40% for paraphrased queries
+   - **Impact**: 50% fewer "no results found" experiences
+   - **Revenue impact**: 15-25% increase in conversion for search-dependent features
+
+2. **Support Cost Reduction**: Users find answers faster
+   - **Zendesk case study**: 30% reduction in support tickets after implementing semantic search
+   - **ROI**: $50K/year saved (50 tickets/day × $2.74/ticket × 30% reduction × 365 days)
+
+3. **Latency is Acceptable**:
+   - **Google research**: Users tolerate 500ms for "better results"
+   - **Mitigation**: Semantic caching reduces repeat queries to 50ms
+   - **Perceived latency**: Show skeleton loaders, keep under 1s total
+
+**The Anti-Pattern**: Don't use semantic search everywhere
+- ❌ Product ID lookup ("Part #9921") → Use lexical search (50ms)
+- ❌ Autocomplete dropdowns → Use lexical search (instant feedback required)
+- ✅ "How do I reset my password?" → Use semantic search (paraphrasing common)
+
+### Production Pattern: Hybrid Search with Intelligent Routing
+
+```typescript
+interface HybridSearchConfig {
+  vectorWeight: number    // 0.7 for semantic-heavy queries
+  keywordWeight: number   // 0.3 for semantic-heavy queries
+  useCache: boolean
+  maxLatency: number      // Circuit breaker threshold
+}
+
+/**
+ * Production-grade search router
+ * Automatically chooses best strategy based on query
+ */
+class IntelligentSearchRouter {
+  async search(
+    query: string,
+    context: { userId: string; urgency: 'high' | 'normal' }
+  ): Promise<SearchResult[]> {
+    const startTime = Date.now()
+
+    // Step 1: Classify query
+    const strategy = chooseSearchStrategy(query, {
+      userExpectsInstantResults: context.urgency === 'high',
+      queryHasIDs: /\b[A-Z0-9-]{5,}\b/.test(query),
+      budgetConstraint: 'normal'
+    })
+
+    // Step 2: Check semantic cache (if applicable)
+    if (strategy.queryType !== 'exact') {
+      const cached = await semanticCache.get(query)
+      if (cached) {
+        console.log(`Cache hit: ${Date.now() - startTime}ms`)
+        return cached
+      }
+    }
+
+    // Step 3: Execute search based on strategy
+    let results: SearchResult[]
+
+    switch (strategy.queryType) {
+      case 'exact':
+        results = await this.lexicalSearch(query)
+        break
+
+      case 'semantic':
+        results = await this.vectorSearch(query)
+        break
+
+      case 'hybrid':
+        // Parallel execution for speed
+        const [vectorResults, keywordResults] = await Promise.all([
+          this.vectorSearch(query),
+          this.lexicalSearch(query)
+        ])
+        results = this.fuseResults(vectorResults, keywordResults)
+        break
+    }
+
+    // Step 4: Latency circuit breaker
+    const latency = Date.now() - startTime
+    if (latency > strategy.latencyBudget) {
+      console.warn(`Search exceeded latency budget: ${latency}ms > ${strategy.latencyBudget}ms`)
+      // Metric for alerting
+      await metrics.recordLatencyViolation(strategy.queryType, latency)
+    }
+
+    // Step 5: Cache result if semantic
+    if (strategy.queryType !== 'exact') {
+      await semanticCache.set(query, results)
+    }
+
+    return results
+  }
+
+  private async lexicalSearch(query: string): Promise<SearchResult[]> {
+    // BM25 keyword search (50ms)
+    return await bm25Index.search(query, 10)
+  }
+
+  private async vectorSearch(query: string): Promise<SearchResult[]> {
+    // Semantic vector search (200-500ms)
+    const embedding = await embed(query)
+    return await vectorDB.query({ vector: embedding, topK: 10 })
+  }
+
+  private fuseResults(
+    vectorResults: SearchResult[],
+    keywordResults: SearchResult[]
+  ): SearchResult[] {
+    // Reciprocal Rank Fusion (see Week 9: Hybrid Search for details)
+    return reciprocalRankFusion([vectorResults, keywordResults])
+  }
+}
+```
+
+### Key Architectural Insights
+
+1. **Semantic search is NOT always better** - Use hybrid or lexical for IDs/codes
+2. **Latency justification = business value** - 30% support reduction pays for 400ms added latency
+3. **Semantic caching mitigates cost** - 50-70% of queries hit cache → 50ms response
+4. **Circuit breakers prevent degradation** - Fall back to lexical if vector DB slow
+5. **Measure everything** - Track accuracy, latency, cost per query type
+
+**ROI Example** (for stakeholder presentations):
+- **Baseline**: Lexical search, 50ms, $0.001/query, 60% accuracy
+- **Upgraded**: Hybrid search, 400ms, $0.008/query, 90% accuracy
+- **Business impact**: 25% conversion increase = $100K/year revenue
+- **Cost increase**: 10M queries × $0.007 difference = $70K/year
+- **Net ROI**: $30K/year profit + better UX
+
+---
+
 ## Phase 1: Ingestion/Extraction
 
 Convert your documents into searchable vectors and store them in a vector database.
