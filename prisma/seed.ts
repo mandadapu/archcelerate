@@ -296,7 +296,7 @@ const weekData = [
     lab: {
       slug: 'medical-records-navigator',
       title: 'Lab: The Precision Retrieval Challenge',
-      description: 'Role: AI Architect for a Clinical Search tool. Objective: Conduct a side-by-side comparison of baseline vector search versus parent-document and hybrid retrieval to prove the quantitative value of advanced techniques in a high-stakes environment. Scope: 10 specialized exercises covering implementation and evaluation. Key Metrics: Focus on Hit Rate (Recall@K) and Mean Reciprocal Rank (MRR) to provide objective architectural proof of system performance.',
+      description: 'Build a clinical search platform and prove advanced RAG techniques through quantitative benchmarking. Compare baseline vector search vs. parent-document vs. hybrid retrieval across 10 specialized exercises. Measure success with Hit Rate (Recall@K) and MRR to validate architectural decisions with data.',
       exercises: [
         { number: 1, title: 'Setup: Index 5,000 pages of simulated clinical notes (PDFs)', type: 'setup' },
         { number: 2, title: 'Phase 1: Build "Naive" RAG baseline (fixed 200-token chunks, vector-only)', type: 'coding' },
@@ -313,7 +313,7 @@ const weekData = [
     project: {
       slug: 'enterprise-rag-system',
       title: 'Project: Production RAG for Regulated Industry',
-      description: 'The capstone forces you to deal with real-world enterprise constraints. Use Case: Building a HIPAA-grade RAG system. Technical Requirements: Integration of hybrid retrieval, re-ranking, and semantic caching. Compliance: Implementation of enterprise evaluation metrics and audit trails. Scope: 14 hours of build time with 11 core architectural requirements.',
+      description: 'Build a production-grade HIPAA-compliant RAG system with real-world enterprise constraints. Integrate hybrid retrieval, re-ranking, semantic caching, evaluation metrics, and audit trails across 11 architectural requirements.',
       requirements: [
         'Hybrid Search: Combine pgvector (semantic) + pg_trgm or ElasticSearch (BM25)',
         'Re-Ranking: Cohere Rerank API or BGE-Reranker model for top-50 → top-5',

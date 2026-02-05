@@ -16,17 +16,13 @@ import {
   GitBranch,
   Filter,
   Columns,
-  Shield,
   Activity,
   BarChart3,
   Eye,
   Gauge,
   TrendingUp,
-  Zap,
   Server,
-  Rocket,
-  Target,
-  Layers
+  Rocket
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -168,68 +164,10 @@ export default async function Week6Page() {
     <div className="container max-w-4xl py-8">
       <div className="space-y-8">
         {/* Header with Overview Tooltip */}
-        <WeekHeader title={week.title} description={week.description} />
+        <WeekHeader title={week.title} description={week.description || ''} />
 
         {/* Learning Objectives - Premium Collapsible */}
         <LearningObjectives objectives={objectives} />
-
-        {/* Week Structure: Three-Phase Progression */}
-        <Card className="border-teal-200 bg-gradient-to-r from-teal-50/50 to-cyan-50/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Layers className="h-5 w-5 text-teal-600" />
-              Week Structure: Precision → Reliability → Scale
-            </CardTitle>
-            <CardDescription>
-              This week follows a three-phase narrative that mirrors the journey from junior engineer to architect
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              {/* Phase 1: The Core */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Target className="h-5 w-5 text-teal-600" />
-                  <h3 className="font-semibold text-base">Phase 1: The Core (Concepts 1-3) - Precision</h3>
-                </div>
-                <p className="text-sm text-muted-foreground pl-7">
-                  Reducing hallucinations through architectural decisions. Master hybrid search, query transformation, and context optimization to find the right information.
-                </p>
-                <div className="text-xs text-teal-700 pl-7 font-medium">
-                  Where developers learn: How to architect retrieval systems
-                </div>
-              </div>
-
-              {/* Phase 2: The Governance */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Shield className="h-5 w-5 text-teal-600" />
-                  <h3 className="font-semibold text-base">Phase 2: The Governance (Concepts 4-6) - Reliability</h3>
-                </div>
-                <p className="text-sm text-muted-foreground pl-7">
-                  Building production-grade systems with enterprise requirements. This is where most developers fail, but where architects excel.
-                </p>
-                <div className="text-xs text-teal-700 pl-7 font-medium">
-                  Where architects excel: Hardening, observability, and monitoring
-                </div>
-              </div>
-
-              {/* Phase 3: The Scale */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Zap className="h-5 w-5 text-teal-600" />
-                  <h3 className="font-semibold text-base">Phase 3: The Scale (Concepts 7-8) - Commercial Viability</h3>
-                </div>
-                <p className="text-sm text-muted-foreground pl-7">
-                  Making systems economically viable at scale. Low cost, low latency, and production deployment ensure commercial success.
-                </p>
-                <div className="text-xs text-teal-700 pl-7 font-medium">
-                  Where businesses succeed: Performance optimization and infrastructure
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* Progress Overview */}
         {progress && (
