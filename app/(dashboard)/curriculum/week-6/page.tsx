@@ -60,6 +60,38 @@ function getConceptIllustration(slug: string) {
         </div>
       </div>
     ),
+    'observability-basics': (
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <Activity className="h-7 w-7 text-primary" />
+          <BarChart3 className="h-6 w-6 text-info" />
+        </div>
+      </div>
+    ),
+    'monitoring-ai-systems': (
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <Gauge className="h-7 w-7 text-warning" />
+          <TrendingUp className="h-6 w-6 text-success" />
+        </div>
+      </div>
+    ),
+    'performance-optimization': (
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <Zap className="h-7 w-7 text-success" />
+          <Database className="h-6 w-6 text-primary" />
+        </div>
+      </div>
+    ),
+    'production-deployment': (
+      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+        <div className="flex items-center gap-1.5">
+          <CheckCircle2 className="h-7 w-7 text-success" />
+          <Shield className="h-6 w-6 text-info" />
+        </div>
+      </div>
+    ),
   }
 
   return illustrations[slug] || <ChevronRight className="h-8 w-8 text-muted-foreground opacity-40" />
