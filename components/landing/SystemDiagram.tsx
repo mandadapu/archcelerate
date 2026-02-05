@@ -3,7 +3,7 @@
 export function SystemDiagram() {
   return (
     <div className="w-full px-4 mx-auto my-12">
-      <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-8 shadow-2xl border border-slate-700 max-w-[1600px] mx-auto">
+      <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-8 shadow-2xl border border-slate-700 max-w-[1800px] mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
           <h3 className="text-2xl font-bold text-white mb-2">
