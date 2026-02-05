@@ -69,6 +69,8 @@ model User {
   weekProjectSubmissions  WeekProjectSubmission[]
   userWeekProgress        UserWeekProgress[]
   curriculumContent       CurriculumContent[] // User-created curriculum
+  skillScores             UserSkillScore[]    @relation("UserSkillScores")
+  activityScores          UserActivityScore[] @relation("UserActivityScores")
 }
 
 model VerificationToken {
@@ -103,6 +105,91 @@ model SkillDiagnosis {
   completedAt     DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Skill Diagnosis System - Architect Competency Tracking
+model SkillDomain {
+  id          String   @id @default(cuid())
+  name        String   // "Systematic Prompting", "Sovereign Governance", etc.
+  slug        String   @unique // "systematic-prompting", "sovereign-governance", etc.
+  description String?  @db.Text
+  orderIndex  Int      @unique // 1-7 for radar chart ordering
+  maxPoints   Int      @default(100) // Base points per domain
+  createdAt   DateTime @default(now())
+
+  activityMappings ActivityDomainMapping[]
+  userScores       UserSkillScore[]
+
+  @@index([orderIndex])
+}
+
+model Activity {
+  id              String   @id @default(cuid())
+  weekNumber      Int      // 1-8
+  activityType    String   // 'lab' | 'project'
+  slug            String   @unique // e.g., 'w1-deterministic-prompting-lab'
+  title           String
+  description     String?  @db.Text
+  maxTotalPoints  Int      // Sum of all domain points for this activity
+  createdAt       DateTime @default(now())
+
+  domainMappings ActivityDomainMapping[]
+
+  @@index([weekNumber, activityType])
+}
+
+model ActivityDomainMapping {
+  id           String   @id @default(cuid())
+  activityId   String
+  domainId     String
+  maxPoints    Int      // Max points this activity contributes to this domain
+  isPrimary    Boolean  @default(true) // Primary vs secondary skill focus
+  description  String?  @db.Text // What aspect of this domain is tested
+  createdAt    DateTime @default(now())
+
+  activity Activity    @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  domain   SkillDomain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@unique([activityId, domainId])
+  @@index([activityId])
+  @@index([domainId])
+}
+
+model UserSkillScore {
+  id                String   @id @default(cuid())
+  userId            String
+  domainId          String
+  totalPoints       Float    @default(0) // Actual points earned
+  maxPoints         Int      // Total possible points (from completed activities)
+  percentage        Float    @default(0) // (totalPoints / maxPoints) * 100
+  proficiencyLevel  String?  // 'junior' | 'mid' | 'lead' | 'architect'
+  lastActivityAt    DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user   User        @relation("UserSkillScores", fields: [userId], references: [id], onDelete: Cascade)
+  domain SkillDomain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, domainId])
+  @@index([userId])
+  @@index([domainId])
+  @@index([proficiencyLevel])
+}
+
+model UserActivityScore {
+  id              String   @id @default(cuid())
+  userId          String
+  activityId      String
+  weekNumber      Int
+  activityType    String   // 'lab' | 'project'
+  scorePercentage Float    // 0-100 (percentage of max points earned)
+  completedAt     DateTime @default(now())
+  metadata        Json?    // Additional scoring details per domain
+
+  user User @relation("UserActivityScores", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, activityId])
+  @@index([userId, weekNumber])
+  @@index([userId, activityType])
 }
 
 model MentorConversation {
