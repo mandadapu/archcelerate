@@ -287,7 +287,11 @@ const weekData = [
       { slug: 'hybrid-retrieval-reranking', title: 'Hybrid Retrieval & Re-Ranking', minutes: 50 },
       { slug: 'query-transformation-patterns', title: 'Query Transformation Patterns', minutes: 45 },
       { slug: 'context-window-optimization', title: 'Context Window Management & Optimization', minutes: 40 },
-      { slug: 'enterprise-rag-hardening', title: 'Enterprise RAG Hardening & Evaluation', minutes: 55 }
+      { slug: 'enterprise-rag-hardening', title: 'Enterprise RAG Hardening & Evaluation', minutes: 55 },
+      { slug: 'observability-basics', title: 'Observability Basics for AI Systems', minutes: 30 },
+      { slug: 'monitoring-ai-systems', title: 'Monitoring LLM Applications', minutes: 35 },
+      { slug: 'performance-optimization', title: 'Performance Optimization & Caching', minutes: 40 },
+      { slug: 'production-deployment', title: 'Production Deployment Best Practices', minutes: 35 }
     ],
     lab: {
       slug: 'medical-records-navigator',
