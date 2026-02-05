@@ -289,7 +289,7 @@ const weekData = [
       { slug: 'context-window-optimization', title: 'Context Optimization', minutes: 40 },
       { slug: 'enterprise-rag-hardening', title: 'Enterprise RAG Hardening', minutes: 55 },
       { slug: 'observability-basics', title: 'AI Observability', minutes: 30 },
-      { slug: 'monitoring-ai-systems', title: 'Monitoring LLM Applications', minutes: 35 },
+      { slug: 'monitoring-ai-systems', title: 'LLM Monitoring', minutes: 35 },
       { slug: 'performance-optimization', title: 'Performance Optimization & Caching', minutes: 40 },
       { slug: 'production-deployment', title: 'Production Deployment', minutes: 35 }
     ],
