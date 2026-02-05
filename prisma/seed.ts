@@ -286,8 +286,8 @@ const weekData = [
     concepts: [
       { slug: 'hybrid-retrieval-reranking', title: 'Hybrid Search & Re-Ranking', description: 'Combining vector and keyword precision.', minutes: 50 },
       { slug: 'query-transformation-patterns', title: 'Query Transformation', description: 'Patterns like HyDE and Multi-Query decomposition.', minutes: 45 },
-      { slug: 'context-window-optimization', title: 'Context Optimization', description: 'Preventing degradation and managing window limits.', minutes: 40 },
-      { slug: 'enterprise-rag-hardening', title: 'Enterprise RAG Hardening', description: 'Security, evaluation, and robustness for production.', minutes: 55 },
+      { slug: 'context-window-optimization', title: 'Context Engineering', description: 'Chunking strategies and mitigating lost-in-the-middle.', minutes: 40 },
+      { slug: 'enterprise-rag-hardening', title: 'Evaluation & Security', description: 'RAGAS metrics, PII masking, and safety guardrails.', minutes: 55 },
       { slug: 'observability-basics', title: 'Request Tracing', description: 'Single-request debugging with spans and traces.', minutes: 30 },
       { slug: 'monitoring-ai-systems', title: 'System Metrics', description: 'Aggregated monitoring for drift, cost, and health.', minutes: 35 },
       { slug: 'performance-optimization', title: 'Performance & Caching', description: 'Low-latency engineering with semantic caching.', minutes: 40 },
