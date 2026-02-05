@@ -1,0 +1,546 @@
+---
+title: 'Context Window Management & Optimization'
+description: 'Long-context vs RAG tradeoffs, context pruning, and preventing "Lost in the Middle" degradation'
+---
+
+# Context Window Management & Optimization
+
+## The Context Window Dilemma
+
+Modern LLMs offer increasingly large context windows:
+- GPT-4: 128K tokens
+- Claude 3: 200K tokens
+- Gemini 1.5: 1M tokens
+
+**The Architect's Question**: If we can fit 1M tokens, why do we need RAG at all?
+
+---
+
+## 1. Long-Context vs RAG: The Trade-offs
+
+### Cost Analysis
+
+```typescript
+/**
+ * Compare costs: Long-Context vs RAG
+ */
+interface CostComparison {
+  tokens: number
+  cost_per_1k: number
+  total_cost: number
+}
+
+function compareCosts(documentSize: number, queryCount: number) {
+  // Scenario 1: Long-Context (send everything every time)
+  const longContext: CostComparison = {
+    tokens: documentSize,
+    cost_per_1k: 0.03, // Claude input pricing
+    total_cost: (documentSize / 1000) * 0.03 * queryCount
+  }
+
+  // Scenario 2: RAG (retrieve 4 chunks)
+  const rag: CostComparison = {
+    tokens: 4 * 500, // 4 chunks @ 500 tokens each
+    cost_per_1k: 0.03,
+    total_cost: (2000 / 1000) * 0.03 * queryCount
+  }
+
+  return { longContext, rag }
+}
+
+// Example: 100K token document, 1000 queries/day
+const costs = compareCosts(100000, 1000)
+console.log(costs)
+// longContext: $3,000/day
+// rag: $60/day (50x cheaper!)
+```
+
+### The Decision Matrix
+
+| Factor | Long-Context | RAG | Winner |
+|--------|-------------|-----|--------|
+| **Cost** | High (pay per query) | Low (one-time embedding) | **RAG** |
+| **Latency** | High (process all tokens) | Low (only relevant chunks) | **RAG** |
+| **Accuracy** | ❌ "Lost in the Middle" | ✅ Top results focused | **RAG** |
+| **Freshness** | ✅ Always current (re-send) | ❌ Needs re-indexing | **Long-Context** |
+| **Setup Complexity** | ✅ Simple (just send) | ❌ Vector DB + chunking | **Long-Context** |
+| **Multi-Document** | ❌ Limited by window | ✅ Search millions of docs | **RAG** |
+
+**Architect's Recommendation**: Use RAG for >95% of production use cases. Long-context is for:
+- Small documents (<10K tokens) queried frequently
+- Documents that change constantly (real-time feeds)
+- Exploratory analysis where you need "the whole story"
+
+---
+
+## 2. The "Lost in the Middle" Problem
+
+### The Research Finding
+
+**Paper**: "Lost in the Middle: How Language Models Use Long Contexts" (Liu et al., 2023)
+
+**Key Discovery**: LLMs pay more attention to information at the **beginning** and **end** of the context, while information in the middle is often ignored.
+
+```typescript
+/**
+ * Attention Distribution in Long Contexts
+ */
+interface AttentionPattern {
+  position: 'beginning' | 'middle' | 'end'
+  attention_score: number
+}
+
+const attentionDistribution: AttentionPattern[] = [
+  { position: 'beginning', attention_score: 0.85 }, // ✅ High recall
+  { position: 'middle', attention_score: 0.42 },    // ❌ Low recall
+  { position: 'end', attention_score: 0.78 }        // ✅ High recall
+]
+```
+
+### Mitigation: Strategic Chunk Placement
+
+```typescript
+/**
+ * Place most relevant chunks at beginning and end
+ */
+async function optimizeChunkPlacement(
+  query: string,
+  retrievedChunks: Chunk[]
+): Promise<Chunk[]> {
+  // Re-rank chunks by relevance
+  const ranked = await rerank(query, retrievedChunks)
+
+  // Place highest relevance at beginning
+  // Place second-highest at end
+  // Fill middle with remaining chunks
+  return [
+    ranked[0],          // Most relevant → beginning
+    ...ranked.slice(2, -1), // Medium relevance → middle
+    ranked[1]           // Second most relevant → end
+  ]
+}
+```
+
+### The Prefill Pattern
+
+Instead of relying on the model finding information, **tell it where to look**:
+
+```typescript
+/**
+ * Prefill: Explicitly reference chunk positions
+ */
+function buildPromptWithPrefill(query: string, chunks: Chunk[]) {
+  return `You will be given ${chunks.length} document chunks.
+
+CRITICAL: Pay special attention to:
+- Chunk 1 (most relevant to the query)
+- Chunk ${chunks.length} (second most relevant)
+
+Document Chunks:
+${chunks.map((c, i) => `[Chunk ${i + 1}]\n${c.content}\n`).join('\n---\n')}
+
+Query: ${query}
+
+Answer using ONLY information from the chunks above. Reference chunk numbers.`
+}
+```
+
+---
+
+## 3. Context Pruning Strategies
+
+### Problem: Redundant Information
+
+After hybrid retrieval and re-ranking, you might retrieve:
+- Chunk A: "The patient's HbA1c is 7.2%"
+- Chunk B: "HbA1c: 7.2%" (exact duplicate)
+- Chunk C: "A1c result: 7.2%" (semantic duplicate)
+
+**Solution**: Prune redundant content before sending to LLM.
+
+### Semantic Deduplication
+
+```typescript
+/**
+ * Remove semantically similar chunks
+ */
+async function deduplicateChunks(
+  chunks: Chunk[],
+  similarityThreshold: number = 0.95
+): Promise<Chunk[]> {
+  const deduplicated: Chunk[] = []
+  const embeddings = await Promise.all(
+    chunks.map(c => embed(c.content))
+  )
+
+  for (let i = 0; i < chunks.length; i++) {
+    const isDuplicate = deduplicated.some((_, j) => {
+      const similarity = cosineSimilarity(embeddings[i], embeddings[j])
+      return similarity > similarityThreshold
+    })
+
+    if (!isDuplicate) {
+      deduplicated.push(chunks[i])
+    }
+  }
+
+  return deduplicated
+}
+```
+
+### Token Budget Enforcement
+
+```typescript
+/**
+ * Keep only chunks that fit in token budget
+ */
+async function enforceTokenBudget(
+  chunks: Chunk[],
+  maxTokens: number
+): Promise<Chunk[]> {
+  const selected: Chunk[] = []
+  let currentTokens = 0
+
+  // Sort by relevance (highest first)
+  const sorted = chunks.sort((a, b) => b.score - a.score)
+
+  for (const chunk of sorted) {
+    const chunkTokens = countTokens(chunk.content)
+
+    if (currentTokens + chunkTokens <= maxTokens) {
+      selected.push(chunk)
+      currentTokens += chunkTokens
+    } else {
+      break // Budget exhausted
+    }
+  }
+
+  return selected
+}
+```
+
+### Content Compression
+
+```typescript
+/**
+ * Compress verbose content while preserving key information
+ */
+async function compressChunk(chunk: string): Promise<string> {
+  const prompt = `Compress this text to 50% length while keeping all key facts:
+
+Original:
+${chunk}
+
+Compressed (keep specific numbers, dates, names):`
+
+  return await llm.complete(prompt, { max_tokens: chunk.length / 2 })
+}
+
+// Example
+const original = "The patient presented to the clinic on January 15, 2024, complaining of elevated blood sugar. Laboratory results showed HbA1c of 7.2%, which is above the target of 6.5%. The patient has been on metformin 1000mg twice daily."
+
+const compressed = await compressChunk(original)
+// Result: "Patient visit 1/15/24. HbA1c: 7.2% (target 6.5%). On metformin 1000mg BID."
+// Tokens reduced: 45 → 22 (51% reduction)
+```
+
+---
+
+## 4. Context Window Strategies by Use Case
+
+### Strategy 1: Sliding Window (for chronological data)
+
+```typescript
+/**
+ * Sliding Window: Process long documents in overlapping segments
+ */
+async function slidingWindowRAG(
+  document: string,
+  query: string,
+  windowSize: number = 4000,
+  overlap: number = 500
+) {
+  const windows: string[] = []
+  let position = 0
+
+  while (position < document.length) {
+    const window = document.slice(position, position + windowSize)
+    windows.push(window)
+    position += windowSize - overlap
+  }
+
+  // Process each window
+  const windowAnswers = await Promise.all(
+    windows.map(async (window, index) => {
+      const prompt = `Window ${index + 1}/${windows.length}:
+${window}
+
+Question: ${query}
+Answer (reference window number):`
+
+      return await llm.complete(prompt)
+    })
+  )
+
+  // Synthesize across windows
+  return synthesizeAnswers(query, windowAnswers)
+}
+```
+
+**Use Case**: Medical records with chronological progression, legal documents with sections.
+
+### Strategy 2: Hierarchical Summarization
+
+```typescript
+/**
+ * Build document hierarchy: full text → sections → paragraphs
+ */
+interface DocumentHierarchy {
+  summary: string        // Top-level (200 tokens)
+  sections: Section[]    // Mid-level (500 tokens each)
+  fullText: string       // Full document (50K tokens)
+}
+
+async function hierarchicalRetrieval(
+  doc: DocumentHierarchy,
+  query: string
+): Promise<string> {
+  // Step 1: Check summary (cheap)
+  const summaryRelevance = await checkRelevance(doc.summary, query)
+
+  if (summaryRelevance < 0.5) {
+    return "Document not relevant"
+  }
+
+  // Step 2: Check sections (moderate cost)
+  const relevantSections = await Promise.all(
+    doc.sections.map(async (s) => ({
+      section: s,
+      relevance: await checkRelevance(s.content, query)
+    }))
+  ).then(results =>
+    results.filter(r => r.relevance > 0.6).map(r => r.section)
+  )
+
+  if (relevantSections.length === 0) {
+    return answerFromSummary(doc.summary, query)
+  }
+
+  // Step 3: Use full text of relevant sections only (expensive)
+  const context = relevantSections.map(s => s.fullText).join('\n\n')
+  return answerFromContext(context, query)
+}
+```
+
+**Use Case**: Large technical documents, research papers, legal contracts.
+
+### Strategy 3: Dynamic Context Allocation
+
+```typescript
+/**
+ * Allocate context window dynamically based on query complexity
+ */
+interface ContextBudget {
+  simple: number      // 2K tokens
+  moderate: number    // 8K tokens
+  complex: number     // 32K tokens
+}
+
+const budget: ContextBudget = {
+  simple: 2000,
+  moderate: 8000,
+  complex: 32000
+}
+
+async function dynamicContextAllocation(
+  query: string,
+  availableChunks: Chunk[]
+) {
+  // Classify query complexity
+  const complexity = await analyzeQueryComplexity(query)
+
+  // Allocate budget
+  const tokenBudget = budget[complexity]
+
+  // Fill context up to budget
+  const selectedChunks = await enforceTokenBudget(
+    availableChunks,
+    tokenBudget
+  )
+
+  return selectedChunks
+}
+
+// Query Complexity Classifier
+async function analyzeQueryComplexity(query: string): Promise<keyof ContextBudget> {
+  const wordCount = query.split(' ').length
+  const hasMultipleParts = query.includes('and') || query.includes('also')
+
+  if (wordCount < 8 && !hasMultipleParts) return 'simple'
+  if (wordCount < 20) return 'moderate'
+  return 'complex'
+}
+```
+
+---
+
+## 5. Monitoring Context Utilization
+
+### Key Metrics
+
+```typescript
+/**
+ * Track context window efficiency
+ */
+interface ContextMetrics {
+  tokens_sent: number
+  tokens_used: number       // Tokens actually referenced in answer
+  utilization_rate: number  // tokens_used / tokens_sent
+  cost_per_query: number
+  wasted_cost: number       // Cost of unused tokens
+}
+
+async function measureContextUtilization(
+  query: string,
+  context: string,
+  answer: string
+): Promise<ContextMetrics> {
+  const tokensSent = countTokens(context)
+
+  // Heuristic: Count how many chunks were cited in answer
+  const chunksCited = extractCitations(answer).length
+  const chunksTotal = context.split('---').length
+  const tokensUsed = (chunksCited / chunksTotal) * tokensSent
+
+  const utilizationRate = tokensUsed / tokensSent
+  const costPerToken = 0.00003 // $0.03 per 1K tokens
+  const costPerQuery = (tokensSent / 1000) * 0.03
+  const wastedCost = costPerQuery * (1 - utilizationRate)
+
+  return {
+    tokens_sent: tokensSent,
+    tokens_used: tokensUsed,
+    utilization_rate: utilizationRate,
+    cost_per_query: costPerQuery,
+    wasted_cost: wastedCost
+  }
+}
+```
+
+### Production Dashboard
+
+```typescript
+/**
+ * Context Efficiency Dashboard
+ */
+interface ContextDashboard {
+  avg_utilization: number      // Target: >60%
+  avg_tokens_per_query: number // Target: <4K
+  cost_per_1k_queries: number  // Target: <$100
+  p95_latency: number          // Target: <2s
+}
+
+// Alert when efficiency drops
+async function alertOnLowUtilization(metrics: ContextMetrics) {
+  if (metrics.utilization_rate < 0.4) {
+    await slack.send({
+      channel: '#ai-alerts',
+      text: `⚠️ Low context utilization: ${(metrics.utilization_rate * 100).toFixed(1)}%
+
+Wasted cost: $${metrics.wasted_cost.toFixed(4)} per query
+Recommended action: Reduce chunk count or improve re-ranking`
+    })
+  }
+}
+```
+
+---
+
+## 6. Advanced Patterns
+
+### Contextual Compression (LongLLMLingua)
+
+```typescript
+/**
+ * LongLLMLingua: Compress prompts while preserving meaning
+ * Paper: "LongLLMLingua: Accelerating LLMs in Long Context Scenarios"
+ */
+async function contextualCompression(
+  query: string,
+  context: string,
+  compressionRatio: number = 0.5
+): Promise<string> {
+  // Use small LLM to identify and remove less important tokens
+  const prompt = `Remove ${(1 - compressionRatio) * 100}% of tokens from this context while keeping information relevant to the query.
+
+Query: ${query}
+
+Context:
+${context}
+
+Compressed context (keep only essential information):`
+
+  return await llm.complete(prompt, {
+    max_tokens: Math.floor(countTokens(context) * compressionRatio)
+  })
+}
+```
+
+### Prompt Caching (Anthropic)
+
+```typescript
+/**
+ * Cache static context to reduce costs by 90%
+ * https://docs.anthropic.com/claude/docs/prompt-caching
+ */
+async function cachedContextQuery(
+  staticContext: string, // Medical guidelines (changes rarely)
+  userQuery: string       // User question (changes every query)
+) {
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20241022',
+    max_tokens: 1024,
+    system: [
+      {
+        type: 'text',
+        text: staticContext,
+        cache_control: { type: 'ephemeral' } // ← Cache this
+      }
+    ],
+    messages: [
+      { role: 'user', content: userQuery }
+    ]
+  })
+
+  // First call: Full cost
+  // Subsequent calls: 90% discount on cached tokens
+  return response
+}
+```
+
+**Use Case**: Knowledge base that changes infrequently (medical guidelines, product docs).
+
+---
+
+## Summary
+
+**Context Window Optimization = 50% Cost Reduction + 2x Faster Responses**
+
+1. **Long-Context vs RAG**: RAG wins on cost (50x cheaper) and accuracy (no "Lost in the Middle")
+2. **Strategic Placement**: Put important info at beginning and end of context
+3. **Pruning**: Remove duplicates, enforce token budgets, compress verbose content
+4. **Monitoring**: Track utilization rate (target >60%), alert on waste
+
+**Production Checklist**:
+- [ ] Deduplicate semantically similar chunks (cosine similarity >0.95)
+- [ ] Enforce token budget based on query complexity
+- [ ] Place top-ranked chunks at beginning and end
+- [ ] Monitor context utilization rate (target >60%)
+- [ ] Use prompt caching for static content (90% cost savings)
+- [ ] Compress verbose chunks before sending to LLM
+
+In the lab, you'll implement context pruning and measure the impact on cost and latency for the Medical Records Navigator.
+
+---
+
+**Next**: Enterprise RAG Hardening & Evaluation
