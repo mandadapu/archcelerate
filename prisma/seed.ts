@@ -348,11 +348,11 @@ const weekData = [
     title: 'Observability & Production (The Reliability)',
     description: 'Harden AI systems for production with observability, guardrails, and automated evaluation',
     objectives: [
-      'Master Observability Pillars: Implement OpenTelemetry tracing, automated evaluation frameworks, and cost-per-token monitoring to achieve full system visibility',
-      'Deploy Production Guardrails: Build input/output validation layers to prevent prompt injection, jailbreaks, and hallucinated outputs with <100ms latency overhead',
-      'Automated Quality Assurance: Implement LLM-as-a-Judge patterns for continuous evaluation, measuring faithfulness, relevance, and safety at scale',
-      'Harden with Circuit Breakers: Set up budget controls, rate limiting, and graceful degradation to prevent runaway costs and cascading failures',
-      'Build Audit Trails: Create golden datasets and semantic versioning systems for regression testing and regulatory compliance (HIPAA, SOC 2)'
+      'Architecting Observability: Implement the three pillars of AI observability—Traces, Evaluations, and Unit Economics—to monitor system health',
+      'Security & Guardrails: Build rigorous input and output validation layers to prevent prompt injections, data leakage, and medical hallucinations',
+      'Automated Quality Assurance: Deploy LLM-as-a-Judge pipelines to replace manual testing with scalable, automated evaluation logic',
+      'Production Reliability: Implement semantic versioning for AI assets and set up cost-tracking "circuit breakers" for commercial viability',
+      'Regression Testing: Create and maintain "Golden Datasets" to ensure new model deployments do not degrade existing system performance'
     ],
     concepts: [
       { slug: 'observability-pillars', title: 'Observability Pillars', description: 'Traces, evaluations, and cost tracking.', minutes: 50 },
