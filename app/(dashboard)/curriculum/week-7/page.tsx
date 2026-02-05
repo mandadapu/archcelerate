@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button'
 function getConceptIllustration(slug: string) {
   const illustrations: Record<string, JSX.Element> = {
     'observability-pillars': (
-      <div className="w-20 flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
+      <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
           <Eye className="h-7 w-7 text-amber-600" />
           <Activity className="h-6 w-6 text-yellow-500" />
@@ -31,7 +31,7 @@ function getConceptIllustration(slug: string) {
       </div>
     ),
     'guardrails': (
-      <div className="w-20 flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
+      <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
           <Shield className="h-7 w-7 text-amber-600" />
           <AlertTriangle className="h-6 w-6 text-yellow-500" />
@@ -39,7 +39,7 @@ function getConceptIllustration(slug: string) {
       </div>
     ),
     'llm-as-judge': (
-      <div className="w-20 flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
+      <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
           <Gavel className="h-7 w-7 text-amber-600" />
           <FileCheck className="h-6 w-6 text-yellow-500" />

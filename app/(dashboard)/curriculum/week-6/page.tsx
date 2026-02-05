@@ -34,7 +34,7 @@ import { Button } from '@/components/ui/button'
 function getConceptIllustration(slug: string) {
   const illustrations: Record<string, JSX.Element> = {
     'hybrid-retrieval-reranking': (
-      <div className="w-20 flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
+      <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
           <Search className="h-7 w-7 text-rose-600" />
           <ArrowUpDown className="h-5 w-5 text-rose-500" />
@@ -43,7 +43,7 @@ function getConceptIllustration(slug: string) {
       </div>
     ),
     'query-transformation-patterns': (
-      <div className="w-20 flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
+      <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
           <Settings className="h-7 w-7 text-rose-600" />
           <GitBranch className="h-6 w-6 text-rose-500" />
@@ -51,7 +51,7 @@ function getConceptIllustration(slug: string) {
       </div>
     ),
     'context-window-optimization': (
-      <div className="w-20 flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
+      <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
           <Filter className="h-7 w-7 text-rose-600" />
           <Columns className="h-6 w-6 text-rose-500" />
@@ -59,7 +59,7 @@ function getConceptIllustration(slug: string) {
       </div>
     ),
     'enterprise-rag-hardening': (
-      <div className="w-20 flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
+      <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
           <Shield className="h-7 w-7 text-rose-600" />
           <Activity className="h-6 w-6 text-rose-500" />
@@ -68,7 +68,7 @@ function getConceptIllustration(slug: string) {
       </div>
     ),
     'observability-basics': (
-      <div className="w-20 flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
+      <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
           <Eye className="h-7 w-7 text-rose-600" />
           <Activity className="h-6 w-6 text-rose-500" />
@@ -76,7 +76,7 @@ function getConceptIllustration(slug: string) {
       </div>
     ),
     'monitoring-ai-systems': (
-      <div className="w-20 flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
+      <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
           <BarChart3 className="h-7 w-7 text-rose-600" />
           <Gauge className="h-6 w-6 text-rose-500" />
@@ -84,7 +84,7 @@ function getConceptIllustration(slug: string) {
       </div>
     ),
     'performance-optimization': (
-      <div className="w-20 flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
+      <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
           <Zap className="h-7 w-7 text-rose-500" />
           <Database className="h-6 w-6 text-rose-600" />
@@ -93,7 +93,7 @@ function getConceptIllustration(slug: string) {
       </div>
     ),
     'production-deployment': (
-      <div className="w-20 flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
+      <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
           <Server className="h-6 w-6 text-gray-500" />
           <Rocket className="h-7 w-7 text-rose-600" />
