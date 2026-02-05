@@ -1,0 +1,786 @@
+---
+title: "GraphRAG Fundamentals"
+description: "Master knowledge graph-based retrieval for complex multi-hop reasoning and relationship-aware search"
+estimatedMinutes: 50
+week: 9
+concept: 1
+difficulty: advanced
+objectives:
+  - Understand when GraphRAG outperforms traditional vector RAG
+  - Build entity and relationship extraction pipelines with LLMs
+  - Implement hybrid retrieval combining graph traversal and vector search
+  - Measure production metrics: query latency, accuracy, and cost
+---
+
+import { CodePlayground } from '@/components/curriculum/CodePlayground'
+
+# GraphRAG Fundamentals
+
+Master knowledge graph-based retrieval that combines structured relationships with semantic search for complex reasoning tasks.
+
+> **Note**: GraphRAG is critical for domains requiring multi-hop reasoning (legal, medical, financial) where relationships between entities matter as much as individual facts.
+
+## What is GraphRAG?
+
+**Simple Explanation**: GraphRAG stores information as a network of connected entities (people, concepts, events) rather than isolated text chunks. When you ask a question, it walks through these connections to find answers that require understanding relationships.
+
+**Traditional RAG**: Searches for similar text chunks
+```
+Query: "What companies did John invest in?"
+→ Finds chunks mentioning John and investments
+→ Misses indirect relationships
+```
+
+**GraphRAG**: Walks entity relationships
+```
+Query: "What companies did John invest in?"
+→ Finds John entity
+→ Traverses "INVESTED_IN" edges
+→ Returns connected Company entities
+→ Includes relationship metadata (amount, date)
+```
+
+## Why GraphRAG Matters
+
+Traditional vector RAG fails when answers require:
+
+1. **Multi-hop reasoning**: "Who are the investors in companies that John advised?"
+   - Requires: John → ADVISED → Company → FUNDED_BY → Investors
+
+2. **Relationship context**: "How are Alice and Bob connected?"
+   - Need path traversal, not just co-occurrence
+
+3. **Temporal reasoning**: "What happened after X but before Y?"
+   - Requires ordered relationships with timestamps
+
+4. **Aggregation queries**: "How many products does this supplier provide?"
+   - Need to count relationships, not search chunks
+
+**Real-World Impact**:
+- **Legal**: Track case citations through 5+ hops (precedent chains)
+- **Medical**: Connect symptoms → diagnosis → treatments → contraindications
+- **Financial**: Trace ownership through shell companies
+- **Fraud Detection**: Identify suspicious transaction patterns across accounts
+
+## GraphRAG vs Traditional RAG
+
+| Dimension | Traditional RAG | GraphRAG | When to Use Each |
+|-----------|----------------|----------|------------------|
+| **Data Structure** | Text chunks (flat) | Entity-relationship graph | GraphRAG for structured domains |
+| **Query Type** | "Find similar text" | "Walk relationships" | GraphRAG for multi-hop questions |
+| **Strengths** | Semantic similarity, fast | Relationship reasoning, explainable | Both: hybrid retrieval |
+| **Weaknesses** | Misses indirect connections | Requires schema design, slower | Combine for best results |
+| **Cost** | Low (vector search only) | Medium (graph queries + LLM extraction) | Traditional for simple lookup |
+| **Accuracy** | 60-70% on multi-hop | 80-95% on multi-hop | GraphRAG when relationships matter |
+
+**Decision Framework**:
+```typescript
+function shouldUseGraphRAG(query: string, domain: string): boolean {
+  const indicators = {
+    needsMultiHop: /who|which|what.*connect|between|through|via/i.test(query),
+    needsAggregation: /how many|count|total|all/i.test(query),
+    structuredDomain: ['legal', 'medical', 'financial', 'org-chart'].includes(domain),
+    needsExplainability: true // Graph paths show reasoning
+  }
+
+  // Use GraphRAG if 2+ indicators are true
+  return Object.values(indicators).filter(Boolean).length >= 2
+}
+```
+
+## Architecture Overview
+
+GraphRAG has 3 core components:
+
+```
+┌──────────────┐
+│   Raw Text   │
+└──────┬───────┘
+       │
+       ▼
+┌──────────────────────┐
+│ Entity Extraction    │ ← LLM identifies entities/relationships
+│ (LLM-powered)        │
+└──────┬───────────────┘
+       │
+       ▼
+┌──────────────────────┐
+│ Knowledge Graph      │ ← Neo4j stores graph
+│ (Neo4j/Neptune)      │
+└──────┬───────────────┘
+       │
+       ▼
+┌──────────────────────┐
+│ Hybrid Retrieval     │ ← Combine graph + vector
+│ (Graph + Vector)     │
+└──────────────────────┘
+```
+
+## Entity Extraction with LLMs
+
+**Step 1**: Extract entities and relationships from text using Claude.
+
+<CodePlayground
+  title="LLM-Powered Entity Extraction"
+  description="Extract entities and relationships from unstructured text. Try modifying the input text to see how the system adapts!"
+  exerciseType="entity-extraction"
+  code={`import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY
+})
+
+interface Entity {
+  id: string
+  type: string
+  properties: Record<string, any>
+}
+
+interface Relationship {
+  from: string
+  to: string
+  type: string
+  properties: Record<string, any>
+}
+
+interface ExtractionResult {
+  entities: Entity[]
+  relationships: Relationship[]
+}
+
+async function extractEntitiesAndRelationships(
+  text: string
+): Promise<ExtractionResult> {
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-5-20251101',
+    max_tokens: 2000,
+    messages: [{
+      role: 'user',
+      content: \`Extract entities and relationships from this text. Return JSON only.
+
+Schema:
+{
+  "entities": [
+    {"id": "unique-id", "type": "Person|Company|Event", "properties": {...}}
+  ],
+  "relationships": [
+    {"from": "entity-id", "to": "entity-id", "type": "INVESTED_IN|WORKS_AT", "properties": {...}}
+  ]
+}
+
+Text:
+\${text}
+
+Return only valid JSON, no explanation.\`
+    }]
+  })
+
+  const jsonText = response.content[0].text
+  return JSON.parse(jsonText)
+}
+
+// Example usage
+async function runExtraction() {
+  const sampleText = \`
+    Acme Corp announced a $50M Series B funding round led by Sequoia Capital in March 2024.
+    The company, founded by Alice Johnson in 2020, specializes in AI infrastructure.
+    Bob Smith, formerly at Google, joined as CTO in January 2024.
+  \`
+
+  console.log('Extracting entities and relationships...\\n')
+
+  const result = await extractEntitiesAndRelationships(sampleText)
+
+  console.log('Entities:')
+  result.entities.forEach(entity => {
+    console.log(\`  - \${entity.type}: \${entity.id}\`)
+    console.log(\`    Properties: \${JSON.stringify(entity.properties, null, 2)}\`)
+  })
+
+  console.log('\\nRelationships:')
+  result.relationships.forEach(rel => {
+    console.log(\`  - \${rel.from} --[\${rel.type}]--> \${rel.to}\`)
+    if (Object.keys(rel.properties).length > 0) {
+      console.log(\`    Properties: \${JSON.stringify(rel.properties, null, 2)}\`)
+    }
+  })
+
+  console.log(\`\\nCost: \${(result.entities.length + result.relationships.length) * 0.00003} (estimated)\`)
+}
+
+runExtraction()`}
+/>
+
+**Key Techniques**:
+1. **Schema-driven extraction**: Provide clear JSON schema for consistent output
+2. **Entity deduplication**: Use fuzzy matching to merge "Alice Johnson" and "A. Johnson"
+3. **Relationship typing**: Define domain-specific relationship types (INVESTED_IN, WORKS_AT)
+4. **Batch processing**: Extract from 10-20 chunks in parallel to reduce latency
+
+**Production Metrics**:
+- **Extraction accuracy**: 85-92% with Claude Sonnet (measured against human labels)
+- **Cost**: ~$0.05 per 1000 entities extracted (Claude Sonnet 4.5)
+- **Latency**: 2-4 seconds per 500-token chunk
+
+## Building the Knowledge Graph
+
+**Step 2**: Store entities and relationships in Neo4j.
+
+<CodePlayground
+  title="Neo4j Knowledge Graph Construction"
+  description="Build and query a knowledge graph with Neo4j. Watch how relationships enable multi-hop reasoning!"
+  exerciseType="graph-construction"
+  code={`import neo4j from 'neo4j-driver'
+
+const driver = neo4j.driver(
+  'neo4j://localhost:7687',
+  neo4j.auth.basic('neo4j', 'password')
+)
+
+interface Entity {
+  id: string
+  type: string
+  properties: Record<string, any>
+}
+
+interface Relationship {
+  from: string
+  to: string
+  type: string
+  properties: Record<string, any>
+}
+
+async function buildKnowledgeGraph(
+  entities: Entity[],
+  relationships: Relationship[]
+): Promise<void> {
+  const session = driver.session()
+
+  try {
+    // Step 1: Create entities
+    for (const entity of entities) {
+      const query = \`
+        MERGE (e:\${entity.type} {id: $id})
+        SET e += $properties
+      \`
+      await session.run(query, {
+        id: entity.id,
+        properties: entity.properties
+      })
+    }
+
+    console.log(\`Created \${entities.length} entities\`)
+
+    // Step 2: Create relationships
+    for (const rel of relationships) {
+      const query = \`
+        MATCH (from {id: $fromId})
+        MATCH (to {id: $toId})
+        MERGE (from)-[r:\${rel.type}]->(to)
+        SET r += $properties
+      \`
+      await session.run(query, {
+        fromId: rel.from,
+        toId: rel.to,
+        properties: rel.properties
+      })
+    }
+
+    console.log(\`Created \${relationships.length} relationships\`)
+  } finally {
+    await session.close()
+  }
+}
+
+// Query the graph
+async function queryGraph(question: string): Promise<any[]> {
+  const session = driver.session()
+
+  try {
+    // Example: "Who invested in companies that Alice founded?"
+    const query = \`
+      MATCH (investor:Person)-[:INVESTED_IN]->(company:Company)<-[:FOUNDED]-(founder:Person {name: 'Alice Johnson'})
+      RETURN investor.name as investor, company.name as company
+    \`
+
+    const result = await session.run(query)
+    return result.records.map(record => record.toObject())
+  } finally {
+    await session.close()
+  }
+}
+
+// Example usage
+async function runGraphExample() {
+  const entities: Entity[] = [
+    {
+      id: 'alice-johnson',
+      type: 'Person',
+      properties: { name: 'Alice Johnson', role: 'Founder' }
+    },
+    {
+      id: 'acme-corp',
+      type: 'Company',
+      properties: { name: 'Acme Corp', industry: 'AI Infrastructure' }
+    },
+    {
+      id: 'sequoia',
+      type: 'Investor',
+      properties: { name: 'Sequoia Capital', type: 'VC' }
+    }
+  ]
+
+  const relationships: Relationship[] = [
+    {
+      from: 'alice-johnson',
+      to: 'acme-corp',
+      type: 'FOUNDED',
+      properties: { year: 2020 }
+    },
+    {
+      from: 'sequoia',
+      to: 'acme-corp',
+      type: 'INVESTED_IN',
+      properties: { amount: '$50M', round: 'Series B', date: '2024-03' }
+    }
+  ]
+
+  console.log('Building knowledge graph...\\n')
+  await buildKnowledgeGraph(entities, relationships)
+
+  console.log('\\nQuerying graph: "Who invested in companies Alice founded?"\\n')
+  const results = await queryGraph('Who invested in Alice companies')
+
+  results.forEach(row => {
+    console.log(\`  \${row.investor} invested in \${row.company}\`)
+  })
+
+  await driver.close()
+}
+
+runGraphExample()`}
+/>
+
+**Neo4j Best Practices**:
+1. **Index key properties**: `CREATE INDEX ON :Person(name)` for fast lookups
+2. **Use MERGE not CREATE**: Prevents duplicate entities
+3. **Batch writes**: Use transactions for 100+ entities at once
+4. **Set TTL**: Auto-delete stale entities with `APOC` procedures
+
+**Performance Metrics**:
+- **Write throughput**: 10,000 entities/sec (batched)
+- **Query latency**: 10-50ms for 2-hop traversal, 50-200ms for 4-hop
+- **Storage**: ~100 bytes per entity + 50 bytes per relationship
+
+## Hybrid Retrieval: Graph + Vector
+
+**Step 3**: Combine graph traversal with vector similarity for best results.
+
+<CodePlayground
+  title="Hybrid GraphRAG Retrieval"
+  description="Combine graph relationships with semantic similarity. Try queries that need both structure and semantics!"
+  exerciseType="hybrid-graphrag"
+  code={`import Anthropic from '@anthropic-ai/sdk'
+import { Pinecone } from '@pinecone-database/pinecone'
+import neo4j from 'neo4j-driver'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY })
+const neo4jDriver = neo4j.driver('neo4j://localhost:7687', neo4j.auth.basic('neo4j', 'password'))
+
+interface GraphResult {
+  entityId: string
+  path: string[]
+  relevanceScore: number
+}
+
+interface VectorResult {
+  text: string
+  entityId: string
+  score: number
+}
+
+interface HybridResult {
+  text: string
+  graphScore: number
+  vectorScore: number
+  finalScore: number
+  explanation: string
+}
+
+async function getEmbedding(text: string): Promise<number[]> {
+  // Use Claude's embedding or OpenAI
+  const response = await fetch('https://api.openai.com/v1/embeddings', {
+    method: 'POST',
+    headers: {
+      'Authorization': \`Bearer \${process.env.OPENAI_API_KEY}\`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      input: text,
+      model: 'text-embedding-3-small'
+    })
+  })
+  const data = await response.json()
+  return data.data[0].embedding
+}
+
+async function graphRetrieval(query: string): Promise<GraphResult[]> {
+  const session = neo4jDriver.session()
+
+  try {
+    // Extract query entity with LLM
+    const entityResponse = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20250929',
+      max_tokens: 100,
+      messages: [{
+        role: 'user',
+        content: \`Extract the main entity from this query: "\${query}". Return just the entity name.\`
+      }]
+    })
+
+    const entityName = entityResponse.content[0].text.trim()
+
+    // Find related entities within 2 hops
+    const result = await session.run(\`
+      MATCH path = (start)-[*1..2]-(related)
+      WHERE start.name CONTAINS $entityName
+      RETURN related.id as entityId,
+             [node in nodes(path) | node.name] as path,
+             1.0 / length(path) as relevanceScore
+      ORDER BY relevanceScore DESC
+      LIMIT 10
+    \`, { entityName })
+
+    return result.records.map(record => ({
+      entityId: record.get('entityId'),
+      path: record.get('path'),
+      relevanceScore: record.get('relevanceScore')
+    }))
+  } finally {
+    await session.close()
+  }
+}
+
+async function vectorRetrieval(query: string): Promise<VectorResult[]> {
+  const embedding = await getEmbedding(query)
+
+  const index = pinecone.Index('knowledge-base')
+  const results = await index.query({
+    vector: embedding,
+    topK: 10,
+    includeMetadata: true
+  })
+
+  return results.matches.map(match => ({
+    text: match.metadata.text as string,
+    entityId: match.metadata.entityId as string,
+    score: match.score
+  }))
+}
+
+async function hybridRetrieval(query: string): Promise<HybridResult[]> {
+  // Run both retrievals in parallel
+  const [graphResults, vectorResults] = await Promise.all([
+    graphRetrieval(query),
+    vectorRetrieval(query)
+  ])
+
+  // Merge results by entity ID
+  const merged = new Map<string, HybridResult>()
+
+  // Add graph results
+  graphResults.forEach(gr => {
+    merged.set(gr.entityId, {
+      text: gr.path.join(' → '),
+      graphScore: gr.relevanceScore,
+      vectorScore: 0,
+      finalScore: 0,
+      explanation: \`Found via graph: \${gr.path.join(' → ')}\`
+    })
+  })
+
+  // Boost with vector scores
+  vectorResults.forEach(vr => {
+    const existing = merged.get(vr.entityId)
+    if (existing) {
+      existing.vectorScore = vr.score
+      existing.text = vr.text
+    } else {
+      merged.set(vr.entityId, {
+        text: vr.text,
+        graphScore: 0,
+        vectorScore: vr.score,
+        finalScore: 0,
+        explanation: 'Found via semantic similarity only'
+      })
+    }
+  })
+
+  // Compute final scores (weighted combination)
+  const GRAPH_WEIGHT = 0.6
+  const VECTOR_WEIGHT = 0.4
+
+  const results = Array.from(merged.values()).map(result => ({
+    ...result,
+    finalScore: result.graphScore * GRAPH_WEIGHT + result.vectorScore * VECTOR_WEIGHT
+  }))
+
+  // Sort by final score
+  results.sort((a, b) => b.finalScore - a.finalScore)
+
+  return results.slice(0, 5)
+}
+
+// Example usage
+async function runHybridExample() {
+  const query = "What companies did investors in Alice's startups also fund?"
+
+  console.log(\`Query: "\${query}"\\n\`)
+  console.log('Running hybrid retrieval...\\n')
+
+  const results = await hybridRetrieval(query)
+
+  console.log('Top 5 Results:\\n')
+  results.forEach((result, i) => {
+    console.log(\`\${i + 1}. Score: \${result.finalScore.toFixed(3)} (Graph: \${result.graphScore.toFixed(2)}, Vector: \${result.vectorScore.toFixed(2)})\`)
+    console.log(\`   Text: \${result.text.substring(0, 100)}...\`)
+    console.log(\`   Explanation: \${result.explanation}\`)
+    console.log()
+  })
+
+  await neo4jDriver.close()
+}
+
+runHybridExample()`}
+/>
+
+**Hybrid Strategy**:
+```
+Final Score = (Graph Score × 0.6) + (Vector Score × 0.4)
+
+Why 60/40 split?
+- Graph captures explicit relationships (higher precision)
+- Vector captures semantic similarity (higher recall)
+- Combine for best of both worlds
+```
+
+**When Each Component Dominates**:
+- **Graph 80%, Vector 20%**: Structured queries ("Who reports to X?")
+- **Graph 40%, Vector 60%**: Semantic queries ("Companies similar to X")
+- **Graph 60%, Vector 40%**: Multi-hop reasoning ("Indirect connections")
+
+## Production Metrics & Optimization
+
+### Latency Breakdown
+
+Typical query: "Who are investors in AI companies Alice advised?"
+
+```
+┌─────────────────────┬──────────┬──────────┐
+│ Component           │ Latency  │ % Total  │
+├─────────────────────┼──────────┼──────────┤
+│ Entity extraction   │  150ms   │   30%    │
+│ Graph traversal     │   80ms   │   16%    │
+│ Vector search       │  120ms   │   24%    │
+│ LLM synthesis       │  150ms   │   30%    │
+├─────────────────────┼──────────┼──────────┤
+│ TOTAL               │  500ms   │  100%    │
+└─────────────────────┴──────────┴──────────┘
+```
+
+**Optimization Techniques**:
+1. **Cache entity extractions**: Store query → entity mapping (50ms saved)
+2. **Pre-compute common paths**: Materialize 2-hop relationships (30ms saved)
+3. **Use faster embeddings**: text-embedding-3-small vs ada-002 (40ms saved)
+4. **Parallel retrieval**: Run graph + vector simultaneously (already shown above)
+
+### Cost Analysis
+
+For 10,000 queries/month:
+
+```typescript
+interface CostBreakdown {
+  component: string
+  costPerQuery: number
+  monthlyTotal: number
+}
+
+const graphRAGCosts: CostBreakdown[] = [
+  {
+    component: 'Entity extraction (Claude Haiku)',
+    costPerQuery: 0.0001, // ~20 tokens
+    monthlyTotal: 1.00
+  },
+  {
+    component: 'Graph query (Neo4j Cloud)',
+    costPerQuery: 0.00005, // Compute cost
+    monthlyTotal: 0.50
+  },
+  {
+    component: 'Vector search (Pinecone)',
+    costPerQuery: 0.0001,
+    monthlyTotal: 1.00
+  },
+  {
+    component: 'Answer synthesis (Claude Sonnet)',
+    costPerQuery: 0.003, // ~200 tokens out
+    monthlyTotal: 30.00
+  }
+]
+
+const totalMonthlyCost = graphRAGCosts.reduce((sum, item) => sum + item.monthlyTotal, 0)
+console.log(\`Total monthly cost: $\${totalMonthlyCost}\`) // ~$32.50
+```
+
+**Cost vs Traditional RAG**:
+- Traditional RAG: ~$25/month (vector only)
+- GraphRAG: ~$32.50/month (+30% cost)
+- **ROI**: 80-95% accuracy on multi-hop vs 60-70% (worth the premium)
+
+### Accuracy Metrics
+
+Measure with golden test set (100 multi-hop questions):
+
+```typescript
+interface AccuracyMetrics {
+  method: string
+  precision: number
+  recall: number
+  f1Score: number
+}
+
+const comparisonResults: AccuracyMetrics[] = [
+  {
+    method: 'Vector RAG only',
+    precision: 0.68,
+    recall: 0.71,
+    f1Score: 0.69
+  },
+  {
+    method: 'Graph RAG only',
+    precision: 0.85,
+    recall: 0.78,
+    f1Score: 0.81
+  },
+  {
+    method: 'Hybrid (60/40)',
+    precision: 0.89,
+    recall: 0.87,
+    f1Score: 0.88
+  }
+]
+
+console.log('Accuracy on multi-hop reasoning tasks:')
+comparisonResults.forEach(result => {
+  console.log(\`\${result.method}: F1 = \${result.f1Score}\`)
+})
+```
+
+## Common Pitfalls
+
+### 1. Over-Extracting Entities
+**Problem**: Extracting every noun creates noisy graphs
+```typescript
+// ❌ Bad: Extract everything
+"John met Sarah at the coffee shop"
+→ Entities: John, Sarah, coffee shop, meeting
+
+// ✅ Good: Extract domain-relevant entities
+→ Entities: John (Person), Sarah (Person)
+→ Relationship: John -[MET]-> Sarah (location: coffee shop, time: ...)
+```
+
+### 2. Missing Entity Deduplication
+**Problem**: "Alice Johnson", "A. Johnson", "Alice J." are different entities
+```typescript
+// ✅ Solution: Fuzzy matching + LLM verification
+async function deduplicateEntity(newEntity: string, existingEntities: string[]): Promise<string> {
+  const fuzzyMatches = existingEntities.filter(e =>
+    levenshteinDistance(newEntity, e) < 3
+  )
+
+  if (fuzzyMatches.length === 0) return newEntity
+
+  // Use LLM to confirm match
+  const response = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20250929',
+    max_tokens: 10,
+    messages: [{
+      role: 'user',
+      content: \`Are "\${newEntity}" and "\${fuzzyMatches[0]}" the same entity? Answer YES or NO.\`
+    }]
+  })
+
+  return response.content[0].text === 'YES' ? fuzzyMatches[0] : newEntity
+}
+```
+
+### 3. Inefficient Graph Queries
+**Problem**: Unbounded traversals lock database
+```cypher
+-- ❌ Bad: Searches entire graph
+MATCH (a)-[*]-(b) WHERE a.name = 'Alice' RETURN b
+
+-- ✅ Good: Limit depth and result count
+MATCH (a)-[*1..3]-(b)
+WHERE a.name = 'Alice'
+RETURN b LIMIT 20
+```
+
+### 4. Ignoring Temporal Relationships
+**Problem**: All relationships treated as current
+```typescript
+// ✅ Solution: Add timestamp properties
+{
+  from: 'alice',
+  to: 'acme-corp',
+  type: 'WORKS_AT',
+  properties: {
+    startDate: '2020-01-01',
+    endDate: '2023-12-31', // She left!
+    current: false
+  }
+}
+
+// Query only current relationships
+MATCH (p:Person)-[r:WORKS_AT]->(c:Company)
+WHERE r.current = true
+```
+
+## Key Takeaways
+
+### When to Use GraphRAG
+- ✅ Multi-hop reasoning required (2+ relationship hops)
+- ✅ Structured domains (legal, medical, financial, org charts)
+- ✅ Need explainable reasoning (graph paths show logic)
+- ✅ Aggregation queries (counting relationships)
+- ❌ Simple semantic search (traditional RAG is cheaper)
+- ❌ Unstructured domains (poetry, creative writing)
+
+### Architecture Decisions
+- **Use Neo4j** for <10M entities, AWS Neptune for >10M
+- **Entity extraction**: Claude Haiku for cost, Sonnet for accuracy
+- **Hybrid retrieval**: 60% graph, 40% vector (adjust per domain)
+- **Caching**: Cache query → entity mappings (50ms saved per query)
+
+### Production Metrics
+- **Latency**: 500ms average (300ms with caching)
+- **Cost**: $0.003 per query (vs $0.002 for vector RAG)
+- **Accuracy**: 88% F1 on multi-hop (vs 69% for vector RAG)
+- **ROI**: 30% higher cost, 27% higher accuracy = justified for critical applications
+
+### Best Practices
+- Pre-define entity and relationship schemas per domain
+- Deduplicate entities during extraction (fuzzy matching + LLM)
+- Limit graph traversals to 3 hops max for performance
+- Use hybrid retrieval (graph + vector) for best results
+- Monitor graph size and prune stale entities monthly
+
+## Further Reading
+
+- [Microsoft GraphRAG Paper](https://arxiv.org/abs/2404.16130) - Original GraphRAG research
+- [Neo4j Graph Data Science](https://neo4j.com/docs/graph-data-science/current/) - Production graph algorithms
+- [Knowledge Graphs for RAG](https://www.pinecone.io/learn/knowledge-graphs/) - Pinecone's guide
+- [LangChain Graph QA](https://python.langchain.com/docs/use_cases/graph/quickstart) - Implementation patterns
+- [Amazon Neptune](https://aws.amazon.com/neptune/) - Managed graph database for scale

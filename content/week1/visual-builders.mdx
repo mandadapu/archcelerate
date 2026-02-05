@@ -1,299 +1,457 @@
-# Visual Agent Builders
+# Rapid Prototyping with Wordware: System Flow Mapping
 
-Understand visual agent building platforms, when to use them, and how they relate to code-based implementations.
+Map system flows **before writing code**—because edge cases discovered in production cost 100x more to fix than edge cases discovered in a visual prototype.
 
-## What Are Visual Agent Builders?
+> **Architect Perspective**: Visual builders aren't "no-code toys"—they're **architecture validation tools**. Use them to map all possible paths, identify edge cases, and validate prompt logic before committing to a code implementation.
 
-Visual agent builders are low-code/no-code platforms that let you create AI agents by connecting blocks in a graphical interface instead of writing code.
+## The Architecture Validation Problem
 
-**Popular platforms**:
-- **Flowise**: Open-source LangChain visual builder
-- **LangFlow**: Drag-and-drop LangChain interface
-- **n8n**: Workflow automation with AI nodes
-- **Make/Zapier**: No-code automation with LLM integrations
+**Reality Check**: Most AI systems fail because of missed edge cases, not wrong technology choices.
 
-## Why Visual Builders Matter
+**Common failures**:
+- "Handle user uploads" → Didn't consider: 5MB PDF limit, corrupted files, non-English text
+- "Summarize conversation" → Didn't consider: empty history, single-turn conversations, 100K token contexts
+- "Classify support tickets" → Didn't consider: multi-label cases, ambiguous inputs, new categories
 
-### Enterprise Context
+**Architectural Mandate**: **Map the entire system flow visually first**, discover all edge cases, *then* write code with all cases handled.
 
-In enterprise settings, you'll encounter visual builders because:
+## Why Wordware for System Flow Mapping
 
-1. **Business users can prototype**: Product managers and domain experts can test ideas without engineering
-2. **Faster iteration**: Visual changes are faster than code changes for simple flows
-3. **Lower barrier to entry**: Non-technical team members can contribute
-4. **Workflow automation**: Connect AI to existing business processes (Salesforce, Slack, databases)
+[Wordware](https://wordware.ai) is a visual AI builder that specializes in **prompt flows with branching logic**, making it ideal for discovering edge cases.
 
-### When to Use Visual vs Code
+**Key advantages for architects**:
+1. **Visual flow debugging**: See exactly which path the system takes for each input
+2. **Branching logic**: Map if/else conditions, loops, error handling visually
+3. **Prompt versioning**: Test multiple prompt variations side-by-side
+4. **Edge case catalog**: Every branch represents a case your code must handle
 
-| Use Visual Builder | Use Code |
-|-------------------|----------|
-| Quick prototyping | Production systems |
-| Business user demos | Complex logic |
-| Standard workflows | Custom integrations |
-| Proof of concept | Performance critical |
-| Non-technical team | Version control needed |
+**Example Use Case**: Before building a customer support classifier in code, map the flow in Wordware to discover:
+- What happens if the ticket has no subject?
+- What if it's in Spanish?
+- What if it contains PII?
+- What if it's a duplicate of an existing ticket?
 
-## What Visual Tools Abstract Away
+## The Prototyping Decision Framework
 
-Visual builders handle common patterns so you don't have to code them:
+**The Trade-off**: Visual prototypes are **fast to build but slow to scale**. Code is **slow to start but fast to optimize**.
 
-### 1. Prompt Chain Management
+### Decision Matrix: When to Build Custom vs. When to Use No-Code
 
-**Visual**: Drag "Prompt" block → Connect to "LLM" block → Connect to next "Prompt"
+| Factor | Use Wordware (No-Code) | Build Custom (Code) |
+|--------|----------------------|---------------------|
+| **Phase** | Discovery & validation | Production & scale |
+| **Complexity** | <10 decision branches | >10 branches or dynamic logic |
+| **Volume** | <1K requests/day | >10K requests/day |
+| **Latency** | >2s acceptable | <500ms required |
+| **Cost** | Prototype budget ($0-$100) | Ongoing ops ($500+/month) |
+| **Team** | Product/design-led | Engineering-led |
+| **Timeline** | Need validation in 48 hours | 2+ weeks for code implementation |
 
-**What it does in code**:
+**The Architect's Rule**: If you **can't articulate all edge cases**, use visual prototyping first. Once edge cases are mapped, build custom code.
+
+## Mapping System Flows: The Wordware Approach
+
+**The Process**: Build the flow visually, test all paths, document edge cases, *then* implement in code.
+
+### Step 1: Map the Happy Path
+
+**Example**: Customer support ticket classification
+
+**Visual Flow (Wordware)**:
+```
+[User Input] → [Extract Intent] → [Classify Urgency] → [Route to Team] → [Generate Response]
+```
+
+**Wordware Blocks**:
+1. **Input**: Accept support ticket text
+2. **Prompt 1**: "Extract the primary intent from this support ticket: {ticket}"
+3. **Prompt 2**: "Rate the urgency (low/medium/high): {intent}"
+4. **Conditional**: If urgent → escalation flow, else → standard flow
+5. **Prompt 3**: Generate appropriate response template
+
+### Step 2: Discover Edge Cases
+
+**Method**: Test with real data in Wordware, observe failures, add branches.
+
+**Edge cases discovered**:
+1. **Empty input**: User submits blank ticket → **Add validation branch**
+2. **Multiple intents**: "I need help with billing AND my account is locked" → **Add multi-label classification**
+3. **Non-English**: Ticket in Spanish → **Add language detection + translation**
+4. **Duplicate**: Same ticket submitted twice → **Add deduplication check**
+5. **PII leakage**: Ticket contains credit card number → **Add PII detection + masking**
+
+**Updated Flow (with edge cases)**:
+```
+[User Input]
+  ↓
+[Validation] → If empty → [Return error]
+  ↓
+[Language Detection] → If not English → [Translate to English]
+  ↓
+[PII Detection] → If found → [Mask PII]
+  ↓
+[Duplicate Check] → If duplicate → [Link to original]
+  ↓
+[Extract Intent(s)] → If multiple → [Multi-label classification]
+  ↓
+[Classify Urgency]
+  ↓
+[Route to Team]
+  ↓
+[Generate Response]
+```
+
+**Outcome**: You've now documented **7 edge cases** that must be handled in code. Without visual prototyping, you'd have discovered these in production (via user complaints).
+
+### Step 3: Translate Flow to Code (Preserving Edge Cases)
+
+**Critical Rule**: Every branch in your visual flow becomes a code path. Don't skip edge cases during translation.
+
+**Visual Flow Translation**:
+
 ```typescript
-const step1Result = await llm.chat(prompt1)
-const step2Result = await llm.chat(prompt2 + step1Result)
-return step2Result
+import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+interface TicketClassification {
+  intent: string[]
+  urgency: 'low' | 'medium' | 'high'
+  team: string
+  response: string
+  edgeCasesHandled: string[]
+}
+
+async function classifySupportTicket(
+  ticketText: string
+): Promise<TicketClassification> {
+  const edgeCases: string[] = []
+
+  // Edge Case 1: Validation
+  if (!ticketText || ticketText.trim().length === 0) {
+    throw new Error('Ticket text cannot be empty')
+  }
+
+  // Edge Case 2: Language Detection (simplified - in production use a library)
+  const isEnglish = /^[a-zA-Z0-9\s.,!?'-]+$/.test(ticketText)
+  let processedText = ticketText
+
+  if (!isEnglish) {
+    edgeCases.push('non-english-translated')
+    // In production: call translation API
+    processedText = await translateToEnglish(ticketText)
+  }
+
+  // Edge Case 3: PII Detection
+  const piiPatterns = [
+    /\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b/g, // Credit card
+    /\b\d{3}-\d{2}-\d{4}\b/g                        // SSN
+  ]
+
+  let maskedText = processedText
+  for (const pattern of piiPatterns) {
+    if (pattern.test(maskedText)) {
+      edgeCases.push('pii-detected-masked')
+      maskedText = maskedText.replace(pattern, '[REDACTED]')
+    }
+  }
+
+  // Main Classification Logic
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4.5',
+    max_tokens: 500,
+    messages: [{
+      role: 'user',
+      content: `Analyze this support ticket and respond in JSON:
+
+Ticket: "${maskedText}"
+
+Return:
+{
+  "intents": ["array", "of", "intents"],
+  "urgency": "low|medium|high",
+  "team": "billing|technical|account"
+}
+
+Note: Tickets can have multiple intents (e.g., billing + technical).`
+    }]
+  })
+
+  const result = JSON.parse(response.content[0].text)
+
+  // Edge Case 4: Multi-label intents
+  if (result.intents.length > 1) {
+    edgeCases.push('multi-intent-detected')
+  }
+
+  // Generate response
+  const responsePrompt = `Generate a response template for a ${result.urgency} urgency ticket about ${result.intents.join(' and ')}.`
+  const responseText = await anthropic.messages.create({
+    model: 'claude-haiku-4.5',  // Cheaper model for template generation
+    max_tokens: 200,
+    messages: [{ role: 'user', content: responsePrompt }]
+  })
+
+  return {
+    intent: result.intents,
+    urgency: result.urgency,
+    team: result.team,
+    response: responseText.content[0].text,
+    edgeCasesHandled: edgeCases
+  }
+}
+
+/* Example Output:
+{
+  "intent": ["billing", "refund"],
+  "urgency": "medium",
+  "team": "billing",
+  "response": "Thank you for contacting us about your refund...",
+  "edgeCasesHandled": ["pii-detected-masked"]
+}
+*/
 ```
 
-### 2. Vector Store Integration
+**What We Preserved from Visual Prototype**:
+- ✅ Input validation (empty check)
+- ✅ Language detection + translation path
+- ✅ PII masking
+- ✅ Multi-intent handling
+- ✅ Urgency classification
+- ✅ Team routing
+- ✅ Response generation
 
-**Visual**: "Document Loader" → "Text Splitter" → "Embeddings" → "Vector Store"
+**Without visual prototyping**, we likely would have shipped with only the "happy path" (lines 56-70) and discovered edge cases in production.
 
-**What it does in code**:
+## The Build vs. Buy Decision Framework
+
+**Architect Question**: "Should we build custom or use Wordware/no-code for production?"
+
+### The 3-Phase Maturity Model
+
+```
+Phase 1: Prototype (Wordware)
+  ↓
+Phase 2: MVP (Hybrid)
+  ↓
+Phase 3: Scale (Custom Code)
+```
+
+#### Phase 1: Prototype (0-1K users)
+
+**Use Wordware when:**
+- You're validating the concept
+- You need stakeholder buy-in
+- You're discovering edge cases
+- Timeline is <1 week
+
+**Example**: Email classifier for startup MVP
+- Build in Wordware: 4 hours
+- Test with 100 users: 1 week
+- Decision: 85% accuracy → proceed to Phase 2
+
+#### Phase 2: MVP (1K-10K users)
+
+**Hybrid Approach**:
+- Keep Wordware for **prompt iteration** (non-engineers can update)
+- Build custom code for **infrastructure** (auth, rate limiting, logging)
+- Use Wordware API as the LLM layer
+
+**Example**: Customer support bot with custom wrapper
 ```typescript
-const docs = await loadDocuments(filepath)
-const chunks = await splitter.splitDocuments(docs)
-const embeddings = await embedder.embedDocuments(chunks)
-await vectorStore.addVectors(embeddings, chunks)
-```
+// Custom wrapper around Wordware API
+async function classifyTicket(text: string) {
+  // Custom preprocessing
+  const sanitized = await sanitizeInput(text)
+  const cached = await checkCache(sanitized)
+  if (cached) return cached
 
-### 3. Retrieval-Augmented Generation (RAG)
+  // Call Wordware flow
+  const result = await wordware.run('ticket-classifier', { text: sanitized })
 
-**Visual**: "Vector Store Retriever" → "Prompt Template" → "LLM" → "Output"
+  // Custom postprocessing
+  await logClassification(result)
+  await cacheResult(sanitized, result)
 
-**What it does in code**:
-```typescript
-const relevantDocs = await vectorStore.similaritySearch(query, 5)
-const context = relevantDocs.map(d => d.content).join('\n')
-const prompt = `Context: ${context}\n\nQuestion: ${query}`
-const answer = await llm.chat(prompt)
-return answer
-```
-
-## Hands-On: Flowise
-
-Flowise is an open-source visual builder based on LangChain.
-
-### Installation
-
-```bash
-npm install -g flowise
-flowise start
-```
-
-Open http://localhost:3000
-
-### Building a Q&A Chatbot
-
-**Steps**:
-1. **Add Chat Model node**: Choose "ChatAnthropic" or "ChatOpenAI"
-2. **Add Prompt Template**: Define system prompt and user input
-3. **Connect nodes**: Drag from output to input
-4. **Test**: Use built-in chat interface
-5. **Export**: Download as JSON or get code
-
-### Example Flow
-
-```
-[User Input] → [Prompt Template] → [Chat Model] → [Output Parser] → [Response]
-```
-
-**Prompt Template**:
-```
-System: You are a helpful assistant.
-User: {input}
-```
-
-### Exporting to Code
-
-Flowise can export your flow as:
-- **JSON**: Flow definition (portable, can import later)
-- **API endpoint**: Deploy as REST API
-- **Python code**: LangChain code equivalent
-
-**Example export**:
-```python
-from langchain.chat_models import ChatAnthropic
-from langchain.prompts import ChatPromptTemplate
-
-chat_model = ChatAnthropic(model="claude-3-5-sonnet-20241022")
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant."),
-    ("user", "{input}")
-])
-
-chain = prompt | chat_model
-response = chain.invoke({"input": "Hello!"})
-```
-
-## From Visual to Code: Translation Guide
-
-### Visual Flow Components
-
-| Visual Block | Code Equivalent |
-|--------------|-----------------|
-| Chat Model | `new ChatAnthropic()` |
-| Prompt Template | `ChatPromptTemplate.from_messages()` |
-| Vector Store | `new PineconeStore()` |
-| Document Loader | `new PDFLoader()` |
-| Text Splitter | `new RecursiveCharacterTextSplitter()` |
-| Embeddings | `new OpenAIEmbeddings()` |
-| Output Parser | `new StringOutputParser()` |
-
-### Example: Complete Translation
-
-**Visual Flow**:
-```
-PDF Upload → Text Splitter → Embeddings → Pinecone → Retriever → Prompt → LLM → Answer
-```
-
-**Code Equivalent**:
-```typescript
-import { ChatAnthropic } from '@langchain/anthropic'
-import { PDFLoader } from 'langchain/document_loaders/fs/pdf'
-import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter'
-import { OpenAIEmbeddings } from '@langchain/openai'
-import { PineconeStore } from '@langchain/pinecone'
-import { ChatPromptTemplate } from '@langchain/core/prompts'
-
-// 1. Load PDF
-const loader = new PDFLoader('document.pdf')
-const docs = await loader.load()
-
-// 2. Split text
-const splitter = new RecursiveCharacterTextSplitter({
-  chunkSize: 1000,
-  chunkOverlap: 200
-})
-const chunks = await splitter.splitDocuments(docs)
-
-// 3. Create embeddings and store
-const embeddings = new OpenAIEmbeddings()
-const vectorStore = await PineconeStore.fromDocuments(
-  chunks,
-  embeddings,
-  { pineconeIndex: index }
-)
-
-// 4. Create retriever
-const retriever = vectorStore.asRetriever(5)
-
-// 5. Create prompt template
-const prompt = ChatPromptTemplate.from_messages([
-  ['system', 'Answer based on this context:\n{context}'],
-  ['user', '{question}']
-])
-
-// 6. Create LLM
-const llm = new ChatAnthropic({ model: 'claude-3-5-sonnet-20241022' })
-
-// 7. Query
-async function query(question: string) {
-  const docs = await retriever.getRelevantDocuments(question)
-  const context = docs.map(d => d.pageContent).join('\n')
-
-  const response = await llm.invoke(
-    await prompt.format({ context, question })
-  )
-
-  return response.content
+  return result
 }
 ```
 
-## Advantages of Code Over Visual
+**When to graduate to Phase 3**:
+- Volume exceeds 10K requests/day
+- Wordware costs > $500/month
+- You need <500ms latency
+- You need custom optimizations (caching, batching)
 
-Despite visual builders' convenience, code offers:
+#### Phase 3: Scale (>10K users)
 
-1. **Version control**: Git tracks every change
-2. **Testing**: Unit tests, integration tests, CI/CD
-3. **Debugging**: Step-through debugger, logging, profiling
-4. **Performance**: Optimize bottlenecks, caching, parallelization
-5. **Flexibility**: Custom logic, edge cases, integrations
-6. **Type safety**: TypeScript catches errors at compile time
-7. **Reusability**: Functions, modules, packages
-8. **Team collaboration**: Code review, shared understanding
+**Build Custom Code when:**
+- You've validated product-market fit
+- Cost optimization is critical
+- You need full control over performance
+- Team has engineering capacity
 
-## Best Practices
+**Migration Strategy**:
+1. Export edge case catalog from Wordware testing
+2. Translate flow to code (preserve all branches)
+3. Run A/B test: Wordware vs. custom code
+4. Measure: quality, latency, cost
+5. Cutover when custom code matches quality at lower cost
 
-### Use Visual Builders For:
-✅ Prototyping new ideas quickly
-✅ Demos for stakeholders
-✅ Exploring LangChain capabilities
-✅ Teaching non-engineers about AI flows
-✅ Simple workflows (< 5 nodes)
+**ROI Calculation**:
+```typescript
+// Wordware cost at scale
+const wordwareCost = {
+  requests: 500_000 / month,
+  costPerRequest: 0.002,  // Wordware markup + API cost
+  monthlyCost: 500_000 * 0.002 = $1,000
+}
 
-### Use Code For:
-✅ Production systems
-✅ Complex business logic
-✅ Performance-critical applications
-✅ Team collaboration with code review
-✅ Long-term maintenance
-✅ Workflows with > 10 steps
+// Custom code cost
+const customCost = {
+  requests: 500_000 / month,
+  apiCost: 500_000 * 0.0005,      // Direct Haiku API cost
+  infraCost: 50,                   // Server/Redis
+  engineeringTime: 40 hours,       // Initial build
+  monthlyCost: $250 + $50 = $300
+}
 
-## Practical Exercise
+// Break-even analysis
+const savings = $1,000 - $300 = $700/month
+const buildCost = 40 hours * $100/hour = $4,000
+const breakEven = $4,000 / $700 = 5.7 months
 
-**Build then Rebuild**:
-1. Build a Q&A chatbot in Flowise (10 minutes)
-2. Export the flow
-3. Rebuild the same functionality in TypeScript (30 minutes)
-4. Compare: What was easier/harder in each approach?
-5. Write a brief reflection on when you'd use each
+// Decision: Migrate to custom if product will exist >6 months
+```
 
-**Reflection questions**:
-- Which approach was faster for initial implementation?
-- Which would be easier to debug if something broke?
-- Which would be easier for a teammate to understand?
-- Which would you choose for a production system? Why?
+## Production Patterns: Best of Both Worlds
 
-## Real-World Examples
+**Architect Pattern**: Use visual tools for **discovery**, code for **delivery**.
 
-### Example 1: Customer Support Bot
+### Pattern 1: Visual as Documentation
 
-**Visual (Flowise)**:
-- 2 hours to build
-- Business team can update responses
-- Limited to predefined flows
-- Hard to add custom logic
+```typescript
+/**
+ * Support Ticket Classifier
+ *
+ * Wordware prototype: https://wordware.ai/flow/abc123
+ * Edge cases documented: 7 (see flow branches)
+ *
+ * Implementation matches Wordware flow exactly:
+ * 1. Validation → Error if empty
+ * 2. Language detection → Translate if needed
+ * 3. PII detection → Mask sensitive data
+ * 4. Duplicate check → Link if duplicate
+ * 5. Intent extraction → Support multi-label
+ * 6. Urgency classification
+ * 7. Response generation
+ */
+export async function classifySupportTicket(text: string) {
+  // Implementation follows Wordware flow...
+}
+```
 
-**Code (TypeScript)**:
-- 8 hours to build (first time)
-- 2 hours to build (with templates)
-- Engineers update logic
-- Full control over behavior
-- Easy to add A/B testing, analytics, custom integrations
+**Benefit**: New engineers can see the visual flow in Wordware, understand the logic, then read the code implementation.
 
-### Example 2: Document Q&A
+### Pattern 2: Prompt Iteration in Wordware, Deploy as Code
 
-**Visual (Flowise)**:
-- Perfect for proof-of-concept
-- Shows feasibility to stakeholders
-- Limited document format support
-- No custom chunking strategies
+**Workflow**:
+1. Product team iterates prompts in Wordware (no engineering needed)
+2. Export prompt templates weekly
+3. Engineers update code with new prompts
+4. Deploy via CI/CD
 
-**Code (TypeScript)**:
-- Production-grade error handling
-- Custom chunking for better results
-- Monitoring and observability
-- Cost tracking and optimization
-- Version control for prompts
+```typescript
+// Auto-generated from Wordware export (2024-02-05)
+const CLASSIFICATION_PROMPT = `
+Analyze this support ticket and classify:
 
-## Interview Talking Points
+Ticket: {ticket}
 
-When asked about visual builders in interviews:
+Return JSON:
+{
+  "urgency": "low|medium|high",
+  "category": "billing|technical|account",
+  "sentiment": "positive|neutral|negative"
+}
+`
 
-1. **Acknowledge their value**: "Visual builders are great for prototyping and enabling non-technical stakeholders"
+// Engineers focus on infrastructure, not prompt tuning
+async function classify(ticket: string) {
+  return await llm.generate(CLASSIFICATION_PROMPT, { ticket })
+}
+```
 
-2. **Know the tradeoffs**: "For production systems, I prefer code for testability, debugging, and team collaboration"
+### Pattern 3: A/B Test Wordware vs. Custom
 
-3. **Show you've used both**: "I've used Flowise to prototype a RAG system, then rebuilt it in TypeScript with custom optimizations"
+**Strategy**: Run both in parallel, measure quality/cost, choose winner.
 
-4. **Enterprise perspective**: "In enterprise settings, visual builders help bridge the gap between technical and business teams"
+```typescript
+async function classifyTicket(text: string, variant: 'wordware' | 'custom') {
+  const start = Date.now()
+
+  const result = variant === 'wordware'
+    ? await wordware.run('classifier', { text })
+    : await customClassifier(text)
+
+  await logMetrics({
+    variant,
+    latency: Date.now() - start,
+    cost: calculateCost(result),
+    accuracy: await evaluateAccuracy(result)
+  })
+
+  return result
+}
+
+// After 1 week:
+// Wordware: 92% accuracy, $0.002/request, 800ms p95
+// Custom:   92% accuracy, $0.0005/request, 200ms p95
+// Winner: Custom (same quality, 4x cheaper, 4x faster)
+```
+
+## Key Takeaways
+
+**The Prototyping Principle**:
+- **Visual first, code second**—discover edge cases before implementation
+- Wordware is an **architecture validation tool**, not just a no-code builder
+- Every branch in your visual flow is an edge case your code must handle
+
+**The Maturity Model**:
+1. **Phase 1 (0-1K users)**: Prototype in Wordware, validate concept
+2. **Phase 2 (1K-10K users)**: Hybrid approach—Wordware for prompts, custom for infrastructure
+3. **Phase 3 (>10K users)**: Migrate to custom code when ROI justifies engineering time
+
+**The Decision Framework**:
+```
+Should you build custom or use Wordware?
+
+Volume > 10K req/day?
+  ├─ Yes → Cost analysis (likely build custom)
+  └─ No → Can non-engineers manage prompts?
+      ├─ Yes → Keep Wordware
+      └─ No → Build custom
+```
+
+**Edge Case Discovery**:
+- Visual prototyping reveals edge cases **before production**
+- 1 hour in Wordware saves 10 hours fixing production bugs
+- Document all branches, translate all paths to code
+
+**The Cost Equation**:
+```typescript
+// Break-even calculation
+const monthsToBreakEven = (customBuildCost) / (wordwareCost - customCost)
+
+// Example: $4K build / $700 savings = 5.7 months
+// If product lifespan > 6 months → build custom
+// If product lifespan < 6 months → keep Wordware
+```
+
+**Best Practice**: Start with visual prototype, graduate to code when scale demands it. Never skip the prototyping phase—edge cases found in Wordware cost $0, edge cases found in production cost $1,000s.
 
 ## Further Reading
 
-- [Flowise Documentation](https://docs.flowiseai.com/)
-- [LangFlow GitHub](https://github.com/logspace-ai/langflow)
-- [LangChain Expression Language (LCEL)](https://python.langchain.com/docs/expression_language/) - The code pattern visual builders generate
+- [Wordware Documentation](https://docs.wordware.ai/)
+- [The Cost of Fixing Bugs](https://www.researchgate.net/figure/Cost-of-fixing-bugs-based-on-time-of-detection_fig1_255965523) - Why early edge case discovery matters
+- [Build vs. Buy Framework](https://stripe.com/guides/atlas/build-vs-buy) - Decision-making for tech choices

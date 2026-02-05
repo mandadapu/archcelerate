@@ -1,0 +1,979 @@
+---
+title: "Dataset Curation Pipeline"
+description: "Build production data pipelines with PII detection, quality filtering, and LLM-as-judge validation for high-quality fine-tuning datasets"
+estimatedMinutes: 50
+week: 10
+concept: 3
+difficulty: advanced
+objectives:
+  - Implement automated data collection from production systems
+  - Deploy PII detection and redaction for GDPR/HIPAA compliance
+  - Build LLM-as-judge quality filters for dataset validation
+  - Create data augmentation pipelines for 10K+ example datasets
+---
+
+import { CodePlayground } from '@/components/curriculum/CodePlayground'
+
+# Dataset Curation Pipeline
+
+Build automated pipelines that collect, clean, validate, and augment training data to create high-quality datasets for fine-tuning LLMs.
+
+> **Note**: Dataset quality is the #1 factor in fine-tuning success. "Garbage in, garbage out" - a model trained on 1,000 high-quality examples outperforms one trained on 10,000 low-quality examples.
+
+## What is Dataset Curation?
+
+**Simple Explanation**: Dataset curation is the process of collecting raw data (logs, user interactions, documents), filtering out bad examples, removing sensitive information, and enhancing it to create a clean training dataset. It's like hiring an editor to review thousands of articles before publishing.
+
+**The Problem**:
+```
+Raw production data:
+- 100,000 user conversations
+- Contains PII (names, emails, SSNs)
+- Quality varies (some excellent, some gibberish)
+- Inconsistent formatting
+- Duplicate conversations
+- Toxic/inappropriate content
+
+Challenge: Extract 10,000 high-quality, safe, diverse training examples
+```
+
+**Curation Pipeline Output**:
+```
+Curated dataset:
+✓ 10,000 examples (10% kept)
+✓ PII removed/redacted
+✓ Quality score >4/5
+✓ Diverse topics (not clustered)
+✓ Consistent format
+✓ Validated by LLM-as-judge
+✓ Ready for fine-tuning
+```
+
+## Why Dataset Curation Matters
+
+**Real-World Impact**:
+
+| Dataset Quality | Fine-Tuned Model Accuracy | Business Impact |
+|-----------------|---------------------------|-----------------|
+| No curation (raw logs) | 65% | Users frustrated, low adoption |
+| Basic filtering | 78% | Acceptable but inconsistent |
+| **Full curation pipeline** | **92%** | Production-ready, high trust |
+
+**Example: Customer Support Chatbot**
+```
+Without curation:
+- Training data: 50,000 raw conversations
+- Included: Spam, toxic messages, PII, low-quality responses
+- Result: Model learns bad patterns, hallucinates, leaks PII
+- Cost: $200 training + $50K reputation damage
+
+With curation:
+- Training data: 5,000 curated conversations
+- Quality-controlled, safe, diverse
+- Result: 92% accuracy, safe, trustworthy
+- Cost: $100 curation + $20 training = $120 total
+- ROI: Massive
+```
+
+## Data Collection Strategies
+
+### Strategy 1: Production Log Mining
+
+<CodePlayground
+  title="Production Data Collection"
+  description="Collect high-quality examples from production logs with automated filtering. Watch quality metrics!"
+  exerciseType="production-collection"
+  code={`import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
+
+interface ConversationExample {
+  id: string
+  messages: Array<{
+    role: 'system' | 'user' | 'assistant'
+    content: string
+  }>
+  metadata: {
+    userId: string
+    timestamp: Date
+    rating?: number
+    flagged: boolean
+    tokens: number
+  }
+}
+
+interface CollectionCriteria {
+  minRating?: number
+  maxTokens?: number
+  excludeFlagged: boolean
+  dateRange?: {
+    start: Date
+    end: Date
+  }
+  sampleRate?: number
+}
+
+async function collectProductionData(
+  criteria: CollectionCriteria
+): Promise<ConversationExample[]> {
+  console.log('Collecting production data...\\n')
+  console.log('Criteria:')
+  console.log(\`  Min rating: \${criteria.minRating || 'none'}\`)
+  console.log(\`  Exclude flagged: \${criteria.excludeFlagged}\`)
+  console.log(\`  Date range: \${criteria.dateRange?.start.toISOString().split('T')[0]} to \${criteria.dateRange?.end.toISOString().split('T')[0]}\`)
+  console.log()
+
+  // Build query
+  const whereClause: any = {
+    flagged: criteria.excludeFlagged ? false : undefined,
+    rating: criteria.minRating ? { gte: criteria.minRating } : undefined,
+    createdAt: criteria.dateRange ? {
+      gte: criteria.dateRange.start,
+      lte: criteria.dateRange.end
+    } : undefined
+  }
+
+  // Remove undefined fields
+  Object.keys(whereClause).forEach(key =>
+    whereClause[key] === undefined && delete whereClause[key]
+  )
+
+  const conversations = await prisma.conversation.findMany({
+    where: whereClause,
+    include: { messages: true },
+    orderBy: { rating: 'desc' }
+  })
+
+  console.log(\`Retrieved \${conversations.length} conversations\`)
+
+  // Format for fine-tuning
+  const formatted = conversations.map(conv => ({
+    id: conv.id,
+    messages: conv.messages.map(m => ({
+      role: m.role as 'system' | 'user' | 'assistant',
+      content: m.content
+    })),
+    metadata: {
+      userId: conv.userId,
+      timestamp: conv.createdAt,
+      rating: conv.rating,
+      flagged: conv.flagged,
+      tokens: conv.messages.reduce((sum, m) => sum + m.content.length / 4, 0)
+    }
+  }))
+
+  // Apply sampling if needed
+  if (criteria.sampleRate && criteria.sampleRate < 1) {
+    const sampled = formatted.filter(() => Math.random() < criteria.sampleRate)
+    console.log(\`Sampled to \${sampled.length} examples (\${(criteria.sampleRate * 100).toFixed(0)}% rate)\\n\`)
+    return sampled
+  }
+
+  return formatted
+}
+
+// Example usage
+async function runCollection() {
+  const criteria: CollectionCriteria = {
+    minRating: 4, // Only 4-5 star conversations
+    excludeFlagged: true,
+    dateRange: {
+      start: new Date('2025-01-01'),
+      end: new Date('2025-02-01')
+    },
+    sampleRate: 0.1 // 10% sample
+  }
+
+  const data = await collectProductionData(criteria)
+
+  console.log('Collection Summary:')
+  console.log(\`  Total examples: \${data.length}\`)
+  console.log(\`  Avg rating: \${(data.reduce((sum, d) => sum + (d.metadata.rating || 0), 0) / data.length).toFixed(2)}\`)
+  console.log(\`  Avg tokens: \${(data.reduce((sum, d) => sum + d.metadata.tokens, 0) / data.length).toFixed(0)}\`)
+  console.log(\`  Date range: \${data[0]?.metadata.timestamp.toISOString().split('T')[0]} to \${data[data.length - 1]?.metadata.timestamp.toISOString().split('T')[0]}\`)
+}
+
+runCollection()
+`}
+/>
+
+### Strategy 2: Synthetic Data Generation
+
+When production data is insufficient:
+
+```typescript
+async function generateSyntheticExamples(
+  seed: string,
+  count: number
+): Promise<ConversationExample[]> {
+  const examples: ConversationExample[] = []
+
+  for (let i = 0; i < count; i++) {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5-20251101',
+      max_tokens: 500,
+      messages: [{
+        role: 'user',
+        content: `Generate a realistic customer support conversation about: ${seed}
+
+        Format:
+        User: [customer question]
+        Assistant: [helpful response]
+
+        Make it realistic and diverse.`
+      }]
+    })
+
+    // Parse and format
+    const conversation = parseConversation(response.content[0].text)
+    examples.push(conversation)
+  }
+
+  return examples
+}
+```
+
+## PII Detection and Redaction
+
+**Critical for compliance**: GDPR, HIPAA, CCPA all require PII removal.
+
+<CodePlayground
+  title="PII Detection & Redaction Pipeline"
+  description="Detect and redact personally identifiable information automatically. GDPR/HIPAA compliant!"
+  exerciseType="pii-detection"
+  code={`import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY
+})
+
+interface PIIDetectionResult {
+  hasPII: boolean
+  piiTypes: string[]
+  redactedText: string
+  confidence: number
+}
+
+// Pattern-based detection (fast, rule-based)
+function detectPIIPatterns(text: string): {
+  detected: Array<{ type: string, value: string }>
+  redacted: string
+} {
+  const patterns = {
+    email: /\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b/g,
+    phone: /\\b\\d{3}[-.]?\\d{3}[-.]?\\d{4}\\b/g,
+    ssn: /\\b\\d{3}-\\d{2}-\\d{4}\\b/g,
+    creditCard: /\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b/g,
+    zipCode: /\\b\\d{5}(?:-\\d{4})?\\b/g
+  }
+
+  const detected: Array<{ type: string, value: string }> = []
+  let redacted = text
+
+  Object.entries(patterns).forEach(([type, pattern]) => {
+    const matches = text.match(pattern)
+    if (matches) {
+      matches.forEach(match => {
+        detected.push({ type, value: match })
+        redacted = redacted.replace(match, \`[REDACTED_\${type.toUpperCase()}]\`)
+      })
+    }
+  })
+
+  return { detected, redacted }
+}
+
+// LLM-based detection (slower, more comprehensive)
+async function detectPIIWithLLM(text: string): Promise<PIIDetectionResult> {
+  const response = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20250929', // Fast and cheap
+    max_tokens: 1000,
+    messages: [{
+      role: 'user',
+      content: \`Detect personally identifiable information (PII) in this text.
+
+PII types to detect:
+- Names (first, last)
+- Email addresses
+- Phone numbers
+- SSN / Government IDs
+- Credit card numbers
+- Physical addresses
+- Birth dates
+- Medical info
+
+Text:
+"\${text}"
+
+Return JSON:
+{
+  "hasPII": true/false,
+  "piiTypes": ["email", "name", ...],
+  "redactedText": "text with [REDACTED] placeholders",
+  "confidence": 0.0-1.0
+}\`
+    }]
+  })
+
+  return JSON.parse(response.content[0].text)
+}
+
+// Complete PII pipeline
+async function redactPII(text: string, method: 'pattern' | 'llm' | 'both'): Promise<PIIDetectionResult> {
+  console.log(\`Scanning for PII (method: \${method})...\\n\`)
+
+  if (method === 'pattern') {
+    const result = detectPIIPatterns(text)
+    return {
+      hasPII: result.detected.length > 0,
+      piiTypes: [...new Set(result.detected.map(d => d.type))],
+      redactedText: result.redacted,
+      confidence: 0.95 // High confidence for regex matches
+    }
+  } else if (method === 'llm') {
+    return await detectPIIWithLLM(text)
+  } else {
+    // Both: Use patterns first, then LLM for missed cases
+    const patternResult = detectPIIPatterns(text)
+    const llmResult = await detectPIIWithLLM(patternResult.redacted)
+
+    return {
+      hasPII: patternResult.detected.length > 0 || llmResult.hasPII,
+      piiTypes: [...new Set([
+        ...patternResult.detected.map(d => d.type),
+        ...llmResult.piiTypes
+      ])],
+      redactedText: llmResult.redactedText,
+      confidence: 0.98 // Highest confidence with both methods
+    }
+  }
+}
+
+// Example usage
+async function runPIIDetection() {
+  const examples = [
+    "My email is john.doe@example.com and phone is 555-123-4567",
+    "Patient John Smith, DOB 01/15/1985, SSN 123-45-6789",
+    "Contact me at 123 Main St, New York, NY 10001"
+  ]
+
+  for (const example of examples) {
+    console.log(\`Original: "\${example}"\\n\`)
+
+    const result = await redactPII(example, 'both')
+
+    console.log(\`Has PII: \${result.hasPII}\`)
+    console.log(\`Types: \${result.piiTypes.join(', ')}\`)
+    console.log(\`Redacted: "\${result.redactedText}"\`)
+    console.log(\`Confidence: \${(result.confidence * 100).toFixed(0)}%\\n\`)
+    console.log('─'.repeat(80) + '\\n')
+  }
+}
+
+runPIIDetection()
+`}
+/>
+
+**PII Detection Performance**:
+
+| Method | Speed | Accuracy | Cost | Use Case |
+|--------|-------|----------|------|----------|
+| Regex patterns | 1ms/doc | 85% | Free | High volume, obvious PII |
+| LLM (Haiku) | 200ms/doc | 95% | $0.00003/doc | Complex PII, names |
+| Both (recommended) | 200ms/doc | 98% | $0.00003/doc | Production |
+
+## Quality Filtering with LLM-as-Judge
+
+Automatically assess example quality using LLMs:
+
+<CodePlayground
+  title="LLM-as-Judge Quality Filter"
+  description="Score training examples on quality dimensions. Watch automated curation in action!"
+  exerciseType="quality-filter"
+  code={`import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY
+})
+
+interface QualityScore {
+  overall: number // 0-1
+  dimensions: {
+    relevance: number
+    clarity: number
+    correctness: number
+    helpfulness: number
+    safety: number
+  }
+  reasoning: string
+  recommendation: 'keep' | 'review' | 'discard'
+}
+
+async function scoreQuality(example: ConversationExample): Promise<QualityScore> {
+  const conversation = example.messages
+    .map(m => \`\${m.role}: \${m.content}\`)
+    .join('\\n')
+
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-5-20251101', // Use Sonnet for quality assessment
+    max_tokens: 500,
+    messages: [{
+      role: 'user',
+      content: \`Evaluate this customer support conversation for training data quality.
+
+Conversation:
+\${conversation}
+
+Score each dimension 0.0-1.0:
+- Relevance: Is the conversation on-topic and coherent?
+- Clarity: Are messages clear and well-written?
+- Correctness: Is information accurate?
+- Helpfulness: Does assistant provide value?
+- Safety: Is content appropriate and safe?
+
+Return JSON:
+{
+  "overall": 0.0-1.0,
+  "dimensions": {
+    "relevance": 0.0-1.0,
+    "clarity": 0.0-1.0,
+    "correctness": 0.0-1.0,
+    "helpfulness": 0.0-1.0,
+    "safety": 0.0-1.0
+  },
+  "reasoning": "Brief explanation",
+  "recommendation": "keep|review|discard"
+}\`
+    }]
+  })
+
+  return JSON.parse(response.content[0].text)
+}
+
+// Batch quality filtering
+async function filterByQuality(
+  examples: ConversationExample[],
+  threshold: number = 0.75
+): Promise<{
+  kept: ConversationExample[]
+  discarded: ConversationExample[]
+  review: ConversationExample[]
+}> {
+  console.log(\`Filtering \${examples.length} examples (threshold: \${threshold})...\\n\`)
+
+  const results = {
+    kept: [] as ConversationExample[],
+    discarded: [] as ConversationExample[],
+    review: [] as ConversationExample[]
+  }
+
+  // Process in batches of 10 to avoid rate limits
+  const BATCH_SIZE = 10
+
+  for (let i = 0; i < examples.length; i += BATCH_SIZE) {
+    const batch = examples.slice(i, i + BATCH_SIZE)
+
+    const scores = await Promise.all(
+      batch.map(ex => scoreQuality(ex))
+    )
+
+    batch.forEach((example, idx) => {
+      const score = scores[idx]
+
+      if (score.recommendation === 'keep') {
+        results.kept.push(example)
+      } else if (score.recommendation === 'review') {
+        results.review.push(example)
+      } else {
+        results.discarded.push(example)
+      }
+    })
+
+    console.log(\`Processed \${Math.min(i + BATCH_SIZE, examples.length)}/\${examples.length}\`)
+  }
+
+  console.log(\`\\nFiltering complete:\`)
+  console.log(\`  Kept: \${results.kept.length} (\${(results.kept.length / examples.length * 100).toFixed(1)}%)\`)
+  console.log(\`  Review: \${results.review.length} (\${(results.review.length / examples.length * 100).toFixed(1)}%)\`)
+  console.log(\`  Discarded: \${results.discarded.length} (\${(results.discarded.length / examples.length * 100).toFixed(1)}%)\\n\`)
+
+  return results
+}
+
+// Example usage
+async function runQualityFilter() {
+  const examples: ConversationExample[] = [
+    {
+      id: 'conv-1',
+      messages: [
+        { role: 'user', content: 'How do I reset my password?' },
+        { role: 'assistant', content: 'To reset your password, go to Settings > Security > Reset Password. You\\'ll receive an email with instructions.' }
+      ],
+      metadata: { userId: 'u1', timestamp: new Date(), flagged: false, tokens: 50 }
+    },
+    {
+      id: 'conv-2',
+      messages: [
+        { role: 'user', content: 'asdfasdf' },
+        { role: 'assistant', content: 'I don\\'t understand.' }
+      ],
+      metadata: { userId: 'u2', timestamp: new Date(), flagged: false, tokens: 20 }
+    },
+    {
+      id: 'conv-3',
+      messages: [
+        { role: 'user', content: 'What are your hours?' },
+        { role: 'assistant', content: 'Our customer support is available 24/7. You can reach us anytime via chat, email at support@example.com, or phone at 1-800-SUPPORT.' }
+      ],
+      metadata: { userId: 'u3', timestamp: new Date(), flagged: false, tokens: 60 }
+    }
+  ]
+
+  const filtered = await filterByQuality(examples, 0.75)
+
+  console.log('Kept examples:')
+  filtered.kept.forEach(ex => {
+    console.log(\`  - \${ex.id}: \${ex.messages[0].content.substring(0, 50)}...\`)
+  })
+
+  if (filtered.discarded.length > 0) {
+    console.log('\\nDiscarded examples:')
+    filtered.discarded.forEach(ex => {
+      console.log(\`  - \${ex.id}: \${ex.messages[0].content.substring(0, 50)}...\`)
+    })
+  }
+}
+
+runQualityFilter()
+`}
+/>
+
+**Quality Filtering ROI**:
+```
+Without filtering:
+- 10,000 examples → Train model
+- Accuracy: 78%
+- Training cost: $80
+
+With LLM-as-judge filtering:
+- 10,000 examples → 3,000 high-quality examples
+- Accuracy: 92% (+14%)
+- Filtering cost: $30 (10K × $0.003)
+- Training cost: $24 (3K examples)
+- Total: $54 (32% savings + better model)
+```
+
+## Data Augmentation
+
+Increase dataset size and diversity:
+
+<CodePlayground
+  title="Data Augmentation Pipeline"
+  description="Augment training data with paraphrasing and synthetic variations. Watch dataset grow!"
+  exerciseType="data-augmentation"
+  code={`import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY
+})
+
+interface AugmentationStrategy {
+  name: string
+  apply: (example: ConversationExample) => Promise<ConversationExample[]>
+}
+
+// Strategy 1: Paraphrasing
+async function paraphraseConversation(
+  example: ConversationExample
+): Promise<ConversationExample> {
+  const userMessage = example.messages.find(m => m.role === 'user')
+  if (!userMessage) return example
+
+  const response = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20250929',
+    max_tokens: 200,
+    messages: [{
+      role: 'user',
+      content: \`Paraphrase this user message while keeping the same meaning:
+
+Original: "\${userMessage.content}"
+
+Paraphrased (return only the paraphrased text):\`
+    }]
+  })
+
+  const paraphrased = response.content[0].text.trim()
+
+  return {
+    ...example,
+    id: \`\${example.id}-paraphrase\`,
+    messages: example.messages.map(m =>
+      m.role === 'user' ? { ...m, content: paraphrased } : m
+    )
+  }
+}
+
+// Strategy 2: Back-translation
+async function backTranslate(
+  example: ConversationExample
+): Promise<ConversationExample> {
+  const userMessage = example.messages.find(m => m.role === 'user')
+  if (!userMessage) return example
+
+  // Translate to Spanish and back to English for variation
+  const toSpanish = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20250929',
+    max_tokens: 200,
+    messages: [{
+      role: 'user',
+      content: \`Translate to Spanish: "\${userMessage.content}"\`
+    }]
+  })
+
+  const backToEnglish = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20250929',
+    max_tokens: 200,
+    messages: [{
+      role: 'user',
+      content: \`Translate to English: "\${toSpanish.content[0].text}"\`
+    }]
+  })
+
+  return {
+    ...example,
+    id: \`\${example.id}-backtrans\`,
+    messages: example.messages.map(m =>
+      m.role === 'user' ? { ...m, content: backToEnglish.content[0].text } : m
+    )
+  }
+}
+
+// Strategy 3: Contextual variations
+async function generateVariations(
+  example: ConversationExample,
+  count: number = 2
+): Promise<ConversationExample[]> {
+  const variations: ConversationExample[] = []
+
+  for (let i = 0; i < count; i++) {
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20250929',
+      max_tokens: 300,
+      messages: [{
+        role: 'user',
+        content: \`Create a variation of this conversation with the same intent but different wording:
+
+\${example.messages.map(m => \`\${m.role}: \${m.content}\`).join('\\n')}
+
+Return in same format.\`
+      }]
+    })
+
+    // Parse response (simplified)
+    const varied = {
+      ...example,
+      id: \`\${example.id}-var\${i}\`,
+      messages: example.messages // In production, parse LLM response
+    }
+
+    variations.push(varied)
+  }
+
+  return variations
+}
+
+// Complete augmentation pipeline
+async function augmentDataset(
+  examples: ConversationExample[],
+  targetSize: number
+): Promise<ConversationExample[]> {
+  console.log(\`Augmenting dataset: \${examples.length} → \${targetSize} examples\\n\`)
+
+  const augmented: ConversationExample[] = [...examples]
+  const strategies: AugmentationStrategy[] = [
+    {
+      name: 'Paraphrasing',
+      apply: async (ex) => [await paraphraseConversation(ex)]
+    },
+    {
+      name: 'Back-translation',
+      apply: async (ex) => [await backTranslate(ex)]
+    },
+    {
+      name: 'Variations',
+      apply: async (ex) => await generateVariations(ex, 2)
+    }
+  ]
+
+  let strategyIndex = 0
+
+  while (augmented.length < targetSize && examples.length > 0) {
+    const originalExample = examples[strategyIndex % examples.length]
+    const strategy = strategies[strategyIndex % strategies.length]
+
+    console.log(\`Applying \${strategy.name} to example \${originalExample.id}...\`)
+
+    const newExamples = await strategy.apply(originalExample)
+    augmented.push(...newExamples)
+
+    strategyIndex++
+
+    if (augmented.length % 100 === 0) {
+      console.log(\`  Progress: \${augmented.length}/\${targetSize}\`)
+    }
+  }
+
+  console.log(\`\\nAugmentation complete: \${augmented.length} total examples\`)
+  console.log(\`  Original: \${examples.length}\`)
+  console.log(\`  Augmented: \${augmented.length - examples.length}\`)
+  console.log(\`  Ratio: \${(augmented.length / examples.length).toFixed(1)}x\\n\`)
+
+  return augmented.slice(0, targetSize)
+}
+
+// Example usage
+async function runAugmentation() {
+  const baseExamples: ConversationExample[] = [
+    {
+      id: 'conv-1',
+      messages: [
+        { role: 'user', content: 'How do I reset my password?' },
+        { role: 'assistant', content: 'Go to Settings > Security > Reset Password.' }
+      ],
+      metadata: { userId: 'u1', timestamp: new Date(), flagged: false, tokens: 40 }
+    },
+    {
+      id: 'conv-2',
+      messages: [
+        { role: 'user', content: 'What are your business hours?' },
+        { role: 'assistant', content: 'We\\'re open 24/7 for customer support.' }
+      ],
+      metadata: { userId: 'u2', timestamp: new Date(), flagged: false, tokens: 35 }
+    }
+  ]
+
+  const augmented = await augmentDataset(baseExamples, 10)
+
+  console.log('Sample augmented examples:')
+  augmented.slice(0, 5).forEach(ex => {
+    console.log(\`  \${ex.id}: \${ex.messages[0].content}\`)
+  })
+}
+
+runAugmentation()
+`}
+/>
+
+**Augmentation Guidelines**:
+- Start with 1,000+ high-quality examples
+- Augment to 3-5x original size
+- Validate augmented examples (spot check 10%)
+- Balance classes (equal examples per category)
+
+## Complete Curation Pipeline
+
+Putting it all together:
+
+```typescript
+interface CurationPipeline {
+  collect: () => Promise<ConversationExample[]>
+  redactPII: (examples: ConversationExample[]) => Promise<ConversationExample[]>
+  filterQuality: (examples: ConversationExample[]) => Promise<ConversationExample[]>
+  deduplicate: (examples: ConversationExample[]) => ConversationExample[]
+  augment: (examples: ConversationExample[]) => Promise<ConversationExample[]>
+  export: (examples: ConversationExample[]) => Promise<void>
+}
+
+async function runFullPipeline(targetSize: number = 10000): Promise<void> {
+  console.log('Starting full curation pipeline...\\n')
+
+  // Step 1: Collect
+  console.log('[1/6] Collecting production data...')
+  const raw = await collectProductionData({
+    minRating: 4,
+    excludeFlagged: true,
+    dateRange: {
+      start: new Date('2024-01-01'),
+      end: new Date('2025-02-01')
+    }
+  })
+  console.log(`  Collected: ${raw.length} examples\\n`)
+
+  // Step 2: PII Redaction
+  console.log('[2/6] Redacting PII...')
+  const redacted = await Promise.all(
+    raw.map(async ex => {
+      const result = await redactPII(
+        ex.messages.map(m => m.content).join('\\n'),
+        'both'
+      )
+      if (result.hasPII) {
+        // Update messages with redacted content
+        const redactedMessages = result.redactedText.split('\\n')
+        ex.messages = ex.messages.map((m, i) => ({
+          ...m,
+          content: redactedMessages[i] || m.content
+        }))
+      }
+      return ex
+    })
+  )
+  console.log(`  Redacted PII in ${redacted.length} examples\\n`)
+
+  // Step 3: Quality filtering
+  console.log('[3/6] Filtering by quality...')
+  const filtered = await filterByQuality(redacted, 0.75)
+  console.log(`  Kept: ${filtered.kept.length} high-quality examples\\n`)
+
+  // Step 4: Deduplication
+  console.log('[4/6] Deduplicating...')
+  const deduplicated = deduplicateExamples(filtered.kept)
+  console.log(`  Unique: ${deduplicated.length} examples\\n`)
+
+  // Step 5: Augmentation (if needed)
+  let final = deduplicated
+  if (deduplicated.length < targetSize) {
+    console.log(`[5/6] Augmenting to ${targetSize} examples...`)
+    final = await augmentDataset(deduplicated, targetSize)
+    console.log(`  Augmented to: ${final.length} examples\\n`)
+  }
+
+  // Step 6: Export
+  console.log('[6/6] Exporting dataset...')
+  await exportDataset(final, 'training.jsonl')
+  console.log(`  Exported to: training.jsonl\\n`)
+
+  // Summary
+  console.log('Pipeline Complete!')
+  console.log(`  Input: ${raw.length} raw examples`)
+  console.log(`  Output: ${final.length} curated examples`)
+  console.log(`  Quality rate: ${(final.length / raw.length * 100).toFixed(1)}%`)
+}
+
+function deduplicateExamples(examples: ConversationExample[]): ConversationExample[] {
+  const seen = new Set<string>()
+  return examples.filter(ex => {
+    const key = ex.messages.map(m => m.content).join('||')
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+async function exportDataset(examples: ConversationExample[], filename: string): Promise<void> {
+  const jsonl = examples.map(ex => JSON.stringify({
+    messages: ex.messages
+  })).join('\\n')
+
+  await fs.writeFile(filename, jsonl)
+}
+```
+
+## Production Metrics
+
+### Pipeline Performance
+
+```
+Input: 100,000 raw conversations
+
+┌─────────────────────┬─────────┬──────────┬──────────┐
+│ Stage               │ Output  │ Time     │ Cost     │
+├─────────────────────┼─────────┼──────────┼──────────┤
+│ Collection          │ 100,000 │ 5 min    │ Free     │
+│ PII Redaction       │ 100,000 │ 5 hours  │ $30      │
+│ Quality Filtering   │ 15,000  │ 8 hours  │ $300     │
+│ Deduplication       │ 12,000  │ 5 min    │ Free     │
+│ Augmentation        │ 15,000  │ 3 hours  │ $45      │
+├─────────────────────┼─────────┼──────────┼──────────┤
+│ TOTAL               │ 15,000  │ 16 hours │ $375     │
+└─────────────────────┴─────────┴──────────┴──────────┘
+
+Final dataset: 15,000 high-quality examples
+Cost per example: $0.025
+```
+
+## Common Pitfalls
+
+### 1. Skipping PII Redaction
+**Problem**: Training data leaks sensitive information
+```typescript
+// ❌ Bad: Train on raw logs
+const dataset = await collectProductionData()
+await fineTune(dataset) // PII in model!
+
+// ✅ Good: Always redact first
+const dataset = await collectProductionData()
+const redacted = await redactPII(dataset)
+await fineTune(redacted)
+```
+
+### 2. No Quality Threshold
+**Problem**: Including low-quality examples hurts model
+```typescript
+// ❌ Bad: Keep everything
+const dataset = allExamples
+
+// ✅ Good: Filter by quality
+const dataset = await filterByQuality(allExamples, 0.75)
+```
+
+### 3. Over-Augmentation
+**Problem**: Too much synthetic data vs real data
+```typescript
+// ❌ Bad: 10x augmentation
+const augmented = await augment(1000, 10000) // 90% synthetic
+
+// ✅ Good: 3-5x augmentation max
+const augmented = await augment(1000, 3000) // 67% real, 33% synthetic
+```
+
+### 4. Ignoring Class Balance
+**Problem**: Training set skewed to one class
+```typescript
+// ✅ Good: Balance classes
+function balanceDataset(examples: ConversationExample[]): ConversationExample[] {
+  const byClass = groupBy(examples, ex => ex.metadata.category)
+  const minCount = Math.min(...Object.values(byClass).map(arr => arr.length))
+
+  return Object.values(byClass)
+    .flatMap(arr => shuffle(arr).slice(0, minCount))
+}
+```
+
+## Key Takeaways
+
+### Curation Principles
+- **Quality > Quantity**: 1,000 curated examples > 10,000 raw examples
+- **PII is non-negotiable**: Always redact before training (legal requirement)
+- **LLM-as-judge works**: 95% accuracy at quality assessment
+- **Augment conservatively**: 3-5x original dataset size max
+
+### Pipeline Stages
+1. **Collection**: Production logs, user feedback, synthetic generation
+2. **PII Redaction**: Pattern-based + LLM (98% accuracy)
+3. **Quality Filtering**: LLM-as-judge with multi-dimensional scoring
+4. **Deduplication**: Exact + near-duplicate removal
+5. **Augmentation**: Paraphrasing, back-translation, variations
+6. **Export**: JSONL format for OpenAI/HuggingFace
+
+### Production Metrics
+- **Curation rate**: 10-15% of raw data makes final dataset
+- **Cost**: $0.02-0.03 per curated example
+- **Time**: ~16 hours for 100K → 15K examples
+- **ROI**: 32% cost savings + 14% accuracy improvement
+
+### Best Practices
+- Start with 10K+ raw examples minimum
+- Set quality threshold at 0.75-0.80
+- Use both pattern and LLM PII detection
+- Validate 10% of augmented examples manually
+- Version datasets (v1, v2, v3) for reproducibility
+- Track provenance (which examples from which sources)
+
+## Further Reading
+
+- [OpenAI Fine-Tuning Data Prep](https://platform.openai.com/docs/guides/fine-tuning/preparing-your-dataset) - Official guide
+- [Data Augmentation for NLP](https://arxiv.org/abs/1901.11196) - Survey paper
+- [LLM-as-Judge Benchmark](https://arxiv.org/abs/2306.05685) - Evaluation framework
+- [PII Detection Best Practices](https://www.microsoft.com/en-us/security/blog/2023/04/06/how-microsoft-protects-pii-in-ai) - Microsoft guide
+- [HuggingFace Datasets Library](https://huggingface.co/docs/datasets/) - Data processing tools

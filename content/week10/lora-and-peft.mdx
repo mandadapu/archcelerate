@@ -1,0 +1,858 @@
+---
+title: "LoRA and Parameter-Efficient Fine-Tuning"
+description: "Master LoRA, QLoRA, and PEFT techniques for fine-tuning LLMs with 95% memory reduction and 10x cost savings"
+estimatedMinutes: 55
+week: 10
+concept: 2
+difficulty: advanced
+objectives:
+  - Understand LoRA architecture and low-rank adaptation mathematics
+  - Implement QLoRA for 4-bit quantized training with 95% memory savings
+  - Compare PEFT techniques (LoRA, Prefix Tuning, Adapters, IA3)
+  - Deploy LoRA adapters with HuggingFace and production infrastructure
+---
+
+import { CodePlayground } from '@/components/curriculum/CodePlayground'
+
+# LoRA and Parameter-Efficient Fine-Tuning
+
+Master parameter-efficient fine-tuning (PEFT) techniques that enable fine-tuning billion-parameter models on consumer GPUs with 95% memory reduction.
+
+> **Note**: LoRA revolutionized fine-tuning in 2021. Today it's the industry standard for adapting LLMs - used by Stable Diffusion, ChatGPT plugins, and enterprise AI deployments.
+
+## What is LoRA?
+
+**Simple Explanation**: LoRA (Low-Rank Adaptation) freezes the original model weights and trains small "adapter" matrices that modify the model's behavior. Instead of updating 7 billion parameters, you update 4 million. It's like adding specialized skills to a general expert without retraining everything they know.
+
+**The Problem with Full Fine-Tuning**:
+```
+Llama 3 8B Model:
+- Parameters: 8 billion
+- Memory for training: 120 GB (FP16)
+- GPU required: 8x A100 (80GB each) = $24/hour
+- Training 1 epoch (10K examples): 4 hours = $96
+
+Most teams can't afford this!
+```
+
+**LoRA Solution**:
+```
+Llama 3 8B with LoRA:
+- Trainable parameters: 4 million (0.05% of model)
+- Memory for training: 12 GB with 4-bit quantization
+- GPU required: 1x RTX 4090 (24GB) = $1/hour or free (Colab)
+- Training 1 epoch: 4 hours = $4
+- Adapter size: 100 MB (vs 16 GB full model)
+
+96% cost reduction!
+```
+
+## LoRA Architecture
+
+**How LoRA Works**:
+
+In a transformer layer, the attention mechanism uses weight matrices W (e.g., W_q, W_k, W_v):
+
+```
+Standard fine-tuning:
+W_new = W_pretrained + ΔW  (update all parameters)
+
+LoRA:
+W_new = W_pretrained + BA  (B and A are low-rank matrices)
+
+Where:
+- W_pretrained: Frozen original weights (d × d)
+- B: Trainable matrix (d × r)
+- A: Trainable matrix (r × d)
+- r: Rank (typically 4, 8, 16, or 32)
+- d: Model dimension (4096 for Llama 3 8B)
+
+Parameters:
+- Standard: d × d = 4096 × 4096 = 16.7M parameters
+- LoRA: d × r + r × d = (4096 × 8) + (8 × 4096) = 65K parameters
+- Reduction: 99.6%!
+```
+
+<CodePlayground
+  title="LoRA Mathematics Visualization"
+  description="See how low-rank decomposition works. Try different rank values to see memory tradeoffs!"
+  exerciseType="lora-math"
+  code={`interface LoRAConfig {
+  d: number // Model dimension
+  r: number // LoRA rank
+  alpha: number // Scaling factor
+}
+
+function calculateLoRAParameters(config: LoRAConfig): {
+  originalParams: number
+  loraParams: number
+  reduction: number
+  memoryMB: number
+} {
+  const { d, r } = config
+
+  // Original weight matrix parameters
+  const originalParams = d * d
+
+  // LoRA parameters: two matrices B (d×r) and A (r×d)
+  const loraParams = (d * r) + (r * d)
+
+  // Reduction percentage
+  const reduction = ((originalParams - loraParams) / originalParams) * 100
+
+  // Memory usage (FP16 = 2 bytes per parameter)
+  const memoryMB = (loraParams * 2) / (1024 * 1024)
+
+  return {
+    originalParams,
+    loraParams,
+    reduction,
+    memoryMB
+  }
+}
+
+// Example configurations
+const configs: LoRAConfig[] = [
+  { d: 4096, r: 4, alpha: 16 },
+  { d: 4096, r: 8, alpha: 16 },
+  { d: 4096, r: 16, alpha: 32 },
+  { d: 4096, r: 32, alpha: 64 }
+]
+
+console.log('LoRA Parameter Analysis\\n')
+console.log('Model dimension (d): 4096 (Llama 3 8B)\\n')
+console.log('┌──────┬─────────────────┬──────────────┬────────────┬──────────┐')
+console.log('│ Rank │ Original Params │ LoRA Params  │ Reduction  │ Memory   │')
+console.log('├──────┼─────────────────┼──────────────┼────────────┼──────────┤')
+
+configs.forEach(config => {
+  const result = calculateLoRAParameters(config)
+
+  console.log(
+    \`│ r=\${config.r.toString().padEnd(2)} │ \${result.originalParams.toLocaleString().padEnd(15)} │ \${result.loraParams.toLocaleString().padEnd(12)} │ \${result.reduction.toFixed(2).padStart(5)}%   │ \${result.memoryMB.toFixed(1).padStart(5)} MB │\`
+  )
+})
+
+console.log('└──────┴─────────────────┴──────────────┴────────────┴──────────┘')
+
+console.log('\\nKey Insights:')
+console.log('  • Higher rank (r) = more expressiveness but more memory')
+console.log('  • r=8 is sweet spot for most tasks (99.5% reduction)')
+console.log('  • r=16 for complex domain adaptation')
+console.log('  • r=4 sufficient for simple style/formatting tasks')
+
+// Calculate for full model
+const llama3_8b_layers = 32 // 32 transformer layers
+const attention_matrices = 4 // Q, K, V, O projections
+
+const totalLoRAParams = configs[1].loraParams * llama3_8b_layers * attention_matrices
+const totalOriginalParams = configs[1].originalParams * llama3_8b_layers * attention_matrices
+
+console.log(\`\\nFull Llama 3 8B Model (r=8):\`)
+console.log(\`  Original parameters: \${totalOriginalParams.toLocaleString()}\`)
+console.log(\`  LoRA parameters: \${totalLoRAParams.toLocaleString()}\`)
+console.log(\`  Trainable: \${((totalLoRAParams / 8_000_000_000) * 100).toFixed(3)}% of 8B model\`)
+`}
+/>
+
+## QLoRA: 4-bit Quantization for Memory Efficiency
+
+**QLoRA** combines LoRA with 4-bit quantization to enable fine-tuning on consumer GPUs.
+
+**Memory Breakdown**:
+```
+Llama 3 8B in different precisions:
+┌─────────────────┬──────────┬──────────────┬─────────┐
+│ Precision       │ Size     │ GPU Required │ Use Case│
+├─────────────────┼──────────┼──────────────┼─────────┤
+│ FP32 (32-bit)   │ 32 GB    │ 4x A100      │ Training│
+│ FP16 (16-bit)   │ 16 GB    │ 2x A100      │ Training│
+│ Int8 (8-bit)    │ 8 GB     │ 1x A100      │ Inference│
+│ NF4 (4-bit)     │ 4 GB     │ 1x RTX 4090  │ QLoRA   │
+└─────────────────┴──────────┴──────────────┴─────────┘
+
+With QLoRA:
+- Base model: 4 GB (4-bit quantized, frozen)
+- LoRA adapters: 100 MB (FP16, trainable)
+- Optimizer states: 8 GB
+- Total: ~12 GB (fits on consumer GPU!)
+```
+
+<CodePlayground
+  title="QLoRA Fine-Tuning Implementation"
+  description="Complete QLoRA fine-tuning pipeline for Llama 3. Production-ready code with memory optimization!"
+  exerciseType="qlora-training"
+  code={`// This is conceptual TypeScript showing the process.
+// Actual implementation uses Python with transformers + PEFT libraries.
+
+interface QLoRAConfig {
+  baseModel: string
+  loraRank: number
+  loraAlpha: number
+  loraDropout: number
+  targetModules: string[]
+  quantization: '4bit' | '8bit'
+}
+
+interface TrainingArgs {
+  outputDir: string
+  numEpochs: number
+  batchSize: number
+  learningRate: number
+  warmupSteps: number
+  loggingSteps: number
+}
+
+// Python code for reference (this is what you'd actually run)
+const pythonQLoRACode = \`
+import torch
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    TrainingArguments
+)
+from peft import (
+    LoraConfig,
+    get_peft_model,
+    prepare_model_for_kbit_training
+)
+from trl import SFTTrainer
+from datasets import load_dataset
+
+# Step 1: Configure 4-bit quantization
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",  # Normal Float 4-bit
+    bnb_4bit_compute_dtype=torch.bfloat16,
+    bnb_4bit_use_double_quant=True  # Nested quantization for more savings
+)
+
+# Step 2: Load base model with quantization
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Meta-Llama-3-8B",
+    quantization_config=bnb_config,
+    device_map="auto",
+    trust_remote_code=True
+)
+
+tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B")
+tokenizer.pad_token = tokenizer.eos_token
+
+# Step 3: Prepare model for training
+model = prepare_model_for_kbit_training(model)
+
+# Step 4: Configure LoRA
+lora_config = LoraConfig(
+    r=16,  # Rank
+    lora_alpha=32,  # Scaling factor
+    target_modules=[
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj"
+    ],
+    lora_dropout=0.05,
+    bias="none",
+    task_type="CAUSAL_LM"
+)
+
+# Step 5: Apply LoRA adapters
+model = get_peft_model(model, lora_config)
+
+print("Trainable parameters:")
+model.print_trainable_parameters()
+# Output: trainable params: 41,943,040 || all params: 8,030,261,248 || trainable%: 0.52%
+
+# Step 6: Load and format dataset
+dataset = load_dataset("json", data_files="training_data.jsonl")
+
+def format_instruction(example):
+    return f"""### Instruction:
+{example['instruction']}
+
+### Input:
+{example['input']}
+
+### Response:
+{example['output']}"""
+
+# Step 7: Training arguments
+training_args = TrainingArguments(
+    output_dir="./llama3-qlora-customer-support",
+    num_train_epochs=3,
+    per_device_train_batch_size=4,
+    gradient_accumulation_steps=4,
+    gradient_checkpointing=True,  # Save memory
+    optim="paged_adamw_8bit",  # 8-bit optimizer
+    learning_rate=2e-4,
+    warmup_steps=100,
+    logging_steps=10,
+    save_strategy="epoch",
+    fp16=False,
+    bf16=True,  # Use bfloat16 for better stability
+    max_grad_norm=0.3,
+    group_by_length=True  # Group similar lengths for efficiency
+)
+
+# Step 8: Initialize trainer
+trainer = SFTTrainer(
+    model=model,
+    args=training_args,
+    train_dataset=dataset["train"],
+    tokenizer=tokenizer,
+    formatting_func=format_instruction,
+    max_seq_length=512
+)
+
+# Step 9: Train!
+print("Starting training...")
+trainer.train()
+
+# Step 10: Save LoRA adapters
+model.save_pretrained("./llama3-customer-support-lora")
+tokenizer.save_pretrained("./llama3-customer-support-lora")
+
+print("Training complete! LoRA adapters saved.")
+\`
+
+// Deployment code (TypeScript/Node.js)
+async function deployQLoRAModel() {
+  console.log('QLoRA Training Pipeline\\n')
+  console.log('=' .repeat(80))
+  console.log()
+
+  console.log('Hardware Requirements:')
+  console.log('  Minimum: RTX 4090 (24GB VRAM) or A10G')
+  console.log('  Recommended: A100 (40GB) for faster training')
+  console.log('  Budget option: Google Colab Pro ($10/month)\\n')
+
+  console.log('Memory Breakdown:')
+  console.log('  Base model (4-bit): 4.5 GB')
+  console.log('  LoRA adapters (FP16): 0.1 GB')
+  console.log('  Optimizer states: 6 GB')
+  console.log('  Gradients & activations: 3 GB')
+  console.log('  Buffer: 1 GB')
+  console.log('  TOTAL: ~14.6 GB\\n')
+
+  console.log('Training Performance:')
+  console.log('  Dataset: 10,000 examples')
+  console.log('  Batch size: 4 (with gradient accumulation)')
+  console.log('  Effective batch size: 16')
+  console.log('  Training time: ~4 hours (RTX 4090)')
+  console.log('  Training time: ~2 hours (A100)\\n')
+
+  console.log('Cost Analysis:')
+  console.log('  Cloud GPU (A100): $2/hour × 2 hours = $4')
+  console.log('  vs Full fine-tuning (8x A100): $24/hour × 4 hours = $96')
+  console.log('  Savings: $92 (96% reduction)\\n')
+
+  console.log('Output:')
+  console.log('  LoRA adapter size: ~100 MB')
+  console.log('  Base model: 4.5 GB (shared across all adapters)')
+  console.log('  Can train 100 adapters for storage cost of 1 full model!\\n')
+
+  console.log('Python Training Script:')
+  console.log(pythonQLoRACode)
+}
+
+deployQLoRAModel()
+`}
+/>
+
+## PEFT Techniques Comparison
+
+LoRA isn't the only parameter-efficient fine-tuning method. Here's how it compares:
+
+<CodePlayground
+  title="PEFT Techniques Comparison"
+  description="Compare different parameter-efficient fine-tuning methods. See tradeoffs in memory, speed, and quality!"
+  exerciseType="peft-comparison"
+  code={`interface PEFTMethod {
+  name: string
+  trainableParams: number // as % of model
+  memoryOverhead: string
+  inferenceLatency: string // vs base model
+  accuracy: string // typical performance
+  bestFor: string[]
+  limitations: string[]
+}
+
+const peftMethods: PEFTMethod[] = [
+  {
+    name: 'LoRA',
+    trainableParams: 0.5,
+    memoryOverhead: '~100 MB',
+    inferenceLatency: '+0-2%',
+    accuracy: 'Excellent (95-98% of full fine-tuning)',
+    bestFor: [
+      'General-purpose fine-tuning',
+      'Classification & generation tasks',
+      'Multiple task-specific adapters',
+      'Production deployments'
+    ],
+    limitations: [
+      'Requires choosing target modules',
+      'Rank (r) is a hyperparameter to tune',
+      'May underperform on very complex tasks'
+    ]
+  },
+  {
+    name: 'QLoRA',
+    trainableParams: 0.5,
+    memoryOverhead: '~100 MB + quantization',
+    inferenceLatency: '+5-10%',
+    accuracy: 'Excellent (94-97% of full fine-tuning)',
+    bestFor: [
+      'Consumer GPU training (24GB)',
+      'Cost-sensitive fine-tuning',
+      'Rapid experimentation',
+      'Large model adaptation (70B on 1 GPU)'
+    ],
+    limitations: [
+      '4-bit quantization slightly degrades quality',
+      'Slower inference than FP16',
+      'Requires bitsandbytes library'
+    ]
+  },
+  {
+    name: 'Prefix Tuning',
+    trainableParams: 0.1,
+    memoryOverhead: '~10 MB',
+    inferenceLatency: '+15-20%',
+    accuracy: 'Good (85-90% of full fine-tuning)',
+    bestFor: [
+      'Extremely low memory budgets',
+      'Task-specific prompting',
+      'Multi-task learning with shared model'
+    ],
+    limitations: [
+      'Lower accuracy than LoRA',
+      'Adds latency (virtual tokens)',
+      'Harder to optimize (training instability)'
+    ]
+  },
+  {
+    name: 'Adapters',
+    trainableParams: 1.0,
+    memoryOverhead: '~200 MB',
+    inferenceLatency: '+10-15%',
+    accuracy: 'Very Good (92-95% of full fine-tuning)',
+    bestFor: [
+      'Transfer learning from related tasks',
+      'Incremental learning scenarios',
+      'When inference latency acceptable'
+    ],
+    limitations: [
+      'Higher memory than LoRA',
+      'Adds layers (slower inference)',
+      'More parameters to train'
+    ]
+  },
+  {
+    name: 'IA3 (Infused Adapter)',
+    trainableParams: 0.01,
+    memoryOverhead: '~10 MB',
+    inferenceLatency: '+0-1%',
+    accuracy: 'Good (88-92% of full fine-tuning)',
+    bestFor: [
+      'Minimal memory footprint',
+      'Fast inference required',
+      'Simple task adaptation'
+    ],
+    limitations: [
+      'Lower expressiveness',
+      'Best for simpler tasks',
+      'Less research/community support'
+    ]
+  }
+]
+
+console.log('Parameter-Efficient Fine-Tuning (PEFT) Methods\\n')
+console.log('Base Model: Llama 3 8B (8 billion parameters)\\n')
+console.log('='.repeat(100))
+
+peftMethods.forEach(method => {
+  console.log(\`\\n\${method.name}\`)
+  console.log('-'.repeat(50))
+  console.log(\`Trainable Parameters: \${method.trainableParams}% (\${(8_000_000_000 * method.trainableParams / 100).toLocaleString()} params)\`)
+  console.log(\`Memory Overhead: \${method.memoryOverhead}\`)
+  console.log(\`Inference Latency: \${method.inferenceLatency}\`)
+  console.log(\`Accuracy: \${method.accuracy}\`)
+
+  console.log(\`\\nBest For:\`)
+  method.bestFor.forEach(use => console.log(\`  ✓ \${use}\`))
+
+  console.log(\`\\nLimitations:\`)
+  method.limitations.forEach(limit => console.log(\`  ✗ \${limit}\`))
+})
+
+console.log('\\n' + '='.repeat(100))
+console.log('\\nRecommendation by Use Case:\\n')
+
+const recommendations = [
+  {
+    useCase: 'General fine-tuning (production)',
+    recommended: 'LoRA',
+    reason: 'Best balance of accuracy, speed, and memory'
+  },
+  {
+    useCase: 'Consumer GPU training (RTX 4090)',
+    recommended: 'QLoRA',
+    reason: 'Enables training 70B models on 24GB GPU'
+  },
+  {
+    useCase: 'Minimal memory budget',
+    recommended: 'IA3',
+    reason: 'Only 0.01% trainable parameters'
+  },
+  {
+    useCase: 'Multiple task adapters',
+    recommended: 'LoRA',
+    reason: 'Easy to swap adapters, minimal storage'
+  },
+  {
+    useCase: 'Real-time inference critical',
+    recommended: 'LoRA or IA3',
+    reason: 'Minimal latency overhead'
+  }
+]
+
+recommendations.forEach(rec => {
+  console.log(\`\${rec.useCase}:\`)
+  console.log(\`  → \${rec.recommended}\`)
+  console.log(\`  Reason: \${rec.reason}\\n\`)
+})
+`}
+/>
+
+## Production Deployment
+
+### Multi-Adapter Management
+
+One powerful feature of LoRA: **swap adapters at runtime** without reloading the base model.
+
+<CodePlayground
+  title="Multi-Adapter Deployment"
+  description="Deploy multiple LoRA adapters with a single base model. Watch memory efficiency in action!"
+  exerciseType="multi-adapter"
+  code={`// Conceptual TypeScript showing adapter management
+// Actual implementation uses HuggingFace PEFT library
+
+interface LoRAAdapter {
+  id: string
+  name: string
+  task: string
+  filePath: string
+  accuracy: number
+  lastUpdated: Date
+}
+
+class MultiAdapterManager {
+  private baseModel: any // Base Llama 3 model (loaded once)
+  private adapters: Map<string, LoRAAdapter> = new Map()
+  private currentAdapter: string | null = null
+
+  constructor() {
+    console.log('Loading base model: Llama 3 8B (4-bit)...')
+    console.log('Memory: 4.5 GB\\n')
+    // In production: this.baseModel = loadQuantizedModel('llama-3-8b')
+  }
+
+  registerAdapter(adapter: LoRAAdapter): void {
+    this.adapters.set(adapter.id, adapter)
+    console.log(\`Registered adapter: \${adapter.name}\`)
+    console.log(\`  Task: \${adapter.task}\`)
+    console.log(\`  Size: ~100 MB\`)
+    console.log(\`  Total adapters: \${this.adapters.size}\\n\`)
+  }
+
+  async switchAdapter(adapterId: string): Promise<void> {
+    if (!this.adapters.has(adapterId)) {
+      throw new Error(\`Adapter \${adapterId} not found\`)
+    }
+
+    const adapter = this.adapters.get(adapterId)!
+
+    console.log(\`Switching to adapter: \${adapter.name}\`)
+    console.log(\`  Loading LoRA weights: ~100 MB\`)
+    console.log(\`  Switch time: 50-100ms\`)
+
+    // Simulated switch
+    await new Promise(resolve => setTimeout(resolve, 75))
+
+    this.currentAdapter = adapterId
+    console.log(\`  ✓ Active adapter: \${adapter.name}\\n\`)
+  }
+
+  async inference(input: string): Promise<string> {
+    if (!this.currentAdapter) {
+      throw new Error('No adapter loaded')
+    }
+
+    const adapter = this.adapters.get(this.currentAdapter)!
+    console.log(\`Inference with \${adapter.name}:\`)
+    console.log(\`  Input: "\${input}"\`)
+
+    // Simulated inference
+    const output = \`[Processed by \${adapter.task} adapter]\`
+    console.log(\`  Output: "\${output}"\\n\`)
+
+    return output
+  }
+
+  getMemoryUsage(): {
+    baseModel: number
+    adapters: number
+    total: number
+  } {
+    return {
+      baseModel: 4500, // MB
+      adapters: this.adapters.size * 100, // MB
+      total: 4500 + (this.adapters.size * 100)
+    }
+  }
+}
+
+// Example usage
+async function demonstrateMultiAdapter() {
+  const manager = new MultiAdapterManager()
+
+  // Register multiple task-specific adapters
+  const adapters: LoRAAdapter[] = [
+    {
+      id: 'email-classifier',
+      name: 'Email Classification',
+      task: 'Classify customer emails into categories',
+      filePath: './adapters/email-classifier',
+      accuracy: 0.96,
+      lastUpdated: new Date('2025-02-01')
+    },
+    {
+      id: 'sql-generator',
+      name: 'SQL Generation',
+      task: 'Convert natural language to SQL',
+      filePath: './adapters/sql-generator',
+      accuracy: 0.92,
+      lastUpdated: new Date('2025-02-03')
+    },
+    {
+      id: 'code-reviewer',
+      name: 'Code Review',
+      task: 'Review code and suggest improvements',
+      filePath: './adapters/code-reviewer',
+      accuracy: 0.89,
+      lastUpdated: new Date('2025-02-05')
+    }
+  ]
+
+  adapters.forEach(adapter => manager.registerAdapter(adapter))
+
+  // Use different adapters for different requests
+  await manager.switchAdapter('email-classifier')
+  await manager.inference('I need help with my billing')
+
+  await manager.switchAdapter('sql-generator')
+  await manager.inference('Show me all orders from last week')
+
+  await manager.switchAdapter('code-reviewer')
+  await manager.inference('Review: function foo() { var x = 1; return x }')
+
+  // Memory usage report
+  const memory = manager.getMemoryUsage()
+  console.log('Memory Usage Report:')
+  console.log(\`  Base model: \${memory.baseModel} MB\`)
+  console.log(\`  LoRA adapters: \${memory.adapters} MB (\${adapters.length} adapters)\`)
+  console.log(\`  Total: \${memory.total} MB\\n\`)
+
+  console.log('vs Full Fine-Tuning:')
+  console.log(\`  3 separate models: \${3 * 16000} MB (16 GB each)\`)
+  console.log(\`  Savings: \${((1 - memory.total / (3 * 16000)) * 100).toFixed(1)}% memory reduction\`)
+}
+
+demonstrateMultiAdapter()
+`}
+/>
+
+### HuggingFace Deployment
+
+Deploy LoRA models to HuggingFace Inference Endpoints for production:
+
+```typescript
+// 1. Push adapter to HuggingFace Hub
+// (Done via huggingface-cli in terminal)
+// huggingface-cli upload your-username/llama3-email-classifier ./lora-adapter
+
+// 2. Create inference endpoint
+interface InferenceEndpoint {
+  name: string
+  model: string
+  adapter: string
+  hardware: 'cpu' | 'gpu-small' | 'gpu-large'
+  scaling: {
+    min: number
+    max: number
+  }
+}
+
+const endpoint: InferenceEndpoint = {
+  name: 'email-classifier-prod',
+  model: 'meta-llama/Meta-Llama-3-8B',
+  adapter: 'your-username/llama3-email-classifier',
+  hardware: 'gpu-small', // $0.60/hour
+  scaling: {
+    min: 1, // Always-on
+    max: 5  // Scale to 5 instances under load
+  }
+}
+
+// 3. Call inference endpoint
+async function callInferenceEndpoint(text: string): Promise<string> {
+  const response = await fetch(
+    'https://api-inference.huggingface.co/models/your-username/llama3-email-classifier',
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.HF_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        inputs: text,
+        parameters: {
+          max_new_tokens: 50,
+          temperature: 0.3
+        }
+      })
+    }
+  )
+
+  const data = await response.json()
+  return data[0].generated_text
+}
+```
+
+## Production Metrics
+
+### Training Performance
+
+```
+┌────────────────────┬──────────────┬──────────────┬──────────────┐
+│ Method             │ Training Time│ GPU Memory   │ Cost/Epoch   │
+├────────────────────┼──────────────┼──────────────┼──────────────┤
+│ Full Fine-Tuning   │ 4 hours      │ 120 GB       │ $96          │
+│ LoRA (FP16)        │ 4 hours      │ 24 GB        │ $4           │
+│ QLoRA (4-bit)      │ 4 hours      │ 14 GB        │ $2           │
+└────────────────────┴──────────────┴──────────────┴──────────────┘
+
+Dataset: 10,000 examples, Llama 3 8B
+GPU: A100 ($24/hour), RTX 4090 ($1/hour)
+```
+
+### Inference Performance
+
+```
+┌────────────────────┬──────────────┬──────────────┬──────────────┐
+│ Configuration      │ Latency      │ Throughput   │ Cost/1K Tok  │
+├────────────────────┼──────────────┼──────────────┼──────────────┤
+│ Base Model (FP16)  │ 45 ms        │ 22 tok/sec   │ $0.002       │
+│ LoRA (FP16)        │ 46 ms (+2%)  │ 21 tok/sec   │ $0.002       │
+│ QLoRA (4-bit)      │ 52 ms (+15%) │ 19 tok/sec   │ $0.001       │
+└────────────────────┴──────────────┴──────────────┴──────────────┘
+
+Batch size: 1, Sequence length: 512 tokens
+```
+
+## Common Pitfalls
+
+### 1. Wrong Target Modules
+**Problem**: Not adapting the right layers
+```python
+# ❌ Bad: Only adapt output layer
+target_modules = ["lm_head"]  # Insufficient for most tasks
+
+# ✅ Good: Adapt all attention projections
+target_modules = ["q_proj", "k_proj", "v_proj", "o_proj"]
+```
+
+### 2. Rank Too Low or Too High
+**Problem**: Rank doesn't match task complexity
+```python
+# ❌ Bad: r=4 for complex generation task
+lora_config = LoraConfig(r=4)  # Underfits
+
+# ❌ Bad: r=128 for simple classification
+lora_config = LoraConfig(r=128)  # Overfits, wastes memory
+
+# ✅ Good: Match rank to task
+# Classification: r=8
+# Generation: r=16
+# Complex domain adaptation: r=32
+```
+
+### 3. Forgetting to Merge Adapters
+**Problem**: Shipping base model + adapter separately
+```python
+# For deployment, merge adapter into base model:
+from peft import PeftModel
+
+base_model = AutoModelForCausalLM.from_pretrained("meta-llama/Meta-Llama-3-8B")
+model = PeftModel.from_pretrained(base_model, "lora-adapter")
+
+# Merge and save as single model
+merged_model = model.merge_and_unload()
+merged_model.save_pretrained("llama3-merged")
+```
+
+### 4. Not Using Gradient Checkpointing
+**Problem**: Running out of memory during training
+```python
+# ✅ Always enable for large models
+training_args = TrainingArguments(
+    gradient_checkpointing=True,  # Trades compute for memory
+    # Saves ~40% memory at ~15% slower training
+)
+```
+
+## Key Takeaways
+
+### LoRA Fundamentals
+- **Core Idea**: Train low-rank adapter matrices instead of full model
+- **Memory Savings**: 95-99% fewer parameters to update
+- **Cost Reduction**: 96% cheaper training ($4 vs $96 per epoch)
+- **Flexibility**: Multiple task-specific adapters per base model
+
+### QLoRA Advantages
+- **Enables consumer GPU training**: 70B models on 24GB RTX 4090
+- **4-bit quantization**: Reduces base model memory by 75%
+- **Accuracy**: 94-97% of full fine-tuning performance
+- **Production ready**: Used by Meta, Stability AI, HuggingFace
+
+### PEFT Method Selection
+- **LoRA**: General-purpose, best accuracy/memory tradeoff
+- **QLoRA**: When GPU memory is limited (<40GB)
+- **Prefix Tuning**: Extremely low memory (<10MB overhead)
+- **IA3**: Fastest inference, minimal parameters (0.01%)
+
+### Production Deployment
+- **Multi-adapter pattern**: 1 base model + N adapters (100MB each)
+- **Adapter swapping**: 50-100ms to switch tasks
+- **HuggingFace Endpoints**: $0.60/hour for GPU inference
+- **Inference latency**: +0-2% vs base model (LoRA), +5-10% (QLoRA)
+
+### Best Practices
+- Use r=8 for most tasks, r=16 for complex domains
+- Target all attention layers (q/k/v/o projections)
+- Enable gradient checkpointing for memory savings
+- Merge adapters for deployment (single model)
+- Monitor for catastrophic forgetting on base capabilities
+
+## Further Reading
+
+- [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) - Original paper (Microsoft 2021)
+- [QLoRA: Efficient Finetuning of Quantized LLMs](https://arxiv.org/abs/2305.14314) - University of Washington 2023
+- [HuggingFace PEFT Documentation](https://huggingface.co/docs/peft) - Official library docs
+- [Practical Guide to LoRA](https://magazine.sebastianraschka.com/p/practical-tips-for-finetuning-llms) - Sebastian Raschka
+- [LoRA vs Full Fine-Tuning](https://www.anyscale.com/blog/fine-tuning-llms-lora-or-full-parameter-an-in-depth-analysis-with) - Anyscale benchmarks
