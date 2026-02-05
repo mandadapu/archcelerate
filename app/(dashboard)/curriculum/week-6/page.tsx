@@ -29,52 +29,52 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
-// Concept visualization icons
+// Concept visualization icons - Week 6: Advanced RAG
 function getConceptIllustration(slug: string) {
   const illustrations: Record<string, JSX.Element> = {
     'hybrid-retrieval-reranking': (
-      <div className="flex items-center gap-2 opacity-40">
+      <div className="flex items-center gap-2 opacity-50">
         <div className="relative">
-          <Search className="h-8 w-8 text-blue-500" />
-          <ArrowUpDown className="h-4 w-4 text-green-500 absolute -bottom-1 -right-1" />
+          <Search className="h-8 w-8 text-primary" />
+          <ArrowUpDown className="h-4 w-4 text-success absolute -bottom-1 -right-1" />
         </div>
         <div className="flex flex-col gap-1">
-          <Database className="h-6 w-6 text-purple-500" />
-          <Sparkles className="h-6 w-6 text-amber-500" />
+          <Database className="h-6 w-6 text-primary/80" />
+          <Sparkles className="h-6 w-6 text-primary/60" />
         </div>
       </div>
     ),
     'query-transformation-patterns': (
-      <div className="flex items-center gap-2 opacity-40">
+      <div className="flex items-center gap-2 opacity-50">
         <div className="flex flex-col gap-1">
-          <FileText className="h-6 w-6 text-blue-500" />
-          <Zap className="h-5 w-5 text-yellow-500" />
+          <FileText className="h-6 w-6 text-primary" />
+          <Zap className="h-5 w-5 text-warning" />
         </div>
-        <BarChart3 className="h-8 w-8 text-green-500" />
-        <Shield className="h-7 w-7 text-red-500" />
+        <BarChart3 className="h-8 w-8 text-success" />
+        <Network className="h-7 w-7 text-primary/70" />
       </div>
     ),
     'context-window-optimization': (
-      <div className="flex items-center gap-2 opacity-40">
+      <div className="flex items-center gap-2 opacity-50">
         <div className="flex flex-col gap-1">
-          <MessageSquare className="h-6 w-6 text-green-500" />
-          <MessageSquare className="h-6 w-6 text-blue-500" />
+          <MessageSquare className="h-6 w-6 text-success" />
+          <MessageSquare className="h-6 w-6 text-primary" />
         </div>
         <div className="flex flex-col gap-1">
-          <CheckSquare className="h-5 w-5 text-green-600" />
-          <CheckSquare className="h-5 w-5 text-green-600" />
-          <CheckSquare className="h-5 w-5 text-gray-400" />
+          <CheckSquare className="h-5 w-5 text-success" />
+          <CheckSquare className="h-5 w-5 text-success/70" />
+          <CheckSquare className="h-5 w-5 text-muted-foreground/40" />
         </div>
-        <FileText className="h-7 w-7 text-emerald-500" />
+        <FileText className="h-7 w-7 text-primary/80" />
       </div>
     ),
     'enterprise-rag-hardening': (
-      <div className="flex items-center gap-2 opacity-40">
-        <Network className="h-10 w-10 text-blue-500" />
+      <div className="flex items-center gap-2 opacity-50">
+        <Shield className="h-9 w-9 text-primary" />
         <div className="flex flex-col gap-1">
-          <Activity className="h-5 w-5 text-green-500" />
-          <Shield className="h-5 w-5 text-red-500" />
-          <MessageSquare className="h-5 w-5 text-blue-500" />
+          <Activity className="h-5 w-5 text-success" />
+          <Gauge className="h-5 w-5 text-info" />
+          <TrendingUp className="h-5 w-5 text-success/80" />
         </div>
       </div>
     ),
