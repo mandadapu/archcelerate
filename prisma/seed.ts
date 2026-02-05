@@ -313,7 +313,7 @@ const weekData = [
     project: {
       slug: 'enterprise-rag-system',
       title: 'Project: Production RAG for Regulated Industry',
-      description: 'The capstone forces you to deal with real-world enterprise constraints. Use Case: Building a HIPAA-grade RAG system. Technical Requirements: Integration of hybrid retrieval, re-ranking, and semantic caching. Compliance: Implementation of enterprise evaluation metrics and audit trails. Scope: 14 hours of build time with 11 core architectural requirements.',
+      description: 'Build a production-grade HIPAA-compliant RAG system with real-world enterprise constraints. Integrate hybrid retrieval, re-ranking, semantic caching, evaluation metrics, and audit trails across 11 architectural requirements.',
       requirements: [
         'Hybrid Search: Combine pgvector (semantic) + pg_trgm or ElasticSearch (BM25)',
         'Re-Ranking: Cohere Rerank API or BGE-Reranker model for top-50 → top-5',
