@@ -72,7 +72,7 @@ export default function Home() {
       {/* Hero Section */}
       <section className="pt-16">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col items-center justify-center min-h-[60vh] py-12">
+          <div className="flex flex-col items-center justify-center min-h-[60vh] py-8">
             {/* Metrics Badge */}
             <div className="mb-8 inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-50 to-cyan-50 border border-purple-100 rounded-full">
               <span className="text-sm font-semibold text-gray-900">
@@ -126,7 +126,7 @@ export default function Home() {
       </section>
 
       {/* The Command Center - System Modules */}
-      <section id="features" className="py-12 bg-white">
+      <section id="features" className="py-8 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4">
@@ -243,12 +243,12 @@ export default function Home() {
       </section>
 
       {/* Project Showcase */}
-      <section id="projects" className="py-12">
+      <section id="projects" className="py-8">
         <ProjectShowcase />
       </section>
 
       {/* The 12-Week Production Roadmap - Visual Timeline */}
-      <section className="py-12 bg-gradient-to-br from-slate-50 to-slate-100">
+      <section className="py-8 bg-gradient-to-br from-slate-50 to-slate-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4">
@@ -453,7 +453,7 @@ export default function Home() {
       </section>
 
       {/* Final CTA Section */}
-      <section className="py-12 bg-gradient-to-br from-purple-50 to-cyan-50">
+      <section className="py-8 bg-gradient-to-br from-purple-50 to-cyan-50">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-6 tracking-tight">
             Ready to Become an AI Architect?
@@ -496,7 +496,7 @@ export default function Home() {
       </section>
 
       {/* Trust & Social Proof: The Hiring Brief */}
-      <section className="py-12 bg-gradient-to-br from-slate-50 to-slate-100">
+      <section className="py-8 bg-gradient-to-br from-slate-50 to-slate-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4">
@@ -679,7 +679,7 @@ export default function Home() {
       </section>
 
       {/* Testimonials */}
-      <section id="testimonials" className="py-12">
+      <section id="testimonials" className="py-8">
         <Testimonials />
       </section>
 
@@ -687,7 +687,7 @@ export default function Home() {
       <TechStack />
 
       {/* Footer */}
-      <footer className="border-t border-gray-200 py-8 bg-white">
+      <footer className="border-t border-gray-200 py-6 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center text-sm text-gray-600">
             <Link href="/terms" className="hover:text-gray-900 transition-colors">
