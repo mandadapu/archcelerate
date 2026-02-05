@@ -290,13 +290,13 @@ const weekData = [
       { slug: 'enterprise-rag-hardening', title: 'Enterprise RAG Hardening', minutes: 55 },
       { slug: 'observability-basics', title: 'AI Observability', minutes: 30 },
       { slug: 'monitoring-ai-systems', title: 'LLM Monitoring', minutes: 35 },
-      { slug: 'performance-optimization', title: 'Performance Optimization & Caching', minutes: 40 },
+      { slug: 'performance-optimization', title: 'Performance & Caching', minutes: 40 },
       { slug: 'production-deployment', title: 'Production Deployment', minutes: 35 }
     ],
     lab: {
       slug: 'medical-records-navigator',
-      title: 'The Precision Retrieval Challenge',
-      description: 'Act as AI Architect for a Clinical Search tool - prove the value of Parent-Document Retrieval and Hybrid Search through side-by-side comparison',
+      title: 'Lab: The Precision Retrieval Challenge',
+      description: 'Role: AI Architect for a Clinical Search tool. Core Objective: Prove the quantitative value of advanced retrieval techniques over basic vector search through side-by-side architectural comparison. Key Techniques: Parent-Document Retrieval (balance granular search with full-context retrieval) and Hybrid Search (integrate semantic vector + keyword BM25 for clinical precision). Success Metrics: Hit Rate (Recall@K) to verify correct clinical documents in top results, and MRR (Mean Reciprocal Rank) to evaluate ranking quality. 10 specialized exercises.',
       exercises: [
         { number: 1, title: 'Setup: Index 5,000 pages of simulated clinical notes (PDFs)', type: 'setup' },
         { number: 2, title: 'Phase 1: Build "Naive" RAG baseline (fixed 200-token chunks, vector-only)', type: 'coding' },
@@ -312,8 +312,8 @@ const weekData = [
     },
     project: {
       slug: 'enterprise-rag-system',
-      title: 'Production RAG System for Regulated Industry',
-      description: 'Build a HIPAA-grade RAG system with hybrid retrieval, re-ranking, semantic caching, and enterprise evaluation metrics',
+      title: 'Project: Production RAG System for Regulated Industry',
+      description: 'Build a full production system: HIPAA-grade RAG with hybrid retrieval, re-ranking, semantic caching, and enterprise evaluation metrics',
       requirements: [
         'Hybrid Search: Combine pgvector (semantic) + pg_trgm or ElasticSearch (BM25)',
         'Re-Ranking: Cohere Rerank API or BGE-Reranker model for top-50 → top-5',
