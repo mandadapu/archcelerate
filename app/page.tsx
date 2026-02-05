@@ -441,7 +441,7 @@ export default function Home() {
           {/* Bottom CTA */}
           <div className="mt-12 text-center">
             <Link href="/diagnosis">
-              <button className="px-10 py-3 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-lg font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
+              <button className="px-10 py-4 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-lg font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
                 See Your Personalized Path
               </button>
             </Link>
@@ -584,7 +584,7 @@ export default function Home() {
 
                 <div className="mt-6 pt-6 border-t border-gray-200">
                   <Link href="/diagnosis">
-                    <button className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-cyan-500 text-white font-semibold rounded-lg hover:shadow-lg transition-all duration-200">
+                    <button className="w-full px-6 py-4 bg-gradient-to-r from-purple-600 to-cyan-500 text-white font-semibold rounded-lg hover:shadow-lg transition-all duration-200">
                       Generate Your Report
                     </button>
                   </Link>
