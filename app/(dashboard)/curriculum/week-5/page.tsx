@@ -18,30 +18,31 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
-// Concept visualization icons - Week 5: Agentic Frameworks
+// Concept visualization icons - Week 5: Agentic Frameworks (The Logic)
+// Using indigo/blue theme to match Week 5's gradient (from-indigo-50 to-blue-50)
 function getConceptIllustration(slug: string) {
   const illustrations: Record<string, JSX.Element> = {
     'agent-architectures': (
-      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+      <div className="flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <Network className="h-7 w-7 text-primary" />
-          <Users className="h-6 w-6 text-info" />
+          <Network className="h-7 w-7 text-indigo-600" />
+          <Users className="h-6 w-6 text-blue-500" />
         </div>
       </div>
     ),
     'reliability-patterns': (
-      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+      <div className="flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <RefreshCw className="h-7 w-7 text-success" />
-          <Shield className="h-6 w-6 text-primary" />
+          <RefreshCw className="h-7 w-7 text-indigo-600" />
+          <Shield className="h-6 w-6 text-blue-500" />
         </div>
       </div>
     ),
     'framework-comparison': (
-      <div className="flex items-center justify-center w-16 h-16 opacity-60">
+      <div className="flex items-center justify-center opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <GitCompare className="h-7 w-7 text-warning" />
-          <Code2 className="h-6 w-6 text-primary" />
+          <GitCompare className="h-7 w-7 text-indigo-600" />
+          <Code2 className="h-6 w-6 text-blue-500" />
         </div>
       </div>
     ),
@@ -135,7 +136,7 @@ export default async function Week5Page() {
 
         {/* Progress Overview */}
         {progress && (
-          <Card className="bg-red-50 dark:bg-red-950 border-red-200">
+          <Card className="bg-indigo-50 dark:bg-indigo-950 border-indigo-200">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Your Progress</CardTitle>
