@@ -14,7 +14,7 @@ description: 'Combine semantic (vector) and keyword (BM25) search with cross-enc
 **Business Constraints**:
 - **Precision**: Must find exact lab values, medication dosages, and diagnosis codes (ICD-10)
 - **Recall**: Must also understand semantic queries ("blood sugar control" → HbA1c results)
-- **Latency**: <300ms P95 (doctors won't wait >500ms)
+- **Latency**: &lt;300ms P95 (doctors won't wait &gt;500ms)
 - **Cost**: <$1,000/month for 100K queries
 - **Compliance**: HIPAA audit trail showing which documents were retrieved
 
@@ -106,7 +106,7 @@ const reranked = await cohere.rerank({
 User Query: "HbA1c March 2022"
       ↓
 ┌─────────────────────┐
-│   Query Embedding   │ (OpenAI ada-002: <50ms)
+│   Query Embedding   │ (OpenAI ada-002: &lt;50ms)
 └──────────┬──────────┘
            ↓
      ┌─────┴─────┐
@@ -116,7 +116,7 @@ User Query: "HbA1c March 2022"
      ↓           ↓
      └─────┬─────┘
            ↓
-     [RRF Fusion]  (In-memory: <1ms)
+     [RRF Fusion]  (In-memory: &lt;1ms)
        10 docs
            ↓
   [Cross-Encoder Rerank]  (Cohere: 80ms)
@@ -171,8 +171,8 @@ In the hands-on lab, you'll implement:
 
 **Business Constraints**:
 - **Precision Target**: 94% accuracy on dosage retrieval (65% baseline with vector-only)
-- **Recall Target**: >85% on drug interaction queries
-- **Latency**: <250ms P95 (real-time physician queries)
+- **Recall Target**: &gt;85% on drug interaction queries
+- **Latency**: &lt;250ms P95 (real-time physician queries)
 - **Cost**: <$0.005 per query ($1,500/month for 300K queries)
 - **Compliance**: FDA 21 CFR Part 11 audit trail for all retrievals
 - **Safety**: Zero tolerance for wrong dosage information
@@ -187,7 +187,7 @@ const vectorResults = await vectorSearch("metformin renal impairment starting do
 // Returns:
 // 1. "Metformin should be used with caution in renal impairment" ← Generic warning, no dose
 // 2. "Initial dose: 500mg twice daily" ← For normal renal function (WRONG!)
-// 3. "Adjust dose based on eGFR <30 mL/min" ← Vague, no specific dose
+// 3. "Adjust dose based on eGFR &lt;30 mL/min" ← Vague, no specific dose
 
 // ✅ Hybrid Search + Reranking (94% precision)
 const hybridResults = await hybridSearchWithRerank(
@@ -196,7 +196,7 @@ const hybridResults = await hybridSearchWithRerank(
 )
 // Returns:
 // 1. "For eGFR 30-45 mL/min: Starting dose 500mg once daily, max 1000mg/day" ← EXACT match ✅
-// 2. "Contraindicated if eGFR <30 mL/min" ← Critical safety info ✅
+// 2. "Contraindicated if eGFR &lt;30 mL/min" ← Critical safety info ✅
 // 3. "Monitor renal function every 3 months" ← Clinical guidance ✅
 ```
 
@@ -655,7 +655,7 @@ Medical information requires **expert-level reasoning**:
 // Opus 4.5 ($0.030)
 - "Concurrent use increases hypoglycemia risk. FDA recommends:
    1. Start SGLT2i at lowest dose
-   2. Consider reducing metformin by 50% if HbA1c <7%
+   2. Consider reducing metformin by 50% if HbA1c &lt;7%
    3. Monitor for dehydration (SGLT2i diuretic effect)
    [Doc 1] Metformin label section 7.1
    [Doc 3] Empagliflozin label section 7.2"
@@ -964,7 +964,7 @@ class SelfHostedReranker {
 **Key Insight:**
 - Hybrid search: 92% recall (finds right document in top 100)
 - Cross-encoder: 91% precision (top 5 are all relevant)
-- Total latency: 230ms (acceptable for <300ms SLA)
+- Total latency: 230ms (acceptable for &lt;300ms SLA)
 
 ### When to Skip Reranking
 
@@ -1233,15 +1233,15 @@ class RetrievalABTest {
 
 | Metric | Pure Vector | Hybrid RRF | Improvement | p-value |
 |--------|------------|------------|-------------|---------|
-| **Recall@10** | 0.72 | **0.88** | **+22%** | <0.001 ✅ |
-| **MRR** | 0.65 | **0.81** | **+25%** | <0.001 ✅ |
-| **Precision@5** | 0.68 | **0.87** | **+28%** | <0.001 ✅ |
-| **Latency P95** | 120ms | 230ms | +92% ⚠️ | <0.001 |
+| **Recall@10** | 0.72 | **0.88** | **+22%** | &lt;0.001 ✅ |
+| **MRR** | 0.65 | **0.81** | **+25%** | &lt;0.001 ✅ |
+| **Precision@5** | 0.68 | **0.87** | **+28%** | &lt;0.001 ✅ |
+| **Latency P95** | 120ms | 230ms | +92% ⚠️ | &lt;0.001 |
 | **Cost/Query** | $0.0001 | $0.0022 | +2100% ⚠️ | - |
 
 **Decision:** Ship hybrid to production.
 - **Rationale:** 22% recall improvement worth $210/month for 100K queries
-- **Latency:** 230ms acceptable (<300ms SLA)
+- **Latency:** 230ms acceptable (&lt;300ms SLA)
 - **User Feedback:** 15% reduction in "no results found" complaints
 
 ---
@@ -1450,7 +1450,7 @@ async function continuousEvaluation() {
     if (avgRecall < 0.75) {
       await alertSlack({
         channel: '#ai-alerts',
-        text: `⚠️ Recall dropped to ${(avgRecall * 100).toFixed(1)}% (target: >75%)`
+        text: `⚠️ Recall dropped to ${(avgRecall * 100).toFixed(1)}% (target: &gt;75%)`
       })
     }
   }, 3600000) // Run every hour
@@ -1461,11 +1461,11 @@ async function continuousEvaluation() {
 
 | Metric | Baseline (Vector Only) | **Hybrid + Rerank** | Target | Status |
 |--------|----------------------|-------------------|--------|--------|
-| Recall@10 | 0.72 | **0.88** | >0.80 | ✅ |
-| MRR | 0.65 | **0.82** | >0.75 | ✅ |
-| Precision@5 | 0.68 | **0.91** | >0.80 | ✅ |
-| NDCG@10 | 0.70 | **0.89** | >0.80 | ✅ |
-| Latency P95 | 120ms | 230ms | <300ms | ✅ |
+| Recall@10 | 0.72 | **0.88** | &gt;0.80 | ✅ |
+| MRR | 0.65 | **0.82** | &gt;0.75 | ✅ |
+| Precision@5 | 0.68 | **0.91** | &gt;0.80 | ✅ |
+| NDCG@10 | 0.70 | **0.89** | &gt;0.80 | ✅ |
+| Latency P95 | 120ms | 230ms | &lt;300ms | ✅ |
 | Cost/1K Queries | $0.10 | $2.20 | <$5.00 | ✅ |
 
 ---
@@ -1492,7 +1492,7 @@ async function continuousEvaluation() {
 - Recall@10: 0.72 → **0.88** (+22%)
 - MRR: 0.65 → **0.82** (+26%)
 - Precision@5: 0.68 → **0.91** (+34%)
-- Latency: 230ms (<300ms SLA)
+- Latency: 230ms (&lt;300ms SLA)
 - Cost: $2.20/1K queries (<$5.00 budget)
 
 **When to Use:**
@@ -1500,7 +1500,7 @@ async function continuousEvaluation() {
 - **Pure Vector:** Conceptual questions, semantic understanding
 - **Pure Keyword:** Exact identifier lookups
 
-In the lab, you'll build a Medical Records Navigator that uses all three techniques to find "HbA1c result from March 2022" in 5,000 pages—with 91% precision in <230ms.
+In the lab, you'll build a Medical Records Navigator that uses all three techniques to find "HbA1c result from March 2022" in 5,000 pages—with 91% precision in &lt;230ms.
 
 ---
 
