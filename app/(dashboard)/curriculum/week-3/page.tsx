@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   description: 'Build retrieval-augmented generation systems with vector databases'
 }
 
-export default async function Week6Page() {
+export default async function Week3Page() {
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.email) {

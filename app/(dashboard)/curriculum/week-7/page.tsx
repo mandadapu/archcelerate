@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   description: 'Plan and build your capstone AI application from scratch'
 }
 
-export default async function Week6Page() {
+export default async function Week7Page() {
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.email) {

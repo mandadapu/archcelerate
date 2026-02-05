@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   description: 'Build systems that reason, plan, and execute using multi-agent architectures and reliability patterns'
 }
 
-export default async function Week6Page() {
+export default async function Week5Page() {
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.email) {

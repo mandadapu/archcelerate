@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   description: 'Transform LLMs from chatbots to system components with structured output and function calling'
 }
 
-export default async function Week6Page() {
+export default async function Week4Page() {
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.email) {

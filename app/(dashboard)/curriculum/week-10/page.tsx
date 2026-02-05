@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   description: 'Learn production-ready AI observability, monitoring, and deployment'
 }
 
-export default async function Week6Page() {
+export default async function Week10Page() {
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.email) {
