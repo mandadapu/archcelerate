@@ -81,17 +81,14 @@ export default function Home() {
           </div>
 
           {/* Headline - The "Architect" Hook */}
-          <div className="text-center mb-8 max-w-4xl">
-            <h1 className="font-display text-5xl md:text-7xl font-bold text-gray-900 mb-6 tracking-tight leading-[1.2]">
-              Build AI Products.
-              <br />
-              Harden Systems.
-              <br />
+          <div className="text-center mb-8 max-w-3xl">
+            <h1 className="font-display text-4xl md:text-6xl font-bold text-gray-900 mb-6 tracking-tight leading-[1.2]">
+              Build AI Products. Harden Systems.{' '}
               <span className="inline-block bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent pb-2">
-                Become an Architect.
+                Become an AI Architect.
               </span>
             </h1>
-            <p className="text-xl md:text-2xl text-gray-600 leading-relaxed max-w-3xl mx-auto">
+            <p className="text-xl md:text-2xl text-gray-600 leading-relaxed max-w-2xl mx-auto">
               Transform from a software engineer to a <span className="font-semibold text-gray-900">Technical Lead</span> in 12 weeks.
               Master the <span className="font-semibold text-gray-900">physics of LLMs</span>, build <span className="font-semibold text-gray-900">sovereign security frameworks</span>,
               and ship <span className="font-semibold text-gray-900">7 production-grade AI systems</span>.
