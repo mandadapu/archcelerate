@@ -1,0 +1,665 @@
+---
+title: "Lab: Production-Grade Advanced RAG System"
+description: "Build a complete advanced RAG system with hybrid retrieval, query transformation, context optimization, and intelligent routing"
+estimatedMinutes: 180
+week: 6
+labNumber: 1
+difficulty: advanced
+objectives:
+  - Implement hybrid retrieval with RRF and cross-encoder re-ranking
+  - Add query transformation with caching for cost optimization
+  - Build parent-document retrieval for context completeness
+  - Create intelligent model routing for 80%+ cost savings
+  - Deploy full evaluation pipeline with A/B testing
+---
+
+# Lab: Production-Grade Advanced RAG System
+
+## Overview
+
+In this lab, you'll build a production-ready Advanced RAG system for a **Healthcare Knowledge Base** that combines all Week 6 patterns:
+
+- **Hybrid Retrieval**: Semantic + keyword search with RRF fusion
+- **Cross-Encoder Re-Ranking**: Two-stage retrieval for precision
+- **Query Transformation**: Multi-query expansion with semantic caching
+- **Parent-Document Retrieval**: Small-to-big for complete context
+- **Intelligent Model Routing**: Cost optimization with complexity-based routing
+
+**Scenario:** A healthcare SaaS company needs a RAG system to help doctors find patient information from 10,000 clinical notes. The system must:
+- Find exact information (dates, lab values, medication names)
+- Provide complete context (trends over time, not isolated facts)
+- Maintain <300ms P95 latency
+- Stay under $1,000/month for 100K queries
+
+---
+
+## Part 1: Setup & Data Preparation (30 minutes)
+
+### 1.1 Initialize Project
+
+```bash
+mkdir healthcare-rag-lab
+cd healthcare-rag-lab
+npm init -y
+
+# Install dependencies
+npm install @anthropic-ai/sdk @pinecone-database/pinecone openai pg redis
+npm install -D typescript @types/node tsx
+
+# Initialize TypeScript
+npx tsc --init
+```
+
+### 1.2 Create Mock Clinical Dataset
+
+```typescript
+// src/data/mock-clinical-notes.ts
+export interface ClinicalNote {
+  id: string
+  patient_id: string
+  date: string
+  note_type: 'progress' | 'lab' | 'discharge'
+  content: string
+}
+
+export const mockClinicalNotes: ClinicalNote[] = [
+  {
+    id: 'note_001',
+    patient_id: 'P12345',
+    date: '2023-03-15',
+    note_type: 'lab',
+    content: `Lab Results - March 15, 2023
+Patient: P12345
+HbA1c: 7.2% (previous: 8.1% in Sept 2022)
+Fasting glucose: 126 mg/dL
+Assessment: Diabetes control improving with current metformin regimen (1000mg BID).
+Plan: Continue current therapy, recheck HbA1c in 3 months.`
+  },
+  {
+    id: 'note_002',
+    patient_id: 'P12345',
+    date: '2022-09-10',
+    note_type: 'lab',
+    content: `Lab Results - September 10, 2022
+Patient: P12345
+HbA1c: 8.1%
+Fasting glucose: 165 mg/dL
+Assessment: Poorly controlled type 2 diabetes. Patient non-adherent to diet modifications.
+Plan: Start metformin 500mg BID, titrate to 1000mg BID. Diabetes education referral.`
+  },
+  // Add 100+ more notes for comprehensive testing
+]
+
+// Generate additional notes programmatically
+function generateMockNotes(count: number): ClinicalNote[] {
+  const notes: ClinicalNote[] = []
+  const patients = ['P12345', 'P67890', 'P11111', 'P22222', 'P33333']
+  const conditions = ['diabetes', 'hypertension', 'hyperlipidemia']
+
+  for (let i = 0; i < count; i++) {
+    notes.push({
+      id: `note_${String(i).padStart(3, '0')}`,
+      patient_id: patients[i % patients.length],
+      date: new Date(2022, 0, 1 + i).toISOString().split('T')[0],
+      note_type: ['progress', 'lab', 'discharge'][i % 3] as any,
+      content: `Clinical note for ${patients[i % patients.length]}. ${conditions[i % conditions.length]} management...`
+    })
+  }
+
+  return notes
+}
+```
+
+---
+
+## Part 2: Hybrid Retrieval with RRF (45 minutes)
+
+### 2.1 Implement Reciprocal Rank Fusion
+
+```typescript
+// src/retrieval/rrf.ts
+interface RankedResult {
+  id: string
+  content: string
+  score: number
+}
+
+export function reciprocalRankFusion(
+  vectorResults: RankedResult[],
+  keywordResults: RankedResult[],
+  k: number = 60
+): RankedResult[] {
+  const scoreMap = new Map<string, number>()
+  const contentMap = new Map<string, string>()
+
+  // TODO: Implement RRF algorithm
+  // 1. For each vector result, calculate RRF score: 1 / (k + rank)
+  // 2. For each keyword result, add RRF score
+  // 3. Sort by combined score
+  // 4. Return top results
+
+  return []
+}
+```
+
+**Exercise 2.1:** Implement the RRF algorithm following the Week 6 pattern.
+
+**Expected Output:**
+```typescript
+const vectorResults = [
+  { id: 'note_001', content: '...', score: 0.92 },
+  { id: 'note_045', content: '...', score: 0.88 }
+]
+
+const keywordResults = [
+  { id: 'note_001', content: '...', score: 12.3 },
+  { id: 'note_090', content: '...', score: 8.1 }
+]
+
+const merged = reciprocalRankFusion(vectorResults, keywordResults, 60)
+// note_001 should rank first (appears in both)
+```
+
+### 2.2 Build Hybrid Search Pipeline
+
+```typescript
+// src/retrieval/hybrid-search.ts
+import { Pinecone } from '@pinecone-database/pinecone'
+import { embed } from '../utils/embeddings'
+
+export async function hybridSearch(
+  query: string,
+  options: {
+    limit: number
+    vectorWeight?: number
+    keywordWeight?: number
+  }
+): Promise<RankedResult[]> {
+  // TODO: Implement hybrid search
+  // 1. Embed query
+  // 2. Vector search (Pinecone)
+  // 3. Keyword search (BM25 with pg_trgm or in-memory)
+  // 4. Merge with RRF
+  // 5. Return top results
+
+  return []
+}
+```
+
+**Exercise 2.2:** Implement hybrid search with pgvector or Pinecone.
+
+**Test Case:**
+```typescript
+const results = await hybridSearch('HbA1c March 2023', { limit: 10 })
+// Should find note_001 (exact date match + semantic relevance)
+```
+
+---
+
+## Part 3: Cross-Encoder Re-Ranking (30 minutes)
+
+### 3.1 Implement Two-Stage Retrieval
+
+```typescript
+// src/retrieval/reranker.ts
+import Anthropic from '@anthropic-ai/sdk'
+
+export async function twoStageRetrieval(
+  query: string,
+  options: { topK: number }
+): Promise<RankedResult[]> {
+  // Stage 1: Hybrid search (top 100 candidates)
+  const candidates = await hybridSearch(query, { limit: 100 })
+
+  // Stage 2: Cross-encoder reranking (top 5)
+  const reranked = await crossEncoderRerank(query, candidates, options.topK)
+
+  return reranked
+}
+
+async function crossEncoderRerank(
+  query: string,
+  candidates: RankedResult[],
+  topK: number
+): Promise<RankedResult[]> {
+  // TODO: Implement cross-encoder reranking
+  // Option 1: Use Cohere Rerank API
+  // Option 2: Use self-hosted cross-encoder model
+  // Option 3: Use Claude as reranker (expensive but accurate)
+
+  return []
+}
+```
+
+**Exercise 3.1:** Implement cross-encoder reranking using Cohere Rerank API or Claude.
+
+**Acceptance Criteria:**
+- Precision@5 improves by 15%+ vs hybrid search alone
+- Latency < 300ms for full two-stage pipeline
+
+---
+
+## Part 4: Query Transformation with Caching (40 minutes)
+
+### 4.1 Semantic Query Cache
+
+```typescript
+// src/query/cache.ts
+import { createClient } from 'redis'
+import { embed } from '../utils/embeddings'
+
+export class QueryTransformationCache {
+  private redis: ReturnType<typeof createClient>
+
+  constructor() {
+    this.redis = createClient({ url: process.env.REDIS_URL })
+  }
+
+  async get(query: string, pattern: 'multi-query' | 'hyde'): Promise<string[] | null> {
+    // TODO: Implement semantic caching
+    // 1. Embed query
+    // 2. Search for similar cached queries (cosine similarity > 0.95)
+    // 3. Return cached transformations if found
+
+    return null
+  }
+
+  async set(query: string, transformedQueries: string[], pattern: string): Promise<void> {
+    // TODO: Store query transformation in Redis
+    // 1. Embed query
+    // 2. Store with TTL (24 hours)
+    // 3. Create index for similarity search
+
+  }
+}
+```
+
+**Exercise 4.1:** Implement semantic query caching with Redis.
+
+**Test Case:**
+```typescript
+const cache = new QueryTransformationCache()
+
+// First query: Cache miss
+const q1 = await cache.get('patient glucose trends', 'multi-query')
+// null
+
+// Transform and cache
+await cache.set('patient glucose trends', [
+  'What is the trend of patient blood sugar?',
+  'Show me all glucose measurements over time'
+], 'multi-query')
+
+// Similar query: Cache hit
+const q2 = await cache.get('patient blood sugar trends', 'multi-query')
+// Returns cached transformations (query similarity > 0.95)
+```
+
+### 4.2 Multi-Query Expansion
+
+```typescript
+// src/query/transformation.ts
+export async function multiQueryExpansion(
+  query: string,
+  cache: QueryTransformationCache
+): Promise<string[]> {
+  // TODO: Implement multi-query expansion with caching
+  // 1. Check cache first
+  // 2. If cache miss, generate variations with Claude
+  // 3. Store in cache
+  // 4. Return expanded queries
+
+  return []
+}
+```
+
+**Exercise 4.2:** Implement multi-query expansion with the caching layer.
+
+**Acceptance Criteria:**
+- Cache hit rate > 50% after running 1,000 queries
+- Cost reduced by 60% with caching vs no caching
+- Recall@10 improves by 15%+ vs single query
+
+---
+
+## Part 5: Parent-Document Retrieval (35 minutes)
+
+### 5.1 Implement Parent-Document System
+
+```typescript
+// src/retrieval/parent-document.ts
+import { createClient } from 'redis'
+
+interface ParentDocument {
+  id: string
+  content: string
+  metadata: Record<string, any>
+}
+
+export class ParentDocumentStore {
+  private redis: ReturnType<typeof createClient>
+
+  async indexWithParents(note: ClinicalNote): Promise<void> {
+    // TODO: Implement parent-document indexing
+    // 1. Store full note as parent in Redis
+    // 2. Create small child chunks (200 tokens)
+    // 3. Index child chunks in vector DB with parent_id reference
+    // 4. Store child chunk metadata (start_char, end_char)
+
+  }
+
+  async retrieveWithParentContext(
+    query: string,
+    topK: number
+  ): Promise<ParentDocument[]> {
+    // TODO: Implement parent-document retrieval
+    // 1. Search child chunks (high precision)
+    // 2. Extract unique parent IDs
+    // 3. Fetch full parent documents from Redis
+    // 4. Return parents with relevant chunk highlighted
+
+    return []
+  }
+}
+```
+
+**Exercise 5.1:** Implement parent-document retrieval system.
+
+**Test Case:**
+```typescript
+const store = new ParentDocumentStore()
+
+// Index note with parent-child relationship
+await store.indexWithParents(mockClinicalNotes[0])
+
+// Search: Should find small chunk but return full parent
+const parents = await retrieveWithParentContext('HbA1c 7.2%', 5)
+
+// Parent should include full clinical note with context
+console.log(parents[0].content)
+// "Lab Results - March 15, 2023... HbA1c: 7.2% (previous: 8.1%)..."
+```
+
+---
+
+## Part 6: Intelligent Model Routing (30 minutes)
+
+### 6.1 Build Complexity Classifier
+
+```typescript
+// src/routing/complexity.ts
+interface QueryComplexity {
+  score: number // 0-1
+  recommendedModel: 'haiku' | 'sonnet' | 'opus'
+  factors: {
+    wordCount: number
+    hasCodeBlocks: boolean
+    requiresReasoning: boolean
+  }
+}
+
+export function analyzeComplexity(query: string): QueryComplexity {
+  // TODO: Implement complexity analysis
+  // 1. Count words (<20 = simple, >50 = complex)
+  // 2. Detect reasoning keywords (analyze, compare, evaluate)
+  // 3. Detect domain-specific terms (medical, legal)
+  // 4. Calculate complexity score (0-1)
+  // 5. Recommend model (haiku/sonnet/opus)
+
+  return {
+    score: 0,
+    recommendedModel: 'haiku',
+    factors: { wordCount: 0, hasCodeBlocks: false, requiresReasoning: false }
+  }
+}
+```
+
+**Exercise 6.1:** Implement query complexity classifier.
+
+**Test Cases:**
+```typescript
+analyzeComplexity('What is the capital of France?')
+// { score: 0.2, recommendedModel: 'haiku' }
+
+analyzeComplexity('Analyze patient glucose trends over past year and recommend therapy adjustments')
+// { score: 0.8, recommendedModel: 'opus' }
+```
+
+### 6.2 Model Router
+
+```typescript
+// src/routing/router.ts
+export async function routeToModel(
+  query: string,
+  ragResults: RankedResult[]
+): Promise<{ response: string; model: string; cost: number }> {
+  // TODO: Implement model routing
+  // 1. Analyze query complexity
+  // 2. Select model (haiku/sonnet/opus)
+  // 3. Call selected model
+  // 4. Track cost and model used
+
+  return { response: '', model: 'haiku', cost: 0 }
+}
+```
+
+**Acceptance Criteria:**
+- 60-70% of queries route to Haiku
+- Total cost < $500/month for 100K queries
+- User satisfaction remains > 85% across all models
+
+---
+
+## Part 7: Evaluation & A/B Testing (30 minutes)
+
+### 7.1 Create Golden Dataset
+
+```typescript
+// src/evaluation/golden-dataset.ts
+export const goldenDataset = [
+  {
+    query: 'What was patient P12345 HbA1c in March 2023?',
+    expected_answer: '7.2%',
+    relevant_docs: ['note_001'],
+    pass_threshold: 0.95
+  },
+  {
+    query: 'Has patient P12345 diabetes control improved?',
+    expected_answer: 'Yes, HbA1c decreased from 8.1% to 7.2% over 6 months',
+    relevant_docs: ['note_001', 'note_002'],
+    pass_threshold: 0.85
+  },
+  // Add 50+ more examples
+]
+```
+
+### 7.2 Run A/B Test
+
+```typescript
+// src/evaluation/ab-test.ts
+export async function runABTest(dataset: typeof goldenDataset) {
+  // TODO: Run A/B test comparing:
+  // - Control: Single query with standard retrieval
+  // - Treatment: Hybrid search + multi-query + RRF + reranking
+
+  // Measure:
+  // - Recall@10
+  // - Precision@5
+  // - Latency P95
+  // - Cost per query
+
+  return {
+    control: { recall: 0, precision: 0, latency: 0, cost: 0 },
+    treatment: { recall: 0, precision: 0, latency: 0, cost: 0 }
+  }
+}
+```
+
+**Exercise 7.1:** Run A/B test on golden dataset and measure improvements.
+
+**Target Metrics:**
+- Recall@10: +20% improvement
+- Precision@5: +25% improvement
+- Latency: <300ms P95
+- Cost: <$0.005 per query
+
+---
+
+## Part 8: Production Deployment (20 minutes)
+
+### 8.1 Complete RAG System
+
+```typescript
+// src/index.ts
+import { hybridSearch } from './retrieval/hybrid-search'
+import { twoStageRetrieval } from './retrieval/reranker'
+import { multiQueryExpansion } from './query/transformation'
+import { QueryTransformationCache } from './query/cache'
+import { ParentDocumentStore } from './retrieval/parent-document'
+import { routeToModel } from './routing/router'
+
+export async function productionRAG(query: string): Promise<{
+  answer: string
+  metadata: {
+    model_used: string
+    latency_ms: number
+    cost_usd: number
+    cache_hit: boolean
+    retrieval_method: string
+  }
+}> {
+  const startTime = Date.now()
+
+  // Step 1: Query transformation (with caching)
+  const cache = new QueryTransformationCache()
+  const expandedQueries = await multiQueryExpansion(query, cache)
+  const cacheHit = expandedQueries.length > 1
+
+  // Step 2: Retrieve with expanded queries
+  const allResults = await Promise.all(
+    expandedQueries.map(q => twoStageRetrieval(q, { topK: 100 }))
+  )
+
+  // Step 3: Merge with RRF
+  const mergedResults = reciprocalRankFusion(allResults.flat(), [], 60)
+
+  // Step 4: Get parent documents for complete context
+  const parentStore = new ParentDocumentStore()
+  const parents = await parentStore.retrieveWithParentContext(query, 5)
+
+  // Step 5: Route to appropriate model
+  const { response, model, cost } = await routeToModel(query, parents)
+
+  const latency = Date.now() - startTime
+
+  return {
+    answer: response,
+    metadata: {
+      model_used: model,
+      latency_ms: latency,
+      cost_usd: cost,
+      cache_hit: cacheHit,
+      retrieval_method: 'hybrid_rrf_rerank_parent'
+    }
+  }
+}
+```
+
+### 8.2 Test Complete System
+
+```bash
+# Run the complete system
+tsx src/index.ts
+
+# Query: "Show me patient P12345 glucose trends"
+# Expected:
+# - Cache hit: No (first query)
+# - Retrieval: Hybrid + RRF + Rerank + Parent
+# - Model: Opus (complex reasoning query)
+# - Latency: <300ms
+# - Cost: $0.015
+# - Answer: "Patient P12345 glucose control has improved..."
+```
+
+---
+
+## Bonus Challenges
+
+### Challenge 1: Optimize Cache Hit Rate
+**Goal:** Achieve >60% cache hit rate
+- Implement query normalization
+- Add synonyms and query expansion
+- Tune similarity threshold
+
+### Challenge 2: Cost Optimization
+**Goal:** Reduce cost to <$500/month for 100K queries
+- Implement tiered model routing (80% Haiku, 15% Sonnet, 5% Opus)
+- Add prompt caching for static context
+- Optimize query transformations (reduce LLM calls)
+
+### Challenge 3: Scale to 1M Documents
+**Goal:** Maintain <300ms latency at 1M documents
+- Implement HNSW index optimization
+- Add query-time filtering
+- Use approximate search for large result sets
+
+---
+
+## Submission Requirements
+
+### Code Deliverables
+1. Complete TypeScript implementation in GitHub repo
+2. All functions from Parts 2-7 implemented and working
+3. Unit tests for key functions (RRF, caching, routing)
+4. Integration test for complete RAG pipeline
+
+### Performance Report
+Create `PERFORMANCE.md` documenting:
+- A/B test results (control vs treatment)
+- Cost breakdown by component
+- Latency percentiles (P50, P95, P99)
+- Cache hit rate over time
+- Model routing distribution
+
+### Architecture Diagram
+Create architecture diagram showing:
+- Query flow from user to response
+- Caching layers
+- Retrieval pipeline (hybrid → RRF → rerank → parent)
+- Model routing decision tree
+
+---
+
+## Evaluation Rubric
+
+| Category | Points | Criteria |
+|----------|--------|----------|
+| **Hybrid Retrieval** | 20 | RRF implementation correct, hybrid search working |
+| **Re-Ranking** | 15 | Two-stage retrieval with cross-encoder |
+| **Query Caching** | 15 | Semantic caching with >50% hit rate |
+| **Parent-Document** | 15 | Small-to-big retrieval with complete context |
+| **Model Routing** | 15 | Intelligent routing with 60%+ Haiku usage |
+| **A/B Testing** | 10 | Golden dataset evaluation showing improvements |
+| **Performance** | 10 | <300ms latency, <$0.005/query cost |
+
+**Total:** 100 points
+
+**Pass:** 70+ points
+
+---
+
+## Resources
+
+- Week 6 Concept 1: Hybrid Retrieval & Re-Ranking
+- Week 6 Concept 2: Query Transformation Patterns
+- Week 6 Concept 3: Context Window Management
+- Week 6 Concept 4: Performance & Model Routing
+- [Pinecone Hybrid Search Guide](https://docs.pinecone.io/guides/data/hybrid-search)
+- [Cohere Rerank API](https://docs.cohere.com/reference/rerank-1)
+- [Redis Vector Similarity Search](https://redis.io/docs/stack/search/reference/vectors/)
+
+---
+
+**Estimated Time:** 3-4 hours
+**Difficulty:** Advanced
+**Prerequisites:** Completion of Week 1-5 labs, basic TypeScript/Node.js knowledge

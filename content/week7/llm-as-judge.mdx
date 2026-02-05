@@ -552,6 +552,367 @@ async function sendAlert(alert: any) {
 
 ---
 
+## 7. Regression Testing with Golden Datasets
+
+### The Problem
+
+**Scenario:** You improve your RAG retrieval (add hybrid search). Does it help or hurt?
+
+**Without regression testing:** You don't know if new version breaks existing queries.
+**With regression testing:** You have a golden dataset of 500 queries with expected answers. New version must pass 95%+ before deploy.
+
+### Golden Dataset Structure
+
+```typescript
+/**
+ * Golden Dataset: Curated test cases with ground truth
+ */
+interface GoldenExample {
+  id: string
+  query: string
+  expected_answer: string
+  context_documents: string[]  // Documents that should be retrieved
+  difficulty: 'easy' | 'medium' | 'hard'
+  category: 'factual' | 'reasoning' | 'multi-hop'
+  metadata: {
+    created_at: Date
+    updated_at: Date
+    pass_rate_threshold: number // 0-1, e.g., 0.9 = must get 90%+ correct
+  }
+}
+
+// Example: Healthcare RAG golden dataset
+const goldenDataset: GoldenExample[] = [
+  {
+    id: 'golden_001',
+    query: 'What was the patient\'s HbA1c value in March 2023?',
+    expected_answer: '7.2%',
+    context_documents: ['clinical_note_2023_03_15'],
+    difficulty: 'easy',
+    category: 'factual',
+    metadata: {
+      created_at: new Date('2024-01-01'),
+      updated_at: new Date('2024-01-01'),
+      pass_rate_threshold: 0.95
+    }
+  },
+  {
+    id: 'golden_002',
+    query: 'Has the patient\'s diabetes control improved over the past year?',
+    expected_answer: 'Yes, HbA1c decreased from 8.1% to 7.2% over 12 months.',
+    context_documents: ['clinical_note_2022_03', 'clinical_note_2023_03'],
+    difficulty: 'hard',
+    category: 'reasoning',
+    metadata: {
+      created_at: new Date('2024-01-01'),
+      updated_at: new Date('2024-01-01'),
+      pass_rate_threshold: 0.85 // Lower threshold for hard questions
+    }
+  }
+]
+```
+
+### Regression Test Runner
+
+```typescript
+/**
+ * Regression Test Suite
+ * Run before every deploy to prevent breaking changes
+ */
+interface RegressionTestResult {
+  test_id: string
+  passed: boolean
+  expected: string
+  actual: string
+  score: number        // 0-1 from LLM-as-judge
+  latency_ms: number
+  cost_usd: number
+  error?: string
+}
+
+async function runRegressionTests(
+  goldenDataset: GoldenExample[],
+  ragSystem: (query: string) => Promise<string>
+): Promise<{
+  results: RegressionTestResult[]
+  pass_rate: number
+  avg_score: number
+  total_cost: number
+}> {
+  const results: RegressionTestResult[] = []
+  let totalCost = 0
+
+  for (const example of goldenDataset) {
+    const startTime = Date.now()
+
+    try {
+      // Step 1: Execute RAG query
+      const actualAnswer = await ragSystem(example.query)
+      const latency = Date.now() - startTime
+
+      // Step 2: Evaluate with LLM-as-judge
+      const evaluation = await llmAsJudge({
+        query: example.query,
+        expected: example.expected_answer,
+        actual: actualAnswer,
+        context: example.context_documents
+      })
+
+      const cost = 0.003 // Approximate cost per eval
+      totalCost += cost
+
+      // Step 3: Determine pass/fail
+      const passed = evaluation.score >= example.metadata.pass_rate_threshold
+
+      results.push({
+        test_id: example.id,
+        passed,
+        expected: example.expected_answer,
+        actual: actualAnswer,
+        score: evaluation.score,
+        latency_ms: latency,
+        cost_usd: cost
+      })
+
+    } catch (error) {
+      results.push({
+        test_id: example.id,
+        passed: false,
+        expected: example.expected_answer,
+        actual: '',
+        score: 0,
+        latency_ms: Date.now() - startTime,
+        cost_usd: 0,
+        error: error.message
+      })
+    }
+  }
+
+  // Calculate aggregate metrics
+  const passCount = results.filter(r => r.passed).length
+  const passRate = passCount / results.length
+  const avgScore = results.reduce((sum, r) => sum + r.score, 0) / results.length
+
+  return {
+    results,
+    pass_rate: passRate,
+    avg_score: avgScore,
+    total_cost: totalCost
+  }
+}
+```
+
+### Deployment Gate
+
+```typescript
+/**
+ * Deployment Gate: Block deploy if regression tests fail
+ */
+async function deploymentGate(version: string) {
+  console.log(`🔍 Running regression tests for version ${version}...`)
+
+  // Load golden dataset
+  const goldenDataset = await loadGoldenDataset()
+
+  // Run regression tests
+  const testResults = await runRegressionTests(goldenDataset, productionRAG)
+
+  console.log(`\n📊 Regression Test Results:`)
+  console.log(`  Pass Rate: ${(testResults.pass_rate * 100).toFixed(1)}%`)
+  console.log(`  Avg Score: ${testResults.avg_score.toFixed(2)}`)
+  console.log(`  Total Cost: $${testResults.total_cost.toFixed(2)}`)
+
+  // Gate: Require 95% pass rate
+  const REQUIRED_PASS_RATE = 0.95
+
+  if (testResults.pass_rate >= REQUIRED_PASS_RATE) {
+    console.log(`\n✅ PASS: Regression tests passed (${(testResults.pass_rate * 100).toFixed(1)}% >= ${REQUIRED_PASS_RATE * 100}%)`)
+    console.log(`Deploying version ${version} to production...`)
+
+    // Log successful deployment
+    await prisma.deployment.create({
+      data: {
+        version,
+        pass_rate: testResults.pass_rate,
+        avg_score: testResults.avg_score,
+        test_count: goldenDataset.length,
+        deployed_at: new Date(),
+        status: 'success'
+      }
+    })
+
+    return { allowed: true, message: 'Deployment approved' }
+
+  } else {
+    console.log(`\n❌ FAIL: Regression tests failed (${(testResults.pass_rate * 100).toFixed(1)}% < ${REQUIRED_PASS_RATE * 100}%)`)
+    console.log(`\nFailing tests:`)
+
+    const failingTests = testResults.results.filter(r => !r.passed)
+    for (const test of failingTests.slice(0, 5)) { // Show first 5
+      console.log(`  - ${test.test_id}: Score ${test.score.toFixed(2)} (threshold: 0.95)`)
+      console.log(`    Expected: ${test.expected.slice(0, 100)}...`)
+      console.log(`    Actual: ${test.actual.slice(0, 100)}...`)
+    }
+
+    // Log failed deployment attempt
+    await prisma.deployment.create({
+      data: {
+        version,
+        pass_rate: testResults.pass_rate,
+        avg_score: testResults.avg_score,
+        test_count: goldenDataset.length,
+        deployed_at: new Date(),
+        status: 'blocked'
+      }
+    })
+
+    // Alert team
+    await alertSlack({
+      channel: '#ai-alerts',
+      text: `🚨 Deployment blocked for version ${version}
+
+Pass rate: ${(testResults.pass_rate * 100).toFixed(1)}% (required: ${REQUIRED_PASS_RATE * 100}%)
+Failing tests: ${failingTests.length}
+
+Review regression test results before deploying.`
+    })
+
+    return { allowed: false, message: 'Deployment blocked by regression tests' }
+  }
+}
+
+// CI/CD Integration
+async function cicdPipeline() {
+  const version = process.env.VERSION || 'unknown'
+
+  // Step 1: Build
+  console.log('Building...')
+  await build()
+
+  // Step 2: Unit tests
+  console.log('Running unit tests...')
+  await runUnitTests()
+
+  // Step 3: Regression tests (deployment gate)
+  console.log('Running regression tests...')
+  const gateResult = await deploymentGate(version)
+
+  if (!gateResult.allowed) {
+    process.exit(1) // Block deployment
+  }
+
+  // Step 4: Deploy
+  console.log('Deploying...')
+  await deploy(version)
+}
+```
+
+### Regression Test History Dashboard
+
+```typescript
+/**
+ * Track regression test performance over time
+ */
+interface RegressionTestHistory {
+  version: string
+  deployed_at: Date
+  pass_rate: number
+  avg_score: number
+  latency_p95: number
+  cost: number
+}
+
+async function getRegressionTestHistory(): Promise<RegressionTestHistory[]> {
+  const deployments = await prisma.deployment.findMany({
+    where: { status: 'success' },
+    orderBy: { deployed_at: 'desc' },
+    take: 20
+  })
+
+  return deployments.map(d => ({
+    version: d.version,
+    deployed_at: d.deployed_at,
+    pass_rate: d.pass_rate,
+    avg_score: d.avg_score,
+    latency_p95: d.latency_p95,
+    cost: d.cost
+  }))
+}
+
+// Detect regression trends
+async function detectRegressionTrends() {
+  const history = await getRegressionTestHistory()
+
+  // Check if pass rate is declining
+  const recentPassRates = history.slice(0, 5).map(h => h.pass_rate)
+  const avgRecentPassRate = recentPassRates.reduce((a, b) => a + b, 0) / recentPassRates.length
+
+  const olderPassRates = history.slice(5, 10).map(h => h.pass_rate)
+  const avgOlderPassRate = olderPassRates.reduce((a, b) => a + b, 0) / olderPassRates.length
+
+  const decline = avgOlderPassRate - avgRecentPassRate
+
+  if (decline > 0.05) { // 5% decline
+    await alertSlack({
+      channel: '#ai-alerts',
+      text: `📉 Regression test pass rate declining:
+
+Recent avg: ${(avgRecentPassRate * 100).toFixed(1)}%
+Previous avg: ${(avgOlderPassRate * 100).toFixed(1)}%
+Decline: ${(decline * 100).toFixed(1)} percentage points
+
+Consider reviewing recent changes to prompts or retrieval logic.`
+    })
+  }
+}
+```
+
+### Golden Dataset Maintenance
+
+```typescript
+/**
+ * Continuously update golden dataset based on production failures
+ */
+async function maintainGoldenDataset() {
+  // Step 1: Find production failures (low LLM-as-judge scores)
+  const failures = await prisma.queryLog.findMany({
+    where: {
+      faithfulness_score: { lt: 0.7 },
+      human_reviewed: true,
+      correct_answer: { not: null }
+    },
+    orderBy: { timestamp: 'desc' },
+    take: 100
+  })
+
+  // Step 2: Add high-value failures to golden dataset
+  for (const failure of failures) {
+    const alreadyExists = await prisma.goldenExample.findFirst({
+      where: { query: failure.query }
+    })
+
+    if (!alreadyExists) {
+      await prisma.goldenExample.create({
+        data: {
+          query: failure.query,
+          expected_answer: failure.correct_answer,
+          context_documents: failure.retrieved_documents,
+          difficulty: 'hard', // Failed queries are hard
+          category: 'factual',
+          pass_rate_threshold: 0.85
+        }
+      })
+
+      console.log(`✅ Added failing query to golden dataset: ${failure.query.slice(0, 50)}...`)
+    }
+  }
+
+  console.log(`Golden dataset now has ${await prisma.goldenExample.count()} examples`)
+}
+```
+
+---
+
 ## Cost Analysis: LLM-as-a-Judge
 
 | Scenario | Evals per Day | Cost per Eval | Daily Cost | Monthly Cost |
@@ -559,8 +920,9 @@ async function sendAlert(alert: any) {
 | **Development** | 50 | $0.003 | $0.15 | $4.50 |
 | **Continuous (hourly)** | 1,200 | $0.003 | $3.60 | $108 |
 | **Full regression** | 10,000 | $0.003 | $30 | $900 |
+| **Pre-deploy gate** | 500 | $0.003 | $1.50 | $45 (20 deploys/month) |
 
-**Production tip**: Run full regression before deploys, hourly sampling in production.
+**Production tip**: Run full regression (500-1000 examples) before every deploy. Run hourly sampling (50 examples) in production.
 
 ---
 
