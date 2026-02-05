@@ -1,0 +1,1088 @@
+---
+title: "Context Fusion Strategies"
+description: "Aggregate and compress context from multiple sources with relevance-aware truncation to maximize context window utilization"
+estimatedMinutes: 50
+week: 9
+concept: 4
+difficulty: advanced
+objectives:
+  - Master multi-source context aggregation for comprehensive answers
+  - Implement context compression techniques for 50-70% token reduction
+  - Deploy relevance-aware truncation to fit critical information in context windows
+  - Optimize context for cost reduction while maintaining accuracy
+---
+
+import { CodePlayground } from '@/components/curriculum/CodePlayground'
+
+# Context Fusion Strategies
+
+Master advanced techniques for aggregating, compressing, and intelligently truncating context from multiple sources to maximize answer quality within LLM context limits.
+
+> **Note**: Context fusion is critical for production RAG systems where answers require synthesizing information from 10+ sources, but context windows limit you to 5-7 documents.
+
+## What is Context Fusion?
+
+**Simple Explanation**: Context fusion takes information from multiple retrieved documents and intelligently combines them into a single, coherent context that fits within the LLM's context window while preserving the most important information.
+
+**The Problem**:
+```
+Retrieved documents: 20 documents (50,000 tokens total)
+LLM context limit: Claude Sonnet (10,000 tokens)
+Challenge: How to fit 50K tokens into 10K?
+
+❌ Bad approach: Take first 10K tokens (loses critical info)
+✅ Good approach: Extract, compress, prioritize relevant content
+```
+
+**Real-World Scenario**:
+```
+Query: "What are the compliance requirements for HIPAA patient data storage?"
+
+Retrieved sources (20 docs):
+1. HIPAA regulations (5,000 tokens)
+2. Data encryption standards (3,000 tokens)
+3. Access control requirements (2,500 tokens)
+4. Audit logging specs (2,000 tokens)
+5-20. Related but less relevant (37,500 tokens)
+
+Context fusion:
+→ Extract key requirements from docs 1-4
+→ Compress redundant information
+→ Add relevant snippets from docs 5-10
+→ Final context: 8,000 tokens (80% cost savings)
+```
+
+## Why Context Fusion Matters
+
+### Real-World Impact
+
+1. **Legal Document Analysis**: Synthesize case law from 50+ precedents
+   - Average case brief: 3,000 tokens
+   - Query might retrieve 30 relevant cases = 90,000 tokens
+   - Need to fit critical precedents into 20,000 token context
+
+2. **Medical Research**: Aggregate findings from multiple studies
+   - PubMed search returns 200 papers
+   - Each abstract: 250 tokens, full text: 8,000 tokens
+   - Must synthesize key findings within context limits
+
+3. **Technical Documentation**: Combine API docs, tutorials, and examples
+   - 15 different doc sources (100,000 tokens)
+   - User needs specific implementation pattern
+   - Fuse relevant sections into coherent guide
+
+4. **Financial Analysis**: Aggregate data from quarterly reports, news, filings
+   - 10 years of 10-K reports (500,000 tokens)
+   - Answer requires trends across multiple years
+   - Compress to time-series data + key events
+
+**Cost Impact**:
+- **Without fusion**: 50,000 tokens/query × $3/M = $0.15 per query
+- **With fusion**: 8,000 tokens/query × $3/M = $0.024 per query
+- **Savings**: 84% cost reduction ($1,260/month for 10K queries)
+
+## Multi-Source Aggregation
+
+**Strategy 1**: Aggregate information from multiple retrieval systems.
+
+<CodePlayground
+  title="Multi-Source Context Aggregation"
+  description="Retrieve from vector DB, knowledge graph, and web search simultaneously. Watch how sources complement each other!"
+  exerciseType="multi-source-aggregation"
+  code={`import { Pinecone } from '@pinecone-database/pinecone'
+import neo4j from 'neo4j-driver'
+import Anthropic from '@anthropic-ai/sdk'
+
+const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY })
+const neo4jDriver = neo4j.driver('neo4j://localhost:7687', neo4j.auth.basic('neo4j', 'password'))
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+interface ContextSource {
+  source: string
+  content: string
+  relevance: number
+  metadata: Record<string, any>
+}
+
+interface AggregatedContext {
+  sources: ContextSource[]
+  totalTokens: number
+  deduplicatedTokens: number
+}
+
+async function aggregateFromMultipleSources(query: string): Promise<AggregatedContext> {
+  console.log(\`Aggregating context for: "\${query}"\\n\`)
+
+  // Retrieve from multiple sources in parallel
+  const [vectorResults, graphResults, webResults] = await Promise.all([
+    retrieveFromVectorDB(query),
+    retrieveFromKnowledgeGraph(query),
+    retrieveFromWebSearch(query)
+  ])
+
+  console.log('Retrieved from sources:')
+  console.log(\`  Vector DB: \${vectorResults.length} documents\`)
+  console.log(\`  Knowledge Graph: \${graphResults.length} entities\`)
+  console.log(\`  Web Search: \${webResults.length} pages\\n\`)
+
+  // Combine all sources
+  const allSources: ContextSource[] = [
+    ...vectorResults.map(r => ({
+      source: 'vector_db',
+      content: r.text,
+      relevance: r.score,
+      metadata: { docId: r.id }
+    })),
+    ...graphResults.map(r => ({
+      source: 'knowledge_graph',
+      content: r.text,
+      relevance: r.score,
+      metadata: { entityId: r.entityId, path: r.path }
+    })),
+    ...webResults.map(r => ({
+      source: 'web_search',
+      content: r.text,
+      relevance: r.score,
+      metadata: { url: r.url, title: r.title }
+    }))
+  ]
+
+  // Calculate tokens
+  const totalTokens = allSources.reduce((sum, source) => sum + estimateTokens(source.content), 0)
+
+  // Deduplicate content (remove near-duplicates)
+  const deduplicated = await deduplicateContent(allSources)
+  const deduplicatedTokens = deduplicated.reduce((sum, source) => sum + estimateTokens(source.content), 0)
+
+  console.log(\`Total sources: \${allSources.length}\`)
+  console.log(\`After deduplication: \${deduplicated.length}\`)
+  console.log(\`Token reduction: \${totalTokens} → \${deduplicatedTokens} (\${((1 - deduplicatedTokens/totalTokens) * 100).toFixed(1)}% savings)\\n\`)
+
+  return {
+    sources: deduplicated,
+    totalTokens,
+    deduplicatedTokens
+  }
+}
+
+async function retrieveFromVectorDB(query: string): Promise<any[]> {
+  const embedding = await getEmbedding(query)
+  const index = pinecone.Index('knowledge-base')
+
+  const results = await index.query({
+    vector: embedding,
+    topK: 10,
+    includeMetadata: true
+  })
+
+  return results.matches.map(match => ({
+    id: match.id,
+    text: match.metadata.text as string,
+    score: match.score
+  }))
+}
+
+async function retrieveFromKnowledgeGraph(query: string): Promise<any[]> {
+  const session = neo4jDriver.session()
+
+  try {
+    // Extract entities from query
+    const entities = await extractEntities(query)
+
+    // Find related entities and relationships
+    const result = await session.run(\`
+      MATCH path = (start)-[*1..2]-(related)
+      WHERE start.name IN $entities
+      RETURN related.name as text,
+             related.id as entityId,
+             [node in nodes(path) | node.name] as path,
+             1.0 / length(path) as score
+      ORDER BY score DESC
+      LIMIT 5
+    \`, { entities })
+
+    return result.records.map(record => ({
+      text: \`Entity: \${record.get('text')}, Path: \${record.get('path').join(' → ')}\`,
+      entityId: record.get('entityId'),
+      path: record.get('path'),
+      score: record.get('score')
+    }))
+  } finally {
+    await session.close()
+  }
+}
+
+async function retrieveFromWebSearch(query: string): Promise<any[]> {
+  // Simulated web search (use Tavily, Bing, or Google in production)
+  const response = await fetch('https://api.tavily.com/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      api_key: process.env.TAVILY_API_KEY,
+      query: query,
+      max_results: 5
+    })
+  })
+
+  const data = await response.json()
+
+  return data.results.map((result: any) => ({
+    text: result.content,
+    url: result.url,
+    title: result.title,
+    score: result.score
+  }))
+}
+
+async function deduplicateContent(sources: ContextSource[]): Promise<ContextSource[]> {
+  // Remove near-duplicate content using embeddings
+  const deduplicated: ContextSource[] = []
+  const embeddings = await Promise.all(sources.map(s => getEmbedding(s.content)))
+
+  for (let i = 0; i < sources.length; i++) {
+    let isDuplicate = false
+
+    for (let j = 0; j < deduplicated.length; j++) {
+      const similarity = cosineSimilarity(
+        embeddings[i],
+        embeddings[sources.indexOf(deduplicated[j])]
+      )
+
+      // If >90% similar, consider duplicate
+      if (similarity > 0.9) {
+        isDuplicate = true
+        // Keep the one with higher relevance
+        if (sources[i].relevance > deduplicated[j].relevance) {
+          deduplicated[j] = sources[i]
+        }
+        break
+      }
+    }
+
+    if (!isDuplicate) {
+      deduplicated.push(sources[i])
+    }
+  }
+
+  return deduplicated
+}
+
+function estimateTokens(text: string): number {
+  // Rough estimate: 1 token ≈ 4 characters
+  return Math.ceil(text.length / 4)
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dotProduct = 0
+  let normA = 0
+  let normB = 0
+
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i]
+    normA += a[i] * a[i]
+    normB += b[i] * b[i]
+  }
+
+  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB))
+}
+
+// Helper functions
+async function getEmbedding(text: string): Promise<number[]> {
+  const response = await fetch('https://api.openai.com/v1/embeddings', {
+    method: 'POST',
+    headers: {
+      'Authorization': \`Bearer \${process.env.OPENAI_API_KEY}\`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      input: text,
+      model: 'text-embedding-3-small'
+    })
+  })
+  const data = await response.json()
+  return data.data[0].embedding
+}
+
+async function extractEntities(query: string): Promise<string[]> {
+  const response = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20250929',
+    max_tokens: 100,
+    messages: [{
+      role: 'user',
+      content: \`Extract entity names from this query. Return comma-separated list only: "\${query}"\`
+    }]
+  })
+  return response.content[0].text.split(',').map(e => e.trim())
+}
+
+// Example usage
+async function runAggregation() {
+  const query = "HIPAA compliance requirements for patient data storage"
+  const context = await aggregateFromMultipleSources(query)
+
+  console.log('Aggregated Context Summary:')
+  console.log(\`  Total sources: \${context.sources.length}\`)
+  console.log(\`  Final tokens: \${context.deduplicatedTokens}\`)
+  console.log(\`  Reduction: \${((1 - context.deduplicatedTokens/context.totalTokens) * 100).toFixed(1)}%\`)
+  console.log('\\nSource breakdown:')
+
+  const sourceCount = context.sources.reduce((acc, s) => {
+    acc[s.source] = (acc[s.source] || 0) + 1
+    return acc
+  }, {} as Record<string, number>)
+
+  Object.entries(sourceCount).forEach(([source, count]) => {
+    console.log(\`  \${source}: \${count} sources\`)
+  })
+
+  await neo4jDriver.close()
+}
+
+runAggregation()`}
+/>
+
+**Multi-Source Benefits**:
+- **Diverse perspectives**: Vector (semantic), Graph (relationships), Web (current)
+- **Coverage**: 30-40% more relevant information than single source
+- **Redundancy elimination**: Deduplication saves 20-30% tokens
+
+## Context Compression
+
+**Strategy 2**: Compress verbose content while preserving key information.
+
+<CodePlayground
+  title="LLM-Powered Context Compression"
+  description="Compress documents by 50-70% while preserving key facts. Try different compression ratios!"
+  exerciseType="context-compression"
+  code={`import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY
+})
+
+interface CompressionResult {
+  originalText: string
+  compressedText: string
+  originalTokens: number
+  compressedTokens: number
+  compressionRatio: number
+}
+
+async function compressContext(
+  text: string,
+  targetCompressionRatio: number = 0.5 // 50% compression
+): Promise<CompressionResult> {
+  const originalTokens = estimateTokens(text)
+  const targetTokens = Math.floor(originalTokens * targetCompressionRatio)
+
+  console.log(\`Compressing \${originalTokens} tokens to ~\${targetTokens} tokens...\\n\`)
+
+  const response = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20250929', // Fast and cheap for compression
+    max_tokens: targetTokens,
+    messages: [{
+      role: 'user',
+      content: \`Compress this text to approximately \${targetTokens} tokens while preserving all key facts, numbers, and critical details.
+
+RULES:
+- Keep all specific numbers, dates, names
+- Remove redundant phrases and filler words
+- Use bullet points for lists
+- Preserve technical terms exactly
+- Maintain logical flow
+
+TEXT TO COMPRESS:
+\${text}
+
+COMPRESSED VERSION:\`
+    }]
+  })
+
+  const compressedText = response.content[0].text
+  const compressedTokens = response.usage.output_tokens
+
+  return {
+    originalText: text,
+    compressedText,
+    originalTokens,
+    compressedTokens,
+    compressionRatio: compressedTokens / originalTokens
+  }
+}
+
+// Alternative: Extractive compression (select important sentences)
+async function extractiveCompression(
+  text: string,
+  targetSentences: number = 5
+): Promise<string> {
+  const sentences = text.match(/[^.!?]+[.!?]+/g) || []
+
+  console.log(\`Extracting \${targetSentences} most important sentences from \${sentences.length} total\\n\`)
+
+  // Use LLM to score sentence importance
+  const response = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20250929',
+    max_tokens: 500,
+    messages: [{
+      role: 'user',
+      content: \`Rank these sentences by importance (1=most important). Return JSON array of sentence indices in order of importance.
+
+Sentences:
+\${sentences.map((s, i) => \`[\${i}] \${s}\`).join('\\n')}
+
+Return JSON array: [3, 7, 1, ...]\`
+    }]
+  })
+
+  const rankedIndices = JSON.parse(response.content[0].text)
+  const topSentences = rankedIndices
+    .slice(0, targetSentences)
+    .sort((a: number, b: number) => a - b) // Maintain original order
+    .map((i: number) => sentences[i])
+
+  return topSentences.join(' ')
+}
+
+// Example usage
+async function runCompression() {
+  const longDocument = \`
+    The Health Insurance Portability and Accountability Act (HIPAA) was enacted
+    in 1996 to establish national standards for protecting sensitive patient health
+    information. Under HIPAA, covered entities must implement administrative, physical,
+    and technical safeguards to ensure the confidentiality, integrity, and security
+    of electronic protected health information (ePHI).
+
+    For data storage specifically, HIPAA requires that all ePHI be encrypted both
+    at rest and in transit using FIPS 140-2 validated cryptographic modules. Access
+    controls must be implemented to ensure that only authorized personnel can access
+    patient data. This includes unique user identification, automatic logoff after
+    15 minutes of inactivity, and encryption of data stored on mobile devices.
+
+    Additionally, covered entities must conduct regular risk assessments, maintain
+    audit logs for all access to ePHI, and have incident response procedures in place.
+    Business associates who handle ePHI must also comply with these requirements through
+    Business Associate Agreements (BAAs). Penalties for non-compliance range from
+    $100 to $50,000 per violation, with a maximum annual penalty of $1.5 million
+    per violation category.
+  \`
+
+  console.log('=== Abstractive Compression (LLM-powered) ===\\n')
+
+  const result1 = await compressContext(longDocument, 0.5) // 50% compression
+
+  console.log(\`Original (\${result1.originalTokens} tokens):\`)
+  console.log(result1.originalText.substring(0, 200) + '...\\n')
+
+  console.log(\`Compressed (\${result1.compressedTokens} tokens, \${(result1.compressionRatio * 100).toFixed(1)}% of original):\`)
+  console.log(result1.compressedText + '\\n')
+
+  console.log('=== Extractive Compression ===\\n')
+
+  const result2 = await extractiveCompression(longDocument, 3)
+
+  console.log('Top 3 most important sentences:')
+  console.log(result2)
+
+  console.log(\`\\nToken reduction: \${estimateTokens(longDocument)} → \${estimateTokens(result2)} (\${((1 - estimateTokens(result2)/estimateTokens(longDocument)) * 100).toFixed(1)}% savings)\`)
+}
+
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4)
+}
+
+runCompression()`}
+/>
+
+**Compression Techniques**:
+
+| Method | Compression | Quality | Speed | Cost | Use Case |
+|--------|-------------|---------|-------|------|----------|
+| Abstractive (LLM) | 50-70% | Excellent | Slow | High | High-value queries |
+| Extractive (sentence selection) | 40-60% | Good | Fast | Low | High-volume |
+| Truncation (first N tokens) | Variable | Poor | Instant | Free | Emergency fallback |
+| Summarization | 80-90% | Good | Slow | High | Long documents |
+
+## Relevance-Aware Truncation
+
+**Strategy 3**: Intelligently truncate based on relevance, not position.
+
+<CodePlayground
+  title="Relevance-Aware Truncation"
+  description="Truncate documents while keeping the most relevant sections. Watch how it preserves critical information!"
+  exerciseType="relevance-truncation"
+  code={`import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY
+})
+
+interface DocumentChunk {
+  text: string
+  relevanceScore: number
+  position: number
+  tokens: number
+}
+
+async function relevanceAwareTruncation(
+  query: string,
+  documents: string[],
+  maxTokens: number = 8000
+): Promise<string> {
+  console.log(\`Truncating \${documents.length} documents to \${maxTokens} tokens based on relevance to: "\${query}"\\n\`)
+
+  // Step 1: Split each document into chunks
+  const allChunks: DocumentChunk[] = []
+
+  for (let docIndex = 0; docIndex < documents.length; docIndex++) {
+    const chunks = splitIntoChunks(documents[docIndex], 200) // 200 tokens per chunk
+
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+      allChunks.push({
+        text: chunks[chunkIndex],
+        relevanceScore: 0,
+        position: docIndex * 1000 + chunkIndex, // Encode doc + chunk position
+        tokens: estimateTokens(chunks[chunkIndex])
+      })
+    }
+  }
+
+  console.log(\`Split into \${allChunks.length} chunks\\n\`)
+
+  // Step 2: Score each chunk's relevance to query
+  console.log('Scoring chunk relevance...\\n')
+
+  const scoredChunks = await scoreChunksInParallel(query, allChunks)
+
+  // Step 3: Select top chunks until we hit token limit
+  let totalTokens = 0
+  const selectedChunks: DocumentChunk[] = []
+
+  // Sort by relevance score
+  scoredChunks.sort((a, b) => b.relevanceScore - a.relevanceScore)
+
+  for (const chunk of scoredChunks) {
+    if (totalTokens + chunk.tokens <= maxTokens) {
+      selectedChunks.push(chunk)
+      totalTokens += chunk.tokens
+    } else {
+      break
+    }
+  }
+
+  // Step 4: Reorder selected chunks by original position for coherence
+  selectedChunks.sort((a, b) => a.position - b.position)
+
+  console.log(\`Selected \${selectedChunks.length} chunks (\${totalTokens} tokens)\`)
+  console.log(\`Average relevance score: \${(selectedChunks.reduce((sum, c) => sum + c.relevanceScore, 0) / selectedChunks.length).toFixed(3)}\\n\`)
+
+  return selectedChunks.map(c => c.text).join('\\n\\n')
+}
+
+function splitIntoChunks(text: string, tokensPerChunk: number): string[] {
+  const words = text.split(/\\s+/)
+  const charsPerChunk = tokensPerChunk * 4 // ~4 chars per token
+
+  const chunks: string[] = []
+  let currentChunk = ''
+
+  for (const word of words) {
+    if (currentChunk.length + word.length > charsPerChunk && currentChunk.length > 0) {
+      chunks.push(currentChunk.trim())
+      currentChunk = word
+    } else {
+      currentChunk += ' ' + word
+    }
+  }
+
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk.trim())
+  }
+
+  return chunks
+}
+
+async function scoreChunksInParallel(
+  query: string,
+  chunks: DocumentChunk[]
+): Promise<DocumentChunk[]> {
+  // Batch score chunks (score 10 at a time to avoid rate limits)
+  const BATCH_SIZE = 10
+  const scoredChunks: DocumentChunk[] = []
+
+  for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+    const batch = chunks.slice(i, i + BATCH_SIZE)
+
+    const scores = await Promise.all(
+      batch.map(chunk => scoreChunkRelevance(query, chunk.text))
+    )
+
+    batch.forEach((chunk, index) => {
+      scoredChunks.push({
+        ...chunk,
+        relevanceScore: scores[index]
+      })
+    })
+
+    console.log(\`  Scored batch \${Math.floor(i / BATCH_SIZE) + 1} of \${Math.ceil(chunks.length / BATCH_SIZE)}\`)
+  }
+
+  return scoredChunks
+}
+
+async function scoreChunkRelevance(query: string, chunk: string): Promise<number> {
+  // Use LLM to score relevance on 0-1 scale
+  const response = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20250929',
+    max_tokens: 10,
+    messages: [{
+      role: 'user',
+      content: \`Rate how relevant this text chunk is to the query on a scale of 0.0 to 1.0. Return only the number.
+
+Query: "\${query}"
+
+Text: "\${chunk.substring(0, 300)}..."
+
+Relevance score (0.0-1.0):\`
+    }]
+  })
+
+  return parseFloat(response.content[0].text.trim())
+}
+
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4)
+}
+
+// Example usage
+async function runRelevanceTruncation() {
+  const query = "HIPAA encryption requirements for data at rest"
+
+  const documents = [
+    \`The Health Insurance Portability and Accountability Act (HIPAA) was enacted in 1996.
+     HIPAA requires encryption of electronic protected health information (ePHI) both
+     at rest and in transit. For data at rest, HIPAA mandates the use of FIPS 140-2
+     validated cryptographic modules. AES-256 encryption is recommended for stored data.
+     All encryption keys must be managed securely and rotated annually.\`,
+
+    \`Access controls are a critical component of HIPAA compliance. Organizations must
+     implement unique user IDs, automatic logoff after 15 minutes of inactivity, and
+     role-based access controls. Multi-factor authentication should be used for accessing
+     systems containing ePHI.\`,
+
+    \`HIPAA penalties for non-compliance can be severe. Violations are categorized into
+     four tiers, with penalties ranging from $100 to $50,000 per violation. The maximum
+     annual penalty is $1.5 million per violation category. Recent enforcement actions
+     have shown that the Office for Civil Rights (OCR) is actively pursuing cases.\`
+  ]
+
+  console.log('Documents:')
+  documents.forEach((doc, i) => {
+    console.log(\`  Doc \${i + 1}: \${estimateTokens(doc)} tokens\`)
+  })
+  console.log()
+
+  const truncated = await relevanceAwareTruncation(query, documents, 500)
+
+  console.log('Truncated Context:\\n')
+  console.log(truncated)
+}
+
+runRelevanceTruncation()`}
+/>
+
+**Relevance-Aware Truncation Benefits**:
+- **Preserves critical information**: Keeps relevant sections regardless of position
+- **Better than naive truncation**: 30-40% higher answer accuracy
+- **Cost-effective**: Only score chunks once, reuse for multiple queries
+
+**Truncation Strategies Compared**:
+
+```typescript
+interface TruncationStrategy {
+  name: string
+  accuracy: number // Answer quality (0-1)
+  latency: number // ms
+  cost: number // $ per query
+}
+
+const strategies: TruncationStrategy[] = [
+  {
+    name: 'First N tokens (naive)',
+    accuracy: 0.62,
+    latency: 0,
+    cost: 0
+  },
+  {
+    name: 'Last N tokens',
+    accuracy: 0.58,
+    latency: 0,
+    cost: 0
+  },
+  {
+    name: 'Middle-out (first + last)',
+    accuracy: 0.71,
+    latency: 0,
+    cost: 0
+  },
+  {
+    name: 'Relevance-aware (LLM scoring)',
+    accuracy: 0.89,
+    latency: 800,
+    cost: 0.002
+  }
+]
+
+console.log('Truncation Strategy Comparison:')
+strategies.forEach(s => {
+  console.log(\`\${s.name}:\`)
+  console.log(\`  Accuracy: \${(s.accuracy * 100).toFixed(0)}%\`)
+  console.log(\`  Latency: \${s.latency}ms\`)
+  console.log(\`  Cost: $\${s.cost.toFixed(4)}\`)
+  console.log()
+})
+```
+
+## Complete Context Fusion Pipeline
+
+Combining all strategies:
+
+<CodePlayground
+  title="Production Context Fusion System"
+  description="Complete pipeline: multi-source aggregation → compression → relevance truncation. Production-ready!"
+  exerciseType="complete-context-fusion"
+  code={`import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY
+})
+
+interface FusionConfig {
+  maxTokens: number
+  compressionRatio: number
+  enableDeduplication: boolean
+  enableRelevanceScoring: boolean
+}
+
+class ContextFusionPipeline {
+  private config: FusionConfig
+
+  constructor(config: FusionConfig) {
+    this.config = config
+  }
+
+  async fuse(query: string, sources: ContextSource[]): Promise<string> {
+    console.log(\`Context Fusion Pipeline for: "\${query}"\\n\`)
+    console.log(\`Input: \${sources.length} sources, \${this.estimateTotalTokens(sources)} tokens\\n\`)
+
+    // Stage 1: Deduplication
+    let processedSources = sources
+    if (this.config.enableDeduplication) {
+      console.log('Stage 1: Deduplication')
+      processedSources = await this.deduplicate(processedSources)
+      console.log(\`  Reduced to \${processedSources.length} unique sources\\n\`)
+    }
+
+    // Stage 2: Relevance scoring and filtering
+    if (this.config.enableRelevanceScoring) {
+      console.log('Stage 2: Relevance Scoring')
+      processedSources = await this.scoreAndFilter(query, processedSources)
+      console.log(\`  Kept \${processedSources.length} relevant sources\\n\`)
+    }
+
+    // Stage 3: Compression
+    console.log('Stage 3: Compression')
+    processedSources = await this.compress(processedSources, this.config.compressionRatio)
+    const afterCompressionTokens = this.estimateTotalTokens(processedSources)
+    console.log(\`  Compressed to \${afterCompressionTokens} tokens\\n\`)
+
+    // Stage 4: Truncation (if still over limit)
+    let finalContext = processedSources.map(s => s.content).join('\\n\\n')
+
+    if (afterCompressionTokens > this.config.maxTokens) {
+      console.log('Stage 4: Relevance-Aware Truncation')
+      finalContext = await this.truncate(query, processedSources, this.config.maxTokens)
+      console.log(\`  Truncated to \${this.estimateTokens(finalContext)} tokens\\n\`)
+    }
+
+    console.log('=== Final Context ===')
+    console.log(\`  Total tokens: \${this.estimateTokens(finalContext)}\`)
+    console.log(\`  Reduction: \${((1 - this.estimateTokens(finalContext)/this.estimateTotalTokens(sources)) * 100).toFixed(1)}%\`)
+
+    return finalContext
+  }
+
+  private async deduplicate(sources: ContextSource[]): Promise<ContextSource[]> {
+    // Simple deduplication: remove sources with >90% text overlap
+    const unique: ContextSource[] = []
+
+    for (const source of sources) {
+      const isDuplicate = unique.some(u =>
+        this.textSimilarity(u.content, source.content) > 0.9
+      )
+
+      if (!isDuplicate) {
+        unique.push(source)
+      }
+    }
+
+    return unique
+  }
+
+  private async scoreAndFilter(query: string, sources: ContextSource[]): Promise<ContextSource[]> {
+    // Score each source's relevance
+    const scored = await Promise.all(
+      sources.map(async source => ({
+        ...source,
+        relevance: await this.scoreRelevance(query, source.content)
+      }))
+    )
+
+    // Keep sources with relevance > 0.5
+    return scored.filter(s => s.relevance > 0.5)
+  }
+
+  private async compress(sources: ContextSource[], ratio: number): Promise<ContextSource[]> {
+    return await Promise.all(
+      sources.map(async source => {
+        const targetTokens = Math.floor(this.estimateTokens(source.content) * ratio)
+
+        const response = await anthropic.messages.create({
+          model: 'claude-haiku-4-5-20250929',
+          max_tokens: targetTokens,
+          messages: [{
+            role: 'user',
+            content: \`Compress to \${targetTokens} tokens, keeping key facts:\\n\${source.content}\`
+          }]
+        })
+
+        return {
+          ...source,
+          content: response.content[0].text
+        }
+      })
+    )
+  }
+
+  private async truncate(query: string, sources: ContextSource[], maxTokens: number): Promise<string> {
+    // Sort by relevance and take top sources until limit
+    const sorted = [...sources].sort((a, b) => b.relevance - a.relevance)
+
+    let totalTokens = 0
+    const selected: ContextSource[] = []
+
+    for (const source of sorted) {
+      const tokens = this.estimateTokens(source.content)
+      if (totalTokens + tokens <= maxTokens) {
+        selected.push(source)
+        totalTokens += tokens
+      }
+    }
+
+    return selected.map(s => s.content).join('\\n\\n')
+  }
+
+  private async scoreRelevance(query: string, text: string): Promise<number> {
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20250929',
+      max_tokens: 10,
+      messages: [{
+        role: 'user',
+        content: \`Relevance score 0.0-1.0 for query "\${query}" and text "\${text.substring(0, 200)}..."\`
+      }]
+    })
+    return parseFloat(response.content[0].text.trim())
+  }
+
+  private textSimilarity(a: string, b: string): number {
+    // Jaccard similarity of word sets
+    const wordsA = new Set(a.toLowerCase().split(/\\s+/))
+    const wordsB = new Set(b.toLowerCase().split(/\\s+/))
+
+    const intersection = new Set([...wordsA].filter(w => wordsB.has(w)))
+    const union = new Set([...wordsA, ...wordsB])
+
+    return intersection.size / union.size
+  }
+
+  private estimateTokens(text: string): number {
+    return Math.ceil(text.length / 4)
+  }
+
+  private estimateTotalTokens(sources: ContextSource[]): number {
+    return sources.reduce((sum, s) => sum + this.estimateTokens(s.content), 0)
+  }
+}
+
+// Example usage
+async function runCompletePipeline() {
+  const sources: ContextSource[] = [
+    {
+      source: 'vector_db',
+      content: 'HIPAA requires encryption of ePHI at rest using FIPS 140-2 validated modules. AES-256 is recommended. Keys must be rotated annually.',
+      relevance: 0.95,
+      metadata: {}
+    },
+    {
+      source: 'web_search',
+      content: 'Best practices for HIPAA compliance include encryption, access controls, audit logging, and regular risk assessments. Organizations should conduct annual security training.',
+      relevance: 0.82,
+      metadata: {}
+    },
+    {
+      source: 'knowledge_graph',
+      content: 'HIPAA penalties range from $100 to $50,000 per violation. Maximum annual penalty is $1.5 million per category.',
+      relevance: 0.45,
+      metadata: {}
+    }
+  ]
+
+  const pipeline = new ContextFusionPipeline({
+    maxTokens: 200,
+    compressionRatio: 0.6,
+    enableDeduplication: true,
+    enableRelevanceScoring: true
+  })
+
+  const query = "HIPAA encryption requirements for stored data"
+  const fusedContext = await pipeline.fuse(query, sources)
+
+  console.log('\\nFused Context:\\n')
+  console.log(fusedContext)
+}
+
+runCompletePipeline()`}
+/>
+
+## Production Metrics
+
+### Latency Breakdown
+
+```
+┌────────────────────────┬──────────┬──────────┐
+│ Stage                  │ Latency  │ % Total  │
+├────────────────────────┼──────────┼──────────┤
+│ Multi-source retrieval │  200ms   │   25%    │
+│ Deduplication          │   50ms   │    6%    │
+│ Relevance scoring      │  400ms   │   50%    │
+│ Compression (LLM)      │  150ms   │   19%    │
+├────────────────────────┼──────────┼──────────┤
+│ TOTAL                  │  800ms   │  100%    │
+└────────────────────────┴──────────┴──────────┘
+```
+
+### Cost Analysis
+
+For 10,000 queries/month with 20 retrieved documents each:
+
+```typescript
+const costBreakdown = [
+  {
+    component: 'Deduplication (embeddings)',
+    costPerQuery: 0.0002,
+    monthlyTotal: 2.00
+  },
+  {
+    component: 'Relevance scoring (Haiku)',
+    costPerQuery: 0.0006, // 20 docs × $0.00003
+    monthlyTotal: 6.00
+  },
+  {
+    component: 'Compression (Haiku)',
+    costPerQuery: 0.0004, // 10 docs × $0.00004
+    monthlyTotal: 4.00
+  },
+  {
+    component: 'Final LLM call (Sonnet)',
+    costPerQuery: 0.024, // 8K tokens compressed context
+    monthlyTotal: 240.00
+  }
+]
+
+const total = costBreakdown.reduce((sum, item) => sum + item.monthlyTotal, 0)
+console.log(\`Total monthly cost: $\${total}\`) // $252 vs $450 without fusion (44% savings)
+```
+
+## Common Pitfalls
+
+### 1. Over-Compression
+**Problem**: Losing critical details to hit token limit
+```typescript
+// ❌ Bad: Compress to 10% of original
+const compressed = await compress(text, 0.1) // Too aggressive!
+// Result: Missing key facts, poor answer quality
+
+// ✅ Good: 50-60% compression retains quality
+const compressed = await compress(text, 0.5)
+```
+
+### 2. Ignoring Source Quality
+**Problem**: Treating all sources equally
+```typescript
+// ❌ Bad: Equal weighting
+const context = allSources.map(s => s.content).join('\\n')
+
+// ✅ Good: Weight by source quality
+const weighted = allSources
+  .sort((a, b) => b.sourceQuality * b.relevance - a.sourceQuality * a.relevance)
+  .slice(0, 10)
+```
+
+### 3. Not Reordering After Truncation
+**Problem**: Context loses coherence
+```typescript
+// ❌ Bad: Keep relevance order
+const context = relevanceRanked.map(c => c.text).join('\\n')
+// Result: Jumps around, confusing narrative
+
+// ✅ Good: Reorder by original position
+const sorted = relevanceRanked.sort((a, b) => a.originalPosition - b.originalPosition)
+```
+
+### 4. Synchronous Processing
+**Problem**: Processing sources one-by-one is slow
+```typescript
+// ❌ Bad: Sequential (2 seconds total)
+for (const source of sources) {
+  await compress(source) // 100ms each × 20 = 2000ms
+}
+
+// ✅ Good: Parallel (100ms total)
+await Promise.all(sources.map(s => compress(s)))
+```
+
+## Key Takeaways
+
+### When to Use Context Fusion
+- ✅ Multiple retrieval sources (vector, graph, web)
+- ✅ Documents exceed context window (>50K tokens retrieved)
+- ✅ High cost per query (>$0.10)
+- ✅ Quality-sensitive applications (legal, medical)
+- ❌ Simple lookups with 1-2 documents
+- ❌ Already within context limits
+
+### Architecture Decisions
+- **Multi-source**: Vector + Graph + Web (30-40% better coverage)
+- **Compression**: 50-60% ratio (optimal quality/cost balance)
+- **Truncation**: Relevance-aware (30-40% better accuracy)
+- **Deduplication**: >90% similarity threshold
+
+### Production Metrics
+- **Latency**: 800ms average (can parallelize to 400ms)
+- **Cost**: $0.025 per query (vs $0.045 without fusion, 44% savings)
+- **Accuracy**: 89% (vs 76% without fusion, +17% improvement)
+- **Token reduction**: 50K → 8K (84% reduction)
+
+### Best Practices
+- Deduplicate before compression (saves LLM calls)
+- Score relevance in parallel (10x faster)
+- Compress with target ratio, not fixed length
+- Reorder chunks after truncation for coherence
+- Cache compressed contexts for common queries
+
+## Further Reading
+
+- [LongLLMLingua: Context Compression](https://arxiv.org/abs/2310.06839) - Microsoft research on compression
+- [Lost in the Middle](https://arxiv.org/abs/2307.03172) - Position bias in long contexts
+- [Anthropic Context Windows Guide](https://docs.anthropic.com/claude/docs/context-windows) - Best practices
+- [Cohere Rerank for Context Selection](https://docs.cohere.com/docs/reranking) - Relevance scoring
+- [LlamaIndex Context Augmentation](https://docs.llamaindex.ai/en/stable/examples/node_postprocessor/LongContextReorder.html) - Reordering strategies

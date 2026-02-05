@@ -7,21 +7,21 @@ const weekData = [
   {
     weekNumber: 1,
     title: 'LLM Fundamentals (The Engine)',
-    description: 'Master foundation LLM capabilities: tokens, models, prompting, API integration, and production-ready patterns',
+    description: 'Master the physics of the Transformer to build deterministic and cost-effective AI systems',
     objectives: [
-      'Understand LLM fundamentals and capabilities',
-      'Master API integration patterns',
-      'Experience visual agent building with Wordware',
-      'Build production-ready chat with governance',
-      'Implement production patterns'
+      'Architect deterministic systems with reusable prompt templates that minimize output variance',
+      'Engineer API connectors with built-in retry logic and structured error handling for 99.9% reliability',
+      'Quantify unit economics to justify model selection using cost-performance benchmarks',
+      'Establish production readiness baseline with safety proxies and content filters',
+      'Build rapid prototypes using visual builders to validate system flows before custom code'
     ],
     concepts: [
-      { slug: 'llm-fundamentals', title: 'LLM Fundamentals', minutes: 30 },
-      { slug: 'prompt-engineering', title: 'Prompt Engineering Patterns', minutes: 40 },
-      { slug: 'api-integration', title: 'API Integration Best Practices', minutes: 35 },
-      { slug: 'architecture-decisions', title: 'Architecture Decisions for AI Apps', minutes: 30 },
-      { slug: 'visual-builder-intro', title: 'Visual Builder Introduction (Wordware)', minutes: 25 },
-      { slug: 'production-readiness', title: 'Production Readiness Checklist', minutes: 30 }
+      { slug: 'llm-fundamentals', title: 'The LLM Blueprint: Tokenization Physics & Context Constraints', minutes: 30 },
+      { slug: 'prompt-engineering', title: 'Deterministic Logic Patterns: Few-Shot Calibration & Thought Traces', minutes: 40 },
+      { slug: 'api-integration', title: 'API Resilience & Integration: Fault Tolerance & Model Cascade', minutes: 35 },
+      { slug: 'architecture-decisions', title: 'Architectural ROI: Unit Economics & Model Selection Matrix', minutes: 30 },
+      { slug: 'visual-builders', title: 'Rapid Prototyping with Wordware: System Flow Mapping', minutes: 25 },
+      { slug: 'production-readiness', title: 'Production Readiness Baseline: Safety Proxy & Pre-Deployment Checks', minutes: 30 }
     ],
     lab: {
       slug: 'first-llm-app',
