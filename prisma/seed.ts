@@ -346,42 +346,59 @@ const weekData = [
   {
     weekNumber: 7,
     title: 'Observability & Production (The Reliability)',
-    description: 'Plan and build your capstone AI application from scratch',
-    objectives: ['Design AI product', 'Implement end-to-end system', 'Deploy to production'],
+    description: 'Harden AI systems for production with observability, guardrails, and automated evaluation',
+    objectives: [
+      'Implement the three pillars of AI observability (Traces, Evaluations, Unit Economics)',
+      'Build input and output guardrails to prevent prompt injection and hallucinations',
+      'Deploy LLM-as-a-Judge for automated quality assurance',
+      'Set up cost tracking and circuit breakers',
+      'Implement semantic versioning for AI systems',
+      'Create golden datasets for regression testing'
+    ],
     concepts: [
-      { slug: 'project-planning', title: 'AI Product Planning & Design', minutes: 40 },
-      { slug: 'architecture-design', title: 'System Architecture for AI Apps', minutes: 45 },
-      { slug: 'implementation-strategy', title: 'Implementation & Deployment Strategy', minutes: 35 }
+      { slug: 'observability-pillars', title: 'The Three Pillars of AI Observability', minutes: 50 },
+      { slug: 'guardrails', title: 'Guardrails: Pre-Flight & Post-Flight Checks', minutes: 45 },
+      { slug: 'llm-as-judge', title: 'LLM-as-a-Judge: Automated Evaluation Pipelines', minutes: 45 }
     ],
     lab: {
-      slug: 'capstone-planning',
-      title: 'Capstone Project Planning',
-      description: 'Create a comprehensive plan for your capstone AI application',
+      slug: 'production-dashboard',
+      title: 'Production Dashboard - Hardening for 24/7 Operations',
+      description: 'Transform the Week 4 Support Ticket Router into a production-ready system with observability, guardrails, and automated evaluation',
       exercises: [
-        { number: 1, title: 'Define problem and solution', type: 'planning' },
-        { number: 2, title: 'Design system architecture', type: 'design' },
-        { number: 3, title: 'Create implementation roadmap', type: 'planning' },
-        { number: 4, title: 'Set success metrics', type: 'planning' }
+        { number: 1, title: 'Implement OpenTelemetry tracing', type: 'coding' },
+        { number: 2, title: 'Add input and output guardrails', type: 'coding' },
+        { number: 3, title: 'Build automated evaluation pipeline', type: 'implementation' },
+        { number: 4, title: 'Set up cost tracking and circuit breakers', type: 'coding' },
+        { number: 5, title: 'Pass capstone stress-test suite', type: 'testing' }
       ]
     },
     project: {
-      slug: 'capstone-mvp',
-      title: 'Capstone MVP',
-      description: 'Build and deploy a minimum viable product of your capstone project',
+      slug: 'capstone-production-pilot',
+      title: 'Capstone: The Production Pilot',
+      description: 'Build an Automated Compliance & Patient Support Agent with zero hallucinations and strict audit trails',
       requirements: [
-        'Novel AI application solving real problem',
-        'Production-ready deployment',
-        'Monitoring and observability',
-        'User authentication and data persistence',
-        'Comprehensive documentation'
+        'Advanced RAG Pipeline: Parent-Document Retrieval with Hybrid Search',
+        'Structured Intelligence: JSON audit log for every interaction',
+        'Agentic Orchestration: Supervisor Pattern with Librarian and Compliance Agent',
+        'State Reset: Compliance Agent can reject and trigger re-search',
+        'Hard Guardrails: Immediate hard stop for medical diagnosis/prescription requests',
+        'OpenTelemetry Tracing: Track latency of each step',
+        'LLM-as-a-Judge: Automated evaluation for faithfulness',
+        'Cost Controls: Circuit breaker for budget limits',
+        'Audit Trail: Complete paper trail for regulatory compliance',
+        'Citations: Every answer must include source references'
       ],
       successCriteria: [
-        'Application deployed and accessible',
-        'Core features working end-to-end',
-        'At least 5 test users successfully use the app',
-        'Documentation covers setup and usage'
+        'Faithfulness: 100% (No hallucinated medical facts)',
+        'Recovery: System successfully rewinds state at least once',
+        'Auditability: Every LLM response has valid JSON audit log',
+        'Latency: End-to-end response time under 3 seconds',
+        'Safety: All Poison Pill prompts caught by guardrails (100% rate)',
+        'Retrieval: Finds specific values but retrieves full context',
+        'Multi-Intent: Detects and routes multiple intents in single query',
+        'Compliance: Agent reflection prevents unverified claims'
       ],
-      hours: 20
+      hours: 48
     }
   },
   {

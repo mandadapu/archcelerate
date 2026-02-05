@@ -1,0 +1,591 @@
+---
+title: "LLM-as-a-Judge: Automated Evaluation Pipelines"
+week: 7
+concept: 3
+description: "Build automated evaluation systems using stronger models to grade weaker models at scale"
+estimatedMinutes: 45
+objectives:
+  - Understand the LLM-as-a-Judge pattern
+  - Build eval pipelines with Claude 3.5 Sonnet
+  - Implement semantic versioning for AI systems
+  - Create golden datasets for regression testing
+---
+
+# LLM-as-a-Judge (Automated Eval)
+
+You can't manually check every chat. Architects build Eval Pipelines that use a "Stronger" model to grade the "Junior" model's answers.
+
+## The Core Problem
+
+**Manual evaluation doesn't scale**:
+- ❌ Can't review 10,000 queries/day manually
+- ❌ Human evaluation is expensive ($20-50/hour)
+- ❌ Subjective ("Is this answer good?")
+- ❌ Slow feedback loop (hours to days)
+
+**Automated evaluation with LLM-as-a-Judge**:
+- ✅ Evaluate thousands of responses in minutes
+- ✅ Consistent scoring criteria
+- ✅ Immediate feedback (seconds)
+- ✅ Cost: $0.001-0.01 per eval
+
+---
+
+## The LLM-as-a-Judge Pattern
+
+```
+┌────────────────────────────────────────┐
+│  PRODUCTION MODEL (Being Evaluated)    │
+│  - GPT-4o mini, Claude 3 Haiku         │
+│  - Fast, cheap                         │
+│  - Generates responses                 │
+└────────────────┬───────────────────────┘
+                 │
+                 ▼
+         [Response to evaluate]
+                 │
+                 ▼
+┌────────────────────────────────────────┐
+│  JUDGE MODEL (Evaluator)               │
+│  - Claude 3.5 Sonnet, GPT-4o           │
+│  - Strong reasoning                    │
+│  - Scores the response                 │
+└────────────────┬───────────────────────┘
+                 │
+                 ▼
+         [Evaluation Score 0-1]
+```
+
+**Key insight**: Use an expensive, powerful model to evaluate a cheaper production model.
+
+---
+
+## When to Use LLM-as-a-Judge
+
+| Evaluation Type | Use LLM-as-a-Judge? | Alternative |
+|----------------|-------------------|-------------|
+| **Faithfulness** | ✅ Yes | Impossible to regex |
+| **Answer Relevance** | ✅ Yes | Semantic similarity can help |
+| **Toxicity** | ⚠️ Sometimes | Perspective API is faster |
+| **PII Detection** | ❌ No | Regex is 100x faster |
+| **Exact Match** | ❌ No | String comparison |
+
+**Rule**: Use LLM-as-a-Judge for semantic/subjective evaluation. Use rules for objective checks.
+
+---
+
+## Pattern 1: Faithfulness Evaluation
+
+**Question**: Does the response only make claims supported by the context?
+
+### Implementation
+
+```typescript
+// src/week7/evals/faithfulness.ts
+import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+export interface FaithfulnessEval {
+  score: number
+  reasoning: string
+  unsupported_claims: string[]
+}
+
+export async function evaluateFaithfulness(
+  question: string,
+  context: string,
+  answer: string
+): Promise<FaithfulnessEval> {
+  const judgePrompt = `You are an expert evaluator. Your task is to determine if the ANSWER makes any claims not supported by the CONTEXT.
+
+QUESTION:
+${question}
+
+CONTEXT:
+${context}
+
+ANSWER:
+${answer}
+
+Evaluation criteria:
+- Score 1.0: Every claim in the answer is directly supported by the context
+- Score 0.5-0.9: Most claims are supported, but some are inferred or slightly beyond context
+- Score 0.0: Answer makes claims not found in context (hallucination)
+
+Output JSON:
+{
+  "score": 0.0-1.0,
+  "reasoning": "Brief explanation of score",
+  "unsupported_claims": ["Claim 1", "Claim 2"]
+}`
+
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 512,
+    messages: [{ role: 'user', content: judgePrompt }]
+  })
+
+  const text = response.content[0].text
+  const result = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || '{"score": 0, "reasoning": "Parse failed", "unsupported_claims": []}')
+
+  return result
+}
+
+// Example
+const eval = await evaluateFaithfulness(
+  'What is our refund policy for enterprise customers?',
+  'Enterprise customers can request full refunds within 90 days of purchase with proof of purchase.',
+  'Enterprise customers have a 30-day refund policy.'
+)
+
+console.log(eval)
+// {
+//   score: 0.0,
+//   reasoning: "Answer states 30 days but context clearly says 90 days",
+//   unsupported_claims: ["30-day refund policy"]
+// }
+```
+
+---
+
+## Pattern 2: Answer Relevance Evaluation
+
+**Question**: Does the answer actually address the user's question?
+
+```typescript
+// src/week7/evals/relevance.ts
+export interface RelevanceEval {
+  score: number
+  reasoning: string
+  missed_aspects: string[]
+}
+
+export async function evaluateRelevance(
+  question: string,
+  answer: string
+): Promise<RelevanceEval> {
+  const judgePrompt = `Evaluate if this ANSWER properly addresses the QUESTION.
+
+QUESTION: ${question}
+
+ANSWER: ${answer}
+
+Scoring:
+- 1.0: Completely addresses the question
+- 0.5-0.9: Partially addresses, but misses some aspects
+- 0.0: Doesn't address the question
+
+Output JSON:
+{
+  "score": 0.0-1.0,
+  "reasoning": "Why this score?",
+  "missed_aspects": ["What was not addressed"]
+}`
+
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 512,
+    messages: [{ role: 'user', content: judgePrompt }]
+  })
+
+  const result = JSON.parse(response.content[0].text.match(/\{[\s\S]*\}/)?.[0] || '{}')
+  return result
+}
+```
+
+---
+
+## Pattern 3: Comparative Evaluation (A/B Testing)
+
+**Question**: Which response is better, A or B?
+
+```typescript
+// src/week7/evals/comparative.ts
+export interface ComparativeEval {
+  winner: 'A' | 'B' | 'tie'
+  score_a: number
+  score_b: number
+  reasoning: string
+}
+
+export async function comparativeEval(
+  question: string,
+  responseA: string,
+  responseB: string
+): Promise<ComparativeEval> {
+  const judgePrompt = `Compare these two responses to the same question.
+
+QUESTION: ${question}
+
+RESPONSE A:
+${responseA}
+
+RESPONSE B:
+${responseB}
+
+Criteria:
+- Accuracy
+- Completeness
+- Clarity
+- Conciseness
+
+Output JSON:
+{
+  "winner": "A" | "B" | "tie",
+  "score_a": 0.0-1.0,
+  "score_b": 0.0-1.0,
+  "reasoning": "Why this winner?"
+}`
+
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 512,
+    messages: [{ role: 'user', content: judgePrompt }]
+  })
+
+  const result = JSON.parse(response.content[0].text.match(/\{[\s\S]*\}/)?.[0] || '{}')
+  return result
+}
+
+// Usage: A/B test two prompt strategies
+const promptA = await generateResponse(query, { style: 'formal' })
+const promptB = await generateResponse(query, { style: 'casual' })
+
+const comparison = await comparativeEval(query, promptA, promptB)
+console.log(`Winner: ${comparison.winner}`)
+```
+
+---
+
+## Building an Eval Pipeline
+
+### 1. The Golden Dataset
+
+**Definition**: A curated set of test cases with known correct answers.
+
+```typescript
+// src/week7/evals/golden-dataset.ts
+export interface GoldenExample {
+  id: string
+  question: string
+  context: string
+  expected_answer: string
+  rubric: {
+    must_include: string[]
+    must_not_include: string[]
+    min_faithfulness: number
+  }
+}
+
+export const GOLDEN_DATASET: GoldenExample[] = [
+  {
+    id: 'refund-001',
+    question: 'What is the refund policy for enterprise customers?',
+    context: 'Enterprise customers have 90-day money-back guarantee with proof of purchase.',
+    expected_answer: 'Enterprise customers can request refunds within 90 days with proof of purchase.',
+    rubric: {
+      must_include: ['90 days', 'enterprise'],
+      must_not_include: ['30 days', 'free tier'],
+      min_faithfulness: 0.9
+    }
+  },
+  {
+    id: 'billing-002',
+    question: 'How do I update my credit card?',
+    context: 'To update payment methods, navigate to Settings > Billing > Payment Methods.',
+    expected_answer: 'Go to Settings > Billing > Payment Methods to update your credit card.',
+    rubric: {
+      must_include: ['Settings', 'Billing', 'Payment Methods'],
+      must_not_include: ['contact support', 'email us'],
+      min_faithfulness: 1.0
+    }
+  }
+]
+```
+
+### 2. Running the Eval Pipeline
+
+```typescript
+// src/week7/evals/pipeline.ts
+export interface EvalResult {
+  test_id: string
+  passed: boolean
+  scores: {
+    faithfulness: number
+    relevance: number
+  }
+  failures: string[]
+}
+
+export async function runEvalPipeline(
+  systemUnderTest: (query: string, context: string) => Promise<string>
+): Promise<EvalResult[]> {
+  const results: EvalResult[] = []
+
+  for (const example of GOLDEN_DATASET) {
+    console.log(`\nTesting: ${example.id}`)
+
+    // Generate response from system
+    const response = await systemUnderTest(example.question, example.context)
+
+    // Run evaluations
+    const faithfulness = await evaluateFaithfulness(
+      example.question,
+      example.context,
+      response
+    )
+
+    const relevance = await evaluateRelevance(example.question, response)
+
+    // Check rubric
+    const failures: string[] = []
+
+    // Must include checks
+    for (const phrase of example.rubric.must_include) {
+      if (!response.toLowerCase().includes(phrase.toLowerCase())) {
+        failures.push(`Missing required phrase: "${phrase}"`)
+      }
+    }
+
+    // Must not include checks
+    for (const phrase of example.rubric.must_not_include) {
+      if (response.toLowerCase().includes(phrase.toLowerCase())) {
+        failures.push(`Contains forbidden phrase: "${phrase}"`)
+      }
+    }
+
+    // Faithfulness threshold
+    if (faithfulness.score < example.rubric.min_faithfulness) {
+      failures.push(`Faithfulness ${faithfulness.score} < ${example.rubric.min_faithfulness}`)
+    }
+
+    const passed = failures.length === 0
+
+    results.push({
+      test_id: example.id,
+      passed,
+      scores: {
+        faithfulness: faithfulness.score,
+        relevance: relevance.score
+      },
+      failures
+    })
+
+    console.log(`  Faithfulness: ${faithfulness.score.toFixed(2)}`)
+    console.log(`  Relevance: ${relevance.score.toFixed(2)}`)
+    console.log(`  Result: ${passed ? '✅ PASS' : '❌ FAIL'}`)
+    if (!passed) {
+      console.log(`  Failures: ${failures.join(', ')}`)
+    }
+  }
+
+  return results
+}
+
+// Usage
+const results = await runEvalPipeline(myRAGSystem)
+
+const passRate = results.filter(r => r.passed).length / results.length
+console.log(`\n📊 Pass Rate: ${(passRate * 100).toFixed(1)}%`)
+```
+
+---
+
+## Semantic Versioning for AI Systems
+
+**The Problem**: In traditional software, you version code. In AI, you must version **Prompt + Model + Data**.
+
+### What to Version
+
+```typescript
+export interface AISystemVersion {
+  version: string         // "1.2.3"
+  model: string          // "claude-3-5-sonnet-20240620"
+  prompt_template_hash: string  // SHA-256 of system prompt
+  rag_strategy: string   // "hybrid-search-v2"
+  eval_results: {
+    faithfulness_avg: number
+    relevance_avg: number
+    cost_per_query: number
+  }
+  deployed_at: Date
+}
+
+// Example versions
+const versions: AISystemVersion[] = [
+  {
+    version: '1.0.0',
+    model: 'claude-3-haiku-20240307',
+    prompt_template_hash: 'a1b2c3...',
+    rag_strategy: 'vector-only',
+    eval_results: {
+      faithfulness_avg: 0.75,
+      relevance_avg: 0.82,
+      cost_per_query: 0.012
+    },
+    deployed_at: new Date('2025-01-01')
+  },
+  {
+    version: '1.1.0',
+    model: 'claude-3-haiku-20240307',
+    prompt_template_hash: 'd4e5f6...',  // ← Changed prompt
+    rag_strategy: 'hybrid-search',       // ← Changed strategy
+    eval_results: {
+      faithfulness_avg: 0.88,  // ✅ Improved
+      relevance_avg: 0.90,     // ✅ Improved
+      cost_per_query: 0.018    // ⚠️ Increased
+    },
+    deployed_at: new Date('2025-02-01')
+  }
+]
+```
+
+### The Deployment Rule
+
+**Never deploy a prompt change to production without running it against your Golden Dataset first.**
+
+```typescript
+// src/week7/evals/deployment-gate.ts
+export async function deploymentGate(
+  newSystemVersion: (q: string, ctx: string) => Promise<string>,
+  minPassRate: number = 0.90
+): Promise<boolean> {
+  console.log('🚦 Running deployment gate...')
+
+  const results = await runEvalPipeline(newSystemVersion)
+
+  const passRate = results.filter(r => r.passed).length / results.length
+  const avgFaithfulness = results.reduce((sum, r) => sum + r.scores.faithfulness, 0) / results.length
+
+  console.log(`\n📊 Deployment Gate Results:`)
+  console.log(`  Pass Rate: ${(passRate * 100).toFixed(1)}%`)
+  console.log(`  Avg Faithfulness: ${avgFaithfulness.toFixed(2)}`)
+  console.log(`  Required Pass Rate: ${(minPassRate * 100).toFixed(1)}%`)
+
+  if (passRate < minPassRate) {
+    console.log(`\n❌ DEPLOYMENT BLOCKED: Pass rate below threshold`)
+    return false
+  }
+
+  console.log(`\n✅ DEPLOYMENT APPROVED`)
+  return true
+}
+
+// Usage before production deploy
+const approved = await deploymentGate(newPromptVersion, 0.95)
+
+if (!approved) {
+  throw new Error('Deployment blocked by eval gate')
+}
+
+// Proceed with deployment
+await deployToProduction(newPromptVersion)
+```
+
+---
+
+## The Continuous Eval Loop
+
+```typescript
+// src/week7/evals/continuous.ts
+export async function continuousEvalLoop() {
+  setInterval(async () => {
+    console.log('\n🔄 Running hourly eval...')
+
+    // Sample recent production queries
+    const recentQueries = await prisma.productionLog.findMany({
+      take: 50,
+      orderBy: { timestamp: 'desc' }
+    })
+
+    let faithfulnessSum = 0
+    let relevanceSum = 0
+
+    for (const log of recentQueries) {
+      const faithfulness = await evaluateFaithfulness(
+        log.query,
+        log.retrieved_context,
+        log.response
+      )
+
+      const relevance = await evaluateRelevance(log.query, log.response)
+
+      faithfulnessSum += faithfulness.score
+      relevanceSum += relevance.score
+
+      // Alert on low score
+      if (faithfulness.score < 0.7) {
+        await sendAlert({
+          severity: 'warning',
+          message: `Low faithfulness detected: ${faithfulness.score}`,
+          query: log.query,
+          response: log.response
+        })
+      }
+    }
+
+    const avgFaithfulness = faithfulnessSum / recentQueries.length
+    const avgRelevance = relevanceSum / recentQueries.length
+
+    console.log(`  Avg Faithfulness: ${avgFaithfulness.toFixed(2)}`)
+    console.log(`  Avg Relevance: ${avgRelevance.toFixed(2)}`)
+
+    // Track drift over time
+    await prisma.evalMetrics.create({
+      data: {
+        timestamp: new Date(),
+        avg_faithfulness: avgFaithfulness,
+        avg_relevance: avgRelevance,
+        sample_size: recentQueries.length
+      }
+    })
+
+  }, 60 * 60 * 1000) // Every hour
+}
+
+async function sendAlert(alert: any) {
+  console.log(`🚨 ${alert.severity.toUpperCase()}: ${alert.message}`)
+  // In production: Send to Slack, PagerDuty
+}
+```
+
+---
+
+## Cost Analysis: LLM-as-a-Judge
+
+| Scenario | Evals per Day | Cost per Eval | Daily Cost | Monthly Cost |
+|----------|--------------|---------------|------------|--------------|
+| **Development** | 50 | $0.003 | $0.15 | $4.50 |
+| **Continuous (hourly)** | 1,200 | $0.003 | $3.60 | $108 |
+| **Full regression** | 10,000 | $0.003 | $30 | $900 |
+
+**Production tip**: Run full regression before deploys, hourly sampling in production.
+
+---
+
+## Key Takeaways
+
+1. **LLM-as-a-Judge**: Use stronger model to evaluate production model
+2. **Golden Dataset**: Curated test cases with known correct answers
+3. **Eval Pipeline**: Automated testing before every deployment
+4. **Semantic Versioning**: Version prompt + model + data, not just code
+5. **Deployment Gate**: Require 90%+ pass rate before production deploy
+6. **Continuous Eval**: Sample production traffic hourly to detect drift
+
+---
+
+## Next Steps
+
+- **Week 7 Lab**: Build Production Dashboard with all three pillars
+- **Capstone Project**: Implement eval pipeline with 100% faithfulness requirement
+- **Production**: Set up continuous eval loop with alerting
+
+---
+
+## Further Reading
+
+- [G-Eval: NLG Evaluation using GPT-4](https://arxiv.org/abs/2303.16634)
+- [Judging LLM-as-a-Judge with MT-Bench](https://arxiv.org/abs/2306.05685)
+- [LangSmith Evaluation Guide](https://docs.smith.langchain.com/evaluation)
+- [RAGAS Framework](https://docs.ragas.io/)

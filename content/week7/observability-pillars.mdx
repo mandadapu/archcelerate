@@ -1,0 +1,620 @@
+---
+title: "The Three Pillars of AI Observability"
+week: 7
+concept: 1
+description: "Monitor traces, evaluations, and unit economics to prevent silent failures in production AI systems"
+estimatedMinutes: 50
+objectives:
+  - Implement OpenTelemetry tracing for RAG and agent flows
+  - Track the three critical observability layers
+  - Set up dashboards for latency, accuracy, and cost
+  - Detect and prevent silent failures
+---
+
+# The Three Pillars of AI Observability
+
+Hardening AI systems for the real world.
+
+## The Core Problem
+
+**Traditional software**: Errors are obvious (crashes, 500 errors, stack traces)
+**AI systems**: Failures are silent (hallucinations, drift, quality degradation)
+
+**Production reality**: An AI system can be "working" (no errors) while being completely broken (wrong answers).
+
+**Solution**: Monitor three distinct layers to ensure the system doesn't drift or fail silently.
+
+---
+
+## The Three Pillars
+
+| Pillar | Focus | Key Metrics | Tools |
+|--------|-------|-------------|-------|
+| **Traces** | Every step of the RAG/Agent flow | Retrieval Latency, Tool Execution Time, Token Usage | OpenTelemetry, LangSmith, Arize Phoenix |
+| **Evaluations** | Semantic accuracy & safety | Faithfulness, Answer Relevance, PII Detection | RAGAS, LangSmith Evals, LLM-as-a-Judge |
+| **Unit Economics** | Cost and efficiency | Tokens per User, Cost per Query, Cache Hit Rate | Custom dashboards, LangSmith |
+
+---
+
+## Pillar 1: Traces (The Flow)
+
+**What it tracks**: Every step of your RAG or agent execution.
+
+### Why Traces Matter
+
+```typescript
+// ❌ Without tracing, you see:
+User query → [BLACK BOX] → Response (5 seconds)
+
+// ✅ With tracing, you see:
+User query
+  ├─ Query embedding (200ms, 500 tokens, $0.0015)
+  ├─ Vector search (1200ms, 10 results)
+  ├─ Reranking (800ms, top 3 results)
+  ├─ LLM call (2500ms, 2000 tokens, $0.045)
+  └─ Response (5000ms total, $0.0465 total)
+```
+
+**Production impact**: You can now see that reranking is slow and vector search is the bottleneck.
+
+### Implementing OpenTelemetry Traces
+
+```typescript
+// src/week7/tracing.ts
+import { trace, context } from '@opentelemetry/api'
+import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node'
+import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base'
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
+
+// Initialize OpenTelemetry
+const provider = new NodeTracerProvider()
+const exporter = new OTLPTraceExporter({
+  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces'
+})
+
+provider.addSpanProcessor(new SimpleSpanProcessor(exporter))
+provider.register()
+
+const tracer = trace.getTracer('ai-system', '1.0.0')
+
+// Example: Tracing a RAG query
+export async function tracedRAGQuery(query: string): Promise<string> {
+  return await tracer.startActiveSpan('rag_query', async (span) => {
+    span.setAttribute('query', query)
+    span.setAttribute('user_id', 'user-123')
+
+    try {
+      // Step 1: Embed query
+      const embedding = await tracer.startActiveSpan('embed_query', async (embedSpan) => {
+        const start = Date.now()
+        const result = await embedQuery(query)
+
+        embedSpan.setAttribute('tokens', 50)
+        embedSpan.setAttribute('latency_ms', Date.now() - start)
+        embedSpan.setAttribute('cost_usd', 0.0015)
+        embedSpan.end()
+
+        return result
+      })
+
+      // Step 2: Vector search
+      const documents = await tracer.startActiveSpan('vector_search', async (searchSpan) => {
+        const start = Date.now()
+        const results = await vectorSearch(embedding, { limit: 10 })
+
+        searchSpan.setAttribute('results_count', results.length)
+        searchSpan.setAttribute('latency_ms', Date.now() - start)
+        searchSpan.end()
+
+        return results
+      })
+
+      // Step 3: Rerank
+      const reranked = await tracer.startActiveSpan('rerank', async (rerankSpan) => {
+        const start = Date.now()
+        const topDocs = await rerank(query, documents, { topK: 3 })
+
+        rerankSpan.setAttribute('input_count', documents.length)
+        rerankSpan.setAttribute('output_count', topDocs.length)
+        rerankSpan.setAttribute('latency_ms', Date.now() - start)
+        rerankSpan.end()
+
+        return topDocs
+      })
+
+      // Step 4: LLM call
+      const response = await tracer.startActiveSpan('llm_call', async (llmSpan) => {
+        const start = Date.now()
+        const completion = await callLLM(query, reranked)
+
+        llmSpan.setAttribute('model', 'claude-3-5-sonnet-20240620')
+        llmSpan.setAttribute('input_tokens', completion.usage.input_tokens)
+        llmSpan.setAttribute('output_tokens', completion.usage.output_tokens)
+        llmSpan.setAttribute('latency_ms', Date.now() - start)
+        llmSpan.setAttribute('cost_usd', calculateCost(completion.usage))
+        llmSpan.end()
+
+        return completion.content[0].text
+      })
+
+      span.setStatus({ code: 1 }) // SUCCESS
+      span.end()
+
+      return response
+
+    } catch (error) {
+      span.recordException(error)
+      span.setStatus({ code: 2, message: error.message }) // ERROR
+      span.end()
+      throw error
+    }
+  })
+}
+
+// Helper functions
+async function embedQuery(query: string): Promise<number[]> {
+  // Mock embedding
+  return new Array(1536).fill(0.1)
+}
+
+async function vectorSearch(embedding: number[], options: { limit: number }) {
+  // Mock vector search
+  return Array(options.limit).fill({ id: '1', content: 'Sample document', score: 0.9 })
+}
+
+async function rerank(query: string, docs: any[], options: { topK: number }) {
+  // Mock reranking
+  return docs.slice(0, options.topK)
+}
+
+async function callLLM(query: string, docs: any[]) {
+  // Mock LLM call
+  return {
+    content: [{ text: 'Sample response' }],
+    usage: { input_tokens: 1500, output_tokens: 500 }
+  }
+}
+
+function calculateCost(usage: { input_tokens: number; output_tokens: number }): number {
+  return (usage.input_tokens * 0.000003) + (usage.output_tokens * 0.000015)
+}
+```
+
+### Visualizing Traces with LangSmith
+
+```typescript
+// src/week7/langsmith-tracing.ts
+import { Client } from 'langsmith'
+import { traceable } from 'langsmith/traceable'
+
+const langsmith = new Client({ apiKey: process.env.LANGSMITH_API_KEY })
+
+// Automatic tracing with LangSmith decorators
+export const ragQuery = traceable(
+  async (query: string): Promise<string> => {
+    const embedding = await embedQuery(query)
+    const documents = await vectorSearch(embedding)
+    const reranked = await rerank(query, documents)
+    const response = await callLLM(query, reranked)
+    return response
+  },
+  { name: 'rag_query', project: 'production-rag' }
+)
+
+// LangSmith automatically captures:
+// - All inputs and outputs
+// - Nested function calls
+// - Token usage and costs
+// - Latency at each step
+// - Errors and stack traces
+```
+
+### Trace Analysis: What to Look For
+
+| Metric | Good | Warning | Critical |
+|--------|------|---------|----------|
+| **Total Latency** | < 2s | 2-5s | > 5s |
+| **Retrieval** | < 500ms | 500-1000ms | > 1000ms |
+| **LLM Call** | < 2s | 2-3s | > 3s |
+| **Cost per Query** | < $0.05 | $0.05-$0.10 | > $0.10 |
+
+**Production alert**: If retrieval latency > 1s, investigate database indexes or vector store performance.
+
+---
+
+## Pillar 2: Evaluations (The Quality)
+
+**What it tracks**: Semantic accuracy and safety of AI outputs.
+
+### The Silent Failure Problem
+
+```typescript
+// ❌ System is "working" but broken
+Query: "What's our refund policy for enterprise customers?"
+
+Response: "Our refund policy allows 30-day returns with receipt."
+// ✅ HTTP 200, no errors
+// ❌ WRONG - enterprise customers have 90-day returns!
+```
+
+**Why traditional testing fails**: Unit tests check code logic, not semantic correctness.
+
+### The Five Critical Evals
+
+```typescript
+export interface EvaluationMetrics {
+  faithfulness: number        // 0-1: Does answer match retrieved context?
+  answer_relevance: number    // 0-1: Does answer address the question?
+  context_precision: number   // 0-1: Are retrieved docs relevant?
+  toxicity: number           // 0-1: Contains harmful content?
+  pii_detected: boolean      // True if PII found in output
+}
+```
+
+### Implementing Evaluations
+
+```typescript
+// src/week7/evaluations.ts
+import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+// Eval 1: Faithfulness (Answer is grounded in context)
+export async function evaluateFaithfulness(
+  question: string,
+  context: string,
+  answer: string
+): Promise<number> {
+  const evalPrompt = `You are an evaluator. Check if the ANSWER is faithful to the CONTEXT.
+
+QUESTION: ${question}
+
+CONTEXT:
+${context}
+
+ANSWER:
+${answer}
+
+Output JSON with score 0.0 (completely unfaithful) to 1.0 (perfectly faithful):
+{
+  "score": 0.0-1.0,
+  "reasoning": "Why this score?"
+}`
+
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 512,
+    messages: [{ role: 'user', content: evalPrompt }]
+  })
+
+  const text = response.content[0].text
+  const result = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || '{"score": 0}')
+
+  return result.score
+}
+
+// Eval 2: Answer Relevance (Answer addresses the question)
+export async function evaluateAnswerRelevance(
+  question: string,
+  answer: string
+): Promise<number> {
+  const evalPrompt = `Does this ANSWER properly address the QUESTION?
+
+QUESTION: ${question}
+ANSWER: ${answer}
+
+Score 0.0 (completely irrelevant) to 1.0 (perfectly relevant):
+{ "score": 0.0-1.0 }`
+
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 256,
+    messages: [{ role: 'user', content: evalPrompt }]
+  })
+
+  const result = JSON.parse(response.content[0].text.match(/\{[\s\S]*\}/)?.[0] || '{"score": 0}')
+  return result.score
+}
+
+// Eval 3: PII Detection (Personal Identifiable Information)
+export async function detectPII(text: string): Promise<boolean> {
+  const patterns = [
+    /\b\d{3}-\d{2}-\d{4}\b/,           // SSN: 123-45-6789
+    /\b\d{16}\b/,                       // Credit card: 1234567812345678
+    /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i, // Email
+    /\b\d{3}-\d{3}-\d{4}\b/,           // Phone: 123-456-7890
+  ]
+
+  return patterns.some(pattern => pattern.test(text))
+}
+
+// Eval 4: Toxicity Detection
+export async function evaluateToxicity(text: string): Promise<number> {
+  // Using Perspective API or similar
+  // For demo, simple keyword check
+  const toxicKeywords = ['hate', 'kill', 'stupid', 'idiot']
+  const matches = toxicKeywords.filter(word => text.toLowerCase().includes(word))
+
+  return matches.length > 0 ? 0.8 : 0.0
+}
+
+// Eval 5: Context Precision (Retrieved docs are relevant)
+export async function evaluateContextPrecision(
+  question: string,
+  documents: string[]
+): Promise<number> {
+  const evalPrompt = `Rate how relevant these DOCUMENTS are to the QUESTION.
+
+QUESTION: ${question}
+
+DOCUMENTS:
+${documents.map((d, i) => `${i + 1}. ${d}`).join('\n\n')}
+
+Score each document 0 (irrelevant) or 1 (relevant), then average:
+{ "scores": [0, 1, 1, 0], "precision": 0.5 }`
+
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20240620',
+    max_tokens: 512,
+    messages: [{ role: 'user', content: evalPrompt }]
+  })
+
+  const result = JSON.parse(response.content[0].text.match(/\{[\s\S]*\}/)?.[0] || '{"precision": 0}')
+  return result.precision
+}
+```
+
+### Running Evaluations in Production
+
+```typescript
+// src/week7/production-eval.ts
+import { traceable } from 'langsmith/traceable'
+
+export const evaluateRAGResponse = traceable(
+  async (
+    question: string,
+    context: string,
+    answer: string
+  ): Promise<EvaluationMetrics> => {
+    const [faithfulness, relevance, toxicity, pii] = await Promise.all([
+      evaluateFaithfulness(question, context, answer),
+      evaluateAnswerRelevance(question, answer),
+      evaluateToxicity(answer),
+      detectPII(answer)
+    ])
+
+    return {
+      faithfulness,
+      answer_relevance: relevance,
+      context_precision: 1.0, // Would calculate from retrieved docs
+      toxicity,
+      pii_detected: pii
+    }
+  },
+  { name: 'evaluate_rag_response' }
+)
+
+// Example usage
+const metrics = await evaluateRAGResponse(
+  'What is our enterprise refund policy?',
+  'Enterprise customers have 90-day money-back guarantee...',
+  'Enterprise customers can request refunds within 90 days.'
+)
+
+console.log('Evaluation Results:', metrics)
+// {
+//   faithfulness: 1.0,
+//   answer_relevance: 1.0,
+//   context_precision: 1.0,
+//   toxicity: 0.0,
+//   pii_detected: false
+// }
+```
+
+---
+
+## Pillar 3: Unit Economics (The Business)
+
+**What it tracks**: Cost and efficiency of your AI system.
+
+### The Critical Metrics
+
+| Metric | Formula | Target | Red Flag |
+|--------|---------|--------|----------|
+| **Tokens per User** | Avg tokens across all user sessions | < 50K/month | > 100K/month |
+| **Cost per Query** | Total cost / Total queries | < $0.05 | > $0.10 |
+| **Cache Hit Rate** | Cached responses / Total queries | > 40% | < 20% |
+| **Queries per Dollar** | Total queries / Total cost | > 20 | < 10 |
+
+### Tracking Unit Economics
+
+```typescript
+// src/week7/economics.ts
+import { prisma } from '@/lib/db'
+
+export interface QueryMetrics {
+  query_id: string
+  user_id: string
+  tokens_used: number
+  cost_usd: number
+  cache_hit: boolean
+  latency_ms: number
+  timestamp: Date
+}
+
+export async function trackQueryMetrics(metrics: QueryMetrics) {
+  await prisma.queryMetrics.create({
+    data: metrics
+  })
+}
+
+// Dashboard query: Cost per user
+export async function getCostPerUser(userId: string, startDate: Date, endDate: Date) {
+  const result = await prisma.queryMetrics.aggregate({
+    where: {
+      user_id: userId,
+      timestamp: {
+        gte: startDate,
+        lte: endDate
+      }
+    },
+    _sum: {
+      cost_usd: true,
+      tokens_used: true
+    },
+    _count: true
+  })
+
+  return {
+    total_cost: result._sum.cost_usd || 0,
+    total_tokens: result._sum.tokens_used || 0,
+    query_count: result._count,
+    cost_per_query: (result._sum.cost_usd || 0) / (result._count || 1)
+  }
+}
+
+// Dashboard query: Cache hit rate
+export async function getCacheHitRate(startDate: Date, endDate: Date) {
+  const total = await prisma.queryMetrics.count({
+    where: {
+      timestamp: { gte: startDate, lte: endDate }
+    }
+  })
+
+  const cacheHits = await prisma.queryMetrics.count({
+    where: {
+      timestamp: { gte: startDate, lte: endDate },
+      cache_hit: true
+    }
+  })
+
+  return {
+    total_queries: total,
+    cache_hits: cacheHits,
+    hit_rate: cacheHits / total,
+    cost_saved: cacheHits * 0.045 // Avg cost per query
+  }
+}
+```
+
+### Setting Up Alerts
+
+```typescript
+// src/week7/alerts.ts
+export async function checkCostAlerts() {
+  const today = new Date()
+  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+
+  const monthlyCost = await prisma.queryMetrics.aggregate({
+    where: {
+      timestamp: { gte: startOfMonth }
+    },
+    _sum: { cost_usd: true }
+  })
+
+  const totalCost = monthlyCost._sum.cost_usd || 0
+
+  // Alert if monthly cost exceeds budget
+  if (totalCost > 500) {
+    await sendAlert({
+      severity: 'critical',
+      message: `Monthly AI cost exceeded $500: $${totalCost.toFixed(2)}`,
+      action: 'Review usage patterns and optimize'
+    })
+  }
+
+  // Alert if cost per query is high
+  const avgCostPerQuery = totalCost / (await prisma.queryMetrics.count())
+  if (avgCostPerQuery > 0.10) {
+    await sendAlert({
+      severity: 'warning',
+      message: `Cost per query is high: $${avgCostPerQuery.toFixed(4)}`,
+      action: 'Consider caching or cheaper models'
+    })
+  }
+}
+
+async function sendAlert(alert: { severity: string; message: string; action: string }) {
+  console.log(`🚨 ${alert.severity.toUpperCase()}: ${alert.message}`)
+  console.log(`   Action: ${alert.action}`)
+
+  // In production: Send to Slack, PagerDuty, etc.
+}
+```
+
+---
+
+## Production Dashboard Example
+
+```typescript
+// src/week7/dashboard.ts
+export async function getProductionDashboard() {
+  const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000)
+
+  const [traces, evals, economics] = await Promise.all([
+    // Pillar 1: Traces
+    prisma.queryMetrics.aggregate({
+      where: { timestamp: { gte: last24Hours } },
+      _avg: { latency_ms: true },
+      _max: { latency_ms: true }
+    }),
+
+    // Pillar 2: Evaluations
+    prisma.evaluationMetrics.aggregate({
+      where: { timestamp: { gte: last24Hours } },
+      _avg: {
+        faithfulness: true,
+        answer_relevance: true,
+        toxicity: true
+      }
+    }),
+
+    // Pillar 3: Unit Economics
+    getCacheHitRate(last24Hours, new Date())
+  ])
+
+  return {
+    traces: {
+      avg_latency: traces._avg.latency_ms,
+      p99_latency: traces._max.latency_ms
+    },
+    evaluations: {
+      avg_faithfulness: evals._avg.faithfulness,
+      avg_relevance: evals._avg.answer_relevance,
+      avg_toxicity: evals._avg.toxicity
+    },
+    economics: {
+      cache_hit_rate: economics.hit_rate,
+      cost_saved: economics.cost_saved
+    }
+  }
+}
+```
+
+---
+
+## Key Takeaways
+
+1. **Three Pillars**: Traces (flow), Evaluations (quality), Unit Economics (cost)
+2. **Silent Failures**: AI systems fail without errors - must monitor semantics
+3. **OpenTelemetry**: Industry standard for distributed tracing
+4. **LLM-as-a-Judge**: Use stronger model to evaluate weaker model
+5. **Unit Economics**: Track tokens, cost, and cache hit rate
+6. **Production Alerts**: Set thresholds for cost, latency, and quality
+
+---
+
+## Next Steps
+
+- **Week 7 Concept 2**: Implement guardrails for input/output validation
+- **Week 7 Concept 3**: Build LLM-as-a-Judge automated evaluation pipelines
+- **Week 7 Lab**: Production Dashboard with OpenTelemetry, Automated Evals, Cost Alerts
+
+---
+
+## Further Reading
+
+- [OpenTelemetry for LLMs](https://opentelemetry.io/)
+- [LangSmith Tracing Guide](https://docs.smith.langchain.com/)
+- [RAGAS Evaluation Framework](https://docs.ragas.io/)
+- [Arize Phoenix](https://phoenix.arize.com/)
