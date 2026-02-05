@@ -5,6 +5,164 @@ description: 'Combine semantic (vector) and keyword (BM25) search with cross-enc
 
 # Hybrid Retrieval & Re-Ranking
 
+---
+
+## 🏥 Real-World Challenge: The Clinical RAG System
+
+**The Problem**: A healthcare SaaS company needs doctors to find answers from **10,000+ clinical notes** (diagnoses, lab results, medication histories). Pure vector search returns semantically similar documents but misses **exact matches** (e.g., "HbA1c = 6.8%" gets confused with "HbA1c = 8.1%"). Medical accuracy requires **100% precision** on lab values and medication names.
+
+**Business Constraints**:
+- **Precision**: Must find exact lab values, medication dosages, and diagnosis codes (ICD-10)
+- **Recall**: Must also understand semantic queries ("blood sugar control" → HbA1c results)
+- **Latency**: <300ms P95 (doctors won't wait >500ms)
+- **Cost**: <$1,000/month for 100K queries
+- **Compliance**: HIPAA audit trail showing which documents were retrieved
+
+**The Architectural Problem**: Vector-Only RAG Fails on Medical Data
+
+```typescript
+// User query: "Show HbA1c results from March 2022"
+
+// ❌ Naive Vector Search (returns semantically similar, not exact)
+vectorSearch("HbA1c March 2022")
+// Returns:
+// 1. "Patient had good glycemic control in Q1 2022" (similar but no value)
+// 2. "HbA1c was 7.2% in April 2022" (wrong month!)
+// 3. "Glucose levels improved in March" (no HbA1c mentioned)
+
+// ✅ Hybrid Search (semantic + keyword)
+hybridSearch("HbA1c March 2022", { vectorWeight: 0.5, keywordWeight: 0.5 })
+// Returns:
+// 1. "HbA1c: 6.8% (March 15, 2022)" ✅ EXACT match
+// 2. "Follow-up HbA1c scheduled for March 2022" (related context)
+// 3. "Previous HbA1c (Jan 2022): 7.1% → trending down" (trend context)
+```
+
+**Architectural Solution: Three-Stage Hybrid RAG**
+
+**Stage 1: Parallel Retrieval** (Semantic + Keyword)
+```typescript
+// Semantic search (pgvector): "what does the query mean?"
+const vectorResults = await db.query(`
+  SELECT id, content,
+         1 - (embedding <=> $1) AS vector_score
+  FROM clinical_notes
+  ORDER BY embedding <=> $1
+  LIMIT 50
+`, [queryEmbedding])
+
+// Keyword search (BM25): "does it contain exact terms?"
+const keywordResults = await db.query(`
+  SELECT id, content,
+         ts_rank_cd(search_vector, plainto_tsquery($1)) AS keyword_score
+  FROM clinical_notes
+  WHERE search_vector @@ plainto_tsquery('HbA1c & March & 2022')
+  LIMIT 50
+`, [query])
+```
+
+**Stage 2: Reciprocal Rank Fusion** (merge without score normalization issues)
+```typescript
+// Problem: Vector scores (0-1) and BM25 scores (0-15) are on different scales
+// Solution: Use rank positions, not raw scores
+
+function reciprocalRankFusion(vectorResults, keywordResults, k = 60) {
+  const scoreMap = new Map()
+
+  vectorResults.forEach((doc, index) => {
+    const rrfScore = 1 / (k + index + 1)
+    scoreMap.set(doc.id, (scoreMap.get(doc.id) || 0) + rrfScore)
+  })
+
+  keywordResults.forEach((doc, index) => {
+    const rrfScore = 1 / (k + index + 1)
+    scoreMap.set(doc.id, (scoreMap.get(doc.id) || 0) + rrfScore)
+  })
+
+  return Array.from(scoreMap.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+}
+```
+
+**Stage 3: Cross-Encoder Re-Ranking** (two-stage retrieval for precision)
+```typescript
+// Problem: Bi-encoder (vector search) retrieves candidates but isn't precise
+// Solution: Cross-encoder (Cohere Rerank) re-scores with query-document attention
+
+const reranked = await cohere.rerank({
+  model: 'rerank-english-v3.0',
+  query: "HbA1c results from March 2022",
+  documents: fusedResults.map(r => r.content),
+  top_n: 3,
+  return_documents: true
+})
+
+// Result: Top 3 documents ranked by true semantic similarity to query
+```
+
+**Production Architecture**:
+```
+User Query: "HbA1c March 2022"
+      ↓
+┌─────────────────────┐
+│   Query Embedding   │ (OpenAI ada-002: <50ms)
+└──────────┬──────────┘
+           ↓
+     ┌─────┴─────┐
+     ↓           ↓
+[Vector Search] [Keyword Search]  (Parallel: 120ms)
+    50 docs       50 docs
+     ↓           ↓
+     └─────┬─────┘
+           ↓
+     [RRF Fusion]  (In-memory: <1ms)
+       10 docs
+           ↓
+  [Cross-Encoder Rerank]  (Cohere: 80ms)
+       3 docs
+           ↓
+   [Context to LLM]  (Claude Sonnet: 1.8s)
+           ↓
+      Final Answer
+```
+
+**Production Impact**:
+
+| Metric | Vector-Only RAG | Hybrid + Rerank RAG | Improvement |
+|--------|----------------|---------------------|-------------|
+| **Precision** | 65% | 94% | +45% (critical for medical) |
+| **Recall** | 78% | 89% | +14% |
+| **Latency (P95)** | 2.1s | 2.3s | +200ms (acceptable) |
+| **Cost/Query** | $0.008 | $0.012 | +$0.004 (reranking overhead) |
+| **Monthly Cost** (100K queries) | $800 | $1,200 | Within budget |
+
+**Why Hybrid Wins**:
+- **Exact Matches**: Keyword search ensures "HbA1c" and "March 2022" are present
+- **Semantic Context**: Vector search adds "glycemic control" and "diabetes management" context
+- **Precision**: Cross-encoder rerank eliminates false positives (April vs March)
+
+**Real Failure Scenario Prevented**:
+```typescript
+// Vector-only RAG returned: "Patient's glucose was well-controlled in April 2022"
+// Doctor prescribed based on wrong month → Incorrect medication adjustment
+// Hybrid RAG caught: Keyword search filtered out "April", returned only "March"
+// → Correct treatment decision
+```
+
+**[👉 Lab: Build the Clinical RAG System](/curriculum/week-6/labs/advanced-rag-system)**
+
+In the hands-on lab, you'll implement:
+1. Parallel vector + keyword retrieval with pgvector + PostgreSQL full-text
+2. Reciprocal Rank Fusion (RRF) algorithm
+3. Cohere cross-encoder re-ranking
+4. A/B testing: Measure precision improvement (65% → 94%)
+5. Cost optimization: Intelligent model routing (Haiku for simple, Opus for complex)
+
+**Key Architectural Insight**: Medical/legal/financial RAG systems **must use hybrid search**—vector-only is insufficient for domains requiring exact match precision.
+
+---
+
 ## Moving Beyond "Vector Search Only"
 
 In production RAG systems—especially in regulated industries like healthcare and finance—**vector similarity alone is not enough**. An architect must combine "meaning" (semantic search) with "exactness" (keyword search).

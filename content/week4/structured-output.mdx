@@ -12,6 +12,120 @@ objectives:
 
 # Structured Output & JSON Mode
 
+---
+
+## 🎯 Real-World Challenge: The Enterprise Support Orchestrator
+
+**The Problem**: An enterprise SaaS company receives 500 unstructured support emails daily. Manual triage takes 3 hours/day, and 40% of tickets are routed to the wrong team, delaying resolution by 2-3 days. Support costs are **$180K/year** in wasted labor.
+
+**Business Constraints**:
+- **Speed**: Must process emails in <2 seconds (users expect instant routing)
+- **Accuracy**: >95% correct routing to engineering, billing, or product teams
+- **Integration**: Must populate Zendesk/Salesforce with structured data (category, priority, customer_tier)
+- **Zero Hallucinations**: Cannot invent ticket IDs or priority levels—database expects exact enums
+
+**The Architectural Problem**: LLMs return **text**, but your support system needs **typed data**:
+
+```typescript
+// ❌ What you get from raw LLM
+"This is a very high priority issue from an enterprise customer about billing"
+
+// ✅ What your database needs
+{
+  category: 'billing',           // enum: 'technical' | 'billing' | 'feature_request'
+  priority: 10,                  // integer: 1-10
+  sentiment: 'frustrated',       // enum: 'satisfied' | 'neutral' | 'frustrated'
+  customer_tier: 'enterprise',   // enum: 'free' | 'pro' | 'enterprise'
+  product_id: 'SKU-12345'        // string: must match regex /SKU-\d{5}/
+}
+```
+
+**Architectural Solution: Type-Safe Extraction with Structured Outputs**
+
+Use Anthropic's **Structured Outputs** (strict schema enforcement) instead of JSON Mode (prompt engineering):
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+
+// Step 1: Define TypeScript schema (enforced at API level)
+const TicketSchema = {
+  type: 'object',
+  properties: {
+    category: { type: 'string', enum: ['technical', 'billing', 'feature_request'] },
+    priority: { type: 'integer', minimum: 1, maximum: 10 },
+    sentiment: { type: 'string', enum: ['satisfied', 'neutral', 'frustrated'] },
+    customer_tier: { type: 'string', enum: ['free', 'pro', 'enterprise'] },
+    product_id: { type: 'string', pattern: '^SKU-\\d{5}$' }
+  },
+  required: ['category', 'priority', 'sentiment', 'customer_tier']
+}
+
+// Step 2: LLM enforces schema (cannot hallucinate values)
+const response = await anthropic.messages.create({
+  model: 'claude-3-5-sonnet-20240620',
+  max_tokens: 1024,
+  tools: [{
+    name: 'extract_ticket',
+    description: 'Extract structured ticket data',
+    input_schema: TicketSchema
+  }],
+  tool_choice: { type: 'tool', name: 'extract_ticket' },
+  messages: [{ role: 'user', content: rawEmail }]
+})
+
+// Step 3: Type-safe result (guaranteed to match schema)
+const ticket: TicketData = response.content[0].input
+// → { category: 'billing', priority: 10, ... }
+
+// Step 4: Direct database insert (no validation needed)
+await db.tickets.create({ data: ticket })
+```
+
+**Production Impact**:
+
+**Before (Manual Triage)**:
+- Processing time: 3 hours/day
+- Mis-routing rate: 40%
+- Average resolution time: 3.2 days
+- Annual cost: $180K in labor
+
+**After (Structured Output Automation)**:
+- Processing time: **3 minutes/day** (60x faster)
+- Mis-routing rate: **3.8%** (10x improvement)
+- Average resolution time: **0.9 days** (3.5x faster)
+- Annual cost: **$12K** in API costs + $8K monitoring = **$20K total**
+- **ROI**: $160K/year savings = **800% ROI**
+
+**The Critical Difference**: JSON Mode vs Structured Outputs
+
+| Approach | Schema Enforcement | Hallucination Risk | Validation Needed | Production Ready |
+|----------|-------------------|-------------------|-------------------|------------------|
+| **JSON Mode** | ❌ Prompt-based (unreliable) | ⚠️ High (invents "very high" priority) | ✅ Required | ⚠️ Risky |
+| **Structured Outputs** | ✅ API-level (guaranteed) | ✅ None (rejects invalid values) | ❌ Not needed | ✅ Yes |
+
+**Real Example of JSON Mode Failure**:
+```typescript
+// User: "URGENT!!! Our app keeps crashing!"
+
+// JSON Mode (prompt engineering)
+{ "priority": "very urgent" }  // ❌ Database expects 1-10, gets string
+
+// Structured Outputs (API enforcement)
+{ "priority": 10 }  // ✅ LLM forced to use valid integer
+```
+
+**[👉 Lab: Build the Support Ticket Router](/curriculum/week-4/labs/support-ticket-router)**
+
+In the hands-on lab, you'll:
+1. Compare JSON Mode vs Structured Outputs on 100 real support emails
+2. Measure hallucination rates (JSON Mode: 18%, Structured: 0%)
+3. Build production-ready Zendesk integration
+4. Deploy with full error handling and self-healing retries
+
+**Key Architectural Insight**: Structured Outputs transforms LLMs from **text generators** into **system components** that integrate seamlessly with databases, APIs, and workflows.
+
+---
+
 ## The Problem: Unstructured AI
 
 **The fundamental limitation of chatbots**: They produce text, but production systems need **data**.
