@@ -280,17 +280,14 @@ export function ProjectShowcase() {
   }
 
   return (
-    <section className="py-24 bg-white" id="projects">
+    <section className="py-24 bg-gray-50" id="projects">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
+        <div className="mb-16">
           <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-            Milestone Projects:{' '}
-            <span className="bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent">
-              Your Proof of Mastery
-            </span>
+            Milestone Projects
           </h2>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            These aren't tutorial projects. They're production-grade systems that validate your skills and get you hired at the architect level.
+          <p className="text-xl text-gray-600 max-w-3xl">
+            Production-grade systems that validate your skills and get you hired at the architect level.
           </p>
         </div>
 
@@ -319,38 +316,36 @@ function ProjectCard({ project, isExpanded, onToggle }: ProjectCardProps) {
   const weekColors = getWeekColor(project.week)
 
   return (
-    <div className="group relative bg-white rounded-2xl border border-gray-200 overflow-hidden transition-all duration-300 hover:shadow-xl hover:border-transparent">
-      <div className={`absolute inset-0 bg-gradient-to-r ${weekColors.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl`} />
-
-      {/* Project Card Header with Gradient Background */}
-      <div className={`h-32 relative overflow-hidden bg-gradient-to-br ${weekColors.gradient}`}>
-        {/* Icon overlay */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
-            <span className="text-3xl">{getEmojiForProject(project.id)}</span>
-          </div>
-        </div>
-      </div>
-
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden transition-all duration-300 hover:shadow-lg">
       {/* Content */}
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-xl font-bold text-gray-900">
+      <div className="p-8">
+        {/* Icon with gradient background - similar to Command Center */}
+        <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${weekColors.gradient} flex items-center justify-center mb-6`}>
+          <span className="text-3xl">{getEmojiForProject(project.id)}</span>
+        </div>
+
+        {/* Title and Week Badge */}
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-2xl font-bold text-gray-900">
             {project.title}
           </h3>
-          <span className={`px-3 py-1 bg-gradient-to-r ${weekColors.gradient} text-white text-xs font-bold rounded-full`}>
+          <span className={`px-3 py-1 bg-gradient-to-r ${weekColors.gradient} text-white text-xs font-bold rounded-full whitespace-nowrap`}>
             Week {project.week}
           </span>
         </div>
-        <p className="text-sm text-gray-600 mb-2">
+
+        {/* Description */}
+        <p className="text-base text-gray-600 mb-3">
           {project.description}
         </p>
-        <p className="text-xs text-gray-500 italic mb-4">
+
+        {/* Milestone */}
+        <p className="text-sm text-gray-500 italic mb-6">
           {project.milestone}
         </p>
 
         {/* Tags */}
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div className="flex flex-wrap gap-2 mb-6">
           {project.tags.map((tag, i) => (
             <span
               key={i}
@@ -361,27 +356,27 @@ function ProjectCard({ project, isExpanded, onToggle }: ProjectCardProps) {
           ))}
         </div>
 
-        {/* Outcome */}
-        <div className="flex items-center text-sm font-medium text-purple-600 mb-4">
-          <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+        {/* Outcome with checkmark */}
+        <div className="flex items-center text-base font-medium text-purple-600 mb-6">
+          <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
           </svg>
           {project.outcome}
         </div>
 
-        {/* Expand/Collapse button */}
+        {/* Learn more link - similar to Command Center style */}
         <button
           onClick={onToggle}
-          className="w-full py-2 text-sm font-medium text-purple-600 hover:text-purple-700 flex items-center justify-center gap-2 transition-colors"
+          className="text-base font-medium text-purple-600 hover:text-purple-700 flex items-center gap-2 transition-colors group"
         >
           {isExpanded ? 'Show less' : 'Learn more'}
           <svg
-            className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+            className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : 'group-hover:translate-x-1'}`}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={isExpanded ? "M19 9l-7 7-7-7" : "M9 5l7 7-7 7"} />
           </svg>
         </button>
 
