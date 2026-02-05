@@ -9,7 +9,7 @@ interface LearningObjectivesProps {
 
 export function LearningObjectives({ objectives }: LearningObjectivesProps) {
   return (
-    <Accordion type="single" collapsible defaultValue="objectives" className="w-full">
+    <Accordion type="single" collapsible className="w-full">
       <AccordionItem value="objectives" className="border rounded-lg bg-[#f8f9fa] dark:bg-slate-900/50 border-slate-200 dark:border-slate-800">
         <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-slate-50 dark:hover:bg-slate-900/70 rounded-t-lg transition-colors">
           <span className="text-base font-semibold">What you will master this week</span>
