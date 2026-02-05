@@ -30,65 +30,65 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 
 // Concept visualization icons - Week 6: Advanced RAG (The Optimizer)
-// Using rose/coral theme to match Week 6's gradient (from-red-50 to-rose-50)
+// Using teal/cyan theme for technical "optimizer/filter" feel, distinguishing from Week 5's indigo/blue
 function getConceptIllustration(slug: string) {
   const illustrations: Record<string, JSX.Element> = {
     'hybrid-retrieval-reranking': (
       <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <Search className="h-7 w-7 text-rose-600" />
-          <ArrowUpDown className="h-5 w-5 text-rose-500" />
-          <Database className="h-6 w-6 text-red-500" />
+          <Search className="h-7 w-7 text-teal-600" />
+          <ArrowUpDown className="h-5 w-5 text-cyan-500" />
+          <Database className="h-6 w-6 text-teal-500" />
         </div>
       </div>
     ),
     'query-transformation-patterns': (
       <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <Settings className="h-7 w-7 text-rose-600" />
-          <GitBranch className="h-6 w-6 text-rose-500" />
+          <Settings className="h-7 w-7 text-teal-600" />
+          <GitBranch className="h-6 w-6 text-cyan-500" />
         </div>
       </div>
     ),
     'context-window-optimization': (
       <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <Filter className="h-7 w-7 text-rose-600" />
-          <Columns className="h-6 w-6 text-rose-500" />
+          <Filter className="h-7 w-7 text-teal-600" />
+          <Columns className="h-6 w-6 text-cyan-500" />
         </div>
       </div>
     ),
     'enterprise-rag-hardening': (
       <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <Shield className="h-7 w-7 text-rose-600" />
-          <Activity className="h-6 w-6 text-rose-500" />
-          <BarChart3 className="h-5 w-5 text-red-500" />
+          <Shield className="h-7 w-7 text-teal-600" />
+          <Activity className="h-6 w-6 text-cyan-500" />
+          <BarChart3 className="h-5 w-5 text-teal-500" />
         </div>
       </div>
     ),
     'observability-basics': (
       <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <Eye className="h-7 w-7 text-rose-600" />
-          <Activity className="h-6 w-6 text-rose-500" />
+          <Eye className="h-7 w-7 text-teal-600" />
+          <Activity className="h-6 w-6 text-cyan-500" />
         </div>
       </div>
     ),
     'monitoring-ai-systems': (
       <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <BarChart3 className="h-7 w-7 text-rose-600" />
-          <Gauge className="h-6 w-6 text-rose-500" />
+          <BarChart3 className="h-7 w-7 text-teal-600" />
+          <Gauge className="h-6 w-6 text-cyan-500" />
         </div>
       </div>
     ),
     'performance-optimization': (
       <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
-          <Zap className="h-7 w-7 text-rose-500" />
-          <Database className="h-6 w-6 text-rose-600" />
-          <TrendingUp className="h-5 w-5 text-red-500" />
+          <Zap className="h-7 w-7 text-cyan-500" />
+          <Database className="h-6 w-6 text-teal-600" />
+          <TrendingUp className="h-5 w-5 text-teal-500" />
         </div>
       </div>
     ),
@@ -96,7 +96,7 @@ function getConceptIllustration(slug: string) {
       <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
           <Server className="h-6 w-6 text-gray-500" />
-          <Rocket className="h-7 w-7 text-rose-600" />
+          <Rocket className="h-7 w-7 text-teal-600" />
           <CheckCircle2 className="h-6 w-6 text-green-600" />
         </div>
       </div>
@@ -191,7 +191,7 @@ export default async function Week6Page() {
 
         {/* Progress Overview */}
         {progress && (
-          <Card className="bg-red-50 dark:bg-red-950 border-red-200">
+          <Card className="bg-teal-50 dark:bg-teal-950 border-teal-200">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Your Progress</CardTitle>
