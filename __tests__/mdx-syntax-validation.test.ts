@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
+import { expect } from '@jest/globals'
 
 /**
  * MDX Syntax Validation Tests
@@ -45,7 +46,7 @@ describe('MDX Syntax Validation', () => {
           return `  Line ${lineNum}: ${line.trim()}`
         }).join('\n')
 
-        fail(`Found ${matches.length} unescaped '<' before numbers in ${relativePath}:\n${examples}\n\nFix: Replace '<digit' with '&lt;digit'`)
+        expect(matches.length).toBe(0)
       }
     })
 
