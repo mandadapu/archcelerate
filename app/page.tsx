@@ -502,11 +502,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Testimonials - 80px spacing */}
-      <section id="testimonials" className="py-20">
-        <Testimonials />
-      </section>
-
       {/* Trust & Social Proof: The Hiring Brief */}
       <section className="py-20 bg-gradient-to-br from-slate-50 to-slate-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -694,6 +689,11 @@ export default function Home() {
       <div className="py-20">
         <SocialProof />
       </div>
+
+      {/* Testimonials - 80px spacing */}
+      <section id="testimonials" className="py-20">
+        <Testimonials />
+      </section>
 
       {/* Footer */}
       <footer className="border-t border-gray-200 py-8 bg-white">
