@@ -10,6 +10,101 @@ Build **high-speed redaction pipelines** that de-identify sensitive data before 
 
 > **Architect Perspective**: Compliance isn't about legal documents—it's about **engineering data flow** to ensure PII/PHI **never** leaves your control perimeter. Build redaction as **zero-latency middleware** (<5ms overhead) and design Local-First patterns to **technically prevent** data residency violations.
 
+---
+
+## 🏥 Real-World Challenge: The HIPAA-Compliant AI Gateway
+
+**The Problem**: A telehealth startup wants to use frontier LLMs (Claude Opus, GPT-5) for medical diagnosis assistance. But sending raw patient data to third-party APIs violates HIPAA—Protected Health Information (PHI) cannot leave the company's controlled environment without risking **$50,000+ fines per violation**.
+
+**Business Constraints**:
+- **Compliance**: Must meet HIPAA data residency requirements (PHI stays in US, within HIPAA-certified infrastructure)
+- **Functionality**: Still needs advanced reasoning from frontier models (not available as on-premise deployments)
+- **Performance**: Cannot add >10ms latency—doctors expect instant responses
+- **Auditability**: Must maintain complete audit trail for compliance inspections
+
+**Architectural Solution: The Sovereign PII Redactor**
+
+Deploy a **high-speed redaction pipeline** that sanitizes PHI before tokens leave your VPC:
+
+```typescript
+// Step 1: Regex-based fast path (<1ms) - catches obvious patterns
+const fastRedacted = regexRedactor.sanitize(patientQuery)
+// "Patient John Doe, SSN 123-45-6789, glucose 180 mg/dL"
+// → "Patient [REDACTED_NAME], SSN [REDACTED_SSN], glucose 180 mg/dL"
+
+// Step 2: NER model (local, <3ms) - catches contextual PII
+const fullRedacted = await nerRedactor.sanitize(fastRedacted)
+// → "Patient [REDACTED_NAME], SSN [REDACTED_SSN], glucose [REDACTED_LAB_VALUE]"
+
+// Step 3: Cryptographic placeholders for reversibility
+const tokenMap = generateReversibleTokens(fullRedacted)
+// [REDACTED_NAME] → crypto_placeholder_a7f3
+// Store mapping in secure database (never sent to API)
+
+// Step 4: Safe to send to external API
+const response = await anthropic.messages.create({
+  messages: [{ role: 'user', content: fullRedacted }]
+})
+
+// Step 5: Reverse redaction for display
+const patientResponse = reverseRedaction(response.content, tokenMap)
+```
+
+**Production Implementation**:
+
+**Layer 1: Pre-API Middleware** (adds 4.2ms latency)
+- Regex redaction: 0.8ms (SSN, emails, phone numbers)
+- NER model (local Transformer): 3.2ms (names, addresses, dates of birth)
+- Token mapping: 0.2ms (generate crypto placeholders)
+
+**Layer 2: Data Residency Enforcement**
+- VPC-hosted redaction service (never leaves your AWS/Azure environment)
+- Encrypted token maps stored in PostgreSQL (HIPAA-certified RDS)
+- Audit log of every redaction (required for compliance)
+
+**Layer 3: Reversibility for Display**
+- Decryption happens client-side or in trusted VPC
+- Original PHI never transmitted to external APIs
+- Complete audit trail: what was redacted, when, by whom
+
+**Production Impact**:
+- **Compliance**: **100% HIPAA-compliant**—PHI technically cannot reach third-party servers
+- **Performance**: **4.2ms overhead** (within <10ms requirement)
+- **Auditability**: Every request logged with redaction details for SOC 2 / HIPAA audits
+- **Cost Avoidance**: **$1M+ in fines prevented** (average HIPAA violation settlement)
+- **Functionality Preserved**: Still access Opus/GPT-5 for advanced medical reasoning
+
+**Alternative: Local-First Architecture** (zero external data transmission)
+
+For ultimate data residency:
+```typescript
+// Deploy Llama 3.3 (70B) on-premise with vLLM
+const response = await localLLM.complete({
+  model: 'llama-3.3-70b',
+  prompt: rawPatientQuery  // No redaction needed—data never leaves VPC
+})
+```
+
+**Trade-off Matrix**:
+| Architecture | Compliance | Cost | Quality | Latency |
+|--------------|-----------|------|---------|---------|
+| Redaction Gateway | ✅ HIPAA | $200/mo | ✅ Opus 4.5 | 4.2ms overhead |
+| Local-First (Llama) | ✅ HIPAA | $8K/mo GPU | ⚠️ Good but not Opus | 2-3s inference |
+
+**When to Use Which**:
+- **Redaction Gateway**: High-volume (>10K queries/day), need best-in-class reasoning, cost-sensitive
+- **Local-First**: Ultra-sensitive data (psychiatric notes, genetic data), regulatory requirement for zero external transmission
+
+**[📚 Dive Deeper: Implement the Redaction Pipeline](#high-speed-piiphi-redaction-regex--nlp-pipeline)**
+
+Below, you'll find the complete production implementation with:
+- Regex patterns for all common PII/PHI types
+- NER model integration for contextual redaction
+- Cryptographic token mapping for reversibility
+- Audit logging for compliance
+
+---
+
 ## The Compliance Engineering Problem
 
 **Reality Check**: Sending raw user data to third-party LLM APIs is a compliance violation waiting to happen.
