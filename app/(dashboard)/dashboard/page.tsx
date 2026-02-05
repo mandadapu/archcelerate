@@ -513,6 +513,85 @@ export default async function DashboardPage() {
               </Link>
             </CardContent>
           </Card>
+
+          {/* Industry Scenarios */}
+          <Card className="border-2 border-teal-200 bg-gradient-to-br from-teal-50 to-cyan-50">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <span className="text-2xl">🏥</span>
+                  Industry Scenarios
+                </CardTitle>
+                <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full">
+                  DIGITAL HEALTH
+                </span>
+              </div>
+              <CardDescription>Real-world production challenges</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 mb-4">
+                {/* Scenario List */}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="p-2 bg-white/70 rounded border border-teal-100">
+                    <div className="font-semibold text-teal-900">Week 1: Multi-Tier Triage</div>
+                    <div className="text-teal-600 text-[10px]">87.5% cost reduction</div>
+                  </div>
+                  <div className="p-2 bg-white/70 rounded border border-teal-100">
+                    <div className="font-semibold text-teal-900">Week 2: HIPAA Gateway</div>
+                    <div className="text-teal-600 text-[10px]">100% compliance</div>
+                  </div>
+                  <div className="p-2 bg-white/70 rounded border border-teal-100">
+                    <div className="font-semibold text-teal-900">Week 4: Support Router</div>
+                    <div className="text-teal-600 text-[10px]">60x faster triage</div>
+                  </div>
+                  <div className="p-2 bg-white/70 rounded border border-teal-100">
+                    <div className="font-semibold text-teal-900">Week 5: Research Swarm</div>
+                    <div className="text-teal-600 text-[10px]">96% time reduction</div>
+                  </div>
+                  <div className="p-2 bg-white/70 rounded border border-teal-100">
+                    <div className="font-semibold text-teal-900">Week 6: Clinical RAG</div>
+                    <div className="text-teal-600 text-[10px]">94% precision</div>
+                  </div>
+                  <div className="p-2 bg-white/70 rounded border border-teal-100">
+                    <div className="font-semibold text-teal-900">Week 7: LLM-as-Judge</div>
+                    <div className="text-teal-600 text-[10px]">98% cost reduction</div>
+                  </div>
+                </div>
+
+                {/* Cumulative Impact */}
+                <div className="p-3 bg-teal-100 rounded-lg border border-teal-200">
+                  <div className="text-xs font-semibold text-teal-800 uppercase tracking-wide mb-2">
+                    Cumulative Business Impact
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div>
+                      <div className="text-teal-900 font-bold">$400K+</div>
+                      <div className="text-teal-700 text-[10px]">Annual Savings</div>
+                    </div>
+                    <div>
+                      <div className="text-teal-900 font-bold">60x</div>
+                      <div className="text-teal-700 text-[10px]">Faster Processing</div>
+                    </div>
+                    <div>
+                      <div className="text-teal-900 font-bold">100%</div>
+                      <div className="text-teal-700 text-[10px]">HIPAA Compliant</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-sm text-slate-600 mb-4">
+                Master production AI through 6 high-stakes Digital Health scenarios.
+                Each week covers a complete enterprise pattern with ROI metrics and
+                production architecture.
+              </p>
+              <Link href="/curriculum/week-1">
+                <Button size="sm" variant="outline" className="w-full border-teal-300 text-teal-700 hover:bg-teal-50">
+                  Start Week 1 Scenario →
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
