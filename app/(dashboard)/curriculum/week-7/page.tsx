@@ -38,7 +38,7 @@ function getConceptIllustration(slug: string) {
         </div>
       </div>
     ),
-    'llm-as-judge': (
+    'automated-evaluation': (
       <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
         <div className="flex items-center gap-1.5">
           <Gavel className="h-7 w-7 text-amber-600" />

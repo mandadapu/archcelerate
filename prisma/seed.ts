@@ -348,17 +348,16 @@ const weekData = [
     title: 'Observability & Production (The Reliability)',
     description: 'Harden AI systems for production with observability, guardrails, and automated evaluation',
     objectives: [
-      'Implement the three pillars of AI observability (Traces, Evaluations, Unit Economics)',
-      'Build input and output guardrails to prevent prompt injection and hallucinations',
-      'Deploy LLM-as-a-Judge for automated quality assurance',
-      'Set up cost tracking and circuit breakers',
-      'Implement semantic versioning for AI systems',
-      'Create golden datasets for regression testing'
+      'Master Observability Pillars: Implement OpenTelemetry tracing, automated evaluation frameworks, and cost-per-token monitoring to achieve full system visibility',
+      'Deploy Production Guardrails: Build input/output validation layers to prevent prompt injection, jailbreaks, and hallucinated outputs with <100ms latency overhead',
+      'Automated Quality Assurance: Implement LLM-as-a-Judge patterns for continuous evaluation, measuring faithfulness, relevance, and safety at scale',
+      'Harden with Circuit Breakers: Set up budget controls, rate limiting, and graceful degradation to prevent runaway costs and cascading failures',
+      'Build Audit Trails: Create golden datasets and semantic versioning systems for regression testing and regulatory compliance (HIPAA, SOC 2)'
     ],
     concepts: [
-      { slug: 'observability-pillars', title: 'Observability Pillars', description: 'Traces, evaluations, and unit economics.', minutes: 50 },
-      { slug: 'guardrails', title: 'Guardrails', description: 'Input/output validation and safety checks.', minutes: 45 },
-      { slug: 'llm-as-judge', title: 'LLM-as-a-Judge', description: 'Automated evaluation and quality assurance.', minutes: 45 }
+      { slug: 'observability-pillars', title: 'Observability Pillars', description: 'Traces, evaluations, and cost tracking.', minutes: 50 },
+      { slug: 'guardrails', title: 'Production Guardrails', description: 'Input/output validation and safety checks.', minutes: 45 },
+      { slug: 'automated-evaluation', title: 'Automated Evaluation', description: 'LLM-as-a-Judge for continuous quality assurance.', minutes: 45 }
     ],
     lab: {
       slug: 'production-dashboard',
