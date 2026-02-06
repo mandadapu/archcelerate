@@ -73,7 +73,7 @@ function selectModel(
   for (const tier of TIER_SYSTEM) {
     const taskQuality = getTaskQuality(taskType, tier.name)
 
-    if (taskQuality &gt;= qualityThreshold) {
+    if (taskQuality >= qualityThreshold) {
       console.log(`Selected ${tier.name} (quality: ${taskQuality}, cost: $${tier.costPerMTok.input}/MTok)`)
       return tier.name
     }
@@ -742,7 +742,7 @@ function calculateNaiveCosts(): TurnCost[] {
   const costs: TurnCost[] = []
   let cumulativeTokens = SYSTEM_PROMPT
 
-  for (let turn = 1; turn &lt;= 20; turn++) {
+  for (let turn = 1; turn <= 20; turn++) {
     cumulativeTokens += TURN_SIZE
     costs.push({
       turn,
@@ -813,7 +813,7 @@ async function summarizeAndCompress(
   messages: Message[],
   turnThreshold: number = 10
 ): Promise<Message[]> {
-  if (messages.length &lt;= turnThreshold * 2) {
+  if (messages.length <= turnThreshold * 2) {
     return messages  // Not long enough to summarize
   }
 
@@ -877,7 +877,7 @@ Summarization cost: ~2,500 tokens @ $0.25/MTok = $0.000625 (negligible)
 | **Context Retention** | Poor (loses history) | Good (compresses history) |
 | **Complexity** | Low | Medium |
 | **Latency** | None | +500ms per summarization |
-| **Best For** | Short sessions (&lt;10 turns), FAQ bots | Long sessions, customer support, research |
+| **Best For** | Short sessions (<10 turns), FAQ bots | Long sessions, customer support, research |
 
 **Production Pattern: Hybrid Approach**
 
@@ -889,7 +889,7 @@ async function optimizeContext(
 ): Promise<Message[]> {
   const turnCount = messages.filter(m => m.role !== 'system').length / 2
 
-  if (sessionType === 'short' || turnCount &lt;= 15) {
+  if (sessionType === 'short' || turnCount <= 15) {
     // Short sessions: Truncate (simpler, faster)
     return truncateHistory(messages, 10)
   } else {
@@ -1055,7 +1055,7 @@ class BatchProcessor {
     }
 
     // Batch normal/low priority requests
-    if (!this.processing && this.queue.length &gt;= 10) {
+    if (!this.processing && this.queue.length >= 10) {
       this.processBatch()
     }
   }
@@ -1078,7 +1078,7 @@ class BatchProcessor {
     this.processing = false
 
     // Process next batch if queue has items
-    if (this.queue.length &gt;= 10) {
+    if (this.queue.length >= 10) {
       this.processBatch()
     }
   }
@@ -1193,7 +1193,7 @@ async function detectCostAnomalies() {
     FROM ai_costs
     WHERE timestamp > NOW() - INTERVAL '24 hours'
     GROUP BY userId, endpoint
-    HAVING SUM(cost) &gt; 100  -- Alert if user costs > $100/day
+    HAVING SUM(cost) > 100  -- Alert if user costs > $100/day
     ORDER BY total_cost DESC
   `
 
@@ -1614,7 +1614,7 @@ Use this framework to make ROI-driven architectural decisions:
        ┌───────┴───────┐
        │               │
        v               v
-   &lt;1K req/day    &gt;10K req/day
+   <1K req/day    >10K req/day
        │               │
        │               v
        │      ┌──────────────────────┐
@@ -1664,8 +1664,8 @@ Use this framework to make ROI-driven architectural decisions:
 **Business Context:**
 - **Volume**: 50,000 queries/day (1.5M/month)
 - **Quality Requirement**: 100% accuracy on medical safety queries (no hallucinations on drug interactions, symptoms)
-- **Cost Target**: &lt;$30K/month to maintain 70% gross margin
-- **Latency SLA**: &lt;3 seconds p95 (user abandonment threshold)
+- **Cost Target**: <$30K/month to maintain 70% gross margin
+- **Latency SLA**: <3 seconds p95 (user abandonment threshold)
 
 **The Architectural Decision**: Implement an intelligent **multi-tier triage system** that routes queries to the cheapest model capable of handling them safely.
 
@@ -1697,7 +1697,7 @@ async function triageQuery(userQuery: string): Promise<TriageResult> {
   // TIER 1: Fast classifier (Haiku 4.5) - determines complexity
   const classification = await classifyQueryComplexity(userQuery)
 
-  if (classification.type === 'simple' && classification.confidence &gt; 0.9) {
+  if (classification.type === 'simple' && classification.confidence > 0.9) {
     // Handle with Haiku 4.5: password resets, appointment booking, basic FAQs
     const response = await callHaiku(userQuery)
 
@@ -1831,11 +1831,11 @@ class TriageMonitor {
       (this.metrics.avgLatency * (totalQueries - 1) + result.latency) / totalQueries
 
     // Alert on anomalies
-    if (result.cost &gt; 0.50) {
+    if (result.cost > 0.50) {
       console.warn(`⚠️  High-cost query: $${result.cost.toFixed(4)} - "${query.substring(0, 50)}..."`)
     }
 
-    if (result.latency &gt; 5000) {
+    if (result.latency > 5000) {
       console.warn(`⚠️  Slow query: ${result.latency}ms - "${query.substring(0, 50)}..."`)
     }
 
