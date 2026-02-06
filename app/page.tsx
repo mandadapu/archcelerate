@@ -218,10 +218,10 @@ export default function Home() {
                 </div>
 
                 <h3 className="font-display text-xl font-semibold text-gray-900 mb-3">
-                  The Safety Proxy
+                  The Compliance Shield
                 </h3>
                 <p className="text-gray-600 leading-relaxed mb-4 text-sm">
-                  Engineer the "Hardened Shell"—a middle-tier service that intercepts all traffic to enforce Sovereign Governance. Features pre-built middleware for PII Redaction, reversible tokenization, and structured audit logging to meet HIPAA and SOC2 standards.
+                  Engineering the Hardened Shell: Build the infrastructure that prevents the 7% revenue fines associated with the EU AI Act. Move beyond "System Prompts" to deploy a Sovereign Safety Proxy that makes data leaks technically impossible. Leave with the same security patterns used by HIPAA-compliant health-tech and SOC2-certified fintech platforms.
                 </p>
 
                 {/* Trust Badges - Compliance Sandwich */}
