@@ -164,12 +164,64 @@ archcelerate/
 
 ### ⚠️ Git Workflow
 
-**IMPORTANT**: Never push changes directly to the main branch.
+**IMPORTANT**: Always work on `develop` branch. Never commit directly to `main` or `develop`.
 
-- All changes must go through pull requests
-- Work on feature branches (e.g., `feature/new-feature`, `fix/bug-name`)
-- Push to feature branches only
-- Main branch is protected and requires PR review
+**Branch Strategy:**
+- `main` - Production-ready code only
+- `develop` - Active development branch
+- `feature/*` or `fix/*` - Feature/fix branches
+
+**Workflow Steps:**
+
+1. **Start from develop**: Ensure you're on up-to-date `develop` branch
+   ```bash
+   git checkout develop
+   git pull origin develop
+   ```
+
+2. **Create feature branch**: Branch from `develop` with descriptive name
+   ```bash
+   git checkout -b feature/description
+   # or
+   git checkout -b fix/bug-name
+   ```
+
+3. **Make changes**: Work on the feature branch only
+   - Edit files as needed
+   - Never commit directly to `develop` or `main`
+
+4. **Commit changes**: Commit to the feature branch
+   ```bash
+   git add <files>
+   git commit -m "descriptive message"
+   ```
+
+5. **Push feature branch**: Push to remote
+   ```bash
+   git push -u origin feature/description
+   ```
+
+6. **Create PR**: Feature branch → `develop`
+   ```bash
+   gh pr create --base develop --head feature/description
+   ```
+
+7. **Merge PR**: After review/approval
+   ```bash
+   gh pr merge <PR-number> --merge --delete-branch
+   ```
+
+8. **Delete feature branch**: Clean up after merge (auto-deleted in step 7)
+
+**Release to Production:**
+- Only merge `develop` → `main` via PR when ready to release
+- Never commit directly to `main`
+
+**Never:**
+- ❌ Commit directly to `develop`
+- ❌ Commit directly to `main`
+- ❌ Merge without a PR
+- ❌ Push to `main` branch
 
 **Support**: [GitHub Issues](https://github.com/mandadapu/archcelerate/issues)
 
