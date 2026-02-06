@@ -30,7 +30,7 @@ const classification = await classifyQueryComplexity(patientQuery)
 // Step 2: Confidence-based routing with fallback pattern
 async function routeQuery(query: string, classification: Classification) {
   // CRITICAL: Low confidence triggers automatic escalation
-  if (classification.confidence < 0.85) {
+  if (classification.confidence &lt; 0.85) {
     console.warn(`⚠️ Low confidence (${classification.confidence}) - escalating to Sonnet`)
     return await callSonnetWithFallback(query)
   }
@@ -417,7 +417,7 @@ async function buildPromptWithDensityCheck(
 
   const analysis = analyzeContextDensity(userContext, chunks)
 
-  if (analysis.densityScore < 0.10) {
+  if (analysis.densityScore &lt; 0.10) {
     console.warn('⚠️ Low context density detected. Summarizing...')
     // Trigger summarization pipeline
     userContext = await summarizeContext(userContext, chunks)
@@ -459,17 +459,17 @@ async function buildPromptWithDensityCheck(
 ```typescript
 function selectModel(useCase: UseCase): Model {
   // Constraint #1: Latency Requirements
-  if (useCase.requiresRealTime && useCase.p95Latency < 1000ms) {
+  if (useCase.requiresRealTime && useCase.p95Latency &lt; 1000ms) {
     return 'claude-haiku-4.5' // Only option for sub-second
   }
 
   // Constraint #2: Cost Budget
-  if (useCase.requestVolume &gt; 1_000_000 && useCase.budgetPerRequest < 0.01) {
+  if (useCase.requestVolume &gt; 1_000_000 && useCase.budgetPerRequest &lt; 0.01) {
     return 'claude-haiku-4.5' // Economic constraint forces choice
   }
 
   // Constraint #3: Quality Floor
-  if (useCase.requiresCriticalReasoning || useCase.errorTolerance < 0.01) {
+  if (useCase.requiresCriticalReasoning || useCase.errorTolerance &lt; 0.01) {
     return 'claude-opus-4.5' // Quality constraint overrides cost
   }
 
@@ -542,7 +542,7 @@ Understanding token costs is critical for production AI systems:
 
 ```typescript
 // ❌ Without caching: Full cost every time
-for (let i = 0; i < 1000; i++) {
+for (let i = 0; i &lt; 1000; i++) {
   await anthropic.messages.create({
     model: 'claude-sonnet-4-5-20251101',
     system: LONG_SYSTEM_PROMPT,  // 5000 tokens, re-processed 1000x
@@ -1009,7 +1009,7 @@ async function vectorBackedTruncation(
 - Multi-user systems where context sharing is valuable
 
 **When NOT to Use**:
-- <1K sessions/month (summarization is cheaper)
+- &lt;1K sessions/month (summarization is cheaper)
 - Simple chatbots without long-term memory needs
 - Regulated industries requiring deterministic replay (vector retrieval is probabilistic)
 
@@ -1163,7 +1163,7 @@ function selectTruncationStrategy(
   budget: number
 ): TruncationStrategy {
   // Short sessions: Don't truncate, just keep full context
-  if (sessionLength < 20) {
+  if (sessionLength &lt; 20) {
     return 'no-truncation'
   }
 
@@ -1173,7 +1173,7 @@ function selectTruncationStrategy(
   }
 
   // High-volume, low-margin: Cost matters most
-  if (budget < 0.01) {
+  if (budget &lt; 0.01) {
     return 'drop-middle'  // Free, good enough
   }
 
@@ -1619,9 +1619,9 @@ D) **Incremental Processing**: Start with Haiku on full doc, escalate to Sonnet 
 
 **Context**: Building a content moderation system for a social network:
 - **Volume**: 50,000 posts/hour (peak)
-- **Latency requirement**: P95 < 500ms (UX constraint)
+- **Latency requirement**: P95 &lt; 500ms (UX constraint)
 - **Quality requirement**: 95%+ accuracy on toxicity detection
-- **Cost target**: <$0.0001 per post
+- **Cost target**: &lt;$0.0001 per post
 
 **Question**: How do you meet all three constraints (latency, quality, cost)?
 
@@ -1638,7 +1638,7 @@ D) Use Haiku for fast classification + Sonnet for borderline cases
 
 **Constraint Analysis**:
 
-**Latency (P95 < 500ms)**:
+**Latency (P95 &lt; 500ms)**:
 - Opus: 4-8s P95 → ❌ Fails (10x too slow)
 - Sonnet: 1-3s P95 → ❌ Fails (3x too slow)
 - Haiku: 300-800ms P95 → ✅ Meets requirement
@@ -1650,7 +1650,7 @@ D) Use Haiku for fast classification + Sonnet for borderline cases
 - Haiku: 92% on simple, 88% on nuanced → ⚠️ Borderline
 - Llama 7B fine-tuned: 93% → ✅ Possible with good training data
 
-**Cost (<$0.0001/post)**:
+**Cost (&lt;$0.0001/post)**:
 - Opus: $15/MTok × 200 tokens = $0.003/post → ❌ 30x over budget
 - Sonnet: $3/MTok × 200 tokens = $0.0006/post → ❌ 6x over budget
 - Haiku: $0.25/MTok × 200 tokens = $0.00005/post → ✅ Meets budget
@@ -1659,7 +1659,7 @@ D) Use Haiku for fast classification + Sonnet for borderline cases
 **Why Option D Wins**:
 ```typescript
 async function moderateContent(post: string) {
-  // Step 1: Haiku classifies in <500ms
+  // Step 1: Haiku classifies in &lt;500ms
   const classification = await classifyWithHaiku(post)
   // → Returns: { toxicity: 'high' | 'medium' | 'low', confidence: number }
 
@@ -1669,7 +1669,7 @@ async function moderateContent(post: string) {
   }
 
   // Step 3: Borderline cases (10%) escalate to Sonnet
-  if (classification.confidence < 0.95) {
+  if (classification.confidence &lt; 0.95) {
     const refined = await refineWithSonnet(post)  // Slow path: 2s, $0.0006
     return refined.toxicity !== 'high'
   }

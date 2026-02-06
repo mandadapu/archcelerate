@@ -27,7 +27,7 @@ Build a production-ready query triage system that routes 50,000 daily queries to
 **The Challenge**: A telehealth platform spends $225K/month routing all queries to Opus 4.5. Most queries are simple ("reset password"), but some require complex medical reasoning ("drug interaction between X and Y"). You need to cut costs by 80% without compromising medical safety.
 
 **Success Criteria**:
-- **Cost**: <$30K/month (80% reduction)
+- **Cost**: &lt;$30K/month (80% reduction)
 - **Latency**: &lt;3s p95 (maintain user experience)
 - **Safety**: 100% accuracy on medical queries (no hallucinations)
 - **Compliance**: HIPAA-compliant audit trail for all medical decisions
@@ -277,7 +277,7 @@ import { TriageResult, QueryComplexity } from '@/types/triage'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-const CONFIDENCE_THRESHOLD = 0.9  // Escalate if confidence < 90%
+const CONFIDENCE_THRESHOLD = 0.9  // Escalate if confidence &lt; 90%
 
 const MEDICAL_SAFETY_PROMPT = `You are a medical AI assistant for a telehealth platform. Provide accurate, evidence-based medical information while being clear about limitations.
 
@@ -308,7 +308,7 @@ export async function triageAndRoute(userQuery: string): Promise<TriageResult> {
     }
   }
 
-  if (classification.type === 'critical' || classification.confidence < 0.7) {
+  if (classification.type === 'critical' || classification.confidence &lt; 0.7) {
     // Safety escalation - notify human reviewer
     await notifyHumanReviewer(userQuery, classification)
 
@@ -573,8 +573,8 @@ export class TriageMonitor {
     console.log(`\nCost Analysis:`)
     console.log(`  Per Query: $${metrics.costPerQuery.toFixed(4)}`)
     console.log(`  Estimated Monthly (1.5M queries): $${metrics.estimatedMonthlyCost.toLocaleString()}`)
-    console.log(`\nTarget: <$30,000/month`)
-    console.log(metrics.estimatedMonthlyCost < 30000 ? '✅ ON TRACK' : '❌ OVER BUDGET')
+    console.log(`\nTarget: &lt;$30,000/month`)
+    console.log(metrics.estimatedMonthlyCost &lt; 30000 ? '✅ ON TRACK' : '❌ OVER BUDGET')
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
   }
 }
@@ -658,7 +658,7 @@ Cost Analysis:
   Per Query: $0.0607
   Estimated Monthly (1.5M queries): $91,071
 
-Target: <$30,000/month
+Target: &lt;$30,000/month
 ❌ OVER BUDGET
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
@@ -667,7 +667,7 @@ Target: <$30,000/month
 
 ## Part 4: Optimize Routing Thresholds
 
-**Goal**: Fine-tune confidence thresholds and routing logic to achieve <$30K/month target while maintaining quality.
+**Goal**: Fine-tune confidence thresholds and routing logic to achieve &lt;$30K/month target while maintaining quality.
 
 ### Exercise 4.1: Threshold Optimization
 
@@ -709,7 +709,7 @@ async function optimizeThresholds() {
         routedTo = 'haiku'
         haikuCount++
         totalCost += 0.01  // Estimated
-      } else if (classification.type === 'critical' || classification.confidence < 0.7) {
+      } else if (classification.type === 'critical' || classification.confidence &lt; 0.7) {
         routedTo = 'human'
         humanCount++
       } else {
@@ -732,7 +732,7 @@ async function optimizeThresholds() {
     console.log(`  Human:  ${((humanCount/testQueries.length) * 100).toFixed(1)}%`)
     console.log(`  Accuracy: ${accuracy.toFixed(1)}%`)
     console.log(`  Est. Monthly Cost: $${monthlyCost.toLocaleString()}`)
-    console.log(monthlyCost < 30000 && accuracy &gt;= 95 ? '  ✅ MEETS TARGETS' : '  ❌ FAILS TARGETS')
+    console.log(monthlyCost &lt; 30000 && accuracy &gt;= 95 ? '  ✅ MEETS TARGETS' : '  ❌ FAILS TARGETS')
   }
 }
 
@@ -769,7 +769,7 @@ export const TRIAGE_CONFIG = {
 
   // Performance targets
   targets: {
-    monthlyCostLimit: 30000,  // <$30K/month
+    monthlyCostLimit: 30000,  // &lt;$30K/month
     p95Latency: 3000,         // &lt;3s p95
     accuracy: 95              // &gt;95% classification accuracy
   }
@@ -804,11 +804,11 @@ async function validateProduction() {
 
   console.log('🎯 Target Validation:')
   console.log('━'.repeat(50))
-  console.log(`Cost Target: <$${TRIAGE_CONFIG.targets.monthlyCostLimit.toLocaleString()}/month`)
+  console.log(`Cost Target: &lt;$${TRIAGE_CONFIG.targets.monthlyCostLimit.toLocaleString()}/month`)
   console.log(`  Actual: $${metrics.estimatedMonthlyCost.toLocaleString()}/month`)
   console.log(metrics.estimatedMonthlyCost < TRIAGE_CONFIG.targets.monthlyCostLimit ? '  ✅ PASSED' : '  ❌ FAILED')
 
-  console.log(`\nLatency Target: <${TRIAGE_CONFIG.targets.p95Latency}ms p95`)
+  console.log(`\nLatency Target: &lt;${TRIAGE_CONFIG.targets.p95Latency}ms p95`)
   console.log(`  Actual: ${metrics.avgLatency.toFixed(0)}ms avg`)
   console.log(metrics.avgLatency < TRIAGE_CONFIG.targets.p95Latency ? '  ✅ PASSED' : '  ❌ FAILED')
 
@@ -841,7 +841,7 @@ validateProduction()
 
 **Engineering Principles**:
 1. **Confidence Thresholds Matter**: 90% threshold vs 85% = 10% cost difference
-2. **Fast Classifiers Enable Routing**: Haiku classification costs <$0.0001, enables $0.14 savings per complex query
+2. **Fast Classifiers Enable Routing**: Haiku classification costs &lt;$0.0001, enables $0.14 savings per complex query
 3. **Observability is Required**: Track cost/latency per route to optimize
 
 **Production Checklist**:

@@ -531,7 +531,7 @@ async function expandWithCorpusEmbeddings(
 
   // Keep terms with similarity &gt; 0.7
   const expansionTerms = similarities
-    .filter(s => s.similarity &gt; 0.7 && s.similarity < 0.95) // Not too similar (likely duplicates)
+    .filter(s => s.similarity &gt; 0.7 && s.similarity &lt; 0.95) // Not too similar (likely duplicates)
     .sort((a, b) => b.similarity - a.similarity)
     .slice(0, 5)
 
@@ -741,8 +741,8 @@ function profileQuery(query: string): QueryProfile {
   const wordCount = query.split(/\\s+/).length
 
   const complexity: 'simple' | 'medium' | 'complex' =
-    wordCount < 5 ? 'simple' :
-    wordCount < 15 ? 'medium' : 'complex'
+    wordCount &lt; 5 ? 'simple' :
+    wordCount &lt; 15 ? 'medium' : 'complex'
 
   const hasVagueTerms = /\\b(it|that|this|stuff|thing)\\b/i.test(query)
   const ambiguity: 'clear' | 'ambiguous' = hasVagueTerms ? 'ambiguous' : 'clear'
@@ -868,7 +868,7 @@ const result = isSimple(query) ? direct(query) : optimize(query)
 **Problem**: Cache lookups that always miss add latency
 ```typescript
 // ✅ Good: Monitor cache hit rate, disable if &lt;20%
-if (cacheHitRate < 0.2) {
+if (cacheHitRate &lt; 0.2) {
   // Skip cache, go direct to optimization
 }
 ```

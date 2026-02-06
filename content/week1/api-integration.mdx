@@ -134,7 +134,7 @@ async function sendMessage(message: string) {
 ```typescript
 // ❌ Anti-Pattern: Naive Retry (causes cascading failures)
 async function callAPIBad(prompt: string) {
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i &lt; 3; i++) {
     try {
       return await api.call(prompt)
     } catch {
@@ -539,7 +539,7 @@ class CircuitBreaker {
   async call<T>(fn: () => Promise<T>): Promise<T> {
     // If circuit open, fail fast
     if (this.state === 'open') {
-      if (Date.now() - this.lastFailure < 60000) {
+      if (Date.now() - this.lastFailure &lt; 60000) {
         throw new Error('Circuit breaker open')
       }
       this.state = 'half-open'  // Try again after 1 min
@@ -589,7 +589,7 @@ async function callWithRetry<T>(
       lastError = error
 
       // Don't retry on client errors (400, 401, 403)
-      if (error.status &gt;= 400 && error.status < 500 && error.status !== 429) {
+      if (error.status &gt;= 400 && error.status &lt; 500 && error.status !== 429) {
         throw error
       }
 
@@ -2102,7 +2102,7 @@ This scenario tests your ability to make infrastructure-level decisions under re
 
 Your primary LLM provider (**Anthropic Claude**) is experiencing **503 Service Unavailable errors**. Your monitoring dashboard shows:
 
-- **Error rate**: 87% (normally <1%)
+- **Error rate**: 87% (normally &lt;1%)
 - **P95 latency**: 30 seconds (normally 800ms)
 - **Customer complaints**: Spiking
 - **Status page**: "Investigating Elevated Error Rates"
@@ -2201,7 +2201,7 @@ const stream = await anthropic.messages.create({
 1. **Eliminates Single Point of Failure**: Different cloud provider (AWS vs GCP vs Azure)
 2. **Maintains Business Continuity**: Users don't experience downtime
 3. **Automatic Recovery**: System self-heals without manual intervention
-4. **Cost-Effective**: Backup only used during outages (typically <0.1% of time)
+4. **Cost-Effective**: Backup only used during outages (typically &lt;0.1% of time)
 5. **Provable Resilience**: Can demonstrate 99.9% uptime to CTOs
 
 **Why the others fail**:
@@ -2399,7 +2399,7 @@ export class ResilientAIService {
     // - Network timeouts (ETIMEDOUT, ECONNRESET)
     return (
       status === 429 ||
-      (status >= 500 && status < 600) ||
+      (status >= 500 && status &lt; 600) ||
       error.code === 'ETIMEDOUT' ||
       error.code === 'ECONNRESET'
     );
@@ -2818,7 +2818,7 @@ describe('Week 1 Lab: Resilience Test', () => {
     expect(metrics.fallbackTriggered).toBe(true);
 
     // Verify latency is acceptable
-    expect(totalLatency).toBeLessThan(500);  // Must fail over in <500ms
+    expect(totalLatency).toBeLessThan(500);  // Must fail over in &lt;500ms
   });
 
   /**
@@ -2830,7 +2830,7 @@ describe('Week 1 Lab: Resilience Test', () => {
     freshService.enableChaos(1.0);  // 100% failure to trip circuit
 
     // Make 3 requests to trip circuit breaker
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i &lt; 3; i++) {
       await freshService.generateWithFallback('Test query');
     }
 
@@ -2890,7 +2890,7 @@ describe('Week 1 Lab: Resilience Test', () => {
 
 ✅ **100% Uptime**: All requests succeed despite 30% primary failure rate
 
-✅ **<500ms Fallback Latency**: Circuit breaker triggers within latency budget
+✅ **&lt;500ms Fallback Latency**: Circuit breaker triggers within latency budget
 
 ✅ **Circuit Breaker Behavior**: After 3 failures, routes directly to secondary
 
@@ -2932,7 +2932,7 @@ npm run test:resilience
 
 Your system demonstrates production-grade resilience:
 ✓ Survives provider outages (100% uptime)
-✓ Fast failover (<500ms)
+✓ Fast failover (&lt;500ms)
 ✓ Intelligent circuit breaking
 ✓ Cost-aware emergency routing
 ```
