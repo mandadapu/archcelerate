@@ -1,4 +1,5 @@
 import { validateMDXOrExit } from './lib/validate-mdx'
+import { validateContentSync } from './lib/validate-content-sync'
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
@@ -423,6 +424,11 @@ async function main() {
   }
 
   console.log('\n✅ All weeks seeded successfully!')
+
+  // Validate that all content files are in sync with database
+  console.log('\n' + '='.repeat(50))
+  await validateContentSync({ failOnMismatch: false })
+  console.log('='.repeat(50) + '\n')
 }
 
 main()

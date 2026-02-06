@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import { validateContentSync } from './lib/validate-content-sync'
 
 const prisma = new PrismaClient()
 
@@ -166,6 +167,11 @@ async function main() {
   console.log('Created project:', project)
 
   console.log('Week 2 seeding completed!')
+
+  // Validate that all content files are in sync with database
+  console.log('\n' + '='.repeat(50))
+  await validateContentSync({ failOnMismatch: false })
+  console.log('='.repeat(50) + '\n')
 }
 
 main()
