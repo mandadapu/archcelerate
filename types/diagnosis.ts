@@ -23,6 +23,14 @@ export type SkillArea =
   | 'agents'
   | 'multimodal'
   | 'production_ai'
+  // 7 Architectural Domains
+  | 'systematic_prompting'
+  | 'sovereign_governance'
+  | 'knowledge_architecture'
+  | 'agentic_systems'
+  | 'context_engineering'
+  | 'production_systems'
+  | 'model_selection'
 
 export interface QuizAnswer {
   questionId: string
@@ -37,6 +45,14 @@ export interface SkillScores {
   agents: number
   multimodal: number
   production_ai: number
+  // 7 Architectural Domains
+  systematic_prompting: number
+  sovereign_governance: number
+  knowledge_architecture: number
+  agentic_systems: number
+  context_engineering: number
+  production_systems: number
+  model_selection: number
 }
 
 export type LearningPath = 'standard' | 'fast-track' | 'foundation-first'
