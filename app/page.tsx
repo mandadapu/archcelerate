@@ -71,24 +71,24 @@ export default function Home() {
 
       {/* Hero Section */}
       <section className="pt-16">
-        <div className="max-w-7xl mx-auto px-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col items-center justify-center min-h-[60vh] py-8">
             {/* Metrics Badge */}
-            <div className="mb-8 inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-50 to-cyan-50 border border-purple-100 rounded-full">
-              <span className="text-sm font-semibold text-gray-900">
+            <div className="mb-8 inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-50 to-cyan-50 border border-purple-100 rounded-full text-center max-w-full">
+              <span className="text-sm font-semibold text-gray-900 break-words">
                 Joined by 500+ Senior/Lead Engineers from Stripe, Google, and Meta
               </span>
             </div>
 
             {/* Headline - The "Architect" Hook */}
-            <div className="text-center mb-8 max-w-3xl">
+            <div className="text-center mb-8 max-w-3xl w-full px-4">
               <h1 className="font-display text-4xl md:text-6xl font-bold text-gray-900 mb-6 tracking-tight leading-[1.3]">
-                <span className="whitespace-nowrap block mb-2">Build AI Products. Harden Systems.</span>
+                <span className="block mb-2">Build AI Products. Harden Systems.</span>
                 <span className="inline-block bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent pb-2">
                   Become an AI Architect.
                 </span>
               </h1>
-              <p className="text-xl md:text-2xl text-gray-600 leading-relaxed max-w-2xl mx-auto mb-8 px-6 md:px-0">
+              <p className="text-xl md:text-2xl text-gray-600 leading-relaxed max-w-2xl mx-auto mb-8 text-center">
                 The <span className="font-semibold text-gray-900">comprehensive roadmap</span> for software engineers to master the <span className="font-semibold text-gray-900">physics of LLMs</span>, build <span className="font-semibold text-gray-900">sovereign security frameworks</span>, and ship a <span className="font-semibold text-gray-900">complete portfolio</span> of production-grade systems.
               </p>
 

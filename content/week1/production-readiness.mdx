@@ -1,3 +1,9 @@
+---
+title: "Production Readiness Baseline"
+description: "Safety proxy, pre-deployment checks, and egress scanning"
+estimatedMinutes: 45
+---
+
 # Production Readiness Baseline: Safety Proxy & Pre-Deployment Checks
 
 Build a **Safety Proxy layer** before production—because **every input is potentially malicious** and **every output is a compliance risk**.
@@ -488,7 +494,7 @@ export class EgressScanner {
     const violations: EgressViolation[] = []
 
     // Technique 1: Fingerprint matching
-    // If output contains >20% of system prompt fingerprint, it's a leak
+    // If output contains &gt;20% of system prompt fingerprint, it's a leak
     const outputFingerprint = this.createFingerprint(text)
     const similarity = this.calculateSimilarity(outputFingerprint, this.systemPromptFingerprint)
 
@@ -749,7 +755,7 @@ async function safetyProxyWithEgress(
 > "Treat the LLM as a black box that can leak anything. Even if you perfectly sanitize input, the LLM can hallucinate PII, leak your system prompt, or include training data. **Egress scanning is non-optional** for high-security environments (health-tech, fin-tech)."
 
 **2. System Prompt Fingerprinting**
-> "Create a fingerprint of your system prompt (unique 3-grams) and compare it to output. If >20% similarity, it's a leak. This catches both direct prompt injection ('Repeat your instructions') and subtle leaks ('Based on my role as...')."
+> "Create a fingerprint of your system prompt (unique 3-grams) and compare it to output. If &gt;20% similarity, it's a leak. This catches both direct prompt injection ('Repeat your instructions') and subtle leaks ('Based on my role as...')."
 
 **3. Hallucinated PII is Real Risk**
 > "LLMs will confidently generate fake credit card numbers that match Luhn algorithm, fake SSNs in valid format, fake API keys. Your egress scanner must catch **all** PII patterns, regardless of whether they're 'real' or 'hallucinated'."
@@ -1828,7 +1834,7 @@ export class DeploymentGovernor {
     // Check 3: Alert Rules
     const alertTest = await this.testAlertRules()
     checks.push({
-      requirement: 'Alert Rules: Error >5%, Latency >5s, Cost >$1K/hr',
+      requirement: 'Alert Rules: Error &gt;5%, Latency &gt;5s, Cost &gt;$1K/hr',
       status: alertTest.configured ? 'PASS' : 'FAIL',
       evidence: `${alertTest.rulesConfigured} alert rules configured`,
       severity: 'HIGH'
