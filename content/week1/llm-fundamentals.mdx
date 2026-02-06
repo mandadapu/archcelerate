@@ -719,7 +719,61 @@ Effective context window management:
 
 **The Problem**: A customer support chat reaches 200K tokens (context limit: 200K). Next message would overflow. **What do you do?**
 
-### Strategy #1: Drop the Middle (Fastest, Simplest)
+---
+
+### Architect's Decision Matrix: Context Management
+
+When your system hits the 200K+ token limit, **"vibes" aren't enough**. You must choose a mathematical strategy for what the model "forgets."
+
+| Strategy | Technical Implementation | Best For | Architect's Trade-off |
+|----------|-------------------------|----------|----------------------|
+| **FIFO (First-In, First-Out)** | Drop the oldest messages in the array as new ones arrive | Short, transactional chatbots | ⚠️ **High Risk**: The model loses the initial "System Instructions" or the original user goal. **Never use this pattern for safety-critical systems.** |
+| **Middle-Out Truncation** | Keep the System Prompt and the most recent 10 messages; delete the middle history | Long, multi-turn technical support | ✅ **Optimal**: Preserves the "Mission" (system prompt) and the "Current State" (recent messages) while clearing the bulk. **Production default for most applications.** |
+| **Rolling Summarization** | Use a cheaper model (Haiku) to summarize the first 50 messages into a 200-token "State Summary" | Complex, multi-day research agents | ⚠️ **High Latency**: Adds a summarization step (300-800ms), but maintains 100% of the semantic history. **Best for high-value sessions.** |
+| **Vector-Backed Memory** | Move "inactive" context to a Vector DB and retrieve only what is relevant to the current query | Enterprise Knowledge Bases, AI agents with long-term memory | ⚠️ **High Complexity**: Requires a RAG infrastructure but offers effectively "infinite" memory. **Only viable at scale (>10K sessions/month).** |
+
+**Cost-Quality-Latency Matrix**:
+```
+FIFO              → Free, 0ms, ❌ Dangerous (loses system prompt)
+Middle-Out        → Free, 0ms, ✅ Good (preserves mission + current state)
+Summarization     → $0.001-0.01, 300-800ms, ✅ Excellent (semantic preservation)
+Vector-Backed     → $0.01-0.05, 50-200ms, ✅ Best (infinite memory, high complexity)
+```
+
+---
+
+### Strategy #1: FIFO (First-In, First-Out) — ❌ NOT RECOMMENDED
+
+**How it works**: Drop oldest messages as new ones arrive.
+
+```typescript
+// ❌ DANGEROUS: This pattern can delete system instructions
+function fifoTruncation(
+  messages: Message[],
+  maxTokens: number
+): Message[] {
+  let currentTokens = estimateTokens(messages)
+
+  // Remove from beginning until under limit
+  while (currentTokens > maxTokens) {
+    messages.shift()  // ⚠️ Can delete system prompt!
+    currentTokens = estimateTokens(messages)
+  }
+
+  return messages
+}
+```
+
+**Why This Fails**:
+- **System Prompt Loss**: If your first message is "You are a HIPAA-compliant medical assistant", FIFO will delete it first
+- **Mission Drift**: Model forgets its purpose mid-conversation
+- **Governance Failure**: Safety constraints defined at Index 0 are lost
+
+**The ONLY Safe Use Case**: When system prompt is re-injected on every turn (inefficient, costly)
+
+---
+
+### Strategy #2: Middle-Out Truncation (Production Default) — ✅ RECOMMENDED
 
 **How it works**: Keep system prompt + recent N messages, discard the middle.
 
@@ -771,41 +825,7 @@ function dropMiddleStrategy(
 
 ---
 
-### Strategy #2: Drop the Beginning (Rare, Risky)
-
-**How it works**: Keep system prompt + recent messages, discard oldest.
-
-```typescript
-function dropBeginningStrategy(
-  messages: Message[],
-  maxTokens: number
-): Message[] {
-  let currentTokens = estimateTokens(messages)
-
-  // Remove from beginning until under limit
-  while (currentTokens > maxTokens && messages.length > 10) {
-    messages.shift()  // Remove oldest message
-    currentTokens = estimateTokens(messages)
-  }
-
-  return messages
-}
-```
-
-**Pros**:
-- Maintains full recent context
-- Natural for "sliding window" applications
-
-**Cons**:
-- **Loses important setup**: Original user intent, key details
-- Breaks long-running sessions (loses user preferences set early)
-- System prompt grows stale if not refreshed
-
-**Best For**: Rarely used—only when initial context is truly disposable
-
----
-
-### Strategy #3: LLM-Based Summarization (Highest Quality, Costly)
+### Strategy #3: Rolling Summarization (Highest Quality, Costly)
 
 **How it works**: Use an LLM to compress old messages into a "Condensed State".
 
@@ -906,13 +926,233 @@ async function managedTruncation(
 
 ---
 
-### Strategy Comparison Matrix
+### Strategy #4: Vector-Backed Memory (Enterprise-Grade, Infinite Memory)
 
-| Strategy | Cost | Latency | Quality | Best Use Case |
-|----------|------|---------|---------|---------------|
-| **Drop Middle** | Free | 0ms | ⚠️ Moderate | Simple Q&A, stateless tasks |
-| **Drop Beginning** | Free | 0ms | ❌ Poor | Rarely appropriate |
-| **LLM Summarization** | $0.001-0.01 | 300-800ms | ✅ High | Long sessions, agents, support |
+**How it works**: Store "inactive" context in a vector database, retrieve only relevant chunks for the current query.
+
+```typescript
+import { PineconeClient } from '@pinecone-database/pinecone'
+import { OpenAIEmbeddings } from 'langchain/embeddings/openai'
+
+interface VectorMemoryStrategy {
+  vectorDB: PineconeClient
+  embeddings: OpenAIEmbeddings
+  conversationId: string
+}
+
+async function vectorBackedTruncation(
+  messages: Message[],
+  currentQuery: string,
+  config: VectorMemoryStrategy
+): Promise<Message[]> {
+  const systemPrompt = messages[0]  // Always keep Index 0
+  const recentMessages = messages.slice(-10)  // Last 10 turns
+
+  // Everything else → Vector DB
+  const oldMessages = messages.slice(1, -10)
+
+  // Step 1: Store old context in vector DB (if not already stored)
+  for (const msg of oldMessages) {
+    await config.vectorDB.upsert({
+      id: `${config.conversationId}-${msg.timestamp}`,
+      values: await config.embeddings.embedQuery(msg.content),
+      metadata: {
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.timestamp
+      }
+    })
+  }
+
+  // Step 2: Retrieve relevant old context based on current query
+  const queryEmbedding = await config.embeddings.embedQuery(currentQuery)
+  const relevantContext = await config.vectorDB.query({
+    vector: queryEmbedding,
+    topK: 5,  // Retrieve top 5 most relevant old messages
+    includeMetadata: true
+  })
+
+  // Step 3: Build context window with system + relevant + recent
+  return [
+    systemPrompt,  // Index 0: Immutable
+    ...relevantContext.matches.map(match => ({
+      role: match.metadata.role,
+      content: match.metadata.content
+    })),
+    ...recentMessages  // Last 10: Current state
+  ]
+}
+
+// Cost breakdown (10K sessions/month, 200 messages each)
+// Embedding cost: 2M messages × 1K tokens × $0.0001/MTok = $0.20/month
+// Storage cost: 2M vectors × $0.50/month = $1,000/month (Pinecone Pro)
+// Query cost: 10K queries/day × $0.001/query = $300/month
+// Total: $1,300/month for effectively infinite memory
+// vs. Summarization: $0.01 × 2M sessions = $20,000/month
+```
+
+**Pros**:
+- **Infinite memory**: No hard context limit, stores unlimited history
+- **Semantic retrieval**: Finds relevant context even from months ago
+- **Fast queries**: 50-200ms retrieval time (vs 300-800ms for summarization)
+- **Cost-effective at scale**: Fixed infrastructure cost regardless of session length
+
+**Cons**:
+- **High complexity**: Requires vector DB (Pinecone, Weaviate, Postgres+pgvector)
+- **Infrastructure cost**: $500-2000/month for hosting
+- **Cold start**: Embedding generation adds latency on first message
+- **Retrieval quality**: Depends on embedding model quality (can miss nuanced context)
+
+**Best For**:
+- Enterprise knowledge bases with >10K active sessions
+- AI agents that need to remember conversations from weeks/months ago
+- Multi-user systems where context sharing is valuable
+
+**When NOT to Use**:
+- <1K sessions/month (summarization is cheaper)
+- Simple chatbots without long-term memory needs
+- Regulated industries requiring deterministic replay (vector retrieval is probabilistic)
+
+---
+
+### ⚠️ The "Instruction Anchor" — Critical Safety Pattern
+
+> **Architect's Rule**: Regardless of the truncation strategy, an AI Architect **always anchors the System Prompt**. In your code, **Index 0** of your message array should be **immutable**.
+
+**Why This Matters**:
+
+If your truncation logic accidentally deletes the instructions telling the model to be a "HIPAA-compliant medical assistant," your **Sovereign Governance layer will fail**.
+
+```typescript
+// ❌ DANGEROUS: System prompt can be truncated
+const messages = [
+  { role: 'system', content: 'You are a HIPAA-compliant medical assistant.' },
+  ...conversationHistory  // 200K tokens
+]
+
+// If FIFO or naive truncation runs...
+messages.shift()  // ⚠️ System prompt DELETED
+// Model no longer knows it must follow HIPAA rules!
+```
+
+**✅ Safe Implementation: Immutable Index 0**
+
+```typescript
+interface SafeMessageArray {
+  systemPrompt: Message  // Stored separately, NEVER truncated
+  history: Message[]     // Subject to truncation
+}
+
+function safeTruncation(
+  messages: SafeMessageArray,
+  maxTokens: number
+): Message[] {
+  // Truncate ONLY the history, never the system prompt
+  const truncatedHistory = truncateHistory(messages.history, maxTokens - 2000)
+
+  // Always return system prompt at Index 0
+  return [
+    messages.systemPrompt,  // IMMUTABLE
+    ...truncatedHistory
+  ]
+}
+
+// Alternative: Use a "guard" function
+function guardedTruncation(messages: Message[]): Message[] {
+  if (messages.length === 0) {
+    throw new Error('Cannot truncate: No messages')
+  }
+
+  const systemPrompt = messages[0]
+  if (systemPrompt.role !== 'system') {
+    throw new Error('CRITICAL: Index 0 must be system prompt')
+  }
+
+  // Truncate everything EXCEPT Index 0
+  const truncatedRest = truncateMiddle(messages.slice(1))
+
+  return [systemPrompt, ...truncatedRest]
+}
+```
+
+**Production Pattern: System Prompt Versioning**
+
+```typescript
+// Track system prompt separately from conversation
+interface ConversationState {
+  id: string
+  systemPromptVersion: string  // "v2.1"
+  systemPrompt: Message        // Immutable anchor
+  history: Message[]           // Mutable, can be truncated
+  createdAt: Date
+  lastTruncatedAt: Date | null
+}
+
+// When truncating, ALWAYS preserve system prompt
+function productionTruncate(state: ConversationState): Message[] {
+  // Log for audit trail
+  console.log(`Truncating conversation ${state.id}`)
+  console.log(`System Prompt Version: ${state.systemPromptVersion}`)
+  console.log(`History length: ${state.history.length} → ${TARGET_LENGTH}`)
+
+  const truncatedHistory = applyTruncationStrategy(
+    state.history,
+    'middle-out',  // or 'rolling-summarization'
+    { preserveSystemPrompt: true }  // ALWAYS
+  )
+
+  // Verify system prompt is intact
+  if (truncatedHistory[0]?.role !== 'system') {
+    throw new Error('CRITICAL SAFETY VIOLATION: System prompt missing after truncation')
+  }
+
+  return [state.systemPrompt, ...truncatedHistory]
+}
+```
+
+**Medical Safety Example** (45-minute diagnostic session):
+
+```typescript
+// Initial state (session start)
+const medicalSession = {
+  systemPrompt: {
+    role: 'system',
+    content: `You are a HIPAA-compliant medical assistant.
+    - NEVER diagnose without human review
+    - ALWAYS ask about allergies before suggesting medication
+    - ESCALATE chest pain, shortness of breath, or severe bleeding`
+  },
+  history: []
+}
+
+// After 45 minutes, context is 95% full
+// Patient just shared: "I'm having chest pain"
+
+// ❌ WRONG: If system prompt is truncated...
+// Model: "Here are some home remedies for chest pain" → DANGEROUS
+
+// ✅ CORRECT: System prompt is anchored at Index 0
+// Model sees: "ESCALATE chest pain" → "This requires immediate medical attention. I'm alerting your care team."
+```
+
+**Architect's Checklist for Truncation Safety**:
+- [ ] System prompt is stored separately from history
+- [ ] Truncation function ALWAYS preserves Index 0
+- [ ] Unit tests verify system prompt survives truncation
+- [ ] Logging tracks truncation events for audit
+- [ ] Error handling throws if Index 0 is not 'system' role
+- [ ] System prompt versioning for rollback if issues detected
+
+---
+
+### Strategy Comparison Matrix (Updated)
+
+| Strategy | Cost | Latency | Quality | Infrastructure | Best Use Case |
+|----------|------|---------|---------|----------------|---------------|
+| **FIFO** | Free | 0ms | ❌ Dangerous | None | **Never use** |
+| **Middle-Out** | Free | 0ms | ✅ Good | None | Simple Q&A, stateless tasks |
+| **Rolling Summarization** | $0.001-0.01 | 300-800ms | ✅ Excellent | None | Long sessions, agents, support |
+| **Vector-Backed** | $0.01-0.05 | 50-200ms | ✅ Best | Vector DB required | Enterprise, infinite memory |
 
 ### Architectural Decision Tree
 
@@ -1577,6 +1817,181 @@ async function agenticCodeRefactor(query: string, codebase: Codebase) {
 - **Simple refactors** (rename, small changes): Option C (summary + files)
 - **Complex refactors** (architecture changes): Option D (agentic loop)
 - **Exploratory tasks** ("find all OAuth usages"): Option B (RAG) is sufficient
+
+</details>
+
+---
+
+---
+
+### Scenario 4: The Medical Safety Truncation Dilemma 🏥
+
+**Context**: Your telehealth bot is in a **45-minute diagnostic session** with a patient. The context window is **95% full** (190K of 200K tokens used). The patient just shared a critical symptom: **"I'm having chest pain"**. However, the original **"Medical Safety Guidelines"** from the start of the session (stored at Index 0) are about to be truncated by your current FIFO truncation strategy.
+
+**Question**: Which strategy do you implement to ensure safety without crashing the session?
+
+**Options**:
+A) **FIFO (Let the oldest data drop)** - Continue with current strategy, oldest messages get deleted first
+B) **Middle-Out (Preserve Index 0 and the current message)** - Keep system prompt + recent context, drop middle
+C) **Clear Cache (Start a fresh session)** - Reset the conversation, lose all diagnostic context
+D) **Increase Temperature (Hope the model remembers)** - Adjust model parameters to improve recall
+
+<details>
+<summary><strong>💡 Solution & Safety Analysis</strong></summary>
+
+**Correct Answer: B) Middle-Out Truncation**
+
+**Why Each Option Succeeds or Fails**:
+
+**Option A (FIFO)**: ❌ **CATASTROPHICALLY DANGEROUS**
+```typescript
+// Current state (before truncation)
+messages = [
+  { role: 'system', content: 'Medical Safety Guidelines: ESCALATE chest pain...' },  // Index 0
+  ...44_minutes_of_diagnostic_conversation,  // 190K tokens
+  { role: 'user', content: 'I\'m having chest pain' }  // CRITICAL!
+]
+
+// After FIFO truncation
+messages.shift()  // ⚠️ DELETES SAFETY GUIDELINES
+messages = [
+  ...diagnostic_conversation,  // System prompt GONE
+  { role: 'user', content: 'I\'m having chest pain' }
+]
+
+// Model response WITHOUT safety guidelines:
+// "Here are some home remedies for chest pain: rest, ibuprofen..."
+// ❌ MEDICAL MALPRACTICE RISK
+```
+
+**Result**: Model loses awareness it must escalate chest pain. Patient receives dangerous advice instead of emergency escalation. **Sovereign Governance failure**.
+
+---
+
+**Option B (Middle-Out)**: ✅ **CORRECT - Safety Preserved**
+```typescript
+// Middle-Out truncation preserves Index 0 + recent context
+function safeMedicalTruncation(messages: Message[]): Message[] {
+  const systemPrompt = messages[0]  // IMMUTABLE
+  const recentMessages = messages.slice(-15)  // Last 15 turns (30K tokens)
+
+  // Verify system prompt is medical guidelines
+  if (!systemPrompt.content.includes('ESCALATE chest pain')) {
+    throw new Error('CRITICAL: Medical safety guidelines missing')
+  }
+
+  return [
+    systemPrompt,  // Index 0: Safety rules INTACT
+    { role: 'system', content: '[... diagnostic history truncated for context limit ...]' },
+    ...recentMessages  // Includes "I'm having chest pain"
+  ]
+}
+
+// Model response WITH safety guidelines:
+// "This is a medical emergency. Chest pain requires immediate evaluation.
+//  I'm escalating this to your care team and recommending you call 911."
+// ✅ CORRECT ESCALATION
+```
+
+**Result**: Safety guidelines remain at Index 0. Model correctly identifies chest pain as emergency. Patient receives appropriate escalation. **95% context savings while maintaining 100% safety.**
+
+**Cost-Safety Tradeoff**:
+- Diagnostic history truncated: Loses some context (e.g., "patient mentioned occasional heartburn 30 mins ago")
+- Safety rules preserved: Model knows to escalate life-threatening symptoms
+- **Architect's decision**: Safety > Complete History
+
+---
+
+**Option C (Clear Cache/Fresh Session)**: ⚠️ **Wasteful but Safe**
+```typescript
+// Nuclear option: Start over
+function clearSession(patientId: string): Message[] {
+  // Save old session to database
+  await archiveSession(patientId, oldMessages)
+
+  // Start fresh with empty history
+  return [
+    { role: 'system', content: 'Medical Safety Guidelines...' },
+    { role: 'user', content: 'I\'m having chest pain' }  // Lost 44 minutes of context
+  ]
+}
+```
+
+**Result**: Safety is maintained (system prompt is fresh), but **you've lost 45 minutes of diagnostic context**. The model no longer knows:
+- Patient's medical history shared in this session
+- Symptoms timeline
+- Medications mentioned
+- Previous Q&A that led to chest pain revelation
+
+**Trade-off**: Safe but inefficient. Patient must repeat information. **Only use if truncation logic has failed and you need emergency recovery.**
+
+---
+
+**Option D (Increase Temperature)**: ❌ **Completely Wrong**
+```typescript
+// Misunderstanding of how LLMs work
+const response = await callModel({
+  temperature: 0.9,  // Higher randomness
+  messages: truncatedMessages  // Still missing system prompt!
+})
+```
+
+**Why this fails**:
+- **Temperature doesn't restore lost context**—it only controls randomness of token selection
+- If safety guidelines were truncated, no temperature adjustment can recover them
+- Higher temperature might make responses MORE unpredictable, worsening safety
+- **This reveals a fundamental misunderstanding of LLM architecture**
+
+**Architect Insight**: Temperature, top_p, and other sampling parameters affect **output randomness**, not **memory retrieval**. Once context is truncated, it's gone.
+
+---
+
+### Architectural Lessons from This Scenario
+
+**1. The Instruction Anchor is Non-Negotiable**
+- **System prompts define behavior** (medical safety rules, HIPAA compliance, tone)
+- **Index 0 must be immutable** across all truncation strategies
+- **Unit test this**: Verify system prompt survives worst-case truncation
+
+**2. Context Truncation is a Security Boundary**
+- In medical/legal/financial systems, losing safety guidelines is a **regulatory violation**
+- Architect must choose: Lose history (safe) vs. lose rules (catastrophic)
+- **Always choose: Lose history**
+
+**3. Production Pattern: Graduated Warnings**
+```typescript
+const CONTEXT_THRESHOLDS = {
+  80: () => console.warn('Context at 80% - prepare truncation'),
+  90: () => triggerBackgroundSummarization(),
+  95: () => applyMiddleOutTruncation(),
+  98: () => emergencySessionArchive()  // Nuclear option
+}
+
+function monitorContextUsage(messages: Message[]) {
+  const usage = estimateTokens(messages) / MAX_TOKENS * 100
+
+  for (const [threshold, action] of Object.entries(CONTEXT_THRESHOLDS)) {
+    if (usage >= threshold) {
+      action()
+      break
+    }
+  }
+}
+```
+
+**4. Real-World Implementation**
+- **At 80%**: Log warning, consider summarization
+- **At 90%**: Trigger background summarization (non-blocking)
+- **At 95%**: Apply middle-out truncation (this scenario)
+- **At 98%**: Emergency archive + fresh session
+
+**Cost Analysis**:
+- **Option A (FIFO)**: Free, but risk of $10M+ malpractice lawsuit
+- **Option B (Middle-Out)**: Free, safe, loses some history
+- **Option C (Clear session)**: Free, safe, loses ALL history (patient frustration)
+- **Option D (Temperature)**: Irrelevant to the problem
+
+**Final Answer**: **B** - Middle-Out truncation is the production-ready pattern for safety-critical systems.
 
 </details>
 
