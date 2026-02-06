@@ -698,6 +698,213 @@ JSON Mode only ensures the output is **syntactically valid JSON**. It does NOT e
 
 **For production in 2026, Structured Outputs (Strict Mode) is the gold standard for reliability.**
 
+
+---
+
+## Grammar-Constrained Decoding: The Technical Guarantee
+
+### The Critical Difference: Prompting vs Inference-Level Constraints
+
+**Architect's Principle**: In production, "JSON Mode" is a **suggestion** via prompting, but **Structured Outputs** with grammar constraints are a **technical guarantee** at the inference level.
+
+### Understanding the Mechanism
+
+**JSON Mode** (Prompt-based):
+```typescript
+// ❌ JSON Mode: Relies on prompting
+const response = await anthropic.messages.create({
+  model: 'claude-3-5-sonnet-20240620',
+  system: 'You MUST return valid JSON. Do not add any text before or after.',
+  messages: [{
+    role: 'user',
+    content: 'Extract data from this email...'
+  }]
+})
+
+// Problem: LLM *tries* to follow instructions but might still:
+// - Add conversational fluff: "Here's the JSON: {...}"
+// - Use wrong field names
+// - Invent values not in your enum
+// - Return syntactically valid but schema-invalid JSON
+```
+
+**Structured Outputs** (Grammar-constrained):
+```typescript
+// ✅ Structured Outputs: Grammar enforcement at decoding
+const response = await anthropic.messages.create({
+  model: 'claude-3-5-sonnet-20240620',
+  tools: [{
+    name: 'extract_data',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', enum: ['billing', 'technical', 'feature'] },
+        priority: { type: 'integer', minimum: 1, maximum: 10 }
+      },
+      required: ['category', 'priority']
+    }
+  }],
+  tool_choice: { type: 'tool', name: 'extract_data' }
+})
+
+// Guarantee: The model's **token generation process** is constrained
+// - Can only output tokens that lead to valid schema
+// - Logprobs for invalid tokens are set to zero
+// - Mathematically impossible to get unparseable response
+```
+
+### How Constrained Decoding Works
+
+**Traditional LLM Generation**:
+```
+User: "Extract category from this ticket"
+LLM sampling: [vocabulary of 50K tokens]
+  ↓
+Token 1: "The" (probability: 0.15) ← Conversational fluff
+Token 2: "category" (probability: 0.12)
+Token 3: "is" (probability: 0.08)
+Token 4: "billing" (probability: 0.25)
+  ↓
+Output: "The category is billing" ← String, not JSON!
+```
+
+**Grammar-Constrained Generation**:
+```
+User: "Extract category"
+Schema: { "category": enum["billing", "technical", "feature"] }
+
+LLM sampling: [vocabulary filtered by grammar]
+  ↓
+Token 1: Must be "{" (start of JSON object) → probability: 1.0
+Token 2: Must be "category" (only valid key) → probability: 1.0
+Token 3: Must be ":" (JSON syntax) → probability: 1.0
+Token 4: Must be one of ["billing", "technical", "feature"] → pick highest prob
+Token 5: Must be "}" (close object) → probability: 1.0
+  ↓
+Output: {"category": "billing"} ← Guaranteed valid!
+```
+
+### The Logprobs Constraint Mechanism
+
+**Technical Deep Dive**:
+
+```python
+# Pseudo-code for constrained decoding
+def constrained_sample(model, schema, prefix=""):
+    while not is_complete(prefix, schema):
+        # Get probability distribution over vocabulary
+        logprobs = model.get_next_token_logprobs(prefix)
+
+        # Filter tokens by schema validity
+        valid_tokens = get_valid_next_tokens(prefix, schema)
+
+        # Zero out probabilities for invalid tokens
+        for token_id in range(vocab_size):
+            if token_id not in valid_tokens:
+                logprobs[token_id] = -inf  # Zero probability
+
+        # Re-normalize probability distribution
+        logprobs = softmax(logprobs)
+
+        # Sample from constrained distribution
+        next_token = sample(logprobs)
+        prefix += next_token
+
+    return prefix
+```
+
+**Key Insight**: By setting invalid token probabilities to `-inf` (zero after softmax), the model **cannot** generate tokens that would violate your schema.
+
+### Production Implications
+
+**JSON Mode**:
+```typescript
+// Success rate: ~97-98%
+// Failure modes:
+// - "Sure! Here's the data: {...}" ← conversational wrapper
+// - { "priority": "very high" } ← string instead of integer
+// - { "status": "unknown" } ← value not in enum
+
+// Mitigation: Requires manual validation + retry logic
+try {
+  const parsed = JSON.parse(response)
+  const validated = schema.parse(parsed)  // Zod validation
+} catch (error) {
+  // Retry with more explicit prompts
+}
+```
+
+**Structured Outputs** (Grammar-constrained):
+```typescript
+// Success rate: 100% (mathematically guaranteed)
+// Failure modes: None (impossible to violate schema)
+
+// No validation needed:
+const data = response.content[0].input  // Already schema-compliant!
+await db.insert(data)  // Safe to use directly
+```
+
+### When to Use Each
+
+| Approach | Best For | Reliability | Performance |
+|----------|----------|-------------|-------------|
+| **JSON Mode** | Rapid prototyping, logging, analytics | 97-98% | Faster (no constraint overhead) |
+| **Structured Outputs** | Financial transactions, compliance, API contracts | 100% | Slightly slower (constraint computation) |
+
+**Architect's Rule**: Use **Structured Outputs** for any data that flows into:
+- Financial systems (invoices, payments, refunds)
+- Legal/compliance databases (audit logs, user consent)
+- API contracts (external integrations like Salesforce, Stripe)
+- Mission-critical workflows (support ticket routing, security alerts)
+
+### Provider Support
+
+**OpenAI** (Structured Outputs):
+```typescript
+const response = await openai.chat.completions.create({
+  model: 'gpt-4-turbo',
+  response_format: {
+    type: 'json_schema',
+    json_schema: {
+      name: 'data_extraction',
+      strict: true,  // ← Enables grammar constraints
+      schema: {
+        type: 'object',
+        properties: {
+          field: { type: 'string', enum: ['value1', 'value2'] }
+        },
+        required: ['field'],
+        additionalProperties: false
+      }
+    }
+  }
+})
+```
+
+**Anthropic** (Via Tool Use):
+```typescript
+// Tool definitions are grammar-constrained
+const response = await anthropic.messages.create({
+  tools: [{ name: 'extract', input_schema: yourSchema }],
+  tool_choice: { type: 'tool', name: 'extract' }
+})
+// Tool inputs are guaranteed to match schema
+```
+
+**The ROI Calculation**:
+
+**Scenario**: Processing 100K support tickets/month
+
+| Metric | JSON Mode | Structured Outputs |
+|--------|-----------|-------------------|
+| **Success Rate** | 97.5% | 100% |
+| **Failed Extractions** | 2,500/month | 0/month |
+| **Manual Review Cost** | $25,000/month (10 hours/day @ $50/hr) | $0 |
+| **Retry API Costs** | $750/month (2,500 retries × $0.003) | $0 |
+| **Total Cost** | $25,750/month | $0 |
+
+**ROI**: Structured Outputs saves $25,750/month by eliminating all schema violations.
+
 **Tool Choice as Logic Control**
 
 In Function Calling, setting `tool_choice: "required"` forces the LLM to act as a pure data transformer, effectively disabling its "chatty" personality.
@@ -1282,6 +1489,366 @@ const tool: Anthropic.Tool = {
 // Both LLM and API use same spec → no drift!
 ```
 
+---
+
+## Schema Evolution: Treating LLM Outputs as API Contracts
+
+### The Production Reality: Schemas Are Not Static
+
+**Architect's Principle**: Your LLM output schema is an **API Contract**. If you change a `priority` field from a string to an integer, you must version your schema and provide migration scripts—just like you would for a REST API.
+
+### The Breaking Change Scenario
+
+```typescript
+// ❌ Week 1: Initial schema
+const TicketSchemaV1 = {
+  type: 'object',
+  properties: {
+    category: { type: 'string' },
+    priority: { type: 'string' },  // "low", "medium", "high"
+    assignee: { type: 'string' }
+  }
+}
+
+// ❌ Week 4: You realize strings are inefficient
+const TicketSchema = {
+  type: 'object',
+  properties: {
+    category: { type: 'string', enum: ['billing', 'technical'] },  // Added enum
+    priority: { type: 'integer', minimum: 1, maximum: 10 },  // Changed type!
+    team: { type: 'string' }  // Renamed from assignee!
+  }
+}
+
+// 🚨 PROBLEM: Analytics dashboard expects old schema
+// All historical ticket data uses { priority: "high" }
+// New LLM outputs { priority: 8 }
+// Dashboard crashes: "Cannot read property 'charAt' of number"
+```
+
+### Schema Versioning Strategy
+
+**Pattern 1: Explicit Version Field**
+
+```typescript
+// Include version in every schema
+const TicketSchemaV1 = {
+  type: 'object',
+  properties: {
+    schema_version: { type: 'string', const: 'v1' },  // Explicit version
+    category: { type: 'string' },
+    priority: { type: 'string' }
+  },
+  required: ['schema_version', 'category', 'priority']
+}
+
+const TicketSchemaV2 = {
+  type: 'object',
+  properties: {
+    schema_version: { type: 'string', const: 'v2' },  // New version
+    category: { type: 'string', enum: ['billing', 'technical', 'feature'] },
+    priority: { type: 'integer', minimum: 1, maximum: 10 },
+    team: { type: 'string' }
+  },
+  required: ['schema_version', 'category', 'priority', 'team']
+}
+```
+
+**Pattern 2: Separate Schema Namespaces**
+
+```typescript
+// File: schemas/ticket/v1.ts
+export const TicketSchemaV1 = { ... }
+
+// File: schemas/ticket/v2.ts
+export const TicketSchemaV2 = { ... }
+
+// Runtime selection
+import { TicketSchemaV1, TicketSchemaV2 } from './schemas/ticket'
+
+function getTicketSchema(version: string) {
+  switch (version) {
+    case 'v1': return TicketSchemaV1
+    case 'v2': return TicketSchemaV2
+    default: throw new Error(`Unknown schema version: ${version}`)
+  }
+}
+```
+
+### Migration Scripts: The Semantic Translator
+
+**The Problem**: Historical data uses old schema, but analytics expects new schema.
+
+**The Solution**: Write **bidirectional migration functions**.
+
+```typescript
+/**
+ * Migrate ticket data from v1 to v2 schema
+ */
+function migrateV1toV2(ticketV1: TicketV1): TicketV2 {
+  return {
+    schema_version: 'v2',
+    category: mapCategoryV1toV2(ticketV1.category),  // Semantic mapping
+    priority: mapPriorityV1toV2(ticketV1.priority),  // Type conversion
+    team: ticketV1.assignee || 'unassigned'  // Field rename with default
+  }
+}
+
+/**
+ * Map category from free-form string to enum
+ */
+function mapCategoryV1toV2(category: string): 'billing' | 'technical' | 'feature' {
+  // Fuzzy matching for historical data
+  const normalized = category.toLowerCase()
+
+  if (normalized.includes('bill') || normalized.includes('payment')) {
+    return 'billing'
+  } else if (normalized.includes('feature') || normalized.includes('request')) {
+    return 'feature'
+  } else {
+    return 'technical'  // Default
+  }
+}
+
+/**
+ * Map priority from string to integer
+ */
+function mapPriorityV1toV2(priority: string): number {
+  const mapping: Record<string, number> = {
+    'low': 3,
+    'medium': 6,
+    'high': 9,
+    'urgent': 10,
+    'critical': 10
+  }
+
+  const normalized = priority.toLowerCase()
+  return mapping[normalized] || 5  // Default to medium
+}
+
+/**
+ * Reverse migration (v2 to v1) for backward compatibility
+ */
+function migrateV2toV1(ticketV2: TicketV2): TicketV1 {
+  return {
+    schema_version: 'v1',
+    category: ticketV2.category,  // Enum is subset of string
+    priority: mapPriorityV2toV1(ticketV2.priority),
+    assignee: ticketV2.team
+  }
+}
+
+function mapPriorityV2toV1(priority: number): string {
+  if (priority >= 9) return 'high'
+  if (priority >= 6) return 'medium'
+  return 'low'
+}
+```
+
+### Production Integration Pattern
+
+```typescript
+import { TicketSchemaV1, TicketSchemaV2 } from './schemas/ticket'
+
+interface UnifiedTicket {
+  // Internal representation (always latest schema)
+  schema_version: 'v2'
+  category: 'billing' | 'technical' | 'feature'
+  priority: number  // 1-10
+  team: string
+}
+
+class TicketProcessor {
+  /**
+   * Extract ticket using latest schema
+   */
+  async extractTicket(emailContent: string): Promise<UnifiedTicket> {
+    const response = await anthropic.messages.create({
+      tools: [{
+        name: 'extract_ticket',
+        input_schema: TicketSchemaV2  // Always use latest
+      }],
+      tool_choice: { type: 'tool', name: 'extract_ticket' },
+      messages: [{ role: 'user', content: emailContent }]
+    })
+
+    const extracted = response.content[0].input
+
+    return {
+      schema_version: 'v2',
+      ...extracted
+    } as UnifiedTicket
+  }
+
+  /**
+   * Load historical ticket (might be v1 or v2)
+   */
+  async loadTicket(ticketId: string): Promise<UnifiedTicket> {
+    const raw = await db.tickets.findUnique({ where: { id: ticketId } })
+
+    // Migrate to latest schema if needed
+    if (raw.schema_version === 'v1') {
+      console.log(`Migrating ticket ${ticketId} from v1 to v2`)
+      return migrateV1toV2(raw)
+    }
+
+    return raw as UnifiedTicket
+  }
+
+  /**
+   * Export for legacy system (still expects v1)
+   */
+  async exportToLegacySystem(ticket: UnifiedTicket): Promise<void> {
+    // Convert to v1 for backward compatibility
+    const ticketV1 = migrateV2toV1(ticket)
+
+    await legacyAPI.createTicket(ticketV1)
+  }
+}
+```
+
+### Database Migration Strategy
+
+**Approach 1: Lazy Migration** (Recommended for large datasets)
+
+```typescript
+// Don't migrate all data at once
+// Migrate on read, write back in new schema
+
+async function getTicket(ticketId: string): Promise<UnifiedTicket> {
+  const raw = await db.tickets.findUnique({ where: { id: ticketId } })
+
+  if (raw.schema_version === 'v1') {
+    // Migrate on read
+    const migrated = migrateV1toV2(raw)
+
+    // Write back in new schema (lazy migration)
+    await db.tickets.update({
+      where: { id: ticketId },
+      data: migrated
+    })
+
+    return migrated
+  }
+
+  return raw
+}
+```
+
+**Approach 2: Batch Migration** (For smaller datasets or urgent changes)
+
+```typescript
+// Migrate all v1 tickets to v2 in background job
+
+async function migrateAllTicketsV1toV2(): Promise<void> {
+  const v1Tickets = await db.tickets.findMany({
+    where: { schema_version: 'v1' }
+  })
+
+  console.log(`Migrating ${v1Tickets.length} tickets from v1 to v2...`)
+
+  for (const ticket of v1Tickets) {
+    const migrated = migrateV1toV2(ticket)
+
+    await db.tickets.update({
+      where: { id: ticket.id },
+      data: migrated
+    })
+  }
+
+  console.log('Migration complete!')
+}
+
+// Run during maintenance window
+// cron: 0 2 * * 0 (Sunday 2 AM)
+```
+
+### Versioning Best Practices
+
+1. **Semantic Versioning for Schemas**
+   ```
+   MAJOR.MINOR.PATCH
+
+   MAJOR: Breaking changes (type changes, required field removals)
+   MINOR: Backward-compatible additions (new optional fields)
+   PATCH: Documentation/description updates only
+   ```
+
+2. **Deprecation Warnings**
+   ```typescript
+   const TicketSchemaV1 = {
+     deprecated: true,
+     deprecation_date: '2026-06-01',
+     migration_guide: 'https://docs.company.com/migrations/ticket-v1-to-v2',
+     ...schema
+   }
+   ```
+
+3. **Testing Migrations**
+   ```typescript
+   // Test that migrations are reversible
+   describe('Schema migrations', () => {
+     it('should round-trip v1 → v2 → v1 without data loss', () => {
+       const original: TicketV1 = { ... }
+
+       const v2 = migrateV1toV2(original)
+       const roundtrip = migrateV2toV1(v2)
+
+       expect(roundtrip).toEqual(original)
+     })
+
+     it('should handle edge cases in priority mapping', () => {
+       expect(mapPriorityV1toV2('URGENT!!!')).toBe(10)
+       expect(mapPriorityV1toV2('unknown')).toBe(5)  // Default
+     })
+   })
+   ```
+
+4. **Monitoring Schema Usage**
+   ```typescript
+   // Track which schemas are still in use
+   async function logSchemaUsage(ticketId: string, version: string): Promise<void> {
+     await analytics.track('schema_version_used', {
+       resource: 'ticket',
+       resource_id: ticketId,
+       schema_version: version,
+       timestamp: new Date()
+     })
+   }
+
+   // Alert when v1 usage drops below 5% → safe to deprecate
+   ```
+
+### The Architect's Checklist: Schema Changes
+
+Before deploying a schema change to production:
+
+- [ ] Increment schema version number
+- [ ] Write migration function (old → new)
+- [ ] Write reverse migration (new → old) for rollback
+- [ ] Test migrations on sample data
+- [ ] Update LLM tool definitions to use new schema
+- [ ] Deploy migration script (lazy or batch)
+- [ ] Monitor schema version distribution
+- [ ] Update analytics dashboards to handle both schemas
+- [ ] Set deprecation date for old schema (e.g., 90 days)
+- [ ] Document breaking changes in changelog
+
+**The Cost of Not Versioning**:
+
+- Analytics dashboards crash on schema mismatch
+- Historical data becomes unreadable
+- Rollbacks are impossible (no reverse migration)
+- Integration partners break on undocumented changes
+
+**The ROI of Proper Versioning**:
+
+- Zero downtime deployments (old and new schemas coexist)
+- Safe rollbacks (reverse migrations available)
+- Historical data remains queryable (migrations handle old schemas)
+- API contracts with external systems remain stable
+
+
 **Option 3: Runtime schema validation layer**
 ```typescript
 // Middleware that validates LLM arguments against current API schema
@@ -1807,6 +2374,296 @@ Before shipping structured output to production:
 - [ ] **Monitor schema adherence rate** - should be &gt;99%
 
 ---
+
+---
+
+## Architect Challenge: API Integrity Failure Simulation
+
+### The Production Incident
+
+You are the AI Architect for **EnterpriseFlow**, a B2B workflow automation platform. Your structured output system routes 10,000 support tickets/day directly into **Salesforce**.
+
+**The Integration Contract**: Salesforce expects a `customer_id` in the format `CUST-XXXX` (e.g., `CUST-1234`).
+
+**The Failure**: After 3 weeks in production, your ops team reports:
+- **500 errors spiking** from Salesforce API (15% of tickets)
+- **Manual investigation** reveals the LLM occasionally sends:
+  - `ID-1234` (wrong prefix)
+  - `1234` (missing prefix entirely)
+  - `CUSTOMER-1234` (verbose prefix)
+  - `cust-1234` (lowercase)
+
+**Business Impact**:
+- 1,500 tickets/day stuck in failed state
+- Support agents manually fixing `customer_id` fields (4 hours/day)
+- Salesforce API rate limits triggered by retry storms
+- **$50K/month** in wasted labor + customer escalations
+
+---
+
+### Challenge: How Do You Solve This at the Architectural Layer?
+
+**Option A: Add "please use CUST- prefix" to the system prompt**
+
+*Reasoning*: More explicit prompting should improve adherence.
+
+*Prediction*: Reduces failures from 15% to 8%, but still not production-grade.
+
+*Why it fails*:
+- LLMs are probabilistic, not deterministic
+- Even with explicit prompts, edge cases slip through
+- No enforcement mechanism for invalid values
+- Still requires manual intervention for failures
+
+**Option B: Use Zod/Pydantic Schema with Regex Validation + Auto-Retry Loop** ✅ **CORRECT**
+
+*Reasoning*: Code-level constraints + feedback loop enforces data contracts.
+
+*Architecture*:
+
+```typescript
+import { z } from 'zod'
+import Anthropic from '@anthropic-ai/sdk'
+
+// Step 1: Define schema with strict regex validation
+const SalesforceTicketSchema = z.object({
+  customer_id: z.string().regex(/^CUST-\d{4}$/, {
+    message: 'customer_id must match format CUST-XXXX (e.g., CUST-1234)'
+  }),
+  category: z.enum(['billing', 'technical', 'feature']),
+  priority: z.number().int().min(1).max(10)
+})
+
+type SalesforceTicket = z.infer<typeof SalesforceTicketSchema>
+
+// Step 2: Self-healing extraction with validation feedback
+async function extractWithValidation(
+  ticketText: string,
+  maxAttempts: number = 3
+): Promise<SalesforceTicket> {
+  let lastError: string = ''
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    // Build prompt with error feedback on retries
+    const systemPrompt = `Extract support ticket data.
+
+Schema requirements:
+- customer_id: MUST be format "CUST-XXXX" (4 digits, e.g., CUST-1234)
+- category: MUST be one of "billing", "technical", "feature"
+- priority: Integer 1-10
+
+${attempt > 1 ? `\n⚠️ PREVIOUS ATTEMPT FAILED:\n${lastError}\n\nFIX THE ERROR AND RETRY.` : ''}`
+
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20240620',
+      max_tokens: 500,
+      system: systemPrompt,
+      messages: [{
+        role: 'user',
+        content: `Extract ticket data from: "${ticketText}"`
+      }]
+    })
+
+    const content = response.content[0].type === 'text'
+      ? response.content[0].text
+      : ''
+
+    try {
+      // Parse JSON
+      const parsed = JSON.parse(content)
+
+      // Validate with Zod (throws if regex fails)
+      const validated = SalesforceTicketSchema.parse(parsed)
+
+      console.log(`✅ Success on attempt ${attempt}`)
+      return validated
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        // Build detailed feedback for LLM
+        lastError = error.errors
+          .map(e => `Field "${e.path.join('.')}": ${e.message}`)
+          .join('\n')
+
+        console.log(`Attempt ${attempt} failed validation:`, lastError)
+
+        if (attempt === maxAttempts) {
+          throw new Error(`Validation failed after ${maxAttempts} attempts: ${lastError}`)
+        }
+
+        // Loop continues with error feedback
+      } else {
+        throw error
+      }
+    }
+  }
+
+  throw new Error('Extraction failed')
+}
+
+// Step 3: Usage with guaranteed valid output
+const ticket = await extractWithValidation(
+  'Customer CUST-5678 needs help with billing issue (high priority)'
+)
+// → { customer_id: 'CUST-5678', category: 'billing', priority: 9 }
+
+// Safe to send to Salesforce (guaranteed to match contract)
+await salesforce.createTicket(ticket)  // No 500 errors!
+```
+
+*Why it works*:
+- **Regex validation** catches all invalid formats (ID-1234, 1234, CUSTOMER-1234)
+- **Auto-retry with feedback** gives LLM a second chance to self-correct
+- **95% success rate** on retry (from initial 85% to 95% × 0.85 = ~99% total)
+- **Zero manual intervention** for schema violations
+
+*Performance*:
+- Before: 15% failures (1,500/day), 4 hours manual fixing
+- After: 0.2% failures (20/day), 5 minutes manual review
+- **ROI**: $48K/month savings in labor
+
+**Option C: Manually edit the IDs in Salesforce to match the LLM**
+
+*Reasoning*: Fix the problem at the destination.
+
+*Why it fails*:
+- Unsustainable at 1,500 errors/day
+- Doesn't address root cause (invalid LLM outputs)
+- Creates data inconsistency between systems
+- Violates single source of truth principle
+
+**Option D: Use a more expensive model (Opus) and hope it's more accurate**
+
+*Reasoning*: Smarter model = fewer mistakes.
+
+*Prediction*: Reduces failures from 15% to 10%, but 5x cost increase.
+
+*Why it fails*:
+- More expensive doesn't guarantee format compliance
+- Doesn't address systemic validation gap
+- Cost increase: $15K/month → $75K/month
+- Still requires manual intervention for failures
+
+---
+
+### The Correct Answer: B
+
+**The Architect's Principle**: Enforce data contracts at the **code level**, not the **prompt level**. LLMs are probabilistic; validation + feedback loops are deterministic.
+
+**Production Pattern**:
+
+```typescript
+class ProductionTicketExtractor {
+  private schema = SalesforceTicketSchema
+  private maxAttempts = 3
+
+  async extract(ticketText: string): Promise<{
+    data: SalesforceTicket
+    attempts: number
+    repaired: boolean
+  }> {
+    for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
+      try {
+        const extracted = await this.attemptExtraction(ticketText, attempt)
+        const validated = this.schema.parse(extracted)
+
+        return {
+          data: validated,
+          attempts: attempt,
+          repaired: attempt > 1
+        }
+      } catch (error) {
+        if (attempt === this.maxAttempts) {
+          // All retries exhausted - escalate to human
+          await this.escalateToHuman(ticketText, error)
+          throw error
+        }
+
+        // Log attempt for debugging
+        await this.logValidationFailure(ticketText, attempt, error)
+      }
+    }
+
+    throw new Error('Extraction failed')
+  }
+
+  private async escalateToHuman(
+    ticketText: string,
+    error: unknown
+  ): Promise<void> {
+    await db.manualReviewQueue.create({
+      data: {
+        ticketText,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date(),
+        priority: 'high'
+      }
+    })
+
+    // Alert ops team
+    await slack.send({
+      channel: '#ops-alerts',
+      text: `🚨 Ticket extraction failed after ${this.maxAttempts} attempts. Manual review required.`
+    })
+  }
+}
+```
+
+**Monitoring Dashboard**:
+
+```typescript
+// Track extraction success rates
+interface ExtractionMetrics {
+  totalAttempts: number
+  firstTrySuccess: number      // 85%
+  secondTrySuccess: number     // 95% of failures
+  thirdTrySuccess: number      // 98% of remaining
+  totalFailures: number        // 0.2%
+
+  commonErrors: Map<string, number>  // customer_id format: 1,200 times
+}
+
+// Alert thresholds:
+// - First-try success < 80% → Review system prompt
+// - Total failure rate > 1% → Escalate to engineering
+// - Specific error > 5% of total → Add explicit validation rule
+```
+
+**ROI Summary**:
+
+| Metric | Before (No Validation) | Option A (Prompting) | Option B (Validation + Retry) |
+|--------|------------------------|----------------------|-------------------------------|
+| **Failure Rate** | 15% | 8% | 0.2% |
+| **Failed Tickets/Day** | 1,500 | 800 | 20 |
+| **Manual Labor/Day** | 4 hours | 2 hours | 5 minutes |
+| **Monthly Labor Cost** | $50,000 | $25,000 | $500 |
+| **API Retry Costs** | $5,000 | $3,000 | $50 |
+| **Model Costs** | $15,000 | $15,000 | $16,500 (+10% for retries) |
+| **Total Monthly Cost** | **$70,000** | **$43,000** | **$17,050** |
+
+**Savings**: $52,950/month = **$635K/year**
+
+---
+
+### Key Architectural Lessons
+
+1. **Prompts are suggestions, schemas are contracts**
+   - LLMs are probabilistic → 85-95% adherence
+   - Code validation is deterministic → 100% enforcement
+
+2. **Validation + Retry beats bigger models**
+   - Claude Sonnet + retry (99%) < Opus alone (90%)
+   - Cost: 10% increase vs 5x increase
+
+3. **Fail fast, fail loud**
+   - Detect failures immediately (Zod validation)
+   - Auto-retry with error feedback
+   - Escalate remaining 0.2% to humans
+
+4. **Single source of truth**
+   - Schema defined once (Zod)
+   - Used for: LLM prompts, validation, TypeScript types, API contracts
+   - Schema evolution via migrations (versioning)
+
 
 ## Key Takeaways
 
