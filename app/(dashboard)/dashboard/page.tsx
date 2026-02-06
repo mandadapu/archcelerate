@@ -91,23 +91,30 @@ export default async function DashboardPage() {
       </div>
 
       {!diagnosisCompleted ? (
-        <Card className="border-2 border-blue-200 bg-blue-50">
+        <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+          <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
           <CardHeader>
-            <CardTitle>🎯 Start Here</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <svg className="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
+              Skill Diagnosis
+            </CardTitle>
             <CardDescription>
               Take a quick 10-minute assessment to personalize your learning
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Link href="/diagnosis">
-              <Button className="bg-blue-600 hover:bg-blue-700">
-                Start Skill Diagnosis
+              <Button className="bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white">
+                Start
               </Button>
             </Link>
           </CardContent>
         </Card>
       ) : (
-        <Card className="border-2 border-green-200 bg-green-50">
+        <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+          <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-green-600 to-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
           <CardHeader>
             <CardTitle>✓ Diagnosis Complete</CardTitle>
             <CardDescription>
@@ -132,18 +139,18 @@ export default async function DashboardPage() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
 
         {week1Data?.week && (
-          <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-pink-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 1</CardTitle>
               <CardDescription>{week1Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-col">
               <p className="text-sm text-slate-600 mb-4">
                 {week1Data.week.description}
               </p>
-            {week1Data.progress ? (
-              <div className="space-y-3">
-                <div className="space-y-1">
+              {week1Data.progress && (
+                <div className="space-y-1 mb-4">
                   <div className="text-xs text-slate-600 mb-1">
                     Progress: {week1Data.progress.conceptsCompleted}/{week1Data.progress.conceptsTotal} concepts
                     {week1Data.progress.labCompleted && ', Lab ✓'}
@@ -162,41 +169,33 @@ export default async function DashboardPage() {
                     />
                   </div>
                 </div>
-                <div className="flex justify-end">
-                  <Link href="/curriculum/week-1">
-                    <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white">
-                      Continue
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            ) : (
-              <div className="flex justify-end">
+              )}
+              <div className="flex justify-end mt-auto">
                 <Link href="/curriculum/week-1">
-                  <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white">
+                  <Button size="sm" className="bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white">
                     Start
                   </Button>
                 </Link>
               </div>
-            )}
           </CardContent>
         </Card>
       )}
 
         {week2Data?.week && (
-          <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 2</CardTitle>
               <CardDescription>{week2Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-col">
               <p className="text-sm text-slate-600 mb-4">
                 {week2Data.week.description}
               </p>
-              <div className="flex justify-end">
+              <div className="flex justify-end mt-auto">
                 <Link href="/curriculum/week-2">
-                  <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white">
-                    {week2Data.progress ? 'Continue' : 'Start'}
+                  <Button size="sm" className="bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white">
+                    Start
                   </Button>
                 </Link>
               </div>
@@ -205,19 +204,20 @@ export default async function DashboardPage() {
         )}
 
         {week3Data?.week && (
-          <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-sky-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 3</CardTitle>
               <CardDescription>{week3Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-col">
               <p className="text-sm text-slate-600 mb-4">
                 {week3Data.week.description}
               </p>
-              <div className="flex justify-end">
+              <div className="flex justify-end mt-auto">
                 <Link href="/curriculum/week-3">
-                  <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
-                    {week3Data.progress ? 'Continue' : 'Start'}
+                  <Button size="sm" className="bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white">
+                    Start
                   </Button>
                 </Link>
               </div>
@@ -226,19 +226,20 @@ export default async function DashboardPage() {
         )}
 
         {week4Data?.week && (
-          <Card className="border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 4</CardTitle>
               <CardDescription>{week4Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-col">
               <p className="text-sm text-slate-600 mb-4">
                 {week4Data.week.description}
               </p>
-              <div className="flex justify-end">
+              <div className="flex justify-end mt-auto">
                 <Link href="/curriculum/week-4">
-                  <Button size="sm" className="bg-orange-600 hover:bg-orange-700 text-white">
-                    {week4Data.progress ? 'Continue' : 'Start'}
+                  <Button size="sm" className="bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white">
+                    Start
                   </Button>
                 </Link>
               </div>
@@ -247,71 +248,63 @@ export default async function DashboardPage() {
         )}
 
         {week5Data?.week && (
-          <Card className="border-2 border-indigo-200 bg-gradient-to-br from-indigo-50 to-blue-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 5</CardTitle>
               <CardDescription>{week5Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-col">
               <p className="text-sm text-slate-600 mb-4">
                 {week5Data.week.description}
               </p>
-              {week5Data.progress ? (
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <div className="text-xs text-slate-600 mb-1">
-                      Progress: {week5Data.progress.conceptsCompleted}/{week5Data.progress.conceptsTotal} concepts
-                      {week5Data.progress.labCompleted && ', Lab ✓'}
-                      {week5Data.progress.projectCompleted && ', Project ✓'}
-                    </div>
-                    <div className="w-full bg-slate-200 rounded-full h-1.5">
-                      <div
-                        className="bg-indigo-600 h-1.5 rounded-full transition-all"
-                        style={{
-                          width: `${Math.round(
-                            ((week5Data.progress.conceptsCompleted / week5Data.progress.conceptsTotal) * 0.6 +
-                             (week5Data.progress.labCompleted ? 0.2 : 0) +
-                             (week5Data.progress.projectCompleted ? 0.2 : 0)) * 100
-                          )}%`
-                        }}
-                      />
-                    </div>
+              {week5Data.progress && (
+                <div className="space-y-1 mb-4">
+                  <div className="text-xs text-slate-600 mb-1">
+                    Progress: {week5Data.progress.conceptsCompleted}/{week5Data.progress.conceptsTotal} concepts
+                    {week5Data.progress.labCompleted && ', Lab ✓'}
+                    {week5Data.progress.projectCompleted && ', Project ✓'}
                   </div>
-                  <div className="flex justify-end">
-                    <Link href="/curriculum/week-5">
-                      <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white">
-                        Continue
-                      </Button>
-                    </Link>
+                  <div className="w-full bg-slate-200 rounded-full h-1.5">
+                    <div
+                      className="bg-purple-600 h-1.5 rounded-full transition-all"
+                      style={{
+                        width: `${Math.round(
+                          ((week5Data.progress.conceptsCompleted / week5Data.progress.conceptsTotal) * 0.6 +
+                           (week5Data.progress.labCompleted ? 0.2 : 0) +
+                           (week5Data.progress.projectCompleted ? 0.2 : 0)) * 100
+                        )}%`
+                      }}
+                    />
                   </div>
-                </div>
-              ) : (
-                <div className="flex justify-end">
-                  <Link href="/curriculum/week-5">
-                    <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white">
-                      Start
-                    </Button>
-                  </Link>
                 </div>
               )}
+              <div className="flex justify-end mt-auto">
+                <Link href="/curriculum/week-5">
+                  <Button size="sm" className="bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white">
+                    Start
+                  </Button>
+                </Link>
+              </div>
             </CardContent>
           </Card>
         )}
 
         {week6Data?.week && (
-          <Card className="border-2 border-teal-200 bg-gradient-to-br from-teal-50 to-cyan-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 6</CardTitle>
               <CardDescription>{week6Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-col">
               <p className="text-sm text-slate-600 mb-4">
                 {week6Data.week.description}
               </p>
-              <div className="flex justify-end">
+              <div className="flex justify-end mt-auto">
                 <Link href="/curriculum/week-6">
-                  <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white">
-                    {week6Data.progress ? 'Continue' : 'Start'}
+                  <Button size="sm" className="bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white">
+                    Start
                   </Button>
                 </Link>
               </div>
@@ -320,19 +313,20 @@ export default async function DashboardPage() {
         )}
 
         {week7Data?.week && (
-          <Card className="border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-yellow-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 7</CardTitle>
               <CardDescription>{week7Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-col">
               <p className="text-sm text-slate-600 mb-4">
                 {week7Data.week.description}
               </p>
-              <div className="flex justify-end">
+              <div className="flex justify-end mt-auto">
                 <Link href="/curriculum/week-7">
-                  <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white">
-                    {week7Data.progress ? 'Continue' : 'Start'}
+                  <Button size="sm" className="bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white">
+                    Start
                   </Button>
                 </Link>
               </div>
@@ -341,19 +335,20 @@ export default async function DashboardPage() {
         )}
 
         {week8Data?.week && (
-          <Card className="border-2 border-rose-200 bg-gradient-to-br from-rose-50 to-pink-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 8</CardTitle>
               <CardDescription>{week8Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-col">
               <p className="text-sm text-slate-600 mb-4">
                 {week8Data.week.description}
               </p>
-              <div className="flex justify-end">
+              <div className="flex justify-end mt-auto">
                 <Link href="/curriculum/week-8">
-                  <Button size="sm" className="bg-pink-600 hover:bg-pink-700 text-white">
-                    {week8Data.progress ? 'Continue' : 'Start'}
+                  <Button size="sm" className="bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white">
+                    Start
                   </Button>
                 </Link>
               </div>
@@ -362,19 +357,20 @@ export default async function DashboardPage() {
         )}
 
         {week9Data?.week && (
-          <Card className="border-2 border-red-200 bg-gradient-to-br from-red-50 to-orange-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 9</CardTitle>
               <CardDescription>{week9Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-col">
               <p className="text-sm text-slate-600 mb-4">
                 {week9Data.week.description}
               </p>
-              <div className="flex justify-end">
+              <div className="flex justify-end mt-auto">
                 <Link href="/curriculum/week-9">
-                  <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white">
-                    {week9Data.progress ? 'Continue' : 'Start'}
+                  <Button size="sm" className="bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white">
+                    Start
                   </Button>
                 </Link>
               </div>
@@ -383,19 +379,20 @@ export default async function DashboardPage() {
         )}
 
         {week10Data?.week && (
-          <Card className="border-2 border-fuchsia-200 bg-gradient-to-br from-fuchsia-50 to-pink-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 10</CardTitle>
               <CardDescription>{week10Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-col">
               <p className="text-sm text-slate-600 mb-4">
                 {week10Data.week.description}
               </p>
-              <div className="flex justify-end">
+              <div className="flex justify-end mt-auto">
                 <Link href="/curriculum/week-10">
-                  <Button size="sm" className="bg-sky-600 hover:bg-sky-700 text-white">
-                    {week10Data.progress ? 'Continue' : 'Start'}
+                  <Button size="sm" className="bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white">
+                    Start
                   </Button>
                 </Link>
               </div>
@@ -404,19 +401,20 @@ export default async function DashboardPage() {
         )}
 
         {week11Data?.week && (
-          <Card className="border-2 border-lime-200 bg-gradient-to-br from-lime-50 to-green-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 11</CardTitle>
               <CardDescription>{week11Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-col">
               <p className="text-sm text-slate-600 mb-4">
                 {week11Data.week.description}
               </p>
-              <div className="flex justify-end">
+              <div className="flex justify-end mt-auto">
                 <Link href="/curriculum/week-11">
-                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                    {week11Data.progress ? 'Continue' : 'Start'}
+                  <Button size="sm" className="bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white">
+                    Start
                   </Button>
                 </Link>
               </div>
@@ -425,19 +423,20 @@ export default async function DashboardPage() {
         )}
 
         {week12Data?.week && (
-          <Card className="border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-gray-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 12</CardTitle>
               <CardDescription>{week12Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-col">
               <p className="text-sm text-slate-600 mb-4">
                 {week12Data.week.description}
               </p>
-              <div className="flex justify-end">
+              <div className="flex justify-end mt-auto">
                 <Link href="/curriculum/week-12">
-                  <Button size="sm" className="bg-slate-600 hover:bg-slate-700 text-white">
-                    {week12Data.progress ? 'Continue' : 'Start'}
+                  <Button size="sm" className="bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white">
+                    Start
                   </Button>
                 </Link>
               </div>
@@ -446,7 +445,8 @@ export default async function DashboardPage() {
         )}
 
 
-        <Card>
+        <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+          <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
           <CardHeader>
             <CardTitle>AI Mentor</CardTitle>
             <CardDescription>24/7 Support</CardDescription>
@@ -473,7 +473,8 @@ export default async function DashboardPage() {
 
         <div className="grid gap-6 md:grid-cols-2">
           {/* AI Workflows */}
-          <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-purple-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-blue-600 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
@@ -507,7 +508,8 @@ export default async function DashboardPage() {
           </Card>
 
           {/* AI Security */}
-          <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-green-600 to-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
@@ -543,7 +545,8 @@ export default async function DashboardPage() {
           </Card>
 
           {/* Industry Scenarios */}
-          <Card className="border-2 border-teal-200 bg-gradient-to-br from-teal-50 to-cyan-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-teal-600 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
