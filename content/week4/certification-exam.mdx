@@ -1,0 +1,556 @@
+---
+title: "Week 4 Certification: The Systems Architect"
+description: "Systems orchestration exam for structured intelligence, API integration, and contract integrity"
+estimatedMinutes: 90
+---
+
+# Week 4 Certification Exam: The Systems Architect
+
+## Exam Philosophy
+
+This certification moves away from simple prompting and focuses on **System Orchestration and Contract Integrity**. To pass, you must demonstrate you can build an LLM integration that interfaces reliably with deterministic enterprise systems.
+
+**Grading Standard**: This exam is graded at the **Director/Staff Architect** level. You are expected to treat the LLM as an **API client**, not a magic solution. You must prioritize **type safety**, **parallelism**, **security**, and **deterministic execution** over "better prompting."
+
+**Core Principle**: The code, not the LLM, is the **Source of Truth** for execution.
+
+---
+
+## Scenario: LogiFlow Autonomous Dispatcher
+
+You are the **Lead Architect** for **"LogiFlow,"** a global logistics platform processing 50,000 shipments daily across 12 countries. You are building an **Autonomous Dispatcher** that processes natural language requests from truck drivers via mobile app.
+
+**Example Request**: *"I'm at warehouse W-4523, loaded 2 tons of electronics, where do I go next?"*
+
+Your system must interface with three legacy enterprise APIs:
+- **InventoryService** (40+ microservices, REST)
+- **FleetManager** (SOAP, strict UUID requirements)
+- **RouteOptimizer** (GraphQL, 2-second SLA)
+
+**Scale Requirements**:
+- 5,000 concurrent drivers
+- Sub-3-second response time (P95)
+- 99.9% uptime
+- Zero shipment cancellations due to AI errors
+
+---
+
+## Challenge 1: The "Contract Integrity" Crisis
+
+### The Problem
+
+The **FleetManager** API requires a `truck_id` parameter in strict UUID format:
+
+```
+Expected: "550e8400-e29b-41d4-a716-446655440000"
+```
+
+During production testing, your LLM occasionally sends human-friendly identifiers:
+- `"BigRed-01"` (driver's nickname for truck)
+- `"Truck_4"` (sequential ID)
+- `"truck-warehouse-4"` (location-based name)
+- `"T4523"` (abbreviated form)
+
+**Production Impact**:
+- 8% of dispatch requests fail with HTTP 500 errors
+- FleetManager API crashes (null pointer exception on UUID parse)
+- Entire dispatch sequence aborted
+- Driver stuck waiting 15-30 minutes for manual intervention
+- 120 failures per day = $15,000/month in missed delivery penalties
+
+### Diagnostic Data
+
+```typescript
+// LLM Tool Call (Actual)
+{
+  tool: 'assign_truck',
+  arguments: {
+    truck_id: 'BigRed-01',  // ❌ Invalid format
+    load_weight: 2000,
+    destination: 'W-8821'
+  }
+}
+
+// FleetManager Response
+{
+  status: 500,
+  error: 'IllegalArgumentException: Invalid UUID string: BigRed-01',
+  message: 'java.util.UUID.fromString() failed'
+}
+```
+
+### Questions
+
+**Question 1.1**: Explain why relying on the system prompt to instruct the LLM to "always use UUID format" is insufficient for production reliability. What is the fundamental difference between **prompting** and **constrained decoding**?
+
+**Question 1.2**: Design a **Structured Output schema** using JSON Schema that makes it **physically impossible** for the LLM to generate a `truck_id` in any format other than UUID. Include:
+- Regex pattern validation
+- Description with examples
+- Error handling strategy
+
+**Question 1.3**: The LLM needs to obtain the UUID for "BigRed-01" before calling `assign_truck`. Design a **two-step tool orchestration** pattern:
+- Step 1: `search_trucks` tool (resolves friendly name → UUID)
+- Step 2: `assign_truck` tool (uses resolved UUID)
+
+Explain how the tool descriptions enforce this sequence to prevent the LLM from guessing UUIDs.
+
+**Question 1.4**: After implementing schema constraints, you discover the FleetManager API occasionally returns HTTP 504 (timeout) instead of 500. Describe the **Error Translation Layer** pattern you would implement to convert this technical error into a semantic message the LLM can handle gracefully.
+
+### Architecture Requirements
+
+Your answer must demonstrate understanding of:
+- ✅ Grammar-Constrained Decoding (why schema validation beats prompting)
+- ✅ Regex patterns for format enforcement
+- ✅ Two-step entity resolution (search → action)
+- ✅ Opaque identifiers (UUIDs prevent guessing)
+- ✅ Error translation (technical → semantic)
+
+---
+
+## Challenge 2: The Parallel Execution Bottleneck
+
+### The Problem
+
+To dispatch a driver, your AI must check three independent data points:
+
+1. **Cargo weight limit** (InventoryService): 800ms avg latency
+2. **Driver hours remaining** (FleetManager): 1,200ms avg latency
+3. **Nearest available destination** (RouteOptimizer): 2,000ms avg latency
+
+**Current Implementation** (Sequential):
+```typescript
+// Total latency: 800ms + 1,200ms + 2,000ms = 4,000ms
+const cargoLimit = await checkCargoWeight(truck_id)
+const hoursRemaining = await checkDriverHours(driver_id)
+const destination = await findNearestDestination(location)
+
+// Then optimize route
+const route = await optimizeRoute(destination, truck_id)
+```
+
+**Production Impact**:
+- P95 latency: 5,200ms (exceeds 3-second SLA)
+- Drivers complain about "slow app"
+- 15% of requests timeout
+- Lost to competitor with 1.8-second response time
+
+### Performance Data
+
+| Operation | Latency (P50) | Latency (P95) | Dependencies |
+|-----------|---------------|---------------|--------------|
+| `checkCargoWeight` | 800ms | 1,500ms | None |
+| `checkDriverHours` | 1,200ms | 2,100ms | None |
+| `findNearestDestination` | 2,000ms | 3,800ms | None |
+| `optimizeRoute` | 1,500ms | 2,500ms | **Requires destination** |
+
+### Questions
+
+**Question 2.1**: Redesign the system to execute the three independent checks in **parallel** using `Promise.all()`. Calculate the new P50 and P95 latencies. Show your code.
+
+**Question 2.2**: The `optimizeRoute` call **depends** on the result of `findNearestDestination`. How do you structure your dependency graph to:
+- Run the three independent checks in parallel
+- Wait for all three to complete
+- Then run `optimizeRoute` with the destination result
+
+Provide code demonstrating the async orchestration pattern.
+
+**Question 2.3**: One of the three checks fails (InventoryService returns 503). How do you handle **error isolation** so that one failure doesn't block the other two successful results? Should you retry the failed call or proceed with partial data?
+
+**Question 2.4**: The LLM requests 5 tools in a single turn (3 checks + 1 route + 1 confirmation). Explain how your orchestration layer determines which tools can run in parallel vs which must run sequentially. What data structure would you use to model this dependency graph?
+
+### Architecture Requirements
+
+Your answer must demonstrate understanding of:
+- ✅ Async batching with `Promise.all()`
+- ✅ Dependency graph modeling (DAG)
+- ✅ Error isolation (one failure doesn't block others)
+- ✅ P95 latency calculation
+- ✅ When to use parallel vs sequential execution
+
+---
+
+## Challenge 3: Semantic "No-Go" Zones
+
+### The Problem
+
+You have two tools for load management:
+
+**Tool 1**: `update_load_status`
+- Purpose: Report delays, damage, weight changes
+- Side effects: Updates status, triggers notifications
+- Reversible: Yes (status can be updated again)
+
+**Tool 2**: `cancel_shipment`
+- Purpose: Abort delivery, return to warehouse
+- Side effects: Cancels invoice, notifies customer, blocks truck
+- Reversible: **NO** (costs $500 per cancellation)
+
+**Production Incident**:
+- Driver: *"I'm running 2 hours late due to traffic, update my status"*
+- LLM calls: `cancel_shipment(shipment_id="S-4523", reason="2 hours late")`
+- Result: **Shipment cancelled**, customer furious, $500 penalty
+- Root cause: LLM confused the two tools in high-stress scenario
+
+**Incident Frequency**: 12 incidents per week = $24,000/month in penalties
+
+### Current Tool Definitions
+
+```typescript
+// ❌ INSUFFICIENT: Vague boundaries
+{
+  name: 'update_load_status',
+  description: 'Update the status of a load',
+  input_schema: {
+    properties: {
+      shipment_id: { type: 'string' },
+      status: { enum: ['on_time', 'delayed', 'delivered'] },
+      notes: { type: 'string' }
+    }
+  }
+}
+
+{
+  name: 'cancel_shipment',
+  description: 'Cancel a shipment',
+  input_schema: {
+    properties: {
+      shipment_id: { type: 'string' },
+      reason: { type: 'string' }
+    }
+  }
+}
+```
+
+### Questions
+
+**Question 3.1**: Rewrite both tool descriptions using the **Negative Constraint Pattern**. Each description must include:
+- WHEN to use (intent triggers)
+- WHAT it does (effects)
+- **DO NOT use for X** (explicit boundaries)
+- Alternative tool suggestion for excluded cases
+
+**Question 3.2**: Add **in-schema examples** to both tools showing:
+- Standard use case
+- Edge case (boundary condition)
+- Common mistake (what NOT to do)
+
+Demonstrate the "Boundary Pair" strategy.
+
+**Question 3.3**: The driver says: *"This shipment is damaged, I need to send it back."* This is ambiguous—should you:
+- A) Update status to "damaged" (reversible)
+- B) Cancel shipment (irreversible)
+
+Design a **disambiguation strategy** where the LLM asks a clarifying question before calling `cancel_shipment`. Show the conversation flow.
+
+**Question 3.4**: Implement a **safety confirmation** pattern where `cancel_shipment` requires an explicit `confirmation: true` parameter. The LLM must:
+1. First call with `confirmation: false` (dry run)
+2. Explain consequences to driver
+3. Get approval
+4. Call again with `confirmation: true`
+
+Show the schema design and orchestration flow.
+
+### Architecture Requirements
+
+Your answer must demonstrate understanding of:
+- ✅ Negative constraint formula (WHEN + WHAT + NOT)
+- ✅ Boundary pairs in examples (standard + edge + mistake)
+- ✅ Disambiguation before destructive actions
+- ✅ Safety confirmation for irreversible operations
+- ✅ Alternative tool suggestions in descriptions
+
+---
+
+## Challenge 4: The "Dirty Data" Feedback Loop
+
+### The Problem
+
+The **InventoryService** API returns a massive JSON response for warehouse inventory:
+
+```json
+{
+  "warehouse_id": "W-4523",
+  "total_items": 12847,
+  "items": [
+    {
+      "id": 1,
+      "sku": "SKU-00001",
+      "name": "Electronics - Laptop - Dell XPS 15",
+      "quantity": 45,
+      "weight_kg": 2.1,
+      "volume_m3": 0.05,
+      "location": "Aisle 12, Shelf B, Bin 7",
+      "supplier_id": "SUP-8821",
+      "supplier_name": "Dell Inc.",
+      "supplier_contact": "orders@dell.com",
+      "last_restock": "2024-01-15T08:23:15Z",
+      "next_restock": "2024-02-01T00:00:00Z",
+      "unit_price_usd": 1299.99,
+      "bulk_price_usd": 1199.99,
+      "tax_rate": 0.08,
+      "customs_code": "HS-8471.30",
+      "country_of_origin": "China",
+      "warranty_months": 12,
+      "internal_notes": "Fragile, handle with care",
+      "picking_instructions": "Use forklift for pallets",
+      "created_at": "2023-06-12T10:00:00Z",
+      "updated_at": "2024-01-20T14:30:00Z",
+      "created_by": "admin@logiflow.com",
+      "updated_by": "warehouse-bot",
+      // ... 25 more fields
+    },
+    // ... 12,846 more items
+  ],
+  "warehouse_metadata": {
+    "address": "123 Industrial Blvd",
+    "manager": "John Smith",
+    "phone": "+1-555-1234",
+    "hours": "24/7",
+    "capacity_m3": 50000,
+    "current_utilization": 0.67,
+    "temperature_controlled": false,
+    // ... 30 more fields
+  }
+}
+```
+
+**Response Size**: 42KB (120,000 tokens)
+
+**Production Impact**:
+- LLM context window: 200K tokens
+- Raw response consumes 60% of context budget
+- LLM response quality degrades (forgets driver's original question)
+- Latency: 8,500ms to process (5x longer than acceptable)
+- Cost: $6.00 per request in API fees (vs $0.15 target)
+
+**Driver's Actual Question**: *"What's the weight of the electronics in W-4523?"*
+
+**What LLM Actually Needs**:
+```json
+{
+  "warehouse_id": "W-4523",
+  "category": "Electronics",
+  "total_weight_kg": 94.5,
+  "item_count": 45
+}
+```
+
+### Questions
+
+**Question 4.1**: Design a **Result Sanitization Proxy** that sits between the InventoryService API and the LLM. Specify:
+- Which fields to **include** (whitelist)
+- Which fields to **exclude** (blacklist for security)
+- How to handle large arrays (summarization strategy)
+
+Show the schema and filtering code.
+
+**Question 4.2**: Calculate the **token reduction** and **cost savings** from your filtering strategy. If the original response is 120,000 tokens and you reduce it to 500 tokens:
+- Token reduction percentage
+- Cost per request (before vs after at $0.003/1K input tokens)
+- Monthly savings at 50,000 requests/day
+
+**Question 4.3**: Some fields contain **sensitive data** that should never reach the LLM:
+- `supplier_contact` (email addresses)
+- `unit_price_usd`, `bulk_price_usd` (pricing data)
+- `internal_notes` (operational secrets)
+- `created_by`, `updated_by` (employee emails)
+
+Explain the **security risk** of passing these to the LLM (even if they're not needed for the task). What could go wrong?
+
+**Question 4.4**: The InventoryService API has 12,847 items but the driver only cares about "Electronics" (45 items). Design a **server-side pre-filtering** strategy where your code:
+1. Calls InventoryService with category filter
+2. Receives only Electronics items (reduces from 12,847 → 45)
+3. Further filters to only needed fields (45 items × 40 fields → 45 items × 4 fields)
+4. Passes compact result to LLM
+
+Show the API call and filtering pipeline.
+
+### Architecture Requirements
+
+Your answer must demonstrate understanding of:
+- ✅ Result schema (whitelist/blacklist pattern)
+- ✅ Token reduction calculation (cost ROI)
+- ✅ Security filtering (PII/sensitive data exclusion)
+- ✅ Server-side pre-filtering (reduce before LLM)
+- ✅ Summarization strategies (arrays → counts)
+
+---
+
+## Grading Rubric
+
+### Director/Staff Architect Tier (90-100%) ✅ PASS
+
+**System Design Mindset**:
+- Views LLM as an **API client**, not a magic solution
+- Prioritizes **type safety** (regex patterns, enums, required fields)
+- Implements **parallel execution** with proper dependency management
+- Uses **negative constraints** to prevent semantic confusion
+- Designs **security-first** schemas (opaque identifiers, filtered results)
+- Understands **cost optimization** (token reduction, pre-filtering)
+
+**Technical Depth**:
+- Explains grammar-constrained decoding vs prompting
+- Calculates P95 latency improvements
+- Models dependency graphs (DAG)
+- Implements error isolation and translation
+- Demonstrates understanding of production trade-offs
+
+**Code Quality**:
+- Provides working TypeScript examples
+- Shows proper async/await patterns
+- Includes error handling
+- Documents schemas with JSON Schema
+
+**Philosophy**:
+> "The code, not the LLM, is the Source of Truth. I enforce constraints at the contract level, making errors impossible rather than improbable."
+
+---
+
+### Senior Engineer Tier (70-89%) ⚠️ PARTIAL PASS
+
+**Gaps**:
+- Understands concepts but lacks production-scale thinking
+- May rely on retry loops instead of prevention
+- Doesn't calculate ROI or latency improvements
+- Missing error isolation strategies
+- Security filtering incomplete (misses PII risks)
+
+**Approach**:
+- "I'll add retries for failed requests"
+- "I'll use a bigger context window for large responses"
+- "I'll tell the LLM to be more careful with UUIDs"
+
+**Missing**: Cost analysis, parallelism, opaque identifiers
+
+---
+
+### Mid-Level Developer Tier (50-69%) ❌ FAIL
+
+**Fundamental Misunderstandings**:
+- Focuses on "better prompting" instead of schema design
+- Suggests manual fixes after LLM failures
+- Doesn't understand async orchestration
+- Ignores security implications (raw IDs, sensitive data)
+- No latency or cost calculations
+
+**Red Flags**:
+- "I'll add more examples to the system prompt"
+- "We can manually correct invalid UUIDs before sending"
+- "Let's use GPT-4 instead, it's smarter"
+- "The LLM should figure out the dependencies"
+
+---
+
+### Junior Tier (0-49%) ❌ STRONG FAIL
+
+**Architectural Anti-Patterns**:
+- Suggests giving LLM direct database access
+- No understanding of schema validation
+- Ignores latency and cost constraints
+- No error handling strategy
+- Believes "prompt engineering" solves all problems
+
+**Disqualifying Answers**:
+- "Let the LLM write SQL queries directly"
+- "We can fix UUIDs manually when they break"
+- "Users will just retry if it fails"
+- "Pass the entire 42KB response, the LLM can handle it"
+
+---
+
+## Passing Criteria
+
+To earn the **Week 4: Systems Architect** certification, you must:
+
+1. ✅ **Challenge 1**: Score 80%+ on Contract Integrity
+   - Must include regex validation and two-step resolution
+
+2. ✅ **Challenge 2**: Score 80%+ on Parallel Execution
+   - Must show working async code with dependency handling
+
+3. ✅ **Challenge 3**: Score 80%+ on Semantic Boundaries
+   - Must use negative constraints and safety confirmation
+
+4. ✅ **Challenge 4**: Score 80%+ on Result Filtering
+   - Must calculate ROI and address security risks
+
+5. ✅ **Overall**: Average score ≥ 85%
+
+**Time Limit**: 90 minutes (open book, can reference Week 4 modules)
+
+---
+
+## Submission Format
+
+Your submission must include:
+
+### Part 1: Architecture Document
+- System diagram (LLM → Tools → APIs)
+- Data flow diagrams
+- Error handling strategy
+- Latency optimization plan
+
+### Part 2: Schema Definitions
+- JSON Schema for all tools
+- Regex patterns for validation
+- Examples with boundary pairs
+- Negative constraints in descriptions
+
+### Part 3: Code Implementation
+- TypeScript/Python code for:
+  - Tool executor with parallel execution
+  - Result filtering proxy
+  - Error translation layer
+  - Safety confirmation flow
+
+### Part 4: ROI Analysis
+- Latency improvements (before/after)
+- Cost reductions (token optimization)
+- Error rate reductions (schema validation)
+- Security risk mitigation
+
+---
+
+## What Happens After Passing?
+
+**Week 4 Certification Badge**: "Systems Architect - Structured Intelligence"
+
+**Skills Validated**:
+- ✅ Contract-driven LLM integration
+- ✅ High-performance tool orchestration
+- ✅ Semantic schema engineering
+- ✅ Production-grade error handling
+- ✅ Cost and latency optimization
+
+**Next Steps**:
+- Week 5: AI Agents & Multi-Step Reasoning
+- Week 6: Prompt Engineering at Scale
+- Week 7: Observability & Monitoring
+
+---
+
+## Study Resources
+
+Review these Week 4 modules before taking the exam:
+
+1. **Structured Output** - Grammar-Constrained Decoding, Schema Versioning, Self-Correction
+2. **Function Calling** - Parallel Execution, Atomic Tools, Result Filtering
+3. **Schema Design** - Negative Constraints, Opaque Identifiers, Few-Shot Examples
+4. **Lab: Support Ticket Router** - End-to-end implementation
+
+**Estimated Prep Time**: 8-12 hours (review modules + practice coding)
+
+---
+
+## Congratulations!
+
+With the completion of Week 4, you have mastered the first month of the AI Architect Accelerator:
+
+- **Week 1**: Foundations (Physics, ROI, Readiness)
+- **Week 2**: Governance (Shielding, Compliance, PII)
+- **Week 3**: Knowledge (RAG, Embeddings, Memory)
+- **Week 4**: Interface (Structured Output, Function Calling, Schemas)
+
+You are now equipped to build LLM systems that integrate reliably with enterprise software, maintain type safety, optimize for performance, and operate securely at scale.
+
+**You are ready to become an AI Systems Architect.**
