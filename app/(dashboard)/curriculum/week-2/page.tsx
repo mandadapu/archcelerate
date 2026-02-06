@@ -183,7 +183,7 @@ export default async function Week2Page() {
               <Link
                 key={concept.id}
                 href={`/curriculum/week-2/concepts/${concept.slug}`}
-                className="group border rounded-lg p-4 hover:border-primary hover:shadow-md transition-all bg-gradient-to-r from-primary/5 to-transparent dark:from-primary/10"
+                className="group border rounded-lg p-4 hover:border-purple-400 hover:shadow-md transition-all bg-gradient-to-r from-purple-50 to-cyan-50 dark:from-purple-950 dark:to-cyan-950"
               >
                 <div className="flex items-start gap-4">
                   {/* Icon */}
@@ -193,7 +193,7 @@ export default async function Week2Page() {
 
                   {/* Content column */}
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium text-primary uppercase tracking-wide mb-1">
+                    <div className="text-xs font-medium text-purple-600 uppercase tracking-wide mb-1">
                       Concept {i + 1}
                     </div>
                     <h3 className="font-semibold text-lg leading-tight text-foreground mb-2">
@@ -213,7 +213,7 @@ export default async function Week2Page() {
                   </div>
 
                   {/* Arrow */}
-                  <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0 mt-6" />
+                  <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-purple-600 group-hover:translate-x-0.5 transition-all flex-shrink-0 mt-6" />
                 </div>
               </Link>
             ))}
@@ -226,7 +226,7 @@ export default async function Week2Page() {
             <h2 className="text-2xl font-bold mb-4">Lab</h2>
             <Link
               href={`/curriculum/week-2/lab/${lab.slug}`}
-              className="group border rounded-lg p-6 hover:border-blue-600 transition-colors block bg-blue-50/50 dark:bg-blue-950/50"
+              className="group border rounded-lg p-6 hover:border-purple-400 transition-colors block bg-gradient-to-r from-purple-50 to-cyan-50 dark:from-purple-950 dark:to-cyan-950"
             >
               <h3 className="font-semibold text-xl mb-2">{lab.title}</h3>
               <p className="text-muted-foreground">{lab.description}</p>
@@ -243,7 +243,7 @@ export default async function Week2Page() {
             <h2 className="text-2xl font-bold mb-4">Project</h2>
             <Link
               href={`/curriculum/week-2/project/${project.slug}`}
-              className="group border rounded-lg p-6 hover:border-violet-600 transition-colors block bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-950 dark:to-purple-950"
+              className="group border rounded-lg p-6 hover:border-purple-400 transition-colors block bg-gradient-to-br from-purple-50 to-cyan-50 dark:from-purple-950 dark:to-cyan-950"
             >
               <div className="flex items-start justify-between">
                 <div>
@@ -261,7 +261,7 @@ export default async function Week2Page() {
                     </div>
                   </div>
                 </div>
-                <ChevronRight className="h-6 w-6 text-muted-foreground group-hover:text-violet-600 group-hover:translate-x-0.5 transition-all" />
+                <ChevronRight className="h-6 w-6 text-muted-foreground group-hover:text-purple-600 group-hover:translate-x-0.5 transition-all" />
               </div>
             </Link>
           </div>
