@@ -16,7 +16,7 @@ export function SystemDiagram() {
 
         {/* System Diagram */}
         <div className="relative">
-          <svg viewBox="0 0 1200 600" className="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
+          <svg viewBox="0 0 1000 600" className="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
             <defs>
               {/* Gradient definitions */}
               <linearGradient id="flowGradient" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -141,14 +141,14 @@ export function SystemDiagram() {
 
             {/* Monitoring Layer (Week 7) */}
             <g>
-              <rect x="200" y="400" width="800" height="80" rx="8" fill="#1e293b" stroke="#a855f7" strokeWidth="2" strokeDasharray="5,5" />
-              <circle cx="600" cy="425" r="15" fill="#a855f7" opacity="0.2" />
-              <text x="600" y="430" textAnchor="middle" fill="#a855f7" fontSize="18">📊</text>
+              <rect x="200" y="400" width="600" height="80" rx="8" fill="#1e293b" stroke="#a855f7" strokeWidth="2" strokeDasharray="5,5" />
+              <circle cx="500" cy="425" r="15" fill="#a855f7" opacity="0.2" />
+              <text x="500" y="430" textAnchor="middle" fill="#a855f7" fontSize="18">📊</text>
 
-              <text x="600" y="455" textAnchor="middle" fill="#ffffff" fontSize="13" fontWeight="600">
+              <text x="500" y="455" textAnchor="middle" fill="#ffffff" fontSize="13" fontWeight="600">
                 OpenTelemetry Observability Pipeline
               </text>
-              <text x="600" y="472" textAnchor="middle" fill="#94a3b8" fontSize="10">
+              <text x="500" y="472" textAnchor="middle" fill="#94a3b8" fontSize="10">
                 Week 7: Metrics, Traces, Logs | LLM-as-a-Judge | Cost Attribution
               </text>
             </g>
@@ -164,47 +164,47 @@ export function SystemDiagram() {
               Docker • Vercel • GitHub Actions
             </text>
 
-            <text x="700" y="520" fill="#64748b" fontSize="11" fontWeight="600">
+            <text x="550" y="520" fill="#64748b" fontSize="11" fontWeight="600">
               COMPLIANCE:
             </text>
-            <text x="700" y="540" fill="#94a3b8" fontSize="10">
+            <text x="550" y="540" fill="#94a3b8" fontSize="10">
               HIPAA • GDPR • SOC2
             </text>
-            <text x="700" y="555" fill="#94a3b8" fontSize="10">
+            <text x="550" y="555" fill="#94a3b8" fontSize="10">
               99.97% Uptime | E2E Encryption
             </text>
 
-            {/* Week badges */}
+            {/* Curriculum Coverage - next to Observability Pipeline */}
             <g>
-              <rect x="1050" y="50" width="130" height="180" rx="8" fill="#1e293b" stroke="#9333ea" strokeWidth="1" opacity="0.8" />
-              <text x="1115" y="75" textAnchor="middle" fill="#ffffff" fontSize="12" fontWeight="700">
+              <rect x="820" y="400" width="160" height="180" rx="8" fill="#1e293b" stroke="#9333ea" strokeWidth="1" opacity="0.8" />
+              <text x="900" y="425" textAnchor="middle" fill="#ffffff" fontSize="12" fontWeight="700">
                 Curriculum
               </text>
-              <text x="1115" y="92" textAnchor="middle" fill="#ffffff" fontSize="12" fontWeight="700">
+              <text x="900" y="442" textAnchor="middle" fill="#ffffff" fontSize="12" fontWeight="700">
                 Coverage
               </text>
 
-              <circle cx="1070" cy="115" r="3" fill="#06b6d4" />
-              <text x="1080" y="120" fill="#94a3b8" fontSize="10">Week 2: Security</text>
+              <circle cx="840" cy="465" r="3" fill="#06b6d4" />
+              <text x="850" y="470" fill="#94a3b8" fontSize="10">Week 2: Security</text>
 
-              <circle cx="1070" cy="135" r="3" fill="#9333ea" />
-              <text x="1080" y="140" fill="#94a3b8" fontSize="10">Week 5: Agents</text>
+              <circle cx="840" cy="485" r="3" fill="#9333ea" />
+              <text x="850" y="490" fill="#94a3b8" fontSize="10">Week 5: Agents</text>
 
-              <circle cx="1070" cy="155" r="3" fill="#06b6d4" />
-              <text x="1080" y="160" fill="#94a3b8" fontSize="10">Week 6: RAG</text>
+              <circle cx="840" cy="505" r="3" fill="#06b6d4" />
+              <text x="850" y="510" fill="#94a3b8" fontSize="10">Week 6: RAG</text>
 
-              <circle cx="1070" cy="175" r="3" fill="#a855f7" />
-              <text x="1080" y="180" fill="#94a3b8" fontSize="10">Week 7: Observability</text>
+              <circle cx="840" cy="525" r="3" fill="#a855f7" />
+              <text x="850" y="530" fill="#94a3b8" fontSize="10">Week 7: Observability</text>
 
-              <circle cx="1070" cy="195" r="3" fill="#9333ea" />
-              <text x="1080" y="200" fill="#94a3b8" fontSize="10">Week 12: Production</text>
+              <circle cx="840" cy="545" r="3" fill="#9333ea" />
+              <text x="850" y="550" fill="#94a3b8" fontSize="10">Week 12: Production</text>
 
-              <circle cx="1070" cy="215" r="3" fill="#06b6d4" />
-              <text x="1080" y="220" fill="#94a3b8" fontSize="10">All: CI/CD</text>
+              <circle cx="840" cy="565" r="3" fill="#06b6d4" />
+              <text x="850" y="570" fill="#94a3b8" fontSize="10">All: CI/CD</text>
             </g>
 
             {/* Title decoration */}
-            <text x="600" y="40" textAnchor="middle" fill="url(#flowGradient)" fontSize="16" fontWeight="700">
+            <text x="500" y="40" textAnchor="middle" fill="url(#flowGradient)" fontSize="16" fontWeight="700">
               Enterprise-Grade AI Architecture
             </text>
           </svg>
