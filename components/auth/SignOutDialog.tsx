@@ -22,8 +22,10 @@ export function SignOutDialog({ open, onOpenChange }: SignOutDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader className="text-center space-y-3">
-          <DialogTitle className="text-2xl font-bold text-gray-900">
-            Log Out
+          <DialogTitle className="text-2xl font-bold">
+            <span className="bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent">
+              Log Out
+            </span>
           </DialogTitle>
           <DialogDescription className="text-base text-gray-500">
             Are you sure you want to log out?
@@ -35,7 +37,7 @@ export function SignOutDialog({ open, onOpenChange }: SignOutDialogProps) {
             onClick={handleSignOut}
             disabled={isSigningOut}
             size="lg"
-            className="min-w-[100px]"
+            className="min-w-[100px] bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white"
           >
             {isSigningOut ? 'Logging out...' : 'Confirm'}
           </Button>
@@ -45,7 +47,7 @@ export function SignOutDialog({ open, onOpenChange }: SignOutDialogProps) {
             disabled={isSigningOut}
             variant="outline"
             size="lg"
-            className="min-w-[100px]"
+            className="min-w-[100px] border-gray-300 hover:bg-gray-50"
           >
             Cancel
           </Button>
