@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { CheckCircle2, Circle, ArrowLeft, ExternalLink, Github } from 'lucide-react'
 
 interface Props {
@@ -156,43 +157,54 @@ export default async function ProjectPage({ params }: Props) {
         <p className="text-lg text-muted-foreground">{project.description}</p>
       </div>
 
-      {/* Requirements */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Requirements</CardTitle>
-          <CardDescription>
-            Complete all requirements to successfully finish this project
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ul className="space-y-2">
-            {requirements.map((req, i) => (
-              <li key={i} className="flex items-start gap-2">
-                <Circle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                <span>{req}</span>
-              </li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
-
-      {/* Success Criteria */}
+      {/* Requirements & Success Criteria */}
       <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Success Criteria</CardTitle>
-          <CardDescription>
-            Your project will be evaluated based on these criteria
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ul className="space-y-2">
-            {successCriteria.map((criterion, i) => (
-              <li key={i} className="flex items-start gap-2">
-                <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
-                <span>{criterion}</span>
-              </li>
-            ))}
-          </ul>
+        <CardContent className="p-0">
+          <Accordion type="multiple" className="w-full">
+            {/* Requirements */}
+            <AccordionItem value="requirements">
+              <AccordionTrigger className="px-6 hover:no-underline">
+                <div className="text-left">
+                  <div className="font-semibold">Requirements</div>
+                  <div className="text-sm text-muted-foreground font-normal">
+                    Complete all requirements to successfully finish this project
+                  </div>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="px-6">
+                <ul className="space-y-2">
+                  {requirements.map((req, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <Circle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                      <span>{req}</span>
+                    </li>
+                  ))}
+                </ul>
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Success Criteria */}
+            <AccordionItem value="success-criteria">
+              <AccordionTrigger className="px-6 hover:no-underline">
+                <div className="text-left">
+                  <div className="font-semibold">Success Criteria</div>
+                  <div className="text-sm text-muted-foreground font-normal">
+                    Your project will be evaluated based on these criteria
+                  </div>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="px-6">
+                <ul className="space-y-2">
+                  {successCriteria.map((criterion, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
+                      <span>{criterion}</span>
+                    </li>
+                  ))}
+                </ul>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </CardContent>
       </Card>
 
