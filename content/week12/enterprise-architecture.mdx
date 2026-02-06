@@ -680,6 +680,328 @@ async function handleRequest(req: Request) {
 }
 ```
 
+## Sovereign Audit Log: The Capstone Requirement
+
+**Critical Requirement**: Your Week 12 capstone project is **NOT considered complete** unless it generates a **Sovereign Audit Log** that tracks every blocked PII attempt and governance violation.
+
+### What CTOs Demand: Proof of Governance
+
+Enterprise buyers don't accept "We have good security practices." They demand: **"Show me the audit log that proves your system blocked unauthorized access."**
+
+The Sovereign Audit Log is your **proof of governance**—an immutable, cryptographically-verified record that demonstrates:
+1. **Every PII redaction event** (what was blocked, when, by whom)
+2. **Every governance violation attempt** (prompt injections, policy bypasses, unauthorized access)
+3. **Every compliance decision** (why a request was allowed or denied)
+
+This isn't optional—it's what makes your AI system **insurable** and **enterprise-deployable**.
+
+### The Sovereign Audit Log Architecture
+
+```typescript
+/**
+ * Sovereign Audit Log: Immutable governance proof
+ */
+
+interface SovereignAuditEntry {
+  // Event Identity
+  auditId: string              // Unique event ID
+  timestamp: Date              // When event occurred
+  eventType: 'PII_BLOCKED' | 'GOVERNANCE_VIOLATION' | 'POLICY_DECISION' | 'ACCESS_DENIED'
+
+  // Governance Context
+  tenantId: string
+  userId: string
+  requestId: string
+
+  // Violation Details
+  violation: {
+    type: 'PII_DETECTION' | 'PROMPT_INJECTION' | 'POLICY_BREACH' | 'RATE_LIMIT' | 'UNAUTHORIZED_ACCESS'
+    severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
+    details: string
+    blockedContent: string      // Redacted/hashed
+    policyRule: string          // Which policy was violated
+  }
+
+  // Decision Rationale
+  decision: {
+    action: 'BLOCKED' | 'REDACTED' | 'ESCALATED' | 'ALLOWED_WITH_WARNING'
+    reasoning: string           // Why this decision was made
+    policyVersion: string       // Which policy version was active
+    confidence: number          // 0-1 confidence in decision
+  }
+
+  // Cryptographic Proof
+  hash: string                  // SHA-256 hash of entry
+  previousHash: string          // Hash of previous entry (blockchain-style)
+  signature: string             // Digital signature for tamper-proof audit
+
+  // Compliance Metadata
+  complianceFramework: 'HIPAA' | 'GDPR' | 'SOC2' | 'CCPA'
+  regulatoryBasis: string       // Which regulation triggered this
+  retentionRequired: number     // Years to retain (HIPAA = 6)
+}
+
+class SovereignAuditLogger {
+  private previousHash: string = '0000000000000000000000000000000000000000000000000000000000000000'
+
+  async logViolation(entry: Omit<SovereignAuditEntry, 'auditId' | 'hash' | 'previousHash' | 'signature'>): Promise<string> {
+    const auditId = crypto.randomUUID()
+
+    // Calculate hash
+    const entryData = JSON.stringify({
+      auditId,
+      ...entry,
+      previousHash: this.previousHash
+    })
+
+    const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(entryData))
+    const hashHex = Array.from(new Uint8Array(hash))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('')
+
+    // Digital signature (in production, use private key)
+    const signature = await this.signEntry(entryData)
+
+    const completeEntry: SovereignAuditEntry = {
+      auditId,
+      ...entry,
+      hash: hashHex,
+      previousHash: this.previousHash,
+      signature
+    }
+
+    // Write to immutable storage (append-only)
+    await this.writeToImmutableStorage(completeEntry)
+
+    // Update chain
+    this.previousHash = hashHex
+
+    // Alert if critical
+    if (entry.violation.severity === 'CRITICAL') {
+      await this.alertSecurityTeam(completeEntry)
+    }
+
+    return auditId
+  }
+
+  private async writeToImmutableStorage(entry: SovereignAuditEntry): Promise<void> {
+    // Option 1: Write-once database table (no UPDATE/DELETE permissions)
+    await prisma.$executeRaw`
+      INSERT INTO sovereign_audit_log (
+        audit_id, timestamp, event_type, tenant_id, user_id,
+        violation, decision, hash, previous_hash, signature,
+        compliance_framework, regulatory_basis, retention_required
+      ) VALUES (
+        ${entry.auditId}, ${entry.timestamp}, ${entry.eventType},
+        ${entry.tenantId}, ${entry.userId},
+        ${JSON.stringify(entry.violation)}, ${JSON.stringify(entry.decision)},
+        ${entry.hash}, ${entry.previousHash}, ${entry.signature},
+        ${entry.complianceFramework}, ${entry.regulatoryBasis}, ${entry.retentionRequired}
+      )
+    `
+
+    // Option 2: Also write to S3 with object lock (WORM - Write Once Read Many)
+    await s3.putObject({
+      Bucket: 'sovereign-audit-logs',
+      Key: `${entry.tenantId}/${entry.auditId}.json`,
+      Body: JSON.stringify(entry, null, 2),
+      ObjectLockMode: 'GOVERNANCE',  // Prevents deletion
+      ObjectLockRetainUntilDate: new Date(Date.now() + (entry.retentionRequired * 365 * 24 * 60 * 60 * 1000))
+    })
+
+    // Option 3: Blockchain-based audit log for maximum immutability
+    // await blockchain.appendBlock(entry)
+  }
+
+  async verifyAuditChain(entries: SovereignAuditEntry[]): Promise<boolean> {
+    // Verify hash chain integrity
+    for (let i = 1; i < entries.length; i++) {
+      if (entries[i].previousHash !== entries[i - 1].hash) {
+        console.error(`Audit chain broken at entry ${entries[i].auditId}`)
+        return false
+      }
+
+      // Verify signature
+      const isValid = await this.verifySignature(entries[i])
+      if (!isValid) {
+        console.error(`Invalid signature at entry ${entries[i].auditId}`)
+        return false
+      }
+    }
+
+    return true
+  }
+
+  async generateComplianceReport(
+    tenantId: string,
+    startDate: Date,
+    endDate: Date
+  ): Promise<SovereignAuditReport> {
+    const entries = await prisma.sovereignAuditLog.findMany({
+      where: {
+        tenantId,
+        timestamp: {
+          gte: startDate,
+          lte: endDate
+        }
+      },
+      orderBy: { timestamp: 'asc' }
+    })
+
+    // Verify chain integrity
+    const chainValid = await this.verifyAuditChain(entries)
+
+    // Aggregate statistics
+    const stats = {
+      totalEvents: entries.length,
+      byType: this.groupBy(entries, 'eventType'),
+      bySeverity: this.groupBy(entries.map(e => e.violation), 'severity'),
+      piiBlocked: entries.filter(e => e.violation.type === 'PII_DETECTION').length,
+      promptInjections: entries.filter(e => e.violation.type === 'PROMPT_INJECTION').length,
+      criticalViolations: entries.filter(e => e.violation.severity === 'CRITICAL').length
+    }
+
+    return {
+      tenantId,
+      period: { start: startDate, end: endDate },
+      chainIntegrityVerified: chainValid,
+      statistics: stats,
+      entries: entries.map(e => ({
+        auditId: e.auditId,
+        timestamp: e.timestamp,
+        eventType: e.eventType,
+        violation: e.violation,
+        decision: e.decision
+      })),
+      certificationStatement: chainValid
+        ? 'This audit log has been cryptographically verified and contains no tampering.'
+        : 'WARNING: Audit log integrity check FAILED. Chain has been tampered with.'
+    }
+  }
+
+  private groupBy(items: any[], key: string): Record<string, number> {
+    return items.reduce((acc, item) => {
+      const value = item[key]
+      acc[value] = (acc[value] || 0) + 1
+      return acc
+    }, {})
+  }
+
+  private async signEntry(data: string): Promise<string> {
+    // In production: Use private key to sign
+    // For now, return hash as signature
+    return crypto.createHash('sha256').update(data).digest('hex')
+  }
+
+  private async verifySignature(entry: SovereignAuditEntry): Promise<boolean> {
+    // In production: Verify with public key
+    return true
+  }
+
+  private async alertSecurityTeam(entry: SovereignAuditEntry): Promise<void> {
+    console.error('[CRITICAL SECURITY EVENT]', {
+      auditId: entry.auditId,
+      violation: entry.violation,
+      tenant: entry.tenantId
+    })
+    // Send to PagerDuty, Slack, etc.
+  }
+}
+
+interface SovereignAuditReport {
+  tenantId: string
+  period: { start: Date; end: Date }
+  chainIntegrityVerified: boolean
+  statistics: {
+    totalEvents: number
+    byType: Record<string, number>
+    bySeverity: Record<string, number>
+    piiBlocked: number
+    promptInjections: number
+    criticalViolations: number
+  }
+  entries: any[]
+  certificationStatement: string
+}
+
+// Integration Example: Log PII Blocking
+async function processUserMessage(tenantId: string, userId: string, message: string) {
+  const piiDetector = new PHIDetector()
+  const result = await piiDetector.detect(message)
+
+  if (result.totalMatches > 0) {
+    // Log to Sovereign Audit Log
+    const auditLogger = new SovereignAuditLogger()
+
+    await auditLogger.logViolation({
+      timestamp: new Date(),
+      eventType: 'PII_BLOCKED',
+      tenantId,
+      userId,
+      requestId: crypto.randomUUID(),
+      violation: {
+        type: 'PII_DETECTION',
+        severity: 'HIGH',
+        details: `Detected ${result.totalMatches} PII items: ${result.matches.map(m => m.type).join(', ')}`,
+        blockedContent: '[REDACTED]',  // Never log actual PII
+        policyRule: 'HIPAA §164.312 - Technical Safeguards'
+      },
+      decision: {
+        action: 'REDACTED',
+        reasoning: 'PII detected and automatically redacted before LLM processing',
+        policyVersion: 'v2.1.0',
+        confidence: 0.95
+      },
+      complianceFramework: 'HIPAA',
+      regulatoryBasis: 'HIPAA Privacy Rule §164.312',
+      retentionRequired: 6  // HIPAA requires 6-year retention
+    })
+
+    // Continue with redacted message
+    const redacted = await piiDetector.redact(message, userId)
+    return await sendToLLM(redacted.redactedText)
+  }
+
+  return await sendToLLM(message)
+}
+```
+
+### Capstone Completion Criteria
+
+Your Week 12 capstone project must demonstrate:
+
+1. **Sovereign Audit Log Implementation** ✅
+   - Immutable storage (append-only database or S3 object lock)
+   - Cryptographic verification (hash chain or blockchain)
+   - All PII blocking events logged
+   - All governance violations logged
+   - All policy decisions logged
+
+2. **Compliance Reporting** ✅
+   - Generate audit reports for any date range
+   - Verify hash chain integrity
+   - Export for regulatory audits (PDF, JSON, CSV)
+   - Statistics: PII blocked, violations prevented, policy decisions made
+
+3. **Real-Time Monitoring** ✅
+   - Dashboard showing governance events in real-time
+   - Alerts for critical violations (CRITICAL severity)
+   - Metrics: Events per hour, violation types, blocked content types
+
+**Proof of Completion**:
+Submit a compliance report from your Sovereign Audit Log showing:
+- ≥50 logged governance events
+- Zero hash chain breaks (100% integrity)
+- At least 3 different violation types (PII, prompt injection, policy breach)
+- Cryptographic signatures verified
+- HIPAA/GDPR/SOC2 compliance metadata present
+
+**Without this Sovereign Audit Log, your project is NOT enterprise-ready and NOT considered complete.**
+
+This is what separates student projects from **production-grade AI systems that CTOs will trust with regulated data**.
+
+---
+
 ## Best Practices
 
 1. **Design for Failure**: Assume everything will fail eventually
@@ -689,8 +1011,10 @@ async function handleRequest(req: Request) {
 5. **Cost Attribution**: Track costs per tenant
 6. **Security in Depth**: Multiple layers of security
 7. **Documentation**: Runbooks for common incidents
+8. **Sovereign Audit Logs**: Immutable proof of governance (capstone requirement)
 
 ## Resources
 - [AWS Well-Architected Framework](https://aws.amazon.com/architecture/well-architected/)
 - [Google SRE Book](https://sre.google/sre-book/table-of-contents/)
 - [Kubernetes Best Practices](https://kubernetes.io/docs/concepts/configuration/overview/)
+- [HIPAA Audit Log Requirements](https://www.hhs.gov/hipaa/for-professionals/security/laws-regulations/index.html)

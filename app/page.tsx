@@ -71,7 +71,7 @@ export default function Home() {
 
       {/* Hero Section */}
       <section className="pt-16">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4">
           <div className="flex flex-col items-center justify-center min-h-[60vh] py-8">
             {/* Metrics Badge */}
             <div className="mb-8 inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-50 to-cyan-50 border border-purple-100 rounded-full">
@@ -96,12 +96,12 @@ export default function Home() {
         </div>
 
         {/* System Diagram - Full Width */}
-        <div className="w-full px-4 sm:px-6 lg:px-8">
+        <div className="w-full px-4">
           <SystemDiagram />
         </div>
 
         {/* Quick Stats */}
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4">
           <div className="mt-12 mb-12 grid grid-cols-3 gap-8 text-center">
             <div>
               <div className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent">
@@ -127,7 +127,7 @@ export default function Home() {
 
       {/* The Command Center - System Modules */}
       <section id="features" className="py-8 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
             <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4">
               The Command Center
@@ -203,8 +203,22 @@ export default function Home() {
                   The Safety Proxy
                 </h3>
                 <p className="text-gray-600 leading-relaxed mb-4 text-sm">
-                  Pre-built middleware for HIPAA/GDPR compliance and PII redaction. Production-ready egress monitoring, reversible tokenization, and audit logging.
+                  Engineer the "Hardened Shell"—a middle-tier service that intercepts all traffic to enforce Sovereign Governance. Features pre-built middleware for PII Redaction, reversible tokenization, and structured audit logging to meet HIPAA and SOC2 standards.
                 </p>
+
+                {/* Trust Badges - Compliance Sandwich */}
+                <div className="flex gap-2 mb-4">
+                  <span className="px-2 py-1 bg-green-50 text-green-700 text-xs font-semibold rounded border border-green-200">
+                    HIPAA
+                  </span>
+                  <span className="px-2 py-1 bg-blue-50 text-blue-700 text-xs font-semibold rounded border border-blue-200">
+                    GDPR
+                  </span>
+                  <span className="px-2 py-1 bg-purple-50 text-purple-700 text-xs font-semibold rounded border border-purple-200">
+                    SOC2
+                  </span>
+                </div>
+
                 <Link href="/security" className="text-sm font-medium text-purple-600 hover:text-purple-700 flex items-center">
                   View security
                   <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -249,7 +263,7 @@ export default function Home() {
 
       {/* The 12-Week Production Roadmap - Visual Timeline */}
       <section className="py-8 bg-gradient-to-br from-slate-50 to-slate-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
             <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4">
               The 12-Week Production Roadmap
@@ -454,7 +468,7 @@ export default function Home() {
 
       {/* Final CTA Section */}
       <section className="py-8 bg-gradient-to-br from-purple-50 to-cyan-50">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <div className="max-w-5xl mx-auto px-4 text-center">
           <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-6 tracking-tight">
             Ready to Become an AI Architect?
           </h2>
@@ -465,7 +479,7 @@ export default function Home() {
           <div className="flex justify-center">
             <button
               onClick={() => setShowLoginModal(true)}
-              className="px-12 py-4 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-lg font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
+              className="px-8 py-3 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-lg font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
             >
               Start Skill Diagnosis
             </button>
@@ -497,7 +511,7 @@ export default function Home() {
 
       {/* Trust & Social Proof: The Hiring Brief */}
       <section className="py-8 bg-gradient-to-br from-slate-50 to-slate-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
             <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4">
               Don't just get a certificate.{' '}
@@ -583,8 +597,8 @@ export default function Home() {
                 </div>
 
                 <div className="mt-6 pt-6 border-t border-gray-200">
-                  <Link href="/diagnosis">
-                    <button className="w-full px-6 py-4 bg-gradient-to-r from-purple-600 to-cyan-500 text-white font-semibold rounded-lg hover:shadow-lg transition-all duration-200">
+                  <Link href="/diagnosis" className="inline-block">
+                    <button className="px-6 py-3 bg-gradient-to-r from-purple-600 to-cyan-500 text-white font-semibold rounded-lg hover:shadow-lg transition-all duration-200">
                       Generate Your Report
                     </button>
                   </Link>
@@ -688,7 +702,7 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t border-gray-200 py-6 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4">
           <div className="text-center text-sm text-gray-600">
             <Link href="/terms" className="hover:text-gray-900 transition-colors">
               Terms of Service
