@@ -139,13 +139,13 @@ export default async function DashboardPage() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
 
         {week1Data?.week && (
-          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent flex flex-col h-full">
             <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-pink-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 1</CardTitle>
               <CardDescription>{week1Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col">
+            <CardContent className="flex flex-col flex-1">
               <p className="text-sm text-slate-600 mb-4">
                 {week1Data.week.description}
               </p>
@@ -182,13 +182,13 @@ export default async function DashboardPage() {
       )}
 
         {week2Data?.week && (
-          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent flex flex-col h-full">
             <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 2</CardTitle>
               <CardDescription>{week2Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col">
+            <CardContent className="flex flex-col flex-1">
               <p className="text-sm text-slate-600 mb-4">
                 {week2Data.week.description}
               </p>
@@ -204,13 +204,13 @@ export default async function DashboardPage() {
         )}
 
         {week3Data?.week && (
-          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent flex flex-col h-full">
             <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 3</CardTitle>
               <CardDescription>{week3Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col">
+            <CardContent className="flex flex-col flex-1">
               <p className="text-sm text-slate-600 mb-4">
                 {week3Data.week.description}
               </p>
@@ -226,13 +226,13 @@ export default async function DashboardPage() {
         )}
 
         {week4Data?.week && (
-          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent flex flex-col h-full">
             <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 4</CardTitle>
               <CardDescription>{week4Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col">
+            <CardContent className="flex flex-col flex-1">
               <p className="text-sm text-slate-600 mb-4">
                 {week4Data.week.description}
               </p>
@@ -248,13 +248,13 @@ export default async function DashboardPage() {
         )}
 
         {week5Data?.week && (
-          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent flex flex-col h-full">
             <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 5</CardTitle>
               <CardDescription>{week5Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col">
+            <CardContent className="flex flex-col flex-1">
               <p className="text-sm text-slate-600 mb-4">
                 {week5Data.week.description}
               </p>
@@ -291,13 +291,13 @@ export default async function DashboardPage() {
         )}
 
         {week6Data?.week && (
-          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent flex flex-col h-full">
             <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 6</CardTitle>
               <CardDescription>{week6Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col">
+            <CardContent className="flex flex-col flex-1">
               <p className="text-sm text-slate-600 mb-4">
                 {week6Data.week.description}
               </p>
@@ -313,13 +313,13 @@ export default async function DashboardPage() {
         )}
 
         {week7Data?.week && (
-          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent flex flex-col h-full">
             <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 7</CardTitle>
               <CardDescription>{week7Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col">
+            <CardContent className="flex flex-col flex-1">
               <p className="text-sm text-slate-600 mb-4">
                 {week7Data.week.description}
               </p>
@@ -335,13 +335,13 @@ export default async function DashboardPage() {
         )}
 
         {week8Data?.week && (
-          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent flex flex-col h-full">
             <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 8</CardTitle>
               <CardDescription>{week8Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col">
+            <CardContent className="flex flex-col flex-1">
               <p className="text-sm text-slate-600 mb-4">
                 {week8Data.week.description}
               </p>
@@ -357,13 +357,13 @@ export default async function DashboardPage() {
         )}
 
         {week9Data?.week && (
-          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent flex flex-col h-full">
             <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 9</CardTitle>
               <CardDescription>{week9Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col">
+            <CardContent className="flex flex-col flex-1">
               <p className="text-sm text-slate-600 mb-4">
                 {week9Data.week.description}
               </p>
@@ -379,13 +379,13 @@ export default async function DashboardPage() {
         )}
 
         {week10Data?.week && (
-          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent flex flex-col h-full">
             <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 10</CardTitle>
               <CardDescription>{week10Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col">
+            <CardContent className="flex flex-col flex-1">
               <p className="text-sm text-slate-600 mb-4">
                 {week10Data.week.description}
               </p>
@@ -401,13 +401,13 @@ export default async function DashboardPage() {
         )}
 
         {week11Data?.week && (
-          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent flex flex-col h-full">
             <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 11</CardTitle>
               <CardDescription>{week11Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col">
+            <CardContent className="flex flex-col flex-1">
               <p className="text-sm text-slate-600 mb-4">
                 {week11Data.week.description}
               </p>
@@ -423,13 +423,13 @@ export default async function DashboardPage() {
         )}
 
         {week12Data?.week && (
-          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent flex flex-col h-full">
             <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 12</CardTitle>
               <CardDescription>{week12Data.week.title}</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col">
+            <CardContent className="flex flex-col flex-1">
               <p className="text-sm text-slate-600 mb-4">
                 {week12Data.week.description}
               </p>
@@ -445,21 +445,23 @@ export default async function DashboardPage() {
         )}
 
 
-        <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+        <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent flex flex-col h-full">
           <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
           <CardHeader>
             <CardTitle>AI Mentor</CardTitle>
             <CardDescription>24/7 Support</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col flex-1">
             <p className="text-sm text-slate-600 mb-4">
               Get help from your AI learning assistant anytime
             </p>
-            <Link href="/mentor/new">
-              <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-                Start Chat
-              </Button>
-            </Link>
+            <div className="flex justify-end mt-auto">
+              <Link href="/mentor/new">
+                <Button size="sm" className="bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white">
+                  Start
+                </Button>
+              </Link>
+            </div>
           </CardContent>
         </Card>
       </div>
