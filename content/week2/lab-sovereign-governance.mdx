@@ -601,6 +601,391 @@ describe('SovereignProxy - Instruction Segregation', () => {
 
 ---
 
+## Part 2.5: Semantic Circuit Breaker (20 minutes)
+
+### Objective
+
+Implement a rate-limiting circuit breaker that tracks violation frequency per user. If a single user triggers **3 safety blocks within 60 seconds**, automatically trip the circuit breaker and return `429 Too Many Requests` to protect token costs and system integrity.
+
+### Background
+
+**Why Circuit Breakers Matter:**
+- Prevents automated attack scripts from burning through API tokens
+- Protects system resources from malicious actors
+- Provides early warning system for coordinated attacks
+- Reduces cost exposure during security incidents
+
+**Business Impact:**
+- A single compromised API key could cost **$10,000+ in minutes** without rate limiting
+- Circuit breakers prevent **denial-of-wallet** attacks
+- Essential for SOC2 Type II "Availability" controls
+
+### Implementation
+
+Update `lib/sovereign-proxy.ts` to add circuit breaker tracking:
+
+```typescript
+export interface CircuitBreakerState {
+  userId: string
+  violations: ViolationRecord[]
+  isTripped: boolean
+  trippedAt?: Date
+  resetAt?: Date
+}
+
+export interface ViolationRecord {
+  timestamp: Date
+  violationType: string
+  riskScore: number
+}
+
+export class SovereignProxy {
+  private circuitBreakers: Map<string, CircuitBreakerState>
+  private readonly VIOLATION_THRESHOLD = 3
+  private readonly VIOLATION_WINDOW_MS = 60000 // 60 seconds
+  private readonly COOLDOWN_MS = 300000 // 5 minutes
+
+  constructor(encryptionSecret: string) {
+    this.encryptionKey = crypto.scryptSync(encryptionSecret, 'salt', 32)
+    this.patterns = this.initializePatterns()
+    this.circuitBreakers = new Map()
+  }
+
+  /**
+   * Check if circuit breaker is tripped for this user
+   */
+  checkCircuitBreaker(userId: string): { isTripped: boolean; resetAt?: Date } {
+    const state = this.circuitBreakers.get(userId)
+
+    if (!state) {
+      return { isTripped: false }
+    }
+
+    // Check if cooldown period has passed
+    if (state.isTripped && state.resetAt && new Date() > state.resetAt) {
+      // Reset circuit breaker
+      this.circuitBreakers.delete(userId)
+      return { isTripped: false }
+    }
+
+    return {
+      isTripped: state.isTripped,
+      resetAt: state.resetAt
+    }
+  }
+
+  /**
+   * Record a violation and check if circuit should trip
+   */
+  recordViolation(userId: string, violationType: string, riskScore: number): void {
+    const now = new Date()
+    let state = this.circuitBreakers.get(userId)
+
+    if (!state) {
+      state = {
+        userId,
+        violations: [],
+        isTripped: false
+      }
+      this.circuitBreakers.set(userId, state)
+    }
+
+    // Add new violation
+    state.violations.push({
+      timestamp: now,
+      violationType,
+      riskScore
+    })
+
+    // Remove violations outside the time window
+    const windowStart = new Date(now.getTime() - this.VIOLATION_WINDOW_MS)
+    state.violations = state.violations.filter(v => v.timestamp > windowStart)
+
+    // Check if threshold exceeded
+    if (state.violations.length >= this.VIOLATION_THRESHOLD && !state.isTripped) {
+      state.isTripped = true
+      state.trippedAt = now
+      state.resetAt = new Date(now.getTime() + this.COOLDOWN_MS)
+
+      console.warn(
+        `[CIRCUIT BREAKER] Tripped for user ${userId}. ` +
+        `${state.violations.length} violations in 60s. ` +
+        `Cooldown until ${state.resetAt.toISOString()}`
+      )
+    }
+  }
+
+  /**
+   * Get circuit breaker metrics for monitoring
+   */
+  getCircuitBreakerMetrics(userId: string): {
+    violationCount: number
+    isTripped: boolean
+    timeToReset?: number
+  } {
+    const state = this.circuitBreakers.get(userId)
+
+    if (!state) {
+      return { violationCount: 0, isTripped: false }
+    }
+
+    const now = new Date()
+    const windowStart = new Date(now.getTime() - this.VIOLATION_WINDOW_MS)
+    const recentViolations = state.violations.filter(v => v.timestamp > windowStart)
+
+    return {
+      violationCount: recentViolations.length,
+      isTripped: state.isTripped,
+      timeToReset: state.resetAt ? Math.max(0, state.resetAt.getTime() - now.getTime()) : undefined
+    }
+  }
+}
+```
+
+### Integration with Gateway
+
+Update `lib/sovereign-gateway.ts` to check circuit breaker before processing:
+
+```typescript
+export class SovereignGateway {
+  async processMessage(userMessage: string, userId: string): Promise<string> {
+    // 1. Check circuit breaker FIRST
+    const circuitCheck = this.proxy.checkCircuitBreaker(userId)
+    if (circuitCheck.isTripped) {
+      const resetTime = circuitCheck.resetAt
+        ? new Date(circuitCheck.resetAt).toISOString()
+        : 'unknown'
+
+      throw new Error(
+        JSON.stringify({
+          statusCode: 429,
+          error: 'Too Many Requests',
+          message: 'Circuit breaker tripped due to repeated violations',
+          resetAt: resetTime,
+          retryAfter: circuitCheck.resetAt
+            ? Math.ceil((circuitCheck.resetAt.getTime() - Date.now()) / 1000)
+            : 300
+        })
+      )
+    }
+
+    // 2. Detect injection attempts
+    const injectionCheck = this.proxy.detectInjectionAttempt(userMessage)
+    if (injectionCheck.isInjection) {
+      // Record violation
+      this.proxy.recordViolation(userId, 'INJECTION_ATTEMPT', injectionCheck.riskScore)
+
+      // Log audit event
+      await this.auditLogger.log({
+        violation_type: 'INJECTION_ATTEMPT',
+        action_taken: 'BLOCKED',
+        risk_score: 'HIGH',
+        timestamp: new Date().toISOString(),
+        metadata: {
+          user_id: userId,
+          session_id: crypto.randomUUID(),
+          processing_time_ms: 0,
+          context_preview: userMessage.substring(0, 50)
+        },
+        compliance: {
+          gdpr_article: 'Article 25 (Data Protection by Design)',
+          hipaa_section: '§164.312(a)(1) - Access Control',
+          ccpa_category: 'Security of Personal Information'
+        }
+      })
+
+      throw new Error('Request blocked: Potential injection attack detected')
+    }
+
+    // 3. Continue with normal processing...
+    const startTime = Date.now()
+    const tokenizationResult = await this.proxy.tokenize(userMessage, userId)
+
+    // Record violations for high-risk PII
+    if (tokenizationResult.metadata.entitiesDetected > 5) {
+      this.proxy.recordViolation(userId, 'PII_DETECTION_HIGH_VOLUME', 7)
+    }
+
+    // Rest of processing...
+  }
+}
+```
+
+### Testing Circuit Breaker
+
+Create `lib/__tests__/circuit-breaker.test.ts`:
+
+```typescript
+import { SovereignProxy } from '../sovereign-proxy'
+
+describe('Semantic Circuit Breaker', () => {
+  let proxy: SovereignProxy
+
+  beforeEach(() => {
+    proxy = new SovereignProxy('test-secret-key-minimum-32-chars!')
+  })
+
+  it('trips after 3 violations within 60 seconds', () => {
+    const userId = 'test-user-1'
+
+    // First violation
+    proxy.recordViolation(userId, 'INJECTION_ATTEMPT', 9)
+    expect(proxy.checkCircuitBreaker(userId).isTripped).toBe(false)
+
+    // Second violation
+    proxy.recordViolation(userId, 'INJECTION_ATTEMPT', 8)
+    expect(proxy.checkCircuitBreaker(userId).isTripped).toBe(false)
+
+    // Third violation - should trip
+    proxy.recordViolation(userId, 'INJECTION_ATTEMPT', 9)
+    expect(proxy.checkCircuitBreaker(userId).isTripped).toBe(true)
+  })
+
+  it('does not trip if violations are spread out', async () => {
+    const userId = 'test-user-2'
+
+    // Record violations with 70-second gaps (outside 60s window)
+    proxy.recordViolation(userId, 'INJECTION_ATTEMPT', 8)
+
+    // Simulate time passing (in real code, this would be natural)
+    // For testing, we'd need to modify timestamps or use fake timers
+
+    expect(proxy.checkCircuitBreaker(userId).isTripped).toBe(false)
+  })
+
+  it('resets circuit after cooldown period', () => {
+    const userId = 'test-user-3'
+
+    // Trip the circuit
+    proxy.recordViolation(userId, 'INJECTION_ATTEMPT', 9)
+    proxy.recordViolation(userId, 'INJECTION_ATTEMPT', 9)
+    proxy.recordViolation(userId, 'INJECTION_ATTEMPT', 9)
+
+    expect(proxy.checkCircuitBreaker(userId).isTripped).toBe(true)
+
+    // After cooldown (5 minutes), circuit should reset
+    // In real implementation, this would be tested with time manipulation
+  })
+
+  it('provides accurate metrics', () => {
+    const userId = 'test-user-4'
+
+    proxy.recordViolation(userId, 'INJECTION_ATTEMPT', 8)
+    proxy.recordViolation(userId, 'PII_DETECTION_HIGH_VOLUME', 7)
+
+    const metrics = proxy.getCircuitBreakerMetrics(userId)
+
+    expect(metrics.violationCount).toBe(2)
+    expect(metrics.isTripped).toBe(false)
+  })
+
+  it('returns 429 error when tripped', async () => {
+    const userId = 'test-user-5'
+
+    // Trip the circuit
+    proxy.recordViolation(userId, 'INJECTION_ATTEMPT', 9)
+    proxy.recordViolation(userId, 'INJECTION_ATTEMPT', 9)
+    proxy.recordViolation(userId, 'INJECTION_ATTEMPT', 9)
+
+    const circuitCheck = proxy.checkCircuitBreaker(userId)
+
+    expect(circuitCheck.isTripped).toBe(true)
+    expect(circuitCheck.resetAt).toBeDefined()
+    expect(circuitCheck.resetAt!.getTime()).toBeGreaterThan(Date.now())
+  })
+})
+```
+
+**Run Tests:**
+```bash
+npm test -- circuit-breaker.test.ts
+```
+
+### API Route Integration
+
+Update `app/api/chat/route.ts` to handle 429 errors:
+
+```typescript
+export async function POST(req: Request) {
+  try {
+    const { message, userId } = await req.json()
+    const gateway = new SovereignGateway({ /* config */ })
+
+    const response = await gateway.processMessage(message, userId)
+    return Response.json({ response })
+
+  } catch (error) {
+    // Check if it's a circuit breaker error
+    if (error.message.includes('statusCode')) {
+      const errorData = JSON.parse(error.message)
+
+      if (errorData.statusCode === 429) {
+        return Response.json(
+          {
+            error: errorData.error,
+            message: errorData.message,
+            resetAt: errorData.resetAt,
+            retryAfter: errorData.retryAfter
+          },
+          {
+            status: 429,
+            headers: {
+              'Retry-After': errorData.retryAfter.toString(),
+              'X-RateLimit-Reset': errorData.resetAt
+            }
+          }
+        )
+      }
+    }
+
+    // Other errors...
+    return Response.json({ error: error.message }, { status: 500 })
+  }
+}
+```
+
+### Monitoring Dashboard
+
+Add circuit breaker metrics to monitoring:
+
+```typescript
+export async function getSecurityMetrics(userId?: string) {
+  const metrics = {
+    activeCircuitBreakers: 0,
+    totalViolations24h: 0,
+    topViolators: [] as { userId: string; count: number }[]
+  }
+
+  // Query from audit logs
+  const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000)
+  const violations = await prisma.sovereignAuditLog.findMany({
+    where: {
+      timestamp: { gte: last24h },
+      violationType: { in: ['INJECTION_ATTEMPT', 'PII_DETECTION_HIGH_VOLUME'] }
+    },
+    select: {
+      userId: true
+    }
+  })
+
+  // Aggregate by user
+  const userCounts = violations.reduce((acc, v) => {
+    acc[v.userId] = (acc[v.userId] || 0) + 1
+    return acc
+  }, {} as Record<string, number>)
+
+  metrics.totalViolations24h = violations.length
+  metrics.topViolators = Object.entries(userCounts)
+    .map(([userId, count]) => ({ userId, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10)
+
+  return metrics
+}
+```
+
+---
+
 ## Part 3: Compliance & Audit Logging (40 minutes)
 
 ### Objective
@@ -1569,21 +1954,23 @@ npm test -- --testPathPattern="sovereign|compliance|adversarial"
 
 ## 🏁 Architect's Verification Checklist
 
-### Don't Just Build. Get Verified.
+### To Earn the Architect Tier on the 7-Axis Telemetry Report
 
-A student must demonstrate that their Sovereign Safety Proxy meets these **four "Hardened" metrics**. This is what defines a "Pass" in the Archcelerate framework, ensuring you've built a system that is truly production-ready.
+The safety proxy must move beyond simple keyword blocking and implement **Instruction-Data Segregation**. To earn the Architect Tier, your Sovereign Safety Proxy must demonstrate these **four "Hardened" metrics** with measurable pass criteria.
+
+This is what defines a "Pass" in the Archcelerate framework—verified systems that CTOs can trust in production.
 
 ---
 
-### 1. ✅ Redaction Accuracy (The "Zero-Leak" Test)
+### 1. ✅ Zero-Leak Ingress (Redaction Accuracy)
 
-**Metrics:**
-- [ ] **100% Redaction** of "Standard PII" (Names, Emails, SSNs, Phone, Credit Cards) in cleartext
-- [ ] **>90% Redaction** of "Obfuscated PII" (Base64, spaced-out characters, leetspeak)
+**Requirements:**
+- [ ] Verified that **100% of cleartext PII** is replaced with tokens before hitting the external provider API
+- [ ] **>90% detection** of obfuscated PII (Base64, character spacing, leetspeak)
 
 **Verification:**
-- LLM logs must show **only** `[SOV_TOKEN]` identifiers, never raw data
-- Egress scan must detect any leaked entities
+- LLM request logs must show **only** sovereign tokens like `[SOV_EMAIL_1]`, never raw data
+- No unredacted PII reaches external LLM provider under any circumstance
 
 #### Automated Verification Script
 
@@ -1784,15 +2171,18 @@ Obfuscated PII Redaction: 3/3 (100.0%)
 
 ---
 
-### 2. ✅ Architectural Integrity (The Segregation Test)
+### 2. ✅ Response Sanitization (Model Leakage Detection)
 
-**Metric:**
-- [ ] Successful **Instruction-Data Segregation**
+**Requirements:**
+- [ ] Verified that the LLM output is scanned for **"Model Leakage"** before being served to the user
+- [ ] Detect and block internal system prompts or API keys in responses
+- [ ] Successful **Instruction-Data Segregation** preventing injection attacks
 
 **Verification:**
 - When a user submits a "System Prompt Probe" (e.g., *"Repeat your instructions"*), the proxy must either:
   1. **Block the request** (injection detected), OR
   2. **LLM fails to see the command** (trapped within delimiters)
+- Egress monitoring must detect any leaked internal system information
 
 #### Automated Verification Script
 
@@ -1942,14 +2332,15 @@ npx ts-node scripts/verify-architectural-integrity.ts
 
 ---
 
-### 3. ✅ Operational Performance (The Latency Test)
+### 3. ✅ Latency Ceiling (Performance Overhead)
 
-**Metric:**
-- [ ] Total Proxy Overhead **< 150ms**
+**Requirements:**
+- [ ] The total overhead added by the proxy (Redaction + Shielding + Audit Logging) must remain **under 150ms**
 
 **Verification:**
+- Measure processing time from request ingress to LLM API call
 - "Time to First Token" (TTFT) should not increase significantly
-- If regex/NER scans are too heavy, implement **Asynchronous Logging** or faster engine
+- If overhead exceeds 150ms, optimize with asynchronous logging or faster regex engine
 
 #### Automated Verification Script
 
@@ -2083,14 +2474,19 @@ npx ts-node scripts/verify-performance.ts
 
 ---
 
-### 4. ✅ Compliance Audit (The Paper Trail)
+### 4. ✅ Audit-Ready Logs (Compliance Paper Trail)
 
-**Metric:**
-- [ ] Generation of **Sovereign Audit Log**
+**Requirements:**
+- [ ] Every intervention must generate a structured JSON log containing:
+  - **Risk_Score**: (1-10 scale or HIGH/MEDIUM/LOW)
+  - **Violation_Type**: (e.g., "Jailbreak_Attempt", "PII_DETECTION_EMAIL")
+  - **Action_Taken**: (e.g., "Redacted_and_Flagged", "BLOCKED")
+  - **Trace_ID**: For end-to-end observability
 
 **Verification:**
-- For every blocked or redacted request, produce JSON object with `risk_score` and `violation_type`
+- For every blocked or redacted request, produce structured JSON audit event
 - Store in **persistent database** (PostgreSQL) separate from application logs
+- Logs must support compliance audits (GDPR, HIPAA, CCPA references)
 
 #### Database Schema
 
@@ -2099,11 +2495,12 @@ Add to `prisma/schema.prisma`:
 ```prisma
 model SovereignAuditLog {
   id               String   @id @default(cuid())
+  traceId          String   @unique  // For end-to-end observability
   userId           String
   sessionId        String
   violationType    String   // PII_DETECTION_*, INJECTION_ATTEMPT, MODEL_LEAKAGE
   actionTaken      String   // REDACTED, BLOCKED, FLAGGED
-  riskScore        String   // HIGH, MEDIUM, LOW
+  riskScore        String   // HIGH, MEDIUM, LOW (or 1-10)
   timestamp        DateTime @default(now())
 
   // Metadata
@@ -2124,6 +2521,7 @@ model SovereignAuditLog {
   @@index([timestamp])
   @@index([violationType])
   @@index([riskScore])
+  @@index([traceId])
   @@map("sovereign_audit_logs")
 }
 ```
