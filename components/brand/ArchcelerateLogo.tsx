@@ -39,7 +39,7 @@ export function ArchcelerateLogo({ variant = 'full', className = '' }: Archceler
           letterSpacing="-0.02em"
         >
           <tspan fill="#3b82f6">Arch</tspan>
-          <tspan fill="#ffffff">celerate</tspan>
+          <tspan fill="#1e293b">celerate</tspan>
         </text>
 
         {/* Speed lines (diagonal chevrons) */}
