@@ -15,8 +15,10 @@ export function LoginModal({ open, onOpenChange }: LoginModalProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader className="text-center space-y-3">
-          <DialogTitle className="text-2xl font-bold text-gray-900">
-            Log In
+          <DialogTitle className="text-2xl font-bold">
+            <span className="bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent">
+              Log In
+            </span>
           </DialogTitle>
         </DialogHeader>
 
@@ -24,11 +26,11 @@ export function LoginModal({ open, onOpenChange }: LoginModalProps) {
           {/* Agreement text */}
           <p className="text-xs text-gray-500 text-center mb-4">
             By continuing, you agree to our{' '}
-            <Link href="/terms" className="text-primary hover:underline">
+            <Link href="/terms" className="text-purple-600 hover:text-purple-700 hover:underline">
               User Agreement
             </Link>{' '}
             and acknowledge that you understand the{' '}
-            <Link href="/privacy" className="text-primary hover:underline">
+            <Link href="/privacy" className="text-purple-600 hover:text-purple-700 hover:underline">
               Privacy Policy
             </Link>
             .
