@@ -5,6 +5,7 @@ import rehypeHighlight from 'rehype-highlight'
 import rehypeSlug from 'rehype-slug'
 import remarkGfm from 'remark-gfm'
 import { CodePlayground } from '@/components/curriculum/CodePlayground'
+import { mdxComponents } from '@/src/lib/mdx/components'
 
 export async function loadMDXContent(contentPath: string) {
   const filePath = path.join(process.cwd(), contentPath)
@@ -22,7 +23,8 @@ export async function loadMDXContent(contentPath: string) {
         }
       },
       components: {
-        CodePlayground
+        CodePlayground,
+        ...mdxComponents
       }
     })
 

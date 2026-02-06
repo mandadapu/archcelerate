@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
 import { AskMentorButton } from './AskMentorButton'
+import { mdxComponents } from '@/src/lib/mdx/components'
 
 interface ConceptViewerProps {
   mdxSource: MDXRemoteSerializeResult
@@ -53,7 +54,7 @@ export default function ConceptViewer({
     <div className="space-y-6">
       {/* MDX Content */}
       <div className="prose prose-slate max-w-none">
-        <MDXRemote {...mdxSource} />
+        <MDXRemote {...mdxSource} components={mdxComponents} />
       </div>
 
       {/* Ask Mentor Button */}

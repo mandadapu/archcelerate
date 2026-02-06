@@ -177,7 +177,7 @@ class LoadBalancedLLM {
 
     // Clean old requests (older than 1 minute)
     const now = Date.now()
-    usage.requests = usage.requests.filter(time => now - time < 60000)
+    usage.requests = usage.requests.filter(time => now - time &lt; 60000)
   }
 
   private recordSuccess(providerName: string, latency: number) {
@@ -389,9 +389,9 @@ class AutoScaler {
 
     // Check for scale down conditions
     const shouldScaleDown =
-      metrics.avgCPU < (this.config.targetCPU * 0.5) &&  // CPU < 35%
+      metrics.avgCPU < (this.config.targetCPU * 0.5) &&  // CPU &lt; 35%
       metrics.p95Latency < (this.config.targetLatency * 0.7) &&  // Latency good
-      metrics.queueDepth < 10 &&  // Queue empty
+      metrics.queueDepth &lt; 10 &&  // Queue empty
       currentPods > this.config.minPods
 
     if (shouldScaleDown) {
@@ -497,7 +497,7 @@ class CacheHierarchy {
   private semanticCache: VectorDB     // L3: Semantic (slower, largest)
 
   constructor() {
-    // L1: In-memory cache - 1000 items, < 1ms access
+    // L1: In-memory cache - 1000 items, &lt; 1ms access
     this.memoryCache = new LRUCache({ max: 1000 })
 
     // L2: Redis cache - 100K items, ~5ms access
@@ -513,7 +513,7 @@ class CacheHierarchy {
   async get(query: string): Promise<CachedResponse | null> {
     const key = this.hashQuery(query)
 
-    // L1: Check memory cache (< 1ms)
+    // L1: Check memory cache (&lt; 1ms)
     const memoryResult = this.memoryCache.get(key)
     if (memoryResult) {
       console.log('L1 cache hit (memory)')

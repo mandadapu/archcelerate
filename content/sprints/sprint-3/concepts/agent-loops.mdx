@@ -284,7 +284,7 @@ class ProductionAgent {
 
     // Check error threshold
     const recentErrors = this.state.errors.filter(
-      e => Date.now() - e.timestamp < 60000
+      e => Date.now() - e.timestamp &lt; 60000
     ).length
     if (recentErrors &gt; 10) {
       this.metrics.record('error_threshold_exceeded', 1)
@@ -411,7 +411,7 @@ class RetryHandler {
     }
 
     // Server errors (5xx) - retry
-    if (error.status &gt;= 500 && error.status < 600) {
+    if (error.status &gt;= 500 && error.status &lt; 600) {
       return true
     }
 
@@ -421,7 +421,7 @@ class RetryHandler {
     }
 
     // Client errors (4xx) - don't retry
-    if (error.status &gt;= 400 && error.status < 500) {
+    if (error.status &gt;= 400 && error.status &lt; 500) {
       return false
     }
 
@@ -507,7 +507,7 @@ class AdaptiveRetryHandler extends RetryHandler {
     }
 
     // Low success rate - be more aggressive with retries
-    if (pattern.successRate < 0.5) {
+    if (pattern.successRate &lt; 0.5) {
       return {
         maxRetries: 5,
         baseDelay: 2000,     // Wait longer initially

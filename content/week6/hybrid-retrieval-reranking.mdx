@@ -15,7 +15,7 @@ description: 'Combine semantic (vector) and keyword (BM25) search with cross-enc
 - **Precision**: Must find exact lab values, medication dosages, and diagnosis codes (ICD-10)
 - **Recall**: Must also understand semantic queries ("blood sugar control" → HbA1c results)
 - **Latency**: &lt;300ms P95 (doctors won't wait &gt;500ms)
-- **Cost**: <$1,000/month for 100K queries
+- **Cost**: &lt;$1,000/month for 100K queries
 - **Compliance**: HIPAA audit trail showing which documents were retrieved
 
 **The Architectural Problem**: Vector-Only RAG Fails on Medical Data
@@ -173,7 +173,7 @@ In the hands-on lab, you'll implement:
 - **Precision Target**: 94% accuracy on dosage retrieval (65% baseline with vector-only)
 - **Recall Target**: &gt;85% on drug interaction queries
 - **Latency**: &lt;250ms P95 (real-time physician queries)
-- **Cost**: <$0.005 per query ($1,500/month for 300K queries)
+- **Cost**: &lt;$0.005 per query ($1,500/month for 300K queries)
 - **Compliance**: FDA 21 CFR Part 11 audit trail for all retrievals
 - **Safety**: Zero tolerance for wrong dosage information
 
@@ -1221,7 +1221,7 @@ class RetrievalABTest {
     return {
       winner: treatment.recall_at_10 > control.recall_at_10 ? 'treatment' : 'control',
       improvement: recallImprovement,
-      statistical_significance: this.tTest(control, treatment).pValue < 0.05
+      statistical_significance: this.tTest(control, treatment).pValue &lt; 0.05
     }
   }
 }
@@ -1447,7 +1447,7 @@ async function continuousEvaluation() {
     // Alert if metrics drop
     const avgRecall = metrics.recall_at_10 / sample.length
 
-    if (avgRecall < 0.75) {
+    if (avgRecall &lt; 0.75) {
       await alertSlack({
         channel: '#ai-alerts',
         text: `⚠️ Recall dropped to ${(avgRecall * 100).toFixed(1)}% (target: &gt;75%)`
@@ -1466,7 +1466,7 @@ async function continuousEvaluation() {
 | Precision@5 | 0.68 | **0.91** | &gt;0.80 | ✅ |
 | NDCG@10 | 0.70 | **0.89** | &gt;0.80 | ✅ |
 | Latency P95 | 120ms | 230ms | &lt;300ms | ✅ |
-| Cost/1K Queries | $0.10 | $2.20 | <$5.00 | ✅ |
+| Cost/1K Queries | $0.10 | $2.20 | &lt;$5.00 | ✅ |
 
 ---
 
@@ -1493,7 +1493,7 @@ async function continuousEvaluation() {
 - MRR: 0.65 → **0.82** (+26%)
 - Precision@5: 0.68 → **0.91** (+34%)
 - Latency: 230ms (&lt;300ms SLA)
-- Cost: $2.20/1K queries (<$5.00 budget)
+- Cost: $2.20/1K queries (&lt;$5.00 budget)
 
 **When to Use:**
 - **Hybrid RRF:** Structured queries (dates, IDs, codes), regulated industries
