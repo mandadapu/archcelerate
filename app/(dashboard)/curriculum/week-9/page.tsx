@@ -75,7 +75,6 @@ export default async function Week9Page() {
 
         {/* Header */}
         <div>
-          <div className="text-sm text-muted-foreground mb-2">Week 9</div>
           <h1 className="text-4xl font-bold">{week.title}</h1>
           <p className="text-lg text-muted-foreground mt-2">
             {week.description}
