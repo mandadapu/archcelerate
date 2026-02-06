@@ -784,7 +784,7 @@ async function redactionPipeline(text: string): Promise<{
 
 ## Deterministic De-Identification: Salting & Hashing for Context Preservation
 
-**The Performance Problem**: Standard LLM-based redaction calls take **>500ms** per request. For high-volume applications (customer support, clinical documentation), this latency is unacceptable. But simple placeholder tokens like `[REDACTED]` destroy context—the LLM can't reason about relationships between entities.
+**The Performance Problem**: Standard LLM-based redaction calls take **&gt;500ms** per request. For high-volume applications (customer support, clinical documentation), this latency is unacceptable. But simple placeholder tokens like `[REDACTED]` destroy context—the LLM can't reason about relationships between entities.
 
 **The Solution**: **Deterministic Salted Hashing** replaces sensitive identifiers with **consistent tokens** within a session. "Patient John Doe" becomes `[PATIENT_HASH_A]` in message 1 and remains `[PATIENT_HASH_A]` in messages 2-10. The LLM can track relationships **without ever seeing the real name**.
 
@@ -1157,7 +1157,7 @@ const benchmarks = {
 // - Zero cost (local processing)
 ```
 
-**The Architect's Rule**: For multi-turn conversations, **deterministic hashing is mandatory**. Without it, your LLM suffers from "amnesia"—unable to connect entities across messages. With it, you achieve **<10ms redaction latency** while maintaining conversational coherence.
+**The Architect's Rule**: For multi-turn conversations, **deterministic hashing is mandatory**. Without it, your LLM suffers from "amnesia"—unable to connect entities across messages. With it, you achieve **&lt;10ms redaction latency** while maintaining conversational coherence.
 
 **Key Takeaway**: Salting & hashing isn't just for passwords—it's the **only** way to redact PHI in conversations while preserving context. Deploy session-based deterministic redactors, rotate salts quarterly, and **never** send token maps to external APIs.
 
