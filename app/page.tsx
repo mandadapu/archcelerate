@@ -82,8 +82,8 @@ export default function Home() {
 
             {/* Headline - The "Architect" Hook */}
             <div className="text-center mb-8 max-w-3xl">
-              <h1 className="font-display text-4xl md:text-6xl font-bold text-gray-900 mb-6 tracking-tight leading-[1.2]">
-                <span className="whitespace-nowrap">Build AI Products. Harden Systems.</span>{' '}
+              <h1 className="font-display text-4xl md:text-6xl font-bold text-gray-900 mb-6 tracking-tight leading-[1.3]">
+                <span className="whitespace-nowrap block mb-2">Build AI Products. Harden Systems.</span>
                 <span className="inline-block bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent pb-2">
                   Become an AI Architect.
                 </span>
