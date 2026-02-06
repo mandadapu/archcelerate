@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import { validateContentSync } from './lib/validate-content-sync'
 
 const prisma = new PrismaClient()
 
@@ -1022,6 +1023,11 @@ async function seedSkillDiagnosis() {
 async function main() {
   try {
     await seedSkillDiagnosis()
+
+    // Validate that all content files are in sync with database
+    console.log('\n' + '='.repeat(50))
+    await validateContentSync({ failOnMismatch: false })
+    console.log('='.repeat(50) + '\n')
   } catch (error) {
     console.error('❌ Error seeding skill diagnosis:', error)
     throw error

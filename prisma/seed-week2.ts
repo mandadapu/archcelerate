@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import { validateContentSync } from './lib/validate-content-sync'
 
 const prisma = new PrismaClient()
 
@@ -63,6 +64,16 @@ async function main() {
       data: {
         weekId: week2.id,
         orderIndex: 1,
+        slug: 'governance-frameworks',
+        title: 'AI Governance & Shielding Frameworks',
+        contentPath: 'content/week2/governance-frameworks.mdx',
+        estimatedMinutes: 45,
+      }
+    }),
+    prisma.concept.create({
+      data: {
+        weekId: week2.id,
+        orderIndex: 2,
         slug: 'governance-foundations',
         title: 'AI Governance Foundations',
         contentPath: 'content/week2/governance-foundations.mdx',
@@ -72,9 +83,9 @@ async function main() {
     prisma.concept.create({
       data: {
         weekId: week2.id,
-        orderIndex: 2,
+        orderIndex: 3,
         slug: 'responsible-ai',
-        title: 'Responsible AI: Fairness, Transparency & Explainability',
+        title: 'Responsible AI: Bias Detection & Self-Correction Patterns',
         contentPath: 'content/week2/responsible-ai.mdx',
         estimatedMinutes: 60,
       }
@@ -82,9 +93,9 @@ async function main() {
     prisma.concept.create({
       data: {
         weekId: week2.id,
-        orderIndex: 3,
+        orderIndex: 4,
         slug: 'compliance-patterns',
-        title: 'Domain Compliance Patterns',
+        title: 'Domain Compliance & Redaction',
         contentPath: 'content/week2/compliance-patterns.mdx',
         estimatedMinutes: 50,
       }
@@ -92,9 +103,9 @@ async function main() {
     prisma.concept.create({
       data: {
         weekId: week2.id,
-        orderIndex: 4,
+        orderIndex: 5,
         slug: 'ai-testing-nfrs',
-        title: 'AI Testing & Non-Functional Requirements',
+        title: 'Testing & Non-Functional Requirements',
         contentPath: 'content/week2/ai-testing-nfrs.mdx',
         estimatedMinutes: 55,
       }
@@ -156,6 +167,11 @@ async function main() {
   console.log('Created project:', project)
 
   console.log('Week 2 seeding completed!')
+
+  // Validate that all content files are in sync with database
+  console.log('\n' + '='.repeat(50))
+  await validateContentSync({ failOnMismatch: false })
+  console.log('='.repeat(50) + '\n')
 }
 
 main()
