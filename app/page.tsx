@@ -596,8 +596,8 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div className="mt-6 pt-6 border-t border-gray-200">
-                  <Link href="/diagnosis" className="inline-block">
+                <div className="mt-6 pt-6 border-t border-gray-200 flex justify-center">
+                  <Link href="/diagnosis">
                     <button className="px-6 py-3 bg-gradient-to-r from-purple-600 to-cyan-500 text-white font-semibold rounded-lg hover:shadow-lg transition-all duration-200">
                       Generate Your Report
                     </button>
