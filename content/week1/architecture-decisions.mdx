@@ -117,7 +117,7 @@ function getTaskQuality(task: string, model: string): number {
 **Architect's Principle**: Don't hardcode your model selection. Build a **Dynamic Router** that automatically chooses the optimal model based on real-time complexity analysis.
 
 **The Problem with Static Selection**: In production, you don't manually decide which model to use for each request. You need an intelligent routing layer that:
-1. Analyzes incoming request complexity in **<50ms**
+1. Analyzes incoming request complexity in **&lt;50ms**
 2. Routes to the cheapest capable model
 3. Tracks performance metrics for continuous optimization
 
@@ -148,14 +148,14 @@ export class ComplexityAwareRouter {
 
   /**
    * Fast complexity scoring using lightweight heuristics
-   * Production requirement: <50ms latency
+   * Production requirement: &lt;50ms latency
    */
   private async scoreComplexity(prompt: string): Promise<ComplexityScore> {
     // OPTIMIZATION: Use cheap heuristics first, only call LLM if uncertain
 
     // Rule 1: Length-based heuristic (0ms)
     const wordCount = prompt.split(/\s+/).length
-    if (wordCount < 20) {
+    if (wordCount &lt; 20) {
       return {
         score: 15,
         reasoning: 'Short query, likely classification or simple lookup',
@@ -206,10 +206,10 @@ export class ComplexityAwareRouter {
     // Route based on score thresholds
     let model: string
     let cost: number
-    if (score < 40) {
+    if (score &lt; 40) {
       model = 'claude-haiku-4.5'
       cost = 0.0006
-    } else if (score < 75) {
+    } else if (score &lt; 75) {
       model = 'claude-sonnet-4.5'
       cost = 0.009
     } else {
@@ -236,7 +236,7 @@ export class ComplexityAwareRouter {
   }> {
     const startTime = Date.now()
 
-    // Step 1: Score complexity (<50ms)
+    // Step 1: Score complexity (&lt;50ms)
     const complexity = await this.scoreComplexity(prompt)
 
     // Step 2: Route to recommended model
@@ -320,10 +320,10 @@ Cost Efficiency: ${((this.metrics.costSavings / (total * 0.045)) * 100).toFixed(
 #### Architect's Implementation Tips
 
 **1. Don't Pay for Classification**
-> "The router's complexity scoring should cost <1% of the query cost. Use lightweight heuristics (word count, keyword matching) before calling an LLM. When you do need an LLM classifier, use Haiku with max_tokens=10 for a 1-token score."
+> "The router's complexity scoring should cost &lt;1% of the query cost. Use lightweight heuristics (word count, keyword matching) before calling an LLM. When you do need an LLM classifier, use Haiku with max_tokens=10 for a 1-token score."
 
 **2. The 80/20 Rule**
-> "If 80% of your queries are 'simple' (score <40), route them to Haiku. This is how you achieve that **80% cost reduction** without losing quality. Track your actual routing distribution and adjust thresholds."
+> "If 80% of your queries are 'simple' (score &lt;40), route them to Haiku. This is how you achieve that **80% cost reduction** without losing quality. Track your actual routing distribution and adjust thresholds."
 
 **3. Continuous Optimization**
 > "The router should learn from production traffic. If Haiku consistently handles score=45 queries well, raise your Haiku threshold from 40→50. This incremental tuning compounds into massive savings."
@@ -500,7 +500,7 @@ function calculateVPT(
   let recommendation: 'UPGRADE' | 'STAY' | 'TEST'
   if (vpt > 0 && monthlyRevenueImpact > monthlyCostDelta * 2) {
     recommendation = 'UPGRADE'  // Clear positive ROI
-  } else if (vpt < 0) {
+  } else if (vpt &lt; 0) {
     recommendation = 'STAY'     // Negative ROI
   } else {
     recommendation = 'TEST'     // Marginal - run A/B test
@@ -877,7 +877,7 @@ Summarization cost: ~2,500 tokens @ $0.25/MTok = $0.000625 (negligible)
 | **Context Retention** | Poor (loses history) | Good (compresses history) |
 | **Complexity** | Low | Medium |
 | **Latency** | None | +500ms per summarization |
-| **Best For** | Short sessions (<10 turns), FAQ bots | Long sessions, customer support, research |
+| **Best For** | Short sessions (&lt;10 turns), FAQ bots | Long sessions, customer support, research |
 
 **Production Pattern: Hybrid Approach**
 
@@ -1614,7 +1614,7 @@ Use this framework to make ROI-driven architectural decisions:
        ┌───────┴───────┐
        │               │
        v               v
-   <1K req/day    >10K req/day
+   &lt;1K req/day    >10K req/day
        │               │
        │               v
        │      ┌──────────────────────┐
@@ -1626,7 +1626,7 @@ Use this framework to make ROI-driven architectural decisions:
        │                 │
        │                 v
        │        ┌────────────────────┐
-       │        │ Cost > $10K/month? │
+       │        │ Cost &gt; $10K/month? │
        │        └─────┬──────────────┘
        │              │
        │      ┌───────┴───────┐
@@ -1664,8 +1664,8 @@ Use this framework to make ROI-driven architectural decisions:
 **Business Context:**
 - **Volume**: 50,000 queries/day (1.5M/month)
 - **Quality Requirement**: 100% accuracy on medical safety queries (no hallucinations on drug interactions, symptoms)
-- **Cost Target**: <$30K/month to maintain 70% gross margin
-- **Latency SLA**: <3 seconds p95 (user abandonment threshold)
+- **Cost Target**: &lt;$30K/month to maintain 70% gross margin
+- **Latency SLA**: &lt;3 seconds p95 (user abandonment threshold)
 
 **The Architectural Decision**: Implement an intelligent **multi-tier triage system** that routes queries to the cheapest model capable of handling them safely.
 
@@ -1711,7 +1711,7 @@ async function triageQuery(userQuery: string): Promise<TriageResult> {
     }
   }
 
-  if (classification.type === 'critical' || classification.confidence < 0.7) {
+  if (classification.type === 'critical' || classification.confidence &lt; 0.7) {
     // Safety-critical or uncertain: escalate to human
     await notifyHumanReviewer(userQuery, classification)
 
@@ -1922,7 +1922,7 @@ const totalCost = $12,000 + $33,750 = $45,750/month
 - **Safety**: Err on side of escalation (better to use Opus unnecessarily than miss critical symptoms)
 - **Measured Impact**: Lowering to 0.85 increased Haiku routing by 10% but added 2% false negatives (unacceptable for medical)
 
-**Why Human Escalation for < 0.7 Confidence**:
+**Why Human Escalation for &lt; 0.7 Confidence**:
 - **Edge Cases**: Ambiguous queries (e.g., "I feel weird") need human judgment
 - **Compliance**: HIPAA requires human review for uncertain medical advice
 - **Cost**: Human review is expensive but necessary for 5% of queries
@@ -2042,7 +2042,7 @@ interface ABTestConfig {
   duration: number       // 30 days
   trafficSplit: number   // 50% control (Sonnet), 50% variant (Haiku)
   successMetric: string  // Free → Paid conversion rate
-  costThreshold: number  // If Haiku conversion < 0.5%, abort
+  costThreshold: number  // If Haiku conversion &lt; 0.5%, abort
 }
 
 // Expected outcomes:
@@ -2056,7 +2056,7 @@ interface ABTestConfig {
 //   → Calculate breakeven: Is cost savings > revenue loss?
 //   → If yes: Switch. If no: Stay on Sonnet or optimize further.
 
-// Scenario 3 (5% probability): Haiku conversion < 0.70%
+// Scenario 3 (5% probability): Haiku conversion &lt; 0.70%
 //   → Quality drop causes >30% conversion loss
 //   → Stay on Sonnet, investigate other optimizations (caching, tier system)
 ```
@@ -2106,7 +2106,7 @@ const netBenefit = costSavings - revenueImpact  // +$1,145/month on 50% traffic
 const fullHaikuBenefit = netBenefit * 2     // +$2,290/month
 const conclusion = 'SWITCH TO HAIKU'
 
-// Result: Save $2,290/month with <2% conversion impact (statistically insignificant)
+// Result: Save $2,290/month with &lt;2% conversion impact (statistically insignificant)
 ```
 
 ---
@@ -2119,7 +2119,7 @@ In a Director-level review, you don't say:
 - ❌ "Opus will increase conversions"
 
 You say:
-- ✅ "I ran a 30-day A/B test with 10K users. Haiku reduced cost by 90% ($2,250/month) with statistically insignificant conversion impact (<2% drop). **VPT is +$2.29/token**. Recommendation: Switch to Haiku for this feature, monitor conversion for 90 days."
+- ✅ "I ran a 30-day A/B test with 10K users. Haiku reduced cost by 90% ($2,250/month) with statistically insignificant conversion impact (&lt;2% drop). **VPT is +$2.29/token**. Recommendation: Switch to Haiku for this feature, monitor conversion for 90 days."
 
 **This is what separates a developer from an architect.**
 
