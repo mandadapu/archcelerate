@@ -448,6 +448,26 @@ export default async function DashboardPage() {
         <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent flex flex-col h-full">
           <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
           <CardHeader>
+            <CardTitle>Verification Report</CardTitle>
+            <CardDescription>7-Axis Mastery Metrics</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col flex-1">
+            <p className="text-sm text-slate-600 mb-4">
+              View your data-driven proof of AI architecture capabilities
+            </p>
+            <div className="flex justify-end mt-auto">
+              <Link href="/verification-report">
+                <Button size="sm" className="bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white">
+                  View Report
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent flex flex-col h-full">
+          <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
+          <CardHeader>
             <CardTitle>AI Mentor</CardTitle>
             <CardDescription>24/7 Support</CardDescription>
           </CardHeader>
