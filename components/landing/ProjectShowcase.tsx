@@ -322,20 +322,20 @@ function ProjectCard({ project, isExpanded, onToggle }: ProjectCardProps) {
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden transition-all duration-300 hover:shadow-lg">
       {/* Content */}
       <div className="p-8">
-        {/* Icon with gradient background - similar to Command Center */}
-        <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${weekColors.gradient} flex items-center justify-center mb-6`}>
-          <span className="text-3xl">{getEmojiForProject(project.id)}</span>
-        </div>
-
-        {/* Title and Week Badge */}
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-2xl font-bold text-gray-900">
-            {project.title}
-          </h3>
+        {/* Icon and Week Badge - aligned at top */}
+        <div className="flex items-start justify-between mb-6">
+          <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${weekColors.gradient} flex items-center justify-center`}>
+            <span className="text-3xl">{getEmojiForProject(project.id)}</span>
+          </div>
           <span className={`px-3 py-1 bg-gradient-to-r ${weekColors.gradient} text-white text-xs font-bold rounded-full whitespace-nowrap`}>
             Week {project.week}
           </span>
         </div>
+
+        {/* Title */}
+        <h3 className="text-2xl font-bold text-gray-900 mb-4">
+          {project.title}
+        </h3>
 
         {/* Description */}
         <p className="text-base text-gray-600 mb-3">
