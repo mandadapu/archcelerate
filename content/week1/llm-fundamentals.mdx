@@ -18,22 +18,92 @@ Moving beyond "next token prediction" to understand the architectural constraint
 - **Latency**: Must maintain &lt;3s P95 response time for good UX
 - **Compliance**: HIPAA-compliant audit trail for all medical decisions
 
-**Architectural Solution: The Model Cascade**
+**Architectural Solution: The Model Cascade with Fallback Pattern**
 
-Implement intelligent query routing based on complexity classification:
+Implement intelligent query routing based on complexity classification **with confidence thresholds**:
 
 ```typescript
 // Step 1: Fast classifier (Haiku 4.5) categorizes query in &lt;500ms
 const classification = await classifyQueryComplexity(patientQuery)
-// → "simple" (password reset), "complex" (drug interaction), or "critical" (chest pain)
+// → Returns: { type: string, confidence: number, reasoning: string }
 
-// Step 2: Route to appropriate model based on classification
-if (classification.type === 'simple' && classification.confidence &gt; 0.90) {
-  return await callHaiku(patientQuery)      // Fast & cheap: $0.001/query
-} else if (classification.type === 'critical') {
-  return await escalateToHuman(patientQuery) // Safety: Always HITL
-} else {
-  return await callOpus(patientQuery)       // Quality: $0.15/query
+// Step 2: Confidence-based routing with fallback pattern
+async function routeQuery(query: string, classification: Classification) {
+  // CRITICAL: Low confidence triggers automatic escalation
+  if (classification.confidence < 0.85) {
+    console.warn(`⚠️ Low confidence (${classification.confidence}) - escalating to Sonnet`)
+    return await callSonnetWithFallback(query)
+  }
+
+  // High-confidence simple queries → Fast & cheap
+  if (classification.type === 'simple' && classification.confidence >= 0.90) {
+    return await callHaiku(query)  // $0.001/query
+  }
+
+  // Critical medical queries → Always human-in-the-loop
+  if (classification.type === 'critical') {
+    return await escalateToHuman(query)  // $0 AI cost, safety first
+  }
+
+  // Complex medical reasoning → High-quality model
+  return await callOpusWithFallback(query)  // $0.15/query
+}
+
+// Fallback Pattern: Haiku fails → Sonnet → Opus → Human
+async function callHaiku(query: string) {
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251101',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: query }]
+    })
+
+    // Check if response indicates uncertainty
+    if (containsUncertaintyMarkers(response)) {
+      console.warn('Haiku expressed uncertainty - escalating to Sonnet')
+      return await callSonnet(query)
+    }
+
+    return response
+  } catch (error) {
+    console.error('Haiku failed - falling back to Sonnet', error)
+    return await callSonnet(query)  // Automatic fallback
+  }
+}
+
+// Multi-tier fallback for critical paths
+async function callOpusWithFallback(query: string) {
+  try {
+    return await callOpus(query)
+  } catch (error) {
+    if (error.status === 529) {  // Overloaded
+      console.warn('Opus overloaded - trying Sonnet')
+      return await callSonnet(query)
+    }
+    throw error  // Re-throw non-recoverable errors
+  }
+}
+
+// Uncertainty detection heuristics
+function containsUncertaintyMarkers(response: Message): boolean {
+  const text = response.content[0].text.toLowerCase()
+  const uncertaintyPhrases = [
+    'i\'m not sure',
+    'i cannot determine',
+    'unclear',
+    'insufficient information',
+    'may require',
+    'should consult'
+  ]
+  return uncertaintyPhrases.some(phrase => text.includes(phrase))
+}
+
+// Confidence threshold configuration (tune based on evals)
+const CONFIDENCE_THRESHOLDS = {
+  simple: 0.90,      // High bar for using cheapest model
+  complex: 0.85,     // Moderate bar for mid-tier
+  critical: 1.0,     // Always escalate (human judgment required)
+  escalation: 0.85   // Below this, always use higher tier
 }
 ```
 
@@ -77,6 +147,120 @@ Every character you send to an LLM gets encoded into tokens. But **not all token
 const inputCost = tokenCount * pricePerToken
 // Different tokenizers = different costs for the SAME prompt
 ```
+
+### ⚠️ Warning: Tokenization Edge Cases
+
+> **The "Physics" of LLMs often breaks at the tokenization layer for non-text data.**
+
+The way tokenizers handle certain inputs can dramatically impact both **cost** and **reasoning quality**:
+
+**Edge Case #1: Spacing Breaks Tokenization**
+```typescript
+// Example: The word "Apple"
+"Apple" → 1 token
+
+// But with spaces...
+"A p p l e" → 5 tokens (5x the cost!)
+
+// Why this matters:
+// User input: "My WiFi password is A p p l e 1 2 3"
+// Cost: 7 tokens instead of 3 tokens
+// Impact: $0.000021 vs $0.000009 per request
+// At 10M requests: $210 vs $90 = $120/month wasted
+```
+
+**Edge Case #2: Numbers Tokenize Inconsistently**
+```typescript
+// Numbers fragment unpredictably
+"1234" → 1 token
+"12345" → 1 token
+"123456" → 2 tokens  // ⚠️ Boundary crossed
+"1234567" → 2 tokens
+
+// Scientific notation
+"1.5e10" → 4 tokens ("1", ".", "5e", "10")
+
+// Architectural impact: Dollar amounts
+"$1,234.56" → 5 tokens (",", "1", ",", "234", ".")
+"$1234.56" → 3 tokens  // 40% fewer tokens without commas
+```
+
+**Edge Case #3: Code Indentation is Expensive**
+```typescript
+// Well-formatted code (common style)
+const formatted = `
+function add(a, b) {
+    return a + b
+}
+` // 15 tokens (includes whitespace)
+
+// Minified code (no indentation)
+const minified = `function add(a,b){return a+b}`
+// 10 tokens (33% fewer!)
+
+// Production impact:
+// Sending 1000 code snippets/day × 5 extra tokens
+// = 5K tokens/day × $3/MTok = $0.015/day = $0.45/month
+// Seems small, but at scale (1M snippets): $450/month
+```
+
+**Edge Case #4: Medical Acronyms and Jargon**
+```typescript
+// Medical context tokenization
+"COPD" → 2 tokens ("CO", "PD")  // Chronic Obstructive Pulmonary Disease
+"COVID" → 2 tokens ("COV", "ID")
+"MRI scan" → 3 tokens ("M", "RI", "scan")
+
+// But...
+"CT scan" → 2 tokens ("CT", "scan")  // More common, single token
+
+// Why this matters for reasoning:
+// LLMs trained on "COVID" as 1 semantic unit
+// But tokenizer splits it → model must "reassemble" meaning
+// Result: Slightly degraded medical reasoning on rare acronyms
+```
+
+**Production Pattern: Test Your Domain-Specific Vocabulary**
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+
+async function analyzeTokenization(terms: string[]) {
+  const anthropic = new Anthropic()
+
+  for (const term of terms) {
+    const result = await anthropic.messages.countTokens({
+      model: 'claude-sonnet-4-5-20251101',
+      messages: [{ role: 'user', content: term }]
+    })
+
+    console.log(`"${term}" → ${result.input_tokens} tokens`)
+
+    // Flag if fragmentation is high
+    const chars = term.length
+    const tokensPerChar = result.input_tokens / chars
+    if (tokensPerChar > 0.5) {
+      console.warn(`  ⚠️ High fragmentation: ${(tokensPerChar * 100).toFixed(0)}% of chars are tokens`)
+    }
+  }
+}
+
+// Test medical terms
+await analyzeTokenization([
+  'COPD', 'COVID-19', 'MRI', 'CT', 'ECG',
+  'pneumonoultramicroscopicsilicovolcanoconiosis'  // Longest medical term
+])
+```
+
+**Architectural Implications**:
+1. **Preprocessing**: Consider normalizing input (remove commas from numbers, minify code)
+2. **Domain testing**: Tokenize your domain-specific vocabulary to find expensive terms
+3. **Cost modeling**: Don't assume "1 word = 1 token" - test real data
+4. **Reasoning quality**: Highly fragmented terms may reduce model comprehension
+
+**Cost-Benefit Analysis**:
+- **Preprocessing overhead**: 5-10ms per request
+- **Token savings**: 10-30% for technical/medical domains
+- **ROI**: Positive if volume >100K requests/month
 
 ### Architectural Constraint #1: Token Efficiency
 
@@ -344,9 +528,179 @@ Understanding token costs is critical for production AI systems:
 
 **Optimization strategies**:
 1. Use cheaper models for simple tasks
-2. Implement caching for common queries
+2. **Implement prompt caching** (see next section) - up to 90% cost reduction
 3. Summarize long conversations to reduce context
 4. Stream responses to improve perceived latency
+
+---
+
+## 🏗️ Prompt Caching: The Architect's First Line of Defense
+
+> **Architect Perspective**: In 2026, an architect's **first job** is to ensure you're not paying for the same system instructions twice. Prompt caching can reduce costs by up to **90%** for long context windows through prefix-matching.
+
+**The Problem**: Without caching, every API call re-processes the same system prompt:
+
+```typescript
+// ❌ Without caching: Full cost every time
+for (let i = 0; i < 1000; i++) {
+  await anthropic.messages.create({
+    model: 'claude-sonnet-4-5-20251101',
+    system: LONG_SYSTEM_PROMPT,  // 5000 tokens, re-processed 1000x
+    messages: [{ role: 'user', content: queries[i] }]
+  })
+}
+// Cost: 1000 calls × 5000 tokens × $3/MTok = $15
+```
+
+**The Solution**: Anthropic's Prompt Caching uses prefix-matching to cache repeated content:
+
+```typescript
+// ✅ With prompt caching: 90% cost reduction
+await anthropic.messages.create({
+  model: 'claude-sonnet-4-5-20251101',
+  system: [
+    {
+      type: 'text',
+      text: LONG_SYSTEM_PROMPT,  // 5000 tokens
+      cache_control: { type: 'ephemeral' }  // Cache this!
+    }
+  ],
+  messages: [{ role: 'user', content: query }]
+})
+// First call: Full cost ($0.015)
+// Subsequent calls: 90% discount on cached tokens ($0.0015)
+// 1000 calls: $0.015 + (999 × $0.0015) = $1.50 (vs $15)
+```
+
+### How Prompt Caching Works
+
+**Prefix-Matching Algorithm**:
+1. Anthropic hashes the **prefix** of your prompt (system + early messages)
+2. If the hash matches a cached entry (within 5-minute TTL), cached tokens are reused
+3. Only **new/changed tokens** are processed at full cost
+4. Cache hits reduce cost by **90%** and latency by **50-80%**
+
+**Cache Hierarchy** (Anthropic's implementation):
+```typescript
+// Cache structure: System → Tools → Few-shot → Dynamic context
+const prompt = {
+  system: [
+    {
+      type: 'text',
+      text: SYSTEM_INSTRUCTIONS,  // 2K tokens - ✅ Cacheable (static)
+      cache_control: { type: 'ephemeral' }
+    },
+    {
+      type: 'text',
+      text: TOOL_DEFINITIONS,     // 3K tokens - ✅ Cacheable (static)
+      cache_control: { type: 'ephemeral' }
+    },
+    {
+      type: 'text',
+      text: FEW_SHOT_EXAMPLES,    // 10K tokens - ✅ Cacheable (mostly static)
+      cache_control: { type: 'ephemeral' }
+    }
+  ],
+  messages: [
+    // User history (dynamic) - ❌ Not cached
+    ...conversationHistory,
+    { role: 'user', content: currentQuery }
+  ]
+}
+```
+
+### Production Caching Strategy
+
+**Rule of Thumb**: Cache anything that repeats across >3 requests:
+
+```typescript
+// Architectural Pattern: Hierarchical caching
+interface CachingStrategy {
+  // Tier 1: Always cache (100% static)
+  systemPrompt: string           // Never changes
+  toolDefinitions: string        // Stable across versions
+
+  // Tier 2: Cache frequently (95% static)
+  fewShotExamples: string        // Updated weekly
+
+  // Tier 3: Don't cache (dynamic)
+  userContext: string            // Changes per request
+  conversationHistory: string[]  // Unique per conversation
+}
+```
+
+**Cost Impact Example** (Real-world AI coding assistant):
+- System prompt: 5K tokens
+- Tool definitions: 8K tokens
+- Few-shot examples: 15K tokens
+- **Total cacheable: 28K tokens**
+- Volume: 100K requests/day
+
+**Without caching**:
+- Cost: 100K × 28K × $3/MTok = **$8,400/day** = **$252K/month**
+
+**With caching** (90% cache hit rate):
+- First call: 100K × 28K × $3/MTok = $8,400
+- Cached calls: 100K × 28K × $0.30/MTok × 0.90 = $756
+- **Total: $840/day** = **$25.2K/month**
+- **Savings: 90% ($226.8K/month)**
+
+### Warning: Cache Invalidation Edge Cases
+
+**When caching breaks**:
+1. **Prefix modification**: Changing **any** cached content invalidates the entire cache
+2. **TTL expiration**: Caches last 5 minutes (Anthropic) - low-traffic apps see fewer hits
+3. **Token boundary misalignment**: Adding 1 token to the prefix breaks the cache
+
+```typescript
+// ❌ Cache-breaking mistake
+const systemPrompt = `
+  You are a helpful assistant.
+  Current time: ${new Date().toISOString()}  // Changes every second!
+`
+// This invalidates the cache on every request
+
+// ✅ Cache-friendly pattern
+const systemPrompt = `You are a helpful assistant.`
+const userMessage = `Current time: ${new Date().toISOString()}\n\n${query}`
+```
+
+**Architect's Rule**: Keep **static content** in cached sections, **dynamic content** in messages.
+
+### Latency Benefits
+
+**Caching reduces not just cost, but latency**:
+- Cached tokens skip tokenization, attention, and inference
+- **Typical reduction**: 50-80% faster time-to-first-token
+- **Example**: 2000ms → 500ms for cached system prompts
+
+**Production Impact**:
+```typescript
+// Without cache: 2.5s P95 latency
+// With cache: 0.8s P95 latency → 68% faster
+// User experience: Feels "instant" vs "thinking"
+```
+
+### Implementation Checklist
+
+✅ **Before deploying prompt caching**:
+1. Identify static vs dynamic prompt sections
+2. Move static content to prefix (system, tools, few-shot)
+3. Add `cache_control: { type: 'ephemeral' }` to static blocks
+4. Monitor cache hit rate (aim for >85%)
+5. Ensure traffic is high enough (>10 requests/minute) to benefit from 5-min TTL
+6. Test cache invalidation behavior during prompt updates
+
+**Monitoring**: Track cache hit rate in production:
+```typescript
+// Add to logging/metrics
+const cacheMetrics = {
+  cacheCreationTokens: response.usage.cache_creation_input_tokens || 0,
+  cacheReadTokens: response.usage.cache_read_input_tokens || 0,
+  cacheHitRate: cacheReadTokens / (cacheReadTokens + cacheCreationTokens)
+}
+// Target: >85% hit rate for cost efficiency
+```
 
 ## Context Management
 
@@ -356,6 +710,269 @@ Effective context window management:
 2. **Summarize old context**: Compress older messages into summary
 3. **Remove irrelevant content**: Strip formatting, redundant info
 4. **Smart truncation**: Cut from middle, keep beginning and end
+
+---
+
+## 🎯 Context Truncation Strategies: When You Hit the Limit
+
+> **Architect Perspective**: When a conversation hits the context limit, your truncation strategy directly impacts reasoning quality. The wrong approach loses critical context; the right approach maintains coherence.
+
+**The Problem**: A customer support chat reaches 200K tokens (context limit: 200K). Next message would overflow. **What do you do?**
+
+### Strategy #1: Drop the Middle (Fastest, Simplest)
+
+**How it works**: Keep system prompt + recent N messages, discard the middle.
+
+```typescript
+interface TruncationStrategy {
+  systemPromptTokens: number    // Always keep (2K)
+  recentMessagesCount: number   // Last 10 messages (15K)
+  // Middle 180K tokens → DROPPED
+}
+
+function dropMiddleStrategy(
+  messages: Message[],
+  maxTokens: number = 200_000
+): Message[] {
+  const systemTokens = 2000
+  const recentCount = 10
+  const bufferTokens = 3000
+
+  // Keep system + last 10 messages
+  const recentMessages = messages.slice(-recentCount)
+  const recentTokens = estimateTokens(recentMessages)
+
+  const totalTokens = systemTokens + recentTokens + bufferTokens
+
+  if (totalTokens < maxTokens) {
+    return messages  // Still under limit
+  }
+
+  // Drop middle, keep beginning + end
+  return [
+    ...messages.slice(0, 5),     // First 5 (context setup)
+    { role: 'system', content: '[... earlier conversation truncated ...]' },
+    ...messages.slice(-recentCount)  // Last 10 (recent context)
+  ]
+}
+```
+
+**Pros**:
+- Fast (no API calls)
+- Maintains recency (most important for ongoing conversations)
+- System prompt always preserved
+
+**Cons**:
+- **Lost-in-the-Middle**: Model has no knowledge of mid-conversation context
+- Can break multi-turn reasoning ("As I mentioned earlier..." → model has no memory)
+- User references to earlier topics feel like AI "forgot"
+
+**Best For**: Simple Q&A, transactions without long-term dependencies
+
+---
+
+### Strategy #2: Drop the Beginning (Rare, Risky)
+
+**How it works**: Keep system prompt + recent messages, discard oldest.
+
+```typescript
+function dropBeginningStrategy(
+  messages: Message[],
+  maxTokens: number
+): Message[] {
+  let currentTokens = estimateTokens(messages)
+
+  // Remove from beginning until under limit
+  while (currentTokens > maxTokens && messages.length > 10) {
+    messages.shift()  // Remove oldest message
+    currentTokens = estimateTokens(messages)
+  }
+
+  return messages
+}
+```
+
+**Pros**:
+- Maintains full recent context
+- Natural for "sliding window" applications
+
+**Cons**:
+- **Loses important setup**: Original user intent, key details
+- Breaks long-running sessions (loses user preferences set early)
+- System prompt grows stale if not refreshed
+
+**Best For**: Rarely used—only when initial context is truly disposable
+
+---
+
+### Strategy #3: LLM-Based Summarization (Highest Quality, Costly)
+
+**How it works**: Use an LLM to compress old messages into a "Condensed State".
+
+```typescript
+async function summarizeOldContext(
+  messages: Message[],
+  maxTokens: number
+): Promise<Message[]> {
+  const systemTokens = 2000
+  const recentCount = 10
+  const targetSummaryTokens = 5000
+
+  // Split: recent (keep full) vs old (summarize)
+  const recentMessages = messages.slice(-recentCount)
+  const oldMessages = messages.slice(0, -recentCount)
+
+  // Check if summarization is needed
+  const currentTokens = estimateTokens(messages)
+  if (currentTokens < maxTokens * 0.8) {
+    return messages  // Still have headroom
+  }
+
+  // Use LLM to summarize old context
+  const summary = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251101',  // Fast summarizer
+    max_tokens: 1500,
+    messages: [{
+      role: 'user',
+      content: `Summarize the key points, decisions, and user preferences from this conversation history. Keep it under 1200 tokens:\n\n${formatMessages(oldMessages)}`
+    }]
+  })
+
+  // Inject summary as synthetic "context" message
+  return [
+    { role: 'system', content: 'Previous conversation summary:' },
+    { role: 'assistant', content: summary.content[0].text },
+    ...recentMessages  // Full recent context
+  ]
+}
+
+// Cost analysis
+// Old context: 180K tokens × $3/MTok = $0.54 per request (dropped)
+// Summary cost: 180K input + 1.5K output = $0.54 + $0.02 = $0.56 ONE-TIME
+// Future requests: 5K summary tokens vs 180K full = 97% token reduction
+// ROI: Positive after 2+ requests using the summary
+```
+
+**Pros**:
+- **Highest quality**: Preserves key information from entire conversation
+- Model can reference "earlier" context without it being in the window
+- User experience: AI "remembers" past decisions
+
+**Cons**:
+- **Costly**: Requires additional API call (Haiku: $0.001-0.01 per summarization)
+- **Latency**: Adds 300-800ms to request time
+- **Summary drift**: Information loss through compression (5-10% typical)
+
+**Best For**: Long-running sessions, customer support, multi-turn agents
+
+**Production Implementation**:
+```typescript
+// Trigger summarization at 80% capacity
+const SUMMARIZATION_TRIGGER = maxTokens * 0.80
+
+// Cache summaries to avoid re-summarizing
+interface ConversationCache {
+  conversationId: string
+  summary: string
+  summarizedUpToIndex: number  // Message index
+  lastUpdated: Date
+}
+
+async function managedTruncation(
+  conversationId: string,
+  messages: Message[],
+  cache: ConversationCache | null
+): Promise<Message[]> {
+  const currentTokens = estimateTokens(messages)
+
+  if (currentTokens < SUMMARIZATION_TRIGGER) {
+    return messages  // No action needed
+  }
+
+  // Check if we have a cached summary
+  if (cache && cache.summarizedUpToIndex > 0) {
+    // Use cached summary + new messages
+    const newMessages = messages.slice(cache.summarizedUpToIndex)
+    return [
+      { role: 'system', content: cache.summary },
+      ...newMessages
+    ]
+  }
+
+  // No cache - trigger fresh summarization
+  return await summarizeOldContext(messages, maxTokens)
+}
+```
+
+---
+
+### Strategy Comparison Matrix
+
+| Strategy | Cost | Latency | Quality | Best Use Case |
+|----------|------|---------|---------|---------------|
+| **Drop Middle** | Free | 0ms | ⚠️ Moderate | Simple Q&A, stateless tasks |
+| **Drop Beginning** | Free | 0ms | ❌ Poor | Rarely appropriate |
+| **LLM Summarization** | $0.001-0.01 | 300-800ms | ✅ High | Long sessions, agents, support |
+
+### Architectural Decision Tree
+
+```typescript
+function selectTruncationStrategy(
+  conversationType: string,
+  sessionLength: number,
+  budget: number
+): TruncationStrategy {
+  // Short sessions: Don't truncate, just keep full context
+  if (sessionLength < 20) {
+    return 'no-truncation'
+  }
+
+  // High-value sessions: Quality matters most
+  if (conversationType === 'customer-support' || conversationType === 'agent') {
+    return 'llm-summarization'  // Accept cost for quality
+  }
+
+  // High-volume, low-margin: Cost matters most
+  if (budget < 0.01) {
+    return 'drop-middle'  // Free, good enough
+  }
+
+  // Default: Balanced approach
+  return 'drop-middle-with-periodic-summarization'  // Hybrid
+}
+```
+
+### Hybrid Strategy: Best of Both Worlds
+
+**Production Pattern**: Use drop-middle for quick wins, trigger summarization every 50 messages.
+
+```typescript
+const SUMMARIZATION_INTERVAL = 50  // Every 50 messages
+
+async function hybridTruncation(
+  messages: Message[],
+  messageCount: number
+): Promise<Message[]> {
+  // Every 50 messages: Pay for quality
+  if (messageCount % SUMMARIZATION_INTERVAL === 0) {
+    console.log('📝 Triggering periodic summarization')
+    return await summarizeOldContext(messages, maxTokens)
+  }
+
+  // Otherwise: Free drop-middle
+  return dropMiddleStrategy(messages, maxTokens)
+}
+
+// Cost impact:
+// Without: 50 messages × 180K tokens × $3/MTok = $27
+// With hybrid: 49 × 5K tokens + 1 × summarization = $0.735 + $0.56 = $1.30
+// Savings: 95% ($25.70 per 50-message session)
+```
+
+**Architect's Rule**: Truncation strategy should match conversation value:
+- **High-value** (sales, support) → LLM summarization
+- **Mid-value** (general chat) → Hybrid (drop-middle + periodic summarization)
+- **Low-value** (one-off queries) → Drop-middle or no truncation needed
 
 ## Practical Exercises
 
@@ -696,6 +1313,274 @@ runModelComparison()`}
 1. Test with different prompt complexities (simple vs complex reasoning)
 2. Compare the same model with different max_tokens settings
 3. Test multilingual prompts to see if token counts change
+
+## 🎓 Test Your Architectural Thinking
+
+> These aren't beginner questions—they're **real-world architectural scenarios** you'll face in production. Think through the tradeoffs before checking the solutions.
+
+### Scenario 1: The Budget-Constrained Document Query System
+
+**Context**: You're architecting a legal document analysis system for a startup with:
+- **Document size**: 10,000 pages per case (avg 500 tokens/page = 5M tokens)
+- **Query volume**: 100 queries/day
+- **Budget**: $500/month maximum for AI costs
+- **Quality requirement**: Must extract accurate citations and case references
+
+**Question**: Which architectural pattern do you use?
+
+**Options**:
+A) **Long-Context Upload**: Send entire 5M tokens to Claude Opus 4.5 ($15/MTok)
+B) **MapReduce Pattern**: Split into 100-page chunks, parallel process with Haiku, merge results
+C) **Hybrid RAG**: Vector search (top 50 pages) + Sonnet 4.5 for reasoning
+D) **Incremental Processing**: Start with Haiku on full doc, escalate to Sonnet only if uncertain
+
+<details>
+<summary><strong>💡 Solution & Analysis</strong></summary>
+
+**Correct Answer: C) Hybrid RAG**
+
+**Cost Breakdown**:
+
+**Option A (Long-Context)**: ❌ Over budget
+- 100 queries × 5M tokens × $15/MTok = $7,500/month
+- **75K tokens output** (summaries) × $75/MTok = $5,625
+- **Total: $13,125/month** (26x over budget!)
+
+**Option B (MapReduce)**: ❌ Complex, but still expensive
+- Split: 5M tokens / 100 pages = 50K tokens per chunk = 100 chunks
+- Process each: 100 chunks × 50K tokens × $0.25/MTok × 100 queries = $1,250/month
+- Merge step (Sonnet): 100 intermediate results × 10K tokens × $3/MTok × 100 queries = $3,000/month
+- **Total: $4,250/month** (8.5x over budget)
+
+**Option C (Hybrid RAG)**: ✅ Within budget
+- Vector search: $50/month (embedding cost: 500M tokens × $0.0001/MTok)
+- Retrieve top 50 pages: 50 × 500 tokens = 25K tokens per query
+- Sonnet processing: 100 queries × 25K tokens × $3/MTok = $75/month (input)
+- Output: 100 queries × 5K tokens × $15/MTok = $75/month
+- **Total: $200/month** (40% of budget, leaves room for growth)
+
+**Option D (Incremental)**: ⚠️ Quality risk
+- Haiku on 5M tokens: 100 × 5M × $0.25/MTok = $125/month
+- But: Haiku quality insufficient for legal citations (50% hallucination rate on long context)
+- Escalation rate: 80% → Sonnet cost: $4,000/month
+- **Not viable due to quality constraints**
+
+**Architectural Insights**:
+- RAG reduces context from 5M → 25K tokens (99.5% reduction!)
+- Vector search one-time cost spreads across all queries
+- Sonnet provides legal-grade accuracy at 2% of Opus cost
+- Leaves $300/month buffer for traffic growth (3x headroom)
+
+</details>
+
+---
+
+### Scenario 2: The Latency-Critical Classifier
+
+**Context**: Building a content moderation system for a social network:
+- **Volume**: 50,000 posts/hour (peak)
+- **Latency requirement**: P95 < 500ms (UX constraint)
+- **Quality requirement**: 95%+ accuracy on toxicity detection
+- **Cost target**: <$0.0001 per post
+
+**Question**: How do you meet all three constraints (latency, quality, cost)?
+
+**Options**:
+A) Use Claude Opus 4.5 with streaming for perceived speed
+B) Use Claude Haiku 4.5 with prompt caching
+C) Use a fine-tuned small model (Llama 7B) hosted on your servers
+D) Use Haiku for fast classification + Sonnet for borderline cases
+
+<details>
+<summary><strong>💡 Solution & Analysis</strong></summary>
+
+**Correct Answer: D) Cascade with Haiku + Sonnet**
+
+**Constraint Analysis**:
+
+**Latency (P95 < 500ms)**:
+- Opus: 4-8s P95 → ❌ Fails (10x too slow)
+- Sonnet: 1-3s P95 → ❌ Fails (3x too slow)
+- Haiku: 300-800ms P95 → ✅ Meets requirement
+- Self-hosted Llama: 50-200ms → ✅ Meets requirement
+
+**Quality (95%+ accuracy)**:
+- Opus: 99% → ✅ Overkill
+- Sonnet: 97% → ✅ Meets requirement
+- Haiku: 92% on simple, 88% on nuanced → ⚠️ Borderline
+- Llama 7B fine-tuned: 93% → ✅ Possible with good training data
+
+**Cost (<$0.0001/post)**:
+- Opus: $15/MTok × 200 tokens = $0.003/post → ❌ 30x over budget
+- Sonnet: $3/MTok × 200 tokens = $0.0006/post → ❌ 6x over budget
+- Haiku: $0.25/MTok × 200 tokens = $0.00005/post → ✅ Meets budget
+- Llama self-hosted: $0.00001/post (amortized GPU) → ✅ Meets budget
+
+**Why Option D Wins**:
+```typescript
+async function moderateContent(post: string) {
+  // Step 1: Haiku classifies in <500ms
+  const classification = await classifyWithHaiku(post)
+  // → Returns: { toxicity: 'high' | 'medium' | 'low', confidence: number }
+
+  // Step 2: High-confidence decisions are final (90% of cases)
+  if (classification.confidence > 0.95) {
+    return classification.toxicity !== 'high'  // Fast path: 300ms, $0.00005
+  }
+
+  // Step 3: Borderline cases (10%) escalate to Sonnet
+  if (classification.confidence < 0.95) {
+    const refined = await refineWithSonnet(post)  // Slow path: 2s, $0.0006
+    return refined.toxicity !== 'high'
+  }
+}
+
+// Blended cost (90% Haiku, 10% Sonnet):
+// 0.90 × $0.00005 + 0.10 × $0.0006 = $0.000105/post
+// → Slightly over target, but acceptable tradeoff for quality
+
+// Blended latency (90% fast, 10% slow):
+// P95 = 500ms (Haiku) for most, 2s for 10%
+// Acceptable since borderline cases can afford extra time
+```
+
+**Why Other Options Fail**:
+
+**Option A (Opus)**: Opus latency (6s P95) breaks UX, cost is 30x budget. Streaming helps perceived latency but doesn't reduce actual wait time for moderation decision.
+
+**Option B (Haiku + Caching)**: Prompt caching reduces cost by 90%, making Haiku $0.000005/post. But quality is still 88-92%, below 95% requirement. Caching helps cost but doesn't fix accuracy.
+
+**Option C (Self-hosted Llama)**: Meets latency and cost, but:
+- Requires ML ops team (ongoing maintenance)
+- Training data collection (3-6 months)
+- GPU infrastructure ($2000/month for high-availability)
+- Model drift requires retraining every 3-6 months
+- **Total cost**: $4000+/month → only viable at >40M posts/month
+
+**Architectural Lesson**: When constraints conflict, use **tiered architecture** to meet all requirements through selective escalation.
+
+</details>
+
+---
+
+### Scenario 3: The Context Window Dilemma
+
+**Context**: AI coding assistant with:
+- **Codebase size**: 500 files, 2M tokens total
+- **User query**: "Refactor the authentication system to use OAuth2"
+- **Context limit**: 200K tokens
+- **Challenge**: OAuth code spans 15 files across the codebase
+
+**Question**: How do you provide the LLM with enough context to do this safely?
+
+**Options**:
+A) Send all 2M tokens using Claude Opus 4.5 (1M token window, split into 2 calls)
+B) Use RAG to retrieve the 15 OAuth-related files (~50K tokens)
+C) Send the entire codebase summary (20K tokens) + full OAuth files (50K tokens)
+D) Start with RAG (50K), let LLM request additional files as needed (agentic loop)
+
+<details>
+<summary><strong>💡 Solution & Analysis</strong></summary>
+
+**Correct Answer: D) Agentic Loop with RAG**
+
+**Why Each Option Succeeds or Fails**:
+
+**Option A (Send everything)**: ❌ Technically impossible + expensive
+- Opus has 1M token window, but 2M tokens requires 2 separate API calls
+- Cost: 2M tokens × $15/MTok = $30 per refactor
+- "Lost in the Middle": At 2M tokens, model loses track of key details
+- Can't reason across both calls (no shared state)
+
+**Option B (RAG-only)**: ⚠️ Risky, but cheap
+- Cost: 50K tokens × $15/MTok = $0.75 per refactor
+- Risk: OAuth might interact with other systems not in the retrieved files
+  - Example: What if there's a middleware file that hooks into auth?
+  - Or a config file that needs updating?
+- **50% chance of incomplete refactor** (breaks at runtime)
+
+**Option C (Summary + Files)**: ✅ Good, but not optimal
+- Summary: 20K tokens (high-level codebase structure)
+- OAuth files: 50K tokens (implementation details)
+- Total: 70K tokens × $15/MTok = $1.05 per refactor
+- Model has "map" of codebase + detailed OAuth implementation
+- **85% success rate** (catches most dependencies)
+- Missing: Can't discover hidden dependencies until runtime
+
+**Option D (Agentic Loop)**: ✅ Best (highest quality, acceptable cost)
+```typescript
+async function agenticCodeRefactor(query: string, codebase: Codebase) {
+  let context = []
+  let iterations = 0
+  const MAX_ITERATIONS = 5
+
+  // Step 1: Initial RAG retrieval (OAuth files)
+  context = await retrieveRelevantFiles(query, codebase)  // 50K tokens
+
+  while (iterations < MAX_ITERATIONS) {
+    // Step 2: LLM analyzes and plans refactor
+    const response = await callOpus({
+      system: 'You are a code architect. Analyze the code and identify any missing dependencies.',
+      messages: [
+        { role: 'user', content: `Context: ${context}\n\nTask: ${query}` }
+      ],
+      tools: [
+        {
+          name: 'request_additional_files',
+          description: 'Request additional files if you need more context',
+          input_schema: {
+            type: 'object',
+            properties: {
+              files: { type: 'array', items: { type: 'string' } },
+              reasoning: { type: 'string' }
+            }
+          }
+        }
+      ]
+    })
+
+    // Step 3: Check if LLM requests more context
+    if (response.stop_reason === 'tool_use') {
+      const toolUse = response.content.find(block => block.type === 'tool_use')
+      const requestedFiles = await loadFiles(toolUse.input.files)
+      context.push(...requestedFiles)
+      iterations++
+      continue  // Loop back with expanded context
+    }
+
+    // Step 4: LLM has enough context, proceed with refactor
+    return response.content[0].text  // Contains refactor plan
+  }
+}
+
+// Cost breakdown:
+// Iteration 1: 50K tokens (RAG) × $15/MTok = $0.75
+// Iteration 2: 50K + 30K new files × $15/MTok = $1.20
+// Iteration 3: 80K + 15K more files × $15/MTok = $1.43
+// Total: $3.38 per refactor
+// Success rate: 98% (LLM discovers hidden dependencies)
+```
+
+**Architectural Insights**:
+
+1. **RAG alone is insufficient** for complex codebases—LLMs need ability to "explore"
+2. **Static context budgets** (Option C) trade quality for cost
+3. **Agentic loops** (Option D) let the LLM decide what it needs, improving quality at modest cost increase
+4. **Tool use** is the key primitive—don't just send context, let LLM request it
+
+**Real-World Tradeoff**:
+- **Option C**: $1.05, 85% success → $1.24/successful refactor (15% require human fix)
+- **Option D**: $3.38, 98% success → $3.45/successful refactor
+- **Value**: Option D costs 3x more but saves 2 hours of debugging → $3.38 vs $200 (engineer time)
+
+**When to Use Which**:
+- **Simple refactors** (rename, small changes): Option C (summary + files)
+- **Complex refactors** (architecture changes): Option D (agentic loop)
+- **Exploratory tasks** ("find all OAuth usages"): Option B (RAG) is sufficient
+
+</details>
+
+---
 
 ## Key Takeaways
 
