@@ -35,6 +35,26 @@ export default async function DiagnosisResultsPage() {
   const percentCorrect = Math.round((correctAnswers / totalQuestions) * 100)
   const difficultyLevel = (diagnosis.difficultyLevel as string) || 'intermediate'
 
+  // Calculate 7-Axis Architectural Scores
+  const architecturalDomains = [
+    { key: 'systematic_prompting', label: 'Systematic Prompting', risk: 'Vulnerable to prompt injection attacks' },
+    { key: 'sovereign_governance', label: 'Sovereign Governance', risk: 'High risk for compliance failure in production' },
+    { key: 'knowledge_architecture', label: 'Knowledge Architecture', risk: 'RAG systems will fail on complex queries' },
+    { key: 'agentic_systems', label: 'Agentic Systems', risk: 'Agent reliability issues under load' },
+    { key: 'context_engineering', label: 'Context Engineering', risk: 'Excessive token costs in production' },
+    { key: 'production_systems', label: 'Production Systems', risk: 'No observability when systems fail' },
+    { key: 'model_selection', label: 'Model Selection', risk: 'Suboptimal cost-performance trade-offs' },
+  ]
+
+  const architecturalScores = architecturalDomains.map(domain => ({
+    ...domain,
+    score: Math.round((skillScores[domain.key] || 0) * 100),
+  }))
+
+  // Find gaps (scores < 60%)
+  const gaps = architecturalScores.filter(s => s.score < 60).sort((a, b) => a.score - b.score)
+  const hasArchitecturalGaps = gaps.length > 0
+
   const levelBadgeColor = {
     beginner: 'bg-green-100 text-green-800',
     intermediate: 'bg-blue-100 text-blue-800',
@@ -82,33 +102,82 @@ export default async function DiagnosisResultsPage() {
         summary="Based on your results, this path will help you build AI products most effectively."
       />
 
-      {/* Skill Breakdown */}
+      {/* Foundational Skills Breakdown */}
       <Card>
         <CardHeader>
-          <CardTitle>Skill Breakdown</CardTitle>
+          <CardTitle>Foundational Skills</CardTitle>
         </CardHeader>
         <CardContent>
-          <SkillRadar scores={skillScores} />
+          <SkillRadar scores={skillScores} variant="foundational" />
 
           <div className="grid grid-cols-2 gap-4 mt-6">
-            {Object.entries(skillScores).map(([skill, score]) => {
-              const percentage = Math.round((score as number) * 100)
+            {Object.entries(skillScores)
+              .filter(([skill]) => !['systematic_prompting', 'sovereign_governance', 'knowledge_architecture', 'agentic_systems', 'context_engineering', 'production_systems', 'model_selection'].includes(skill))
+              .map(([skill, score]) => {
+                const percentage = Math.round((score as number) * 100)
+                const level =
+                  percentage >= 80 ? 'Advanced' :
+                  percentage >= 50 ? 'Intermediate' : 'Beginner'
+
+                return (
+                  <div key={skill} className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="capitalize">
+                        {skill.replace(/_/g, ' ')}
+                      </span>
+                      <span className="font-medium">{level}</span>
+                    </div>
+                    <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-blue-600"
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 7-Axis Architectural Telemetry Report */}
+      <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-white">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-purple-900">7-Axis Architectural Telemetry Report</CardTitle>
+            <Badge className="bg-purple-600 text-white">Architect Level</Badge>
+          </div>
+          <p className="text-sm text-slate-600 mt-2">
+            These advanced decision points separate builders from architects
+          </p>
+        </CardHeader>
+        <CardContent>
+          <SkillRadar scores={skillScores} variant="architectural" />
+
+          <div className="grid grid-cols-1 gap-3 mt-6">
+            {architecturalScores.map(({ key, label, score }) => {
               const level =
-                percentage >= 80 ? 'Advanced' :
-                percentage >= 50 ? 'Intermediate' : 'Beginner'
+                score >= 80 ? 'Architect' :
+                score >= 60 ? 'Lead' :
+                score >= 40 ? 'Mid' : 'Junior'
+
+              const colorClass =
+                score >= 80 ? 'bg-purple-600' :
+                score >= 60 ? 'bg-blue-600' :
+                score >= 40 ? 'bg-yellow-600' : 'bg-red-600'
 
               return (
-                <div key={skill} className="space-y-1">
+                <div key={key} className="space-y-1">
                   <div className="flex justify-between text-sm">
-                    <span className="capitalize">
-                      {skill.replace(/_/g, ' ')}
+                    <span className="font-medium text-slate-900">{label}</span>
+                    <span className={`px-2 py-0.5 rounded text-xs font-bold text-white ${colorClass}`}>
+                      {score}% • {level}
                     </span>
-                    <span className="font-medium">{level}</span>
                   </div>
                   <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-blue-600"
-                      style={{ width: `${percentage}%` }}
+                      className={`h-full ${colorClass}`}
+                      style={{ width: `${score}%` }}
                     />
                   </div>
                 </div>
@@ -117,6 +186,66 @@ export default async function DiagnosisResultsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Gap Analysis & Risk Assessment */}
+      {hasArchitecturalGaps && (
+        <Card className="border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-white">
+          <CardHeader>
+            <CardTitle className="text-orange-900 flex items-center gap-2">
+              <span className="text-2xl">⚠️</span>
+              Critical Architecture Gaps Detected
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-slate-700 mb-4">
+              Your diagnosis reveals architectural blind spots that could lead to production failures:
+            </p>
+
+            <div className="space-y-3 mb-6">
+              {gaps.map(({ label, score, risk }) => (
+                <div key={label} className="bg-white border border-orange-200 rounded-lg p-4">
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <h4 className="font-semibold text-slate-900">{label}</h4>
+                      <p className="text-sm text-orange-700 mt-1">
+                        <span className="font-bold">{score}% proficiency</span> • {risk}
+                      </p>
+                    </div>
+                    <Badge className="bg-red-100 text-red-800">Gap</Badge>
+                  </div>
+                  <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-red-600"
+                      style={{ width: `${score}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Strategic CTA */}
+            <div className="bg-gradient-to-r from-purple-600 to-cyan-500 rounded-xl p-6 text-white">
+              <h3 className="text-xl font-bold mb-2">Close Your Architecture Gaps</h3>
+              <p className="mb-4 text-purple-100">
+                Archcelerate's 12-week curriculum systematically addresses these blind spots with production-ready patterns,
+                real-world case studies, and hands-on projects.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Link href="/curriculum/week-1">
+                  <Button className="bg-white text-purple-600 hover:bg-purple-50 font-semibold w-full sm:w-auto">
+                    Start Week 1 Free
+                  </Button>
+                </Link>
+                <Link href="/dashboard">
+                  <Button variant="outline" className="border-white text-white hover:bg-white/10 w-full sm:w-auto">
+                    View Full Curriculum
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Question Review */}
       {quizQuestions.length > 0 && (
