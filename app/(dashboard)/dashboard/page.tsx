@@ -91,7 +91,8 @@ export default async function DashboardPage() {
       </div>
 
       {!diagnosisCompleted ? (
-        <Card className="border-2 border-blue-200 bg-blue-50">
+        <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+          <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
           <CardHeader>
             <CardTitle>🎯 Start Here</CardTitle>
             <CardDescription>
@@ -107,7 +108,8 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       ) : (
-        <Card className="border-2 border-green-200 bg-green-50">
+        <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+          <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-green-600 to-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
           <CardHeader>
             <CardTitle>✓ Diagnosis Complete</CardTitle>
             <CardDescription>
@@ -132,7 +134,8 @@ export default async function DashboardPage() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
 
         {week1Data?.week && (
-          <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-pink-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 1</CardTitle>
               <CardDescription>{week1Data.week.title}</CardDescription>
@@ -184,7 +187,8 @@ export default async function DashboardPage() {
       )}
 
         {week2Data?.week && (
-          <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-green-600 to-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 2</CardTitle>
               <CardDescription>{week2Data.week.title}</CardDescription>
@@ -205,7 +209,8 @@ export default async function DashboardPage() {
         )}
 
         {week3Data?.week && (
-          <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-sky-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-blue-600 to-sky-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 3</CardTitle>
               <CardDescription>{week3Data.week.title}</CardDescription>
@@ -226,7 +231,8 @@ export default async function DashboardPage() {
         )}
 
         {week4Data?.week && (
-          <Card className="border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-orange-600 to-amber-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 4</CardTitle>
               <CardDescription>{week4Data.week.title}</CardDescription>
@@ -247,7 +253,8 @@ export default async function DashboardPage() {
         )}
 
         {week5Data?.week && (
-          <Card className="border-2 border-indigo-200 bg-gradient-to-br from-indigo-50 to-blue-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-indigo-600 to-blue-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 5</CardTitle>
               <CardDescription>{week5Data.week.title}</CardDescription>
@@ -299,7 +306,8 @@ export default async function DashboardPage() {
         )}
 
         {week6Data?.week && (
-          <Card className="border-2 border-teal-200 bg-gradient-to-br from-teal-50 to-cyan-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-teal-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 6</CardTitle>
               <CardDescription>{week6Data.week.title}</CardDescription>
@@ -320,7 +328,8 @@ export default async function DashboardPage() {
         )}
 
         {week7Data?.week && (
-          <Card className="border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-yellow-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-amber-600 to-yellow-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 7</CardTitle>
               <CardDescription>{week7Data.week.title}</CardDescription>
@@ -341,7 +350,8 @@ export default async function DashboardPage() {
         )}
 
         {week8Data?.week && (
-          <Card className="border-2 border-rose-200 bg-gradient-to-br from-rose-50 to-pink-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-rose-600 to-pink-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 8</CardTitle>
               <CardDescription>{week8Data.week.title}</CardDescription>
@@ -362,7 +372,8 @@ export default async function DashboardPage() {
         )}
 
         {week9Data?.week && (
-          <Card className="border-2 border-red-200 bg-gradient-to-br from-red-50 to-orange-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-red-600 to-orange-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 9</CardTitle>
               <CardDescription>{week9Data.week.title}</CardDescription>
@@ -383,7 +394,8 @@ export default async function DashboardPage() {
         )}
 
         {week10Data?.week && (
-          <Card className="border-2 border-fuchsia-200 bg-gradient-to-br from-fuchsia-50 to-pink-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-fuchsia-600 to-pink-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 10</CardTitle>
               <CardDescription>{week10Data.week.title}</CardDescription>
@@ -404,7 +416,8 @@ export default async function DashboardPage() {
         )}
 
         {week11Data?.week && (
-          <Card className="border-2 border-lime-200 bg-gradient-to-br from-lime-50 to-green-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-lime-600 to-green-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 11</CardTitle>
               <CardDescription>{week11Data.week.title}</CardDescription>
@@ -425,7 +438,8 @@ export default async function DashboardPage() {
         )}
 
         {week12Data?.week && (
-          <Card className="border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-gray-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-slate-600 to-gray-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <CardTitle>Week 12</CardTitle>
               <CardDescription>{week12Data.week.title}</CardDescription>
@@ -446,7 +460,8 @@ export default async function DashboardPage() {
         )}
 
 
-        <Card>
+        <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+          <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
           <CardHeader>
             <CardTitle>AI Mentor</CardTitle>
             <CardDescription>24/7 Support</CardDescription>
@@ -473,7 +488,8 @@ export default async function DashboardPage() {
 
         <div className="grid gap-6 md:grid-cols-2">
           {/* AI Workflows */}
-          <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-purple-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-blue-600 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
@@ -507,7 +523,8 @@ export default async function DashboardPage() {
           </Card>
 
           {/* AI Security */}
-          <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-green-600 to-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
@@ -543,7 +560,8 @@ export default async function DashboardPage() {
           </Card>
 
           {/* Industry Scenarios */}
-          <Card className="border-2 border-teal-200 bg-gradient-to-br from-teal-50 to-cyan-50">
+          <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-teal-600 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
