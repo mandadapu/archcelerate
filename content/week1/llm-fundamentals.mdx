@@ -1,3 +1,9 @@
+---
+title: "LLM Fundamentals"
+description: "Tokenization, context windows, and prompt caching fundamentals"
+estimatedMinutes: 45
+---
+
 import { CodePlayground } from '@/components/curriculum/CodePlayground'
 
 # The LLM Blueprint: Tokenization Physics & Context Constraints
@@ -260,7 +266,7 @@ await analyzeTokenization([
 **Cost-Benefit Analysis**:
 - **Preprocessing overhead**: 5-10ms per request
 - **Token savings**: 10-30% for technical/medical domains
-- **ROI**: Positive if volume >100K requests/month
+- **ROI**: Positive if volume &gt;100K requests/month
 
 ### Architectural Constraint #1: Token Efficiency
 
@@ -611,7 +617,7 @@ const prompt = {
 
 ### Production Caching Strategy
 
-**Rule of Thumb**: Cache anything that repeats across >3 requests:
+**Rule of Thumb**: Cache anything that repeats across &gt;3 requests:
 
 ```typescript
 // Architectural Pattern: Hierarchical caching
@@ -687,8 +693,8 @@ const userMessage = `Current time: ${new Date().toISOString()}\n\n${query}`
 1. Identify static vs dynamic prompt sections
 2. Move static content to prefix (system, tools, few-shot)
 3. Add `cache_control: { type: 'ephemeral' }` to static blocks
-4. Monitor cache hit rate (aim for >85%)
-5. Ensure traffic is high enough (>10 requests/minute) to benefit from 5-min TTL
+4. Monitor cache hit rate (aim for &gt;85%)
+5. Ensure traffic is high enough (&gt;10 requests/minute) to benefit from 5-min TTL
 6. Test cache invalidation behavior during prompt updates
 
 **Monitoring**: Track cache hit rate in production:
@@ -699,7 +705,7 @@ const cacheMetrics = {
   cacheReadTokens: response.usage.cache_read_input_tokens || 0,
   cacheHitRate: cacheReadTokens / (cacheReadTokens + cacheCreationTokens)
 }
-// Target: >85% hit rate for cost efficiency
+// Target: &gt;85% hit rate for cost efficiency
 ```
 
 ## Context Management
@@ -730,7 +736,7 @@ When your system hits the 200K+ token limit, **"vibes" aren't enough**. You must
 | **FIFO (First-In, First-Out)** | Drop the oldest messages in the array as new ones arrive | Short, transactional chatbots | ⚠️ **High Risk**: The model loses the initial "System Instructions" or the original user goal. **Never use this pattern for safety-critical systems.** |
 | **Middle-Out Truncation** | Keep the System Prompt and the most recent 10 messages; delete the middle history | Long, multi-turn technical support | ✅ **Optimal**: Preserves the "Mission" (system prompt) and the "Current State" (recent messages) while clearing the bulk. **Production default for most applications.** |
 | **Rolling Summarization** | Use a cheaper model (Haiku) to summarize the first 50 messages into a 200-token "State Summary" | Complex, multi-day research agents | ⚠️ **High Latency**: Adds a summarization step (300-800ms), but maintains 100% of the semantic history. **Best for high-value sessions.** |
-| **Vector-Backed Memory** | Move "inactive" context to a Vector DB and retrieve only what is relevant to the current query | Enterprise Knowledge Bases, AI agents with long-term memory | ⚠️ **High Complexity**: Requires a RAG infrastructure but offers effectively "infinite" memory. **Only viable at scale (>10K sessions/month).** |
+| **Vector-Backed Memory** | Move "inactive" context to a Vector DB and retrieve only what is relevant to the current query | Enterprise Knowledge Bases, AI agents with long-term memory | ⚠️ **High Complexity**: Requires a RAG infrastructure but offers effectively "infinite" memory. **Only viable at scale (&gt;10K sessions/month).** |
 
 **Cost-Quality-Latency Matrix**:
 ```
@@ -1004,7 +1010,7 @@ async function vectorBackedTruncation(
 - **Retrieval quality**: Depends on embedding model quality (can miss nuanced context)
 
 **Best For**:
-- Enterprise knowledge bases with >10K active sessions
+- Enterprise knowledge bases with &gt;10K active sessions
 - AI agents that need to remember conversations from weeks/months ago
 - Multi-user systems where context sharing is valuable
 
@@ -1695,7 +1701,7 @@ async function moderateContent(post: string) {
 - Training data collection (3-6 months)
 - GPU infrastructure ($2000/month for high-availability)
 - Model drift requires retraining every 3-6 months
-- **Total cost**: $4000+/month → only viable at >40M posts/month
+- **Total cost**: $4000+/month → only viable at &gt;40M posts/month
 
 **Architectural Lesson**: When constraints conflict, use **tiered architecture** to meet all requirements through selective escalation.
 

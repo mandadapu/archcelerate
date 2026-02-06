@@ -1,3 +1,9 @@
+---
+title: "Architectural ROI & Model Selection"
+description: "Unit economics, model selection matrix, and quantified decision-making"
+estimatedMinutes: 45
+---
+
 # Architectural ROI: Unit Economics & Model Selection Matrix
 
 Engineering for **cost-performance efficiency** at scale—because every token has a price, and every model choice has an ROI.
@@ -500,7 +506,7 @@ function calculateVPT(
   let recommendation: 'UPGRADE' | 'STAY' | 'TEST'
   if (vpt > 0 && monthlyRevenueImpact > monthlyCostDelta * 2) {
     recommendation = 'UPGRADE'  // Clear positive ROI
-  } else if (vpt &lt; 0) {
+  } else if (vpt < 0) {
     recommendation = 'STAY'     // Negative ROI
   } else {
     recommendation = 'TEST'     // Marginal - run A/B test
@@ -1614,7 +1620,7 @@ Use this framework to make ROI-driven architectural decisions:
        ┌───────┴───────┐
        │               │
        v               v
-   &lt;1K req/day    >10K req/day
+   &lt;1K req/day    &gt;10K req/day
        │               │
        │               v
        │      ┌──────────────────────┐
@@ -1846,21 +1852,23 @@ class TriageMonitor {
     const { haiku, opus, human } = this.metrics.routingBreakdown
     const total = haiku + opus + human
 
-    return `
-📊 Daily Triage Report
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Total Queries: ${total.toLocaleString()}
-Total Cost: $${this.metrics.totalCost.toFixed(2)}
-Avg Latency: ${this.metrics.avgLatency.toFixed(0)}ms
+    const report = [
+      '📊 Daily Triage Report',
+      '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+      `Total Queries: ${total.toLocaleString()}`,
+      `Total Cost: $${this.metrics.totalCost.toFixed(2)}`,
+      `Avg Latency: ${this.metrics.avgLatency.toFixed(0)}ms`,
+      '',
+      'Routing Breakdown:',
+      `  🟢 Haiku:  ${((haiku/total) * 100).toFixed(1)}% (${haiku.toLocaleString()} queries)`,
+      `  🟡 Opus:   ${((opus/total) * 100).toFixed(1)}% (${opus.toLocaleString()} queries)`,
+      `  🔴 Human:  ${((human/total) * 100).toFixed(1)}% (${human.toLocaleString()} queries)`,
+      '',
+      `Cost per Query: $${(this.metrics.totalCost / total).toFixed(4)}`,
+      '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+    ].join('\n')
 
-Routing Breakdown:
-  🟢 Haiku:  ${((haiku/total) * 100).toFixed(1)}% (${haiku.toLocaleString()} queries)
-  🟡 Opus:   ${((opus/total) * 100).toFixed(1)}% (${opus.toLocaleString()} queries)
-  🔴 Human:  ${((human/total) * 100).toFixed(1)}% (${human.toLocaleString()} queries)
-
-Cost per Query: $${(this.metrics.totalCost / total).toFixed(4)}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    `
+    return report
   }
 }
 ```
@@ -2057,7 +2065,7 @@ interface ABTestConfig {
 //   → If yes: Switch. If no: Stay on Sonnet or optimize further.
 
 // Scenario 3 (5% probability): Haiku conversion &lt; 0.70%
-//   → Quality drop causes >30% conversion loss
+//   → Quality drop causes &gt;30% conversion loss
 //   → Stay on Sonnet, investigate other optimizations (caching, tier system)
 ```
 
@@ -2075,7 +2083,7 @@ interface ABTestConfig {
 
 1. **Risk-bounded**: 1-month test costs $1,375 (mixed). If it fails, you're out $625 vs. Sonnet baseline. If it succeeds, you save $2,250/month forever.
 
-2. **Quantified decision criteria**: "If Haiku maintains >0.9% conversion, switch. Otherwise, stay."
+2. **Quantified decision criteria**: "If Haiku maintains &gt;0.9% conversion, switch. Otherwise, stay."
 
 3. **Scales learning**: The A/B test data informs future decisions (e.g., if Haiku drops conversion by 10%, you know the quality → conversion elasticity for this feature).
 
