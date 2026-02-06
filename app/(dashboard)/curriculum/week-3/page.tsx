@@ -135,7 +135,6 @@ export default async function Week3Page() {
         {/* Header with Progress */}
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-sm text-muted-foreground mb-2">Week 3</div>
             <h1 className="text-4xl font-bold">{week.title}</h1>
             <p className="text-lg text-muted-foreground mt-2">
               {week.description}
