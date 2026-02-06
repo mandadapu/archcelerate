@@ -3,7 +3,12 @@ import Link from 'next/link'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { CheckCircle2, Circle, Clock, ChevronRight } from 'lucide-react'
+import {
+  CheckCircle2,
+  Circle,
+  Clock,
+  ChevronRight
+} from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
