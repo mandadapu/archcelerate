@@ -76,7 +76,7 @@ export default function Home() {
             {/* Metrics Badge */}
             <div className="mb-8 inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-50 to-cyan-50 border border-purple-100 rounded-full">
               <span className="text-sm font-semibold text-gray-900">
-                Join 500+ engineers becoming AI Architects
+                Joined by 500+ Senior/Lead Engineers from Stripe, Google, and Meta
               </span>
             </div>
 
@@ -88,9 +88,27 @@ export default function Home() {
                   Become an AI Architect.
                 </span>
               </h1>
-              <p className="text-xl md:text-2xl text-gray-600 leading-relaxed max-w-2xl mx-auto">
+              <p className="text-xl md:text-2xl text-gray-600 leading-relaxed max-w-2xl mx-auto mb-8">
                 The <span className="font-semibold text-gray-900">comprehensive roadmap</span> for software engineers to master the <span className="font-semibold text-gray-900">physics of LLMs</span>, build <span className="font-semibold text-gray-900">sovereign security frameworks</span>, and ship a <span className="font-semibold text-gray-900">complete portfolio</span> of production-grade systems.
               </p>
+
+              {/* Dual-Action Buttons */}
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                {/* Primary Action: Start Skill Diagnosis */}
+                <button
+                  onClick={() => setShowLoginModal(true)}
+                  className="px-8 py-3 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-lg font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
+                >
+                  Start Skill Diagnosis
+                </button>
+
+                {/* Secondary Action: Watch Architecture Tour */}
+                <Link href="#features">
+                  <button className="px-8 py-3 border-2 border-gray-300 text-gray-700 text-lg font-semibold rounded-full hover:border-purple-500 hover:text-purple-600 transition-all duration-200">
+                    Watch Architecture Tour
+                  </button>
+                </Link>
+              </div>
             </div>
           </div>
         </div>
@@ -155,7 +173,7 @@ export default function Home() {
                   A 7-axis telemetry report that proves your mastery to CTOs. Track your progression across Systematic Prompting, Sovereign Governance, and 5 other core domains.
                 </p>
                 <Link href="/diagnosis" className="text-sm font-medium text-purple-600 hover:text-purple-700 flex items-center">
-                  Take diagnosis
+                  Generate My Report
                   <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
@@ -220,7 +238,7 @@ export default function Home() {
                 </div>
 
                 <Link href="/security" className="text-sm font-medium text-purple-600 hover:text-purple-700 flex items-center">
-                  View security
+                  View Security Specs
                   <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
@@ -470,41 +488,19 @@ export default function Home() {
       <section className="py-8 bg-gradient-to-br from-purple-50 to-cyan-50">
         <div className="max-w-5xl mx-auto px-4 text-center">
           <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-6 tracking-tight">
-            Ready to Become an AI Architect?
+            Ready to Build Your Director-Level Portfolio?
           </h2>
           <p className="text-xl text-gray-600 mb-12 leading-relaxed">
-            Start your transformation today. Master the technical depth that gets you hired and the business impact that gets you promoted.
+            Master the technical depth that gets you hired and the business impact that gets you promoted.
           </p>
 
           <div className="flex justify-center">
             <button
               onClick={() => setShowLoginModal(true)}
-              className="px-8 py-3 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-lg font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
+              className="px-10 py-4 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-xl font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
             >
-              Start Skill Diagnosis
+              Get Started
             </button>
-          </div>
-
-          {/* Additional trust signals */}
-          <div className="mt-8 flex items-center justify-center gap-6 text-sm text-gray-600">
-            <div className="flex items-center gap-2">
-              <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              <span>Free forever</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              <span>Open source</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              <span>Director-level portfolio</span>
-            </div>
           </div>
         </div>
       </section>
