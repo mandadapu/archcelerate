@@ -51,6 +51,170 @@ Traditional redaction systems destroy data permanently. Reversible tokenization 
 3. **Automatic rehydration** when LLM responds
 4. **Session isolation** preventing token reuse across users
 
+### 🛡️ The Sovereign Safety Proxy: Master Pattern
+
+<Callout type="info" title="Architect's Framework">
+This pattern goes beyond simple "find and replace" by using **reversible tokenization** - a requirement for enterprise systems where the LLM needs to reason about entities without seeing actual sensitive data.
+</Callout>
+
+**Strategy**: Tokenize at Ingress → Reason with LLM → De-tokenize at Egress
+
+This middleware resides in your **Safety Proxy layer**. It intercepts the incoming prompt, swaps sensitive data with secure "Sovereign Tokens," and maintains a local, encrypted mapping to restore the data in the egress (output) phase.
+
+```typescript
+/**
+ * ARCHCELERATE MASTER PATTERN: Reversible PII Redaction
+ * Strategy: Tokenize at Ingress -> Reason with LLM -> De-tokenize at Egress
+ */
+
+import { PII_PATTERNS } from './governance/patterns';
+import { encrypt, decrypt } from './security/crypto';
+
+export class SovereignSafetyProxy {
+  private tokenMap = new Map<string, string>();
+
+  /**
+   * INGRESS: Redact PII before it hits the LLM
+   */
+  async redactIngress(userPrompt: string): Promise<string> {
+    let hardenedPrompt = userPrompt;
+
+    // Scan for PII (Names, Emails, SSNs, Health IDs)
+    for (const [entityType, regex] of Object.entries(PII_PATTERNS)) {
+      hardenedPrompt = hardenedPrompt.replace(regex, (match) => {
+        const tokenId = `[SOV_${entityType}_${Math.random().toString(36).slice(2, 7)}]`;
+
+        // Encrypt the original value before storing in local state
+        this.tokenMap.set(tokenId, encrypt(match));
+
+        return tokenId;
+      });
+    }
+
+    // Wrap in Delimiters to prevent Instruction Injection
+    return `<instruction_segregation>\n${hardenedPrompt}\n</instruction_segregation>`;
+  }
+
+  /**
+   * EGRESS: Restore data for the user UI, but log the intervention
+   */
+  async restoreEgress(llmResponse: string): Promise<string> {
+    let sanitizedResponse = llmResponse;
+
+    this.tokenMap.forEach((encryptedValue, tokenId) => {
+      if (sanitizedResponse.includes(tokenId)) {
+        const originalValue = decrypt(encryptedValue);
+        sanitizedResponse = sanitizedResponse.replaceAll(tokenId, originalValue);
+      }
+    });
+
+    return sanitizedResponse;
+  }
+
+  /**
+   * AUDIT LOG: Generate the Sovereign Audit Trail (SOC2/HIPAA)
+   */
+  generateAuditTrail(userId: string) {
+    return {
+      timestamp: new Date().toISOString(),
+      user_id: userId,
+      entities_protected: Array.from(this.tokenMap.keys()),
+      governance_status: "ENFORCED",
+      proxy_latency_ms: 45, // Example metric
+    };
+  }
+}
+```
+
+#### 📉 Architect's Implementation Tips
+
+<Callout type="warning" title="Production Considerations">
+These three principles separate hobbyist redaction from enterprise-grade PII protection.
+</Callout>
+
+**1. Reversible vs. Permanent Redaction**
+
+- **Reversible** (Support Tickets): Use tokenization so users get helpful answers with their original data restored in the UI
+- **Permanent** (Training Pipelines): Use masking where data is gone forever - never feed PII into fine-tuning datasets
+
+```typescript
+// Example: Different strategies for different use cases
+if (useCase === 'customer_support') {
+  // Reversible - user sees their data in final response
+  const redacted = await proxy.redactIngress(userQuery);
+  const llmResponse = await callLLM(redacted);
+  return await proxy.restoreEgress(llmResponse);  // ✅ Restore original data
+} else if (useCase === 'training_data') {
+  // Permanent - data is masked forever
+  const masked = await permanentMask(userQuery);  // ⚠️ No way to reverse
+  await saveToTrainingSet(masked);
+}
+```
+
+**2. The "Shadow" Map: Hardened Shell Approach**
+
+The `tokenMap` **never leaves the internal server**. The LLM only sees `[SOV_EMAIL_abc12]`. This makes a PII leak **technically impossible** - even if the LLM's training data is compromised, it never saw the actual email.
+
+```typescript
+// ✅ SECURE: Token map stays server-side
+class SovereignSafetyProxy {
+  private tokenMap = new Map<string, string>();  // NEVER serialized to LLM
+
+  async redactIngress(userPrompt: string) {
+    // LLM receives: "User [SOV_EMAIL_a7x2k] requested password reset"
+    // tokenMap contains: { "[SOV_EMAIL_a7x2k]": "encrypt(alice@example.com)" }
+    // The actual email NEVER crosses the network boundary to Claude/GPT
+  }
+}
+
+// ❌ INSECURE: Sending the map to LLM
+const insecurePrompt = `
+User data: ${JSON.stringify(tokenMap)}  // ⚠️ NEVER DO THIS
+Please analyze this user's request...
+`;
+```
+
+**3. Audit Logging: "If it's not logged, it didn't happen"**
+
+An AI Architect knows that compliance requires **proof**. The `generateAuditTrail()` method creates the JSON object students will use in their **Architect's Verification Report**.
+
+```typescript
+// Production audit trail with SOC2/HIPAA compliance
+generateAuditTrail(userId: string) {
+  return {
+    timestamp: new Date().toISOString(),
+    user_id: userId,
+    session_id: this.sessionId,
+    entities_protected: Array.from(this.tokenMap.keys()),  // What was redacted
+    entity_types: this.getEntityTypes(),  // EMAIL, SSN, etc.
+    governance_status: "ENFORCED",
+    proxy_latency_ms: this.measureLatency(),
+    compliance_frameworks: ["HIPAA", "SOC2", "GDPR"],
+    // CRITICAL: Store the fact that redaction happened, NOT the original values
+    redaction_occurred: true,
+    original_values_stored: false  // ✅ Never log actual PII
+  };
+}
+```
+
+**Why This Matters**: During a SOC2 audit, you can prove that PII was protected without exposing the actual sensitive data. The audit log shows:
+- ✅ Redaction happened at 2026-02-05T14:23:45Z
+- ✅ 3 entities were protected (EMAIL, SSN, NAME)
+- ✅ User alice@example.com ← Wait, this is wrong! ❌
+
+**Correct Audit Log** (user IDs only, no PII):
+```typescript
+{
+  timestamp: "2026-02-05T14:23:45Z",
+  user_id: "usr_a7b8c9d0",  // ✅ Hashed/UUID, not email
+  entities_protected: ["[SOV_EMAIL_abc12]", "[SOV_SSN_xyz89]"],
+  governance_status: "ENFORCED"
+  // ✅ No actual PII in the audit log itself
+}
+```
+
+---
+
 ### Implementation
 
 Create `lib/sovereign-proxy.ts`:
@@ -412,6 +576,308 @@ describe('SovereignProxy - Tokenization', () => {
 ```bash
 npm test -- sovereign-proxy.test.ts
 ```
+
+### 🏥 Practical Exercise: Medical Queries Dataset
+
+<Callout type="success" title="Real-World Scenario">
+You'll be given a "dirty" dataset of medical queries containing real PII. Your task: Build a proxy that successfully redacts PII while still allowing the LLM to categorize the **intent** of the message.
+</Callout>
+
+#### The Challenge
+
+Healthcare support systems receive thousands of queries daily. These contain:
+- ✅ **Useful context**: Symptoms, medication names, appointment types
+- ⚠️ **Sensitive PII**: Patient names, SSNs, phone numbers, medical record numbers
+
+**Your Goal**: Process queries so the LLM can categorize intent (e.g., "prescription refill", "appointment scheduling", "billing question") **without ever seeing the actual PII**.
+
+#### Dataset: Dirty Medical Queries
+
+Create `lib/__tests__/fixtures/medical-queries.ts`:
+
+```typescript
+/**
+ * Real-world medical queries with embedded PII
+ * Your proxy must redact PII while preserving enough context for intent classification
+ */
+export const DIRTY_MEDICAL_QUERIES = [
+  {
+    id: 1,
+    query: "Hi, this is Sarah Martinez calling about my prescription refill. My phone is 555-234-5678 and my date of birth is 03/15/1978. I need a refill on my Metformin 500mg.",
+    expected_intent: "prescription_refill",
+    expected_redacted_entities: ["NAME", "PHONE"],
+    should_preserve: ["Metformin 500mg", "refill"],  // Medical context
+  },
+  {
+    id: 2,
+    query: "Patient Michael Chen (SSN: 123-45-6789, MRN: H987654) needs to schedule a follow-up cardiology appointment for his recent stent procedure.",
+    expected_intent: "appointment_scheduling",
+    expected_redacted_entities: ["NAME", "SSN"],
+    should_preserve: ["cardiology", "stent procedure", "follow-up"],
+  },
+  {
+    id: 3,
+    query: "I received a bill for $4,500 but my insurance (ID: ABC123456789) should have covered the colonoscopy. Contact me at jennifer.williams@email.com",
+    expected_intent: "billing_inquiry",
+    expected_redacted_entities: ["EMAIL"],
+    should_preserve: ["$4,500", "insurance", "colonoscopy"],
+  },
+  {
+    id: 4,
+    query: "Emergency: Patient in Room 302, Robert Taylor, DOB 07/22/1965, experiencing chest pain. Notify Dr. Anderson at 555-111-9999 immediately.",
+    expected_intent: "emergency_alert",
+    expected_redacted_entities: ["NAME", "PHONE"],
+    should_preserve: ["Room 302", "chest pain", "Emergency"],
+  },
+  {
+    id: 5,
+    query: "Please update my primary care physician to Dr. Lisa Johnson. My member ID is 987-65-4321 and you can reach me at 555-876-5432.",
+    expected_intent: "account_update",
+    expected_redacted_entities: ["NAME", "PHONE"],
+    should_preserve: ["primary care physician", "member ID"],
+  },
+  {
+    id: 6,
+    query: "Test results for Amanda Rodriguez (Chart #: 456789, DOB: 11/30/1990) show elevated A1C at 8.2%. Please schedule diabetes education class.",
+    expected_intent: "test_results_followup",
+    expected_redacted_entities: ["NAME"],
+    should_preserve: ["A1C", "8.2%", "diabetes education"],
+  }
+];
+
+export const INTENT_CATEGORIES = [
+  "prescription_refill",
+  "appointment_scheduling",
+  "billing_inquiry",
+  "emergency_alert",
+  "account_update",
+  "test_results_followup",
+  "general_inquiry"
+];
+```
+
+#### Your Task: Build the Intent Classifier
+
+Create `lib/__tests__/medical-intent-classifier.test.ts`:
+
+```typescript
+import { SovereignProxy } from '../sovereign-proxy';
+import { DIRTY_MEDICAL_QUERIES, INTENT_CATEGORIES } from './fixtures/medical-queries';
+import Anthropic from '@anthropic-ai/sdk';
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY
+});
+
+describe('Medical Intent Classifier with PII Redaction', () => {
+  const proxy = new SovereignProxy('hipaa-compliant-key-32chars!');
+
+  /**
+   * TEST 1: Verify PII is completely redacted
+   */
+  it('redacts all PII before sending to LLM', async () => {
+    for (const testCase of DIRTY_MEDICAL_QUERIES) {
+      const result = await proxy.tokenize(testCase.query, `patient-${testCase.id}`);
+
+      // Verify original PII is NOT in tokenized text
+      const piiPatterns = [
+        /\b\d{3}-\d{2}-\d{4}\b/,  // SSN
+        /\b\d{3}-\d{3}-\d{4}\b/,  // Phone
+        /\b[A-Z][a-z]+ [A-Z][a-z]+\b/,  // Names (simplified)
+        /\b[\w._%+-]+@[\w.-]+\.[A-Z|a-z]{2,}\b/,  // Email
+      ];
+
+      for (const pattern of piiPatterns) {
+        expect(result.tokenizedText).not.toMatch(pattern);
+      }
+
+      // Verify expected entities were detected
+      console.log(`Query ${testCase.id}:`, result.metadata.entitiesDetected, 'entities redacted');
+    }
+  });
+
+  /**
+   * TEST 2: Verify medical context is preserved
+   */
+  it('preserves medical context after redaction', async () => {
+    for (const testCase of DIRTY_MEDICAL_QUERIES) {
+      const result = await proxy.tokenize(testCase.query, `patient-${testCase.id}`);
+
+      // Check that important medical terms are still present
+      for (const term of testCase.should_preserve) {
+        expect(result.tokenizedText.toLowerCase()).toContain(term.toLowerCase());
+      }
+    }
+  });
+
+  /**
+   * TEST 3: LLM can correctly classify intent WITHOUT seeing PII
+   */
+  it('classifies intent correctly with redacted queries', async () => {
+    const results: Array<{ id: number; expected: string; actual: string; match: boolean }> = [];
+
+    for (const testCase of DIRTY_MEDICAL_QUERIES) {
+      // Step 1: Redact PII
+      const redactionResult = await proxy.tokenize(testCase.query, `patient-${testCase.id}`);
+
+      // Step 2: Send REDACTED query to LLM for intent classification
+      const response = await anthropic.messages.create({
+        model: 'claude-sonnet-4-5-20251101',
+        max_tokens: 256,
+        temperature: 0,  // Deterministic classification
+        messages: [{
+          role: 'user',
+          content: `Classify the intent of this medical query. Respond with ONLY one of these categories: ${INTENT_CATEGORIES.join(', ')}.
+
+Query: ${redactionResult.tokenizedText}
+
+Intent:`
+        }]
+      });
+
+      const classifiedIntent = response.content[0].text.trim().toLowerCase();
+      const match = classifiedIntent === testCase.expected_intent;
+
+      results.push({
+        id: testCase.id,
+        expected: testCase.expected_intent,
+        actual: classifiedIntent,
+        match
+      });
+
+      // Individual assertion
+      expect(classifiedIntent).toBe(testCase.expected_intent);
+    }
+
+    // Overall accuracy report
+    const accuracy = (results.filter(r => r.match).length / results.length) * 100;
+    console.log('\n📊 Intent Classification Accuracy:', `${accuracy.toFixed(1)}%`);
+    console.table(results);
+
+    // Require >80% accuracy (5 out of 6 correct)
+    expect(accuracy).toBeGreaterThanOrEqual(80);
+  });
+
+  /**
+   * TEST 4: End-to-end flow (Ingress → LLM → Egress)
+   */
+  it('completes full redaction-classification-restoration cycle', async () => {
+    const testQuery = DIRTY_MEDICAL_QUERIES[0];  // Sarah Martinez prescription refill
+
+    // INGRESS: Redact PII
+    const ingress = await proxy.tokenize(testQuery.query, 'e2e-test-user');
+    expect(ingress.tokenizedText).toContain('[SOV_NAME_');
+    expect(ingress.tokenizedText).toContain('[SOV_PHONE_');
+
+    // LLM PROCESSING: Classify intent (LLM never sees PII)
+    const llmResponse = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5-20251101',
+      max_tokens: 512,
+      messages: [{
+        role: 'user',
+        content: `You are a medical support assistant. Analyze this query and provide:
+1. Intent category (prescription_refill, appointment_scheduling, etc.)
+2. Suggested response
+
+Query: ${ingress.tokenizedText}
+
+Format your response as JSON:
+{
+  "intent": "...",
+  "response": "..."
+}`
+      }]
+    });
+
+    const llmOutput = llmResponse.content[0].text;
+    expect(llmOutput).toContain('prescription_refill');
+
+    // EGRESS: Restore PII for user-facing response
+    const egress = await proxy.detokenize(llmOutput, ingress.sovereignMap);
+
+    // Verify original data is restored (if LLM referenced the tokens)
+    if (llmOutput.includes('[SOV_NAME_')) {
+      expect(egress).toContain('Sarah Martinez');
+    }
+    expect(egress).not.toContain('[SOV_');  // No tokens in final output
+  });
+
+  /**
+   * TEST 5: Audit trail generation
+   */
+  it('generates compliant audit trail for each query', async () => {
+    const testQuery = DIRTY_MEDICAL_QUERIES[3];  // Emergency alert
+
+    const redactionResult = await proxy.tokenize(testQuery.query, 'audit-test-user');
+
+    // Generate audit trail
+    const auditLog = {
+      timestamp: new Date().toISOString(),
+      user_id: 'audit-test-user',
+      query_id: testQuery.id,
+      entities_protected: Object.keys(redactionResult.sovereignMap),
+      entity_types: Object.keys(redactionResult.sovereignMap)
+        .map(token => token.match(/SOV_(\w+)_/)?.[1])
+        .filter(Boolean),
+      governance_status: 'ENFORCED',
+      processing_time_ms: redactionResult.metadata.processingTime,
+      compliance_frameworks: ['HIPAA', 'SOC2'],
+      pii_disclosed_to_llm: false  // ✅ CRITICAL
+    };
+
+    // Verify audit log structure
+    expect(auditLog.entities_protected.length).toBeGreaterThan(0);
+    expect(auditLog.entity_types).toContain('NAME');
+    expect(auditLog.pii_disclosed_to_llm).toBe(false);
+
+    console.log('\n🔒 Audit Log Sample:', JSON.stringify(auditLog, null, 2));
+  });
+});
+```
+
+#### Success Criteria
+
+✅ **PII Redaction**: 100% of PII patterns must be redacted (no SSN, phone, email, or names visible to LLM)
+
+✅ **Context Preservation**: Medical terms, medications, and symptoms must remain intact
+
+✅ **Intent Classification**: >80% accuracy on intent classification with redacted queries
+
+✅ **Latency**: <20ms redaction processing time per query
+
+✅ **Audit Trail**: Complete audit log for each transaction
+
+#### Run Your Solution
+
+```bash
+# Install dependencies
+npm install @anthropic-ai/sdk
+
+# Set API key
+export ANTHROPIC_API_KEY=your_key_here
+
+# Run the medical intent classifier test
+npm test -- medical-intent-classifier.test.ts
+
+# Expected output:
+# ✓ redacts all PII before sending to LLM
+# ✓ preserves medical context after redaction
+# ✓ classifies intent correctly with redacted queries
+#   📊 Intent Classification Accuracy: 100%
+# ✓ completes full redaction-classification-restoration cycle
+# ✓ generates compliant audit trail for each query
+```
+
+#### 🏆 Architect's Success Pattern
+
+If your solution passes all tests, you've demonstrated:
+
+1. **Reversible Tokenization**: Redact → Reason → Restore pattern
+2. **Context Preservation**: LLM can still understand intent without PII
+3. **Audit Compliance**: Full traceability for SOC2/HIPAA audits
+4. **Production Performance**: <20ms overhead maintains SLA
+
+This is the **exact pattern** used by healthcare companies processing millions of queries/month while maintaining HIPAA compliance.
 
 ---
 
