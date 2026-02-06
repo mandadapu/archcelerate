@@ -16,7 +16,7 @@ export function SystemDiagram() {
 
         {/* System Diagram */}
         <div className="relative">
-          <svg viewBox="0 0 1000 600" className="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
+          <svg viewBox="0 0 1200 550" className="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
             <defs>
               {/* Gradient definitions */}
               <linearGradient id="flowGradient" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -204,7 +204,7 @@ export function SystemDiagram() {
             </g>
 
             {/* Title decoration */}
-            <text x="500" y="40" textAnchor="middle" fill="url(#flowGradient)" fontSize="16" fontWeight="700">
+            <text x="600" y="80" textAnchor="middle" fill="url(#flowGradient)" fontSize="16" fontWeight="700">
               Enterprise-Grade AI Architecture
             </text>
           </svg>
