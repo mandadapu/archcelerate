@@ -203,8 +203,22 @@ export default function Home() {
                   The Safety Proxy
                 </h3>
                 <p className="text-gray-600 leading-relaxed mb-4 text-sm">
-                  Pre-built middleware for HIPAA/GDPR compliance and PII redaction. Production-ready egress monitoring, reversible tokenization, and audit logging.
+                  Engineer the "Hardened Shell"—a middle-tier service that intercepts all traffic to enforce Sovereign Governance. Features pre-built middleware for PII Redaction, reversible tokenization, and structured audit logging to meet HIPAA and SOC2 standards.
                 </p>
+
+                {/* Trust Badges - Compliance Sandwich */}
+                <div className="flex gap-2 mb-4">
+                  <span className="px-2 py-1 bg-green-50 text-green-700 text-xs font-semibold rounded border border-green-200">
+                    HIPAA
+                  </span>
+                  <span className="px-2 py-1 bg-blue-50 text-blue-700 text-xs font-semibold rounded border border-blue-200">
+                    GDPR
+                  </span>
+                  <span className="px-2 py-1 bg-purple-50 text-purple-700 text-xs font-semibold rounded border border-purple-200">
+                    SOC2
+                  </span>
+                </div>
+
                 <Link href="/security" className="text-sm font-medium text-purple-600 hover:text-purple-700 flex items-center">
                   View security
                   <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
