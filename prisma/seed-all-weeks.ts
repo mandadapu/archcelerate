@@ -1,3 +1,4 @@
+import { validateMDXOrExit } from './lib/validate-mdx'
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
@@ -346,6 +347,9 @@ const weekData = [
 ]
 
 async function main() {
+  // Validate and auto-fix all MDX content before seeding
+  await validateMDXOrExit()
+
   console.log('Seeding all remaining weeks...')
 
   for (const week of weekData) {

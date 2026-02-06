@@ -76,7 +76,16 @@ Question: ${question}`
 
   return response.content[0].text
 }
-```
+
+### The Naive RAG Problem
+
+**Reality Check**: The basic 4-step RAG (Embed → Retrieve → Format → Generate) suffers from **low precision**—it retrieves 100 potential matches but struggles to identify the 1 true answer.
+
+> **Architect Perspective**: Vector databases are great at **recall** (finding 100 potential matches) but poor at **precision** (identifying the 1 true answer). Never pass raw vector results directly to your prompt. Use a **Cross-Encoder Re-ranker** (like Cohere or a local BGE model) to re-score the top 20-50 chunks. This ensures the most semantically relevant data is at the **top** of the context window, solving the "Lost in the Middle" problem.
+
+## Two-Stage Retrieval: Recall → Precision
+
+For full implementation details of two-stage retrieval with cross-encoder re-ranking, see the production patterns below. The key insight: bi-encoders (vector search) cast a wide net for recall, then cross-encoders re-rank for precision.
 
 ### Production RAG Pipeline
 
@@ -787,25 +796,118 @@ class DocumentIndexer {
 
 ## Advanced Techniques
 
-### Hypothetical Document Embeddings (HyDE)
+### Query Rewriting with HyDE (Hypothetical Document Embeddings)
+
+> **Architect Perspective**: Users are bad at writing search queries. Instead of embedding the user's messy question directly, ask a fast model (like Haiku) to generate a **hypothetical answer** first. Embed that answer to perform the search. Since the hypothetical answer looks more like the documents in your database, your retrieval accuracy will spike by 20-30%.
+
+**The Problem**: User queries don't match document style (casual vs. formal language).
+
+**The Solution**: Generate what a good answer would look like, then search with that.
 
 ```typescript
-async function hydeQuery(question: string): Promise<string> {
+async function hydeRAG(userQuery: string): Promise<string> {
   // 1. Generate hypothetical answer
-  const hypothetical = await llm.complete({
-    prompt: `Write a detailed answer to this question: ${question}`
+  const hypothetical = await anthropic.messages.create({
+    model: 'claude-haiku-4',
+    max_tokens: 300,
+    messages: [{
+      role: 'user',
+      content: `Write a formal documentation answer to: "${userQuery}"`
+    }]
   })
 
-  // 2. Embed the hypothetical answer (not the question)
-  const embedding = await embed(hypothetical)
+  const hypotheticalText = hypothetical.content[0].type === 'text' 
+    ? hypothetical.content[0].text 
+    : ''
 
-  // 3. Retrieve using hypothetical embedding
-  const results = await vectorDB.query({ vector: embedding })
+  // 2. Embed hypothetical (not the user query!)
+  const embedding = await openai.embeddings.create({
+    model: 'text-embedding-3-small',
+    input: hypotheticalText
+  })
 
-  // 4. Generate real answer from retrieved docs
-  return await ragGenerate(question, results)
+  // 3. Search with hypothetical embedding
+  const results = await vectorDB.query({
+    vector: embedding.data[0].embedding,
+    topK: 5
+  })
+
+  // 4. Generate real answer
+  const context = results.map(r => r.content).join('\n\n')
+  
+  const answer = await anthropic.messages.create({
+    model: 'claude-sonnet-4-5',
+    max_tokens: 1024,
+    messages: [{
+      role: 'user',
+      content: `Context:\n${context}\n\nQuestion: ${userQuery}`
+    }]
+  })
+
+  return answer.content[0].type === 'text' ? answer.content[0].text : ''
 }
 ```
+
+**Why it works**: Hypothetical answers use formal language that matches how documents are written, improving retrieval accuracy by 20-30%.
+
+---
+
+### Citation-First Architecture
+
+> **Architect Perspective**: In enterprise AI, a response without a citation is a **liability**. Architect your prompt to require the LLM to output its answer in a **structured format** (e.g., JSON) where every claim is linked to a `chunk_id`. This allows your UI to highlight exactly which sentence in the source PDF justified the AI's answer, which is the **#1 requirement** for legal and medical "Right to Explanation" compliance.
+
+**The Compliance Problem**: For regulated industries, AI answers without traceable sources create legal liability.
+
+```typescript
+interface CitedAnswer {
+  answer: string
+  claims: Array<{
+    text: string
+    chunkIds: string[]
+    confidence: number
+  }>
+  confidence: number
+}
+
+async function citationFirstRAG(query: string): Promise<CitedAnswer> {
+  // 1. Retrieve chunks
+  const chunks = await vectorSearch(query, 5)
+
+  // 2. Format with chunk IDs
+  const context = chunks
+    .map(c => `[CHUNK_ID: ${c.id}]\n${c.content}`)
+    .join('\n\n---\n\n')
+
+  // 3. Prompt for structured output with citations
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-5',
+    max_tokens: 2048,
+    messages: [{
+      role: 'user',
+      content: `Answer using ONLY the context. Cite CHUNK_IDs for every claim.
+
+Context:
+${context}
+
+Question: "${query}"
+
+Return JSON:
+{
+  "answer": "Your answer",
+  "claims": [
+    {"text": "claim text", "chunkIds": ["chunk-1"], "confidence": 0.95}
+  ],
+  "confidence": 0.92
+}`
+    }]
+  })
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '{}'
+  return JSON.parse(text)
+}
+```
+
+**Why it's mandatory**: GDPR, HIPAA, and SOX require audit trails. Citations make AI answers legally defensible.
 
 ### Query Decomposition
 
@@ -857,21 +959,59 @@ async function evaluateRAG(
 
 ## Best Practices
 
-1. **Chunk overlap**: Use 10-20% overlap to preserve context
-2. **Metadata enrichment**: Add source, date, category to chunks
-3. **Hybrid search**: Combine vector + keyword search
-4. **Reranking**: Always rerank top results with cross-encoder
-5. **Citation tracking**: Track which chunks contributed to answer
+1. **Two-stage retrieval**: Use vector search for recall, cross-encoder for precision
+2. **Chunk overlap**: Use 10-20% overlap to preserve context
+3. **HyDE**: Generate hypothetical answers for better query-document matching
+4. **Citation-first**: Require structured output with chunk IDs for compliance
+5. **Reranking**: Always rerank top results with cross-encoder
 6. **Fallback handling**: Handle "no relevant docs" gracefully
 
-## Exercise
 
-Build a RAG system:
-1. Index 10+ documents
-2. Implement chunking strategy
-3. Add metadata filtering
-4. Track citations
-5. Evaluate retrieval quality
+## Architectural Optimization Challenge
+
+> **Scenario**: Your RAG system retrieves 5 relevant chunks, and you've verified the correct answer **is** in those chunks. However, the LLM consistently responds with **"I don't know"** or **hallucinates** based on training data.
+
+### The Problem
+
+**System Behavior**: LLM ignores retrieved context despite it containing the answer.
+
+**User Impact**:
+- 47% of queries receive "I don't know" despite relevant docs
+- 23% contain hallucinated information
+- Customer trust: 2.1/5 stars
+
+### Your Task
+
+**The CEO asks**: "The right information is being retrieved. Why isn't the LLM using it?"
+
+Choose the best architectural fix:
+
+**Option A: Increase top_k from 5 to 50**
+- ❌ **Fails**: More noise = worse performance ("Lost in the Middle")
+- Result: 38% accuracy (-9%), 5x slower, 15x cost
+
+**Option B: Implement Re-ranking & Contextual Compression** ✅ **CORRECT**
+- ✅ **Works**: Cross-encoder ensures answer is at top, compression removes noise
+- Result: 91% accuracy (+44%), only +200ms latency, +$0.0002/query
+- **Why**: Most RAG failures are from context noise, not retrieval quality
+
+**Option C: Use Larger Model (Opus)**
+- ❌ **Fails**: Smarter model doesn't fix noisy context
+- Result: 62% accuracy (+15%), 5x cost, slower than Option B
+
+**Option D: Re-index with Different Embedding Model**
+- ❌ **Fails**: Problem is ranking, not retrieval
+- Result: 47% accuracy (no change), $4K cost, 8 hours downtime
+
+### The Correct Answer: B
+
+**The Architect's Principle**: When RAG retrieves correct chunks but LLM doesn't use them, fix **context noise** with:
+1. Two-stage retrieval (vector → cross-encoder)
+2. Keep top-K small (3-5 chunks)
+3. Extract only relevant sentences
+4. Position answer at top of context
+
+**ROI**: +94% correct answers, 83% fewer hallucinations, minimal cost increase.
 
 ## Resources
 
