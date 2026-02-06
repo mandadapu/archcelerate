@@ -52,6 +52,9 @@ COPY --from=builder /app/.next/static ./.next/static
 # Copy content directory (MDX files loaded at runtime)
 COPY --from=builder --chown=nextjs:nodejs /app/content ./content
 
+# Copy scripts directory (needed for MDX validation during seeding)
+COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
+
 # Copy entrypoint script
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
