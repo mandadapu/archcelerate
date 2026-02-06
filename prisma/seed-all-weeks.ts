@@ -1,4 +1,5 @@
 import { validateMDXOrExit } from './lib/validate-mdx'
+import { validateContentSync } from './lib/validate-content-sync'
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
@@ -10,8 +11,10 @@ const weekData = [
     description: 'Build retrieval-augmented generation systems with vector databases',
     objectives: ['Implement vector search', 'Build RAG pipelines', 'Manage conversation memory'],
     concepts: [
+      { slug: 'rag-memory-fundamentals', title: 'RAG + Memory Fundamentals', minutes: 40 },
       { slug: 'vector-embeddings', title: 'Vector Embeddings & Similarity Search', minutes: 35 },
       { slug: 'rag-pipelines', title: 'Building RAG Pipelines', minutes: 40 },
+      { slug: 'production-rag-architecture', title: 'Production RAG Architecture', minutes: 50 },
       { slug: 'memory-systems', title: 'Conversation Memory Systems', minutes: 35 }
     ],
     lab: {
@@ -421,6 +424,11 @@ async function main() {
   }
 
   console.log('\n✅ All weeks seeded successfully!')
+
+  // Validate that all content files are in sync with database
+  console.log('\n' + '='.repeat(50))
+  await validateContentSync({ failOnMismatch: false })
+  console.log('='.repeat(50) + '\n')
 }
 
 main()
