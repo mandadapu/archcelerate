@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { executeCode } from '@/lib/sandbox/client'
 import { NextResponse } from 'next/server'
+import { updateUserSkillScores } from '@/lib/skill-scoring'
 
 export async function POST(request: Request) {
   try {
@@ -63,6 +64,22 @@ export async function POST(request: Request) {
           } as any,
         },
       })
+
+      // Update skill scores for lab completion
+      // Find the activity by lab slug to get the correct week/activity mapping
+      const activity = await prisma.activity.findFirst({
+        where: {
+          slug: labSlug,
+          activityType: 'lab'
+        }
+      })
+
+      if (activity) {
+        // Update skill scores with 100% completion
+        // This automatically distributes points to all mapped skill domains
+        await updateUserSkillScores(user.id, activity.id, 100)
+        console.log(`✅ Skill scores updated for user ${user.id}, lab ${labSlug}`)
+      }
     }
 
     return NextResponse.json({
