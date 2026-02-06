@@ -13,13 +13,13 @@ export function ArchcelerateLogo({ variant = 'full', className = '' }: Archceler
         xmlns="http://www.w3.org/2000/svg"
       >
         <defs>
-          <linearGradient id="iconMetallic" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#cbd5e1" />
-            <stop offset="50%" stopColor="#94a3b8" />
-            <stop offset="100%" stopColor="#64748b" />
+          <linearGradient id="iconMetallic" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#9333ea" />
+            <stop offset="100%" stopColor="#06b6d4" />
           </linearGradient>
           <radialGradient id="iconGlow" cx="50%" cy="50%">
-            <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.3" />
+            <stop offset="0%" stopColor="#9333ea" stopOpacity="0.3" />
+            <stop offset="50%" stopColor="#06b6d4" stopOpacity="0.2" />
             <stop offset="100%" stopColor="#06b6d4" stopOpacity="0" />
           </radialGradient>
         </defs>
@@ -60,19 +60,19 @@ export function ArchcelerateLogo({ variant = 'full', className = '' }: Archceler
         {/* A inner shadow for depth */}
         <path
           d="M 65 160 L 100 50 L 135 160 M 77 120 L 123 120"
-          stroke="#e2e8f0"
+          stroke="#ffffff"
           strokeWidth="3"
           strokeLinecap="round"
           strokeLinejoin="round"
           fill="none"
-          opacity="0.3"
+          opacity="0.4"
         />
 
-        {/* Orange speed lines - horizontal */}
+        {/* Purple-cyan speed lines - horizontal */}
         <g opacity="0.9">
-          <rect x="20" y="95" width="80" height="4" fill="#f97316" rx="2" />
-          <rect x="20" y="105" width="80" height="4" fill="#fb923c" rx="2" />
-          <rect x="20" y="115" width="80" height="4" fill="#fdba74" rx="2" />
+          <rect x="20" y="95" width="80" height="4" fill="#a855f7" rx="2" />
+          <rect x="20" y="105" width="80" height="4" fill="#7c3aed" rx="2" />
+          <rect x="20" y="115" width="80" height="4" fill="#9333ea" rx="2" />
         </g>
       </svg>
     )
@@ -87,10 +87,9 @@ export function ArchcelerateLogo({ variant = 'full', className = '' }: Archceler
         xmlns="http://www.w3.org/2000/svg"
       >
         <defs>
-          <linearGradient id="compactMetallic" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#cbd5e1" />
-            <stop offset="50%" stopColor="#94a3b8" />
-            <stop offset="100%" stopColor="#64748b" />
+          <linearGradient id="compactMetallic" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#9333ea" />
+            <stop offset="100%" stopColor="#06b6d4" />
           </linearGradient>
         </defs>
 
@@ -116,19 +115,19 @@ export function ArchcelerateLogo({ variant = 'full', className = '' }: Archceler
         {/* A highlight */}
         <path
           d="M 24 65 L 40 28 L 56 65 M 32 48 L 48 48"
-          stroke="#e2e8f0"
+          stroke="#ffffff"
           strokeWidth="1.5"
           strokeLinecap="round"
           strokeLinejoin="round"
           fill="none"
-          opacity="0.4"
+          opacity="0.5"
         />
 
-        {/* Orange speed lines */}
+        {/* Purple speed lines */}
         <g opacity="0.8">
-          <rect x="8" y="38" width="28" height="2" fill="#f97316" rx="1" />
-          <rect x="8" y="43" width="28" height="2" fill="#fb923c" rx="1" />
-          <rect x="8" y="48" width="28" height="2" fill="#fdba74" rx="1" />
+          <rect x="8" y="38" width="28" height="2" fill="#a855f7" rx="1" />
+          <rect x="8" y="43" width="28" height="2" fill="#7c3aed" rx="1" />
+          <rect x="8" y="48" width="28" height="2" fill="#9333ea" rx="1" />
         </g>
 
         {/* Archcelerate Text */}
@@ -143,12 +142,6 @@ export function ArchcelerateLogo({ variant = 'full', className = '' }: Archceler
           <tspan fill="#06b6d4">Arch</tspan>
           <tspan fill="#1e293b">celerate</tspan>
         </text>
-
-        {/* Speed accent chevrons */}
-        <g transform="translate(360, 28)" opacity="0.8">
-          <path d="M 0 0 L 8 8 L 0 16" stroke="#f97316" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-          <path d="M 12 0 L 20 8 L 12 16" stroke="#fb923c" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-        </g>
       </svg>
     )
   }
@@ -161,13 +154,13 @@ export function ArchcelerateLogo({ variant = 'full', className = '' }: Archceler
       xmlns="http://www.w3.org/2000/svg"
     >
       <defs>
-        <linearGradient id="fullMetallic" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="#cbd5e1" />
-          <stop offset="50%" stopColor="#94a3b8" />
-          <stop offset="100%" stopColor="#64748b" />
+        <linearGradient id="fullMetallic" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#9333ea" />
+          <stop offset="100%" stopColor="#06b6d4" />
         </linearGradient>
         <radialGradient id="fullGlow" cx="30%" cy="40%">
-          <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.2" />
+          <stop offset="0%" stopColor="#9333ea" stopOpacity="0.2" />
+          <stop offset="50%" stopColor="#06b6d4" stopOpacity="0.15" />
           <stop offset="100%" stopColor="#06b6d4" stopOpacity="0" />
         </radialGradient>
       </defs>
@@ -202,19 +195,19 @@ export function ArchcelerateLogo({ variant = 'full', className = '' }: Archceler
       {/* A highlight for depth */}
       <path
         d="M 34 90 L 60 28 L 86 90 M 47 65 L 73 65"
-        stroke="#e2e8f0"
+        stroke="#ffffff"
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
         fill="none"
-        opacity="0.4"
+        opacity="0.5"
       />
 
-      {/* Orange speed lines - horizontal through A */}
+      {/* Purple speed lines - horizontal through A */}
       <g opacity="0.85">
-        <rect x="15" y="52" width="50" height="3" fill="#f97316" rx="1.5" />
-        <rect x="15" y="59" width="50" height="3" fill="#fb923c" rx="1.5" />
-        <rect x="15" y="66" width="50" height="3" fill="#fdba74" rx="1.5" />
+        <rect x="15" y="52" width="50" height="3" fill="#a855f7" rx="1.5" />
+        <rect x="15" y="59" width="50" height="3" fill="#7c3aed" rx="1.5" />
+        <rect x="15" y="66" width="50" height="3" fill="#9333ea" rx="1.5" />
       </g>
 
       {/* Archcelerate Text */}
@@ -230,12 +223,6 @@ export function ArchcelerateLogo({ variant = 'full', className = '' }: Archceler
         <tspan fill="#1e293b">celerate</tspan>
       </text>
 
-      {/* Speed chevrons */}
-      <g transform="translate(540, 35)" opacity="0.8">
-        <path d="M 0 0 L 12 12 L 0 24" stroke="#f97316" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-        <path d="M 18 0 L 30 12 L 18 24" stroke="#fb923c" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-      </g>
-
       {/* Tagline */}
       <text
         x="120"
@@ -247,7 +234,7 @@ export function ArchcelerateLogo({ variant = 'full', className = '' }: Archceler
       >
         <tspan fill="#06b6d4">Build AI Products.</tspan>
         <tspan fill="#64748b"> Harden Systems. </tspan>
-        <tspan fill="#f97316">Accelerate.</tspan>
+        <tspan fill="#9333ea">Accelerate.</tspan>
       </text>
     </svg>
   )
