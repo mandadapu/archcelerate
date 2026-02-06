@@ -469,39 +469,6 @@ export default function Home() {
               </div>
             </div>
           </div>
-
-          {/* Bottom CTA */}
-          <div className="mt-12 text-center">
-            <Link href="/diagnosis">
-              <button className="px-10 py-4 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-lg font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200">
-                See Your Personalized Path
-              </button>
-            </Link>
-            <p className="mt-4 text-sm text-gray-600">
-              Take the Skill Diagnosis to discover which week matches your current level
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Final CTA Section */}
-      <section className="py-8 bg-gradient-to-br from-purple-50 to-cyan-50">
-        <div className="max-w-5xl mx-auto px-4 text-center">
-          <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-6 tracking-tight">
-            Ready to Build Your Director-Level Portfolio?
-          </h2>
-          <p className="text-xl text-gray-600 mb-12 leading-relaxed">
-            Master the technical depth that gets you hired and the business impact that gets you promoted.
-          </p>
-
-          <div className="flex justify-center">
-            <button
-              onClick={() => setShowLoginModal(true)}
-              className="px-10 py-4 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-xl font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
-            >
-              Get Started
-            </button>
-          </div>
         </div>
       </section>
 
