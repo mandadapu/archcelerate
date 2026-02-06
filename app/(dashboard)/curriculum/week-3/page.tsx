@@ -12,7 +12,8 @@ import {
   Grid3x3,
   Workflow,
   Building2,
-  Brain
+  Brain,
+  ArrowRight
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -166,6 +167,18 @@ export default async function Week3Page() {
                   <Circle className="h-3.5 w-3.5 text-gray-400" />
                 )}
                 <span>Project</span>
+        {/* Next Week Button */}
+        <div className="border-t pt-8 mt-8">
+          <div className="flex justify-end">
+            <Link href="/curriculum/week-4">
+              <Button variant="outline" size="lg">
+                Next Week
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </Button>
+            </Link>
+          </div>
+        </div>
+
               </div>
             </div>
           )}
@@ -265,6 +278,18 @@ export default async function Week3Page() {
             </Link>
           </div>
         )}
+        {/* Next Week Button */}
+        <div className="border-t pt-8 mt-8">
+          <div className="flex justify-end">
+            <Link href="/curriculum/week-4">
+              <Button variant="outline" size="lg">
+                Next Week
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </Button>
+            </Link>
+          </div>
+        </div>
+
       </div>
     </div>
   )
