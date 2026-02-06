@@ -1108,7 +1108,7 @@ function analyzeCachePerformance(response: Message): CacheMetrics {
 
 // Alert if cache hit rate drops below 80%
 const metrics = analyzeCachePerformance(response)
-if (metrics.cacheHitRate < 0.80) {
+if (metrics.cacheHitRate &lt; 0.80) {
   console.warn(`⚠️ Low cache hit rate: ${(metrics.cacheHitRate * 100).toFixed(1)}%`)
   console.warn('Check for dynamic data in cached sections')
 }
@@ -1964,7 +1964,7 @@ This scenario tests your ability to make architectural trade-offs in a real prod
 **Requirements**:
 - 100K requests/day = ~1.2 requests/second sustained, 10 req/s peak
 - Zero tolerance for malformed JSON (each failure costs $50 in support tickets)
-- Target P95 latency: <500ms
+- Target P95 latency: &lt;500ms
 - Monthly budget: $3,000
 
 **Question**: Which configuration maximizes reliability while minimizing cost?
@@ -2109,7 +2109,7 @@ const data = JSON.parse(response.content[0].text)  // ⚠️ Might fail
 
 ```typescript
 async function extractWithRetries(userInput: string) {
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt &lt; 3; attempt++) {
     try {
       const response = await anthropic.messages.create({
         model: 'claude-haiku-4-20250514',  // Cheap model
@@ -2337,7 +2337,7 @@ const response = await anthropic.messages.create({
   temperature: 0,  // ✅ Deterministic, consistent structure
   messages: [{ role: 'user', content: 'Extract data as JSON...' }]
 });
-// Result: <1% failure rate, predictable errors
+// Result: &lt;1% failure rate, predictable errors
 ```
 
 **Production Data**: At a healthcare company, switching from temp=0.5 to temp=0 reduced JSON parsing errors by 85% (from 12% to 2%).
@@ -2522,7 +2522,7 @@ describe('Self-Healing JSON - Corrupted Input Challenge', () => {
   }, 30000);
 
   /**
-   * TEST 4: Performance - healing should complete in <3s
+   * TEST 4: Performance - healing should complete in &lt;3s
    */
   it('completes healing within performance SLA', async () => {
     const startTime = Date.now();
@@ -2530,7 +2530,7 @@ describe('Self-Healing JSON - Corrupted Input Challenge', () => {
     await getHardenedSummary(CORRUPTED_INPUTS[0].input);
 
     const duration = Date.now() - startTime;
-    expect(duration).toBeLessThan(3000);  // <3s SLA
+    expect(duration).toBeLessThan(3000);  // &lt;3s SLA
   });
 });
 ```
@@ -2539,9 +2539,9 @@ describe('Self-Healing JSON - Corrupted Input Challenge', () => {
 
 ✅ **100% Healing Rate**: All 6 corrupted inputs must be healed into valid schema
 
-✅ **Latency**: <3s per request (including retry attempts)
+✅ **Latency**: &lt;3s per request (including retry attempts)
 
-✅ **Cost Efficiency**: <3 retries per request on average
+✅ **Cost Efficiency**: &lt;3 retries per request on average
 
 ✅ **Schema Compliance**: Every output passes Zod validation
 
@@ -2581,7 +2581,7 @@ If your solution passes all tests, you've built a **production-grade** self-heal
 4. **Cost Management**: Limits retries to prevent runaway costs
 5. **Graceful Degradation**: Escalates to human intervention when healing fails
 
-This is the **exact pattern** used by financial services companies processing 10M+ JSON extractions per day with <0.1% failure rate.
+This is the **exact pattern** used by financial services companies processing 10M+ JSON extractions per day with &lt;0.1% failure rate.
 
 **Real-World Impact**: A fintech company reduced JSON validation failures from 12% to 0.08% by implementing this pattern, saving $180K/year in manual data correction costs.
 
@@ -2713,7 +2713,7 @@ Please regenerate the JSON with a valid UUID for patient_id.
 
 ### 3. Deterministic Steering (The "Temperature" Check)
 
-**Metric**: Consistent output structure across **5 identical requests** (Variance < 2%).
+**Metric**: Consistent output structure across **5 identical requests** (Variance &lt; 2%).
 
 **Verification Method**:
 - Send the same input 5 times
@@ -2723,7 +2723,7 @@ Please regenerate the JSON with a valid UUID for patient_id.
 
 **Success Criteria**:
 ```typescript
-✅ PASS: Variance < 2% (effectively identical structures)
+✅ PASS: Variance &lt; 2% (effectively identical structures)
 ❌ FAIL: Variance > 5% (non-deterministic output)
 ```
 
@@ -2732,12 +2732,12 @@ Please regenerate the JSON with a valid UUID for patient_id.
 **Implementation Example**:
 ```typescript
 describe('Deterministic Steering - Temperature Check', () => {
-  it('produces <2% variance across 5 identical requests', async () => {
+  it('produces &lt;2% variance across 5 identical requests', async () => {
     const testInput = "Patient John Doe reports severe headache";
     const results: ClinicalSummary[] = [];
 
     // Run same input 5 times
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i &lt; 5; i++) {
       const result = await getHardenedSummary(testInput);
       results.push(result);
     }
@@ -2852,7 +2852,7 @@ describe('Token Overhead Management', () => {
     console.log(`First attempt tokens: ${firstAttemptTokens}`);
     console.log(`Heal attempt tokens: ${healAttemptTokens}`);
 
-    // Heal prompt should be <20% of original size
+    // Heal prompt should be &lt;20% of original size
     const ratio = healAttemptTokens / firstAttemptTokens;
     expect(ratio).toBeLessThan(0.2);
   });
@@ -2894,7 +2894,7 @@ Please return corrected JSON following the schema.
 |-----------|--------|------------------|
 | **Schema Adherence** | Zero-Crash Test | 100% valid JSON (50/50 cases) |
 | **Healing Efficiency** | Recovery Rate | 95%+ heal within 2 retries |
-| **Deterministic Steering** | Temperature Check | <2% variance across 5 runs |
+| **Deterministic Steering** | Temperature Check | &lt;2% variance across 5 runs |
 | **Token Overhead** | Cost Management | ≤1.5x original request cost |
 
 **Your Verification Report**:
