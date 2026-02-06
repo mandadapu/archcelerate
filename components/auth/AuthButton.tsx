@@ -71,9 +71,9 @@ export const AuthButton = React.forwardRef<HTMLButtonElement, AuthButtonProps>(
           'bg-white border-[1.5px] border-gray-300 rounded-md',
           'text-sm font-medium text-gray-700',
           'shadow-sm transition-all duration-200',
-          'hover:bg-gray-50 hover:border-gray-400',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-600',
-          'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-gray-300',
+          'hover:bg-gradient-to-r hover:from-purple-50 hover:to-cyan-50 hover:border-purple-400',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-purple-600',
+          'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-gray-300 disabled:hover:bg-white',
           className
         )}
         {...props}
