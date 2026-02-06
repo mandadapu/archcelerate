@@ -12,6 +12,74 @@ Map organizational risk to **immutable system instructions** that act as the tec
 
 > **Architect Perspective**: The system prompt isn't documentation—it's **executable policy**. Every organizational rule (PII handling, content restrictions, legal disclaimers) must be translated into **enforceable system instructions** that the LLM cannot override. Combined with semantic tracing, you create an audit trail that proves compliance.
 
+---
+
+## The Hardened Shell: Instruction-Data Segregation
+
+**Critical Architectural Pattern**: Governance isn't a compliance PDF filed with your legal team—it's a **middle-tier security proxy** that makes policy violations **technically impossible**.
+
+### The Enterprise Reality
+
+When CTOs evaluate AI systems, they don't ask "Do you have a governance policy?" They ask: **"Can your system be breached?"**
+
+**The Hardened Shell architecture** separates:
+- **Instructions** (system prompts, safety rules, compliance policies) → **Immutable, version-controlled, tested**
+- **Data** (user inputs, PII, conversation history) → **Validated, redacted, monitored**
+
+This separation creates a **zero-trust boundary** where:
+1. User input **cannot** modify system instructions
+2. Policy violations are **rejected at the gateway**, not the LLM
+3. Every request passes through **mandatory enforcement layers**
+
+### Instruction-Data Segregation in Practice
+
+```typescript
+// ❌ WRONG: Mixing instructions and data (vulnerable to prompt injection)
+const prompt = `You are a helpful assistant. ${userInput}`
+
+// ✅ CORRECT: Segregated with immutable policy layer
+const systemPrompt = buildImmutableSystemPrompt(GOVERNANCE_POLICY)  // Immutable
+const userMessage = sanitizeAndValidate(userInput)  // Validated data
+
+const response = await anthropic.messages.create({
+  model: 'claude-sonnet-4.5',
+  system: systemPrompt,  // Instructions: Cannot be overridden
+  messages: [{
+    role: 'user',
+    content: userMessage  // Data: Separated and validated
+  }]
+})
+```
+
+**The Hardened Shell ensures**:
+- **System prompts are immutable** → Version controlled, hashed, auditable
+- **User inputs are sanitized** → PII redacted, injections blocked
+- **Violations halt execution** → No "best effort" compliance, only enforcement
+
+### Why CTOs Care: The Insurable Infrastructure Test
+
+Enterprise buyers need **insurable AI systems**—architectures so hardened that cyber insurance underwriters will cover them.
+
+**The CTO's Question**: *"If your AI leaks patient data, who pays the $50K HIPAA fine?"*
+
+**Hardened Shell Answer**: *"Our gateway makes PHI exposure architecturally impossible. We have audit logs proving zero PII reached external APIs across 10 million requests."*
+
+This is the difference between:
+- **Governance Theater** → "We have a policy document"
+- **Sovereign Governance** → "Our architecture makes violations impossible"
+
+### Trust Badge: HIPAA • GDPR • SOC2 Compliance
+
+The Hardened Shell pattern is what enables these trust badges on your landing page. It's not marketing—it's architecture:
+
+- **HIPAA Technical Safeguards (§164.312)**: PHI redaction middleware enforces zero-leakage
+- **GDPR Article 25 (Data Protection by Design)**: PII detection at the gateway, not post-processing
+- **SOC 2 Type II**: Immutable audit logs with cryptographic verification
+
+**Outcome**: Students who master this pattern build AI systems that CTOs trust to handle regulated data—making you deployable at the enterprise level.
+
+---
+
 ## The Policy Engineering Problem
 
 **Reality Check**: Organizational policies written in English are unenforceable in LLM systems.
