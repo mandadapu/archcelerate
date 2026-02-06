@@ -21,6 +21,8 @@ export function TechStack() {
     { name: 'TypeScript', logo: 'TS' },
     { name: 'Prisma', logo: '🔷' },
     { name: 'PostgreSQL', logo: '🐘' },
+    { name: 'Redis', logo: '🔴' },
+    { name: 'Google Cloud', logo: '☁️' },
     { name: 'Vercel', logo: '▲' },
     { name: 'Tailwind CSS', logo: '💨' },
   ]
