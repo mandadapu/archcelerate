@@ -162,6 +162,15 @@ archcelerate/
 3. Run tests (`npm run test:all`)
 4. Submit PR
 
+### ⚠️ Git Workflow
+
+**IMPORTANT**: Never push changes directly to the main branch.
+
+- All changes must go through pull requests
+- Work on feature branches (e.g., `feature/new-feature`, `fix/bug-name`)
+- Push to feature branches only
+- Main branch is protected and requires PR review
+
 **Support**: [GitHub Issues](https://github.com/mandadapu/archcelerate/issues)
 
 ---
