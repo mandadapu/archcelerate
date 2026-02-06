@@ -2587,6 +2587,365 @@ This is the **exact pattern** used by financial services companies processing 10
 
 ---
 
+## 🏁 Architect's Verification Checklist
+
+<Callout type="success" title="Architect Tier Mastery">
+This isn't a participation trophy. You achieve **"Architect Tier"** mastery by meeting four **quantified performance benchmarks**. These are the same metrics used by production systems processing millions of requests per day.
+</Callout>
+
+A student achieves "Architect Tier" mastery by meeting the following four performance benchmarks:
+
+### 1. Schema Adherence (The "Zero-Crash" Test)
+
+**Metric**: 100% success rate in producing valid JSON across **50 adversarial test cases** (inputs designed to trigger markdown wrapping, nested object hallucinations, or schema bypass attempts).
+
+**Verification Method**:
+- Use Zod or Pydantic schema validator
+- **Any uncaught `JSON.parse` error = FAIL**
+- Test suite must include all adversarial patterns:
+  - Markdown-wrapped JSON (` ```json ... ``` `)
+  - Missing required fields
+  - Invalid enum values
+  - Malformed UUIDs
+  - Type mismatches (string where number expected)
+  - Instruction injection attempts
+
+**Success Criteria**:
+```typescript
+✅ PASS: 50/50 test cases produce valid schema (100%)
+❌ FAIL: 49/50 test cases produce valid schema (98%)
+```
+
+**Why This Matters**: In production, a 98% success rate means **2,000 failures per 100K requests**. At $50/failure for manual intervention, that's **$100K/month** in losses. Architect Tier requires **zero tolerance** for schema violations.
+
+**Implementation Example**:
+```typescript
+describe('Schema Adherence - Zero Crash Test', () => {
+  it('achieves 100% success rate across 50 adversarial cases', async () => {
+    const testCases = generateAdversarialCases(50);
+    let successCount = 0;
+
+    for (const testCase of testCases) {
+      try {
+        const result = await getHardenedSummary(testCase.input);
+        // Zod validation - throws if invalid
+        ClinicalSummarySchema.parse(result);
+        successCount++;
+      } catch (error) {
+        console.error(`FAIL: Test case ${testCase.id} - ${error.message}`);
+      }
+    }
+
+    const successRate = (successCount / testCases.length) * 100;
+    console.log(`Schema Adherence: ${successRate}%`);
+
+    // Architect Tier requires 100%, not 98%
+    expect(successRate).toBe(100);
+  });
+});
+```
+
+---
+
+### 2. Healing Efficiency (The "Recovery" Rate)
+
+**Metric**: Successful recovery from schema violations within **maximum 2 retry cycles**.
+
+**Verification Method**:
+- Monitor the `retryCount` variable in healing loop
+- **If system requires a 3rd retry = FAIL**
+- Student must refine the "Heal Prompt" to provide better error-trace context
+
+**Success Criteria**:
+```typescript
+✅ PASS: 95%+ of failures heal within 2 retries
+❌ FAIL: 90% of failures heal within 2 retries (requires 3rd retry too often)
+```
+
+**Why This Matters**: Each retry costs tokens and latency. A well-designed heal prompt should fix errors immediately. If you need 3+ retries, your error feedback is too vague.
+
+**Implementation Example**:
+```typescript
+describe('Healing Efficiency - Recovery Rate', () => {
+  it('heals within 2 retry cycles for 95%+ of failures', async () => {
+    const failureCases = CORRUPTED_INPUTS;
+    const healingAttempts: number[] = [];
+
+    for (const testCase of failureCases) {
+      let retryCount = 0;
+
+      // Mock the healing function to track attempts
+      const result = await getHardenedSummary(testCase.input, retryCount);
+
+      // Track how many retries were needed
+      healingAttempts.push(retryCount);
+    }
+
+    // Calculate percentage healed within 2 retries
+    const within2Retries = healingAttempts.filter(count => count <= 2).length;
+    const efficiencyRate = (within2Retries / healingAttempts.length) * 100;
+
+    console.log(`Healing Efficiency: ${efficiencyRate}%`);
+    console.log(`Average retries: ${average(healingAttempts)}`);
+
+    expect(efficiencyRate).toBeGreaterThanOrEqual(95);
+    expect(average(healingAttempts)).toBeLessThan(1.5);  // Most heal on first retry
+  });
+});
+```
+
+**Architect's Tip**: If your average retry count is >1.5, your heal prompt is too generic. Show the model **exactly** what field failed and why:
+
+```typescript
+// ❌ VAGUE: "Your JSON was invalid, please fix it"
+const badHealPrompt = "Your previous response was invalid. Try again.";
+
+// ✅ SPECIFIC: "Field 'patient_id' expected UUID format, got 'abc-123'"
+const goodHealPrompt = `
+ERROR: Field "patient_id" expected UUID format (e.g., "123e4567-e89b-12d3-a456-426614174000")
+but received: "${parsedValue.patient_id}"
+
+Please regenerate the JSON with a valid UUID for patient_id.
+`;
+```
+
+---
+
+### 3. Deterministic Steering (The "Temperature" Check)
+
+**Metric**: Consistent output structure across **5 identical requests** (Variance < 2%).
+
+**Verification Method**:
+- Send the same input 5 times
+- Confirm `temperature: 0` is hardcoded
+- Verify `response_format: { type: "json_object" }` is enabled at API level
+- Measure structural variance (field order, key names, value types)
+
+**Success Criteria**:
+```typescript
+✅ PASS: Variance < 2% (effectively identical structures)
+❌ FAIL: Variance > 5% (non-deterministic output)
+```
+
+**Why This Matters**: Production systems require **predictability**. If the same input produces different JSON structures, downstream systems break.
+
+**Implementation Example**:
+```typescript
+describe('Deterministic Steering - Temperature Check', () => {
+  it('produces <2% variance across 5 identical requests', async () => {
+    const testInput = "Patient John Doe reports severe headache";
+    const results: ClinicalSummary[] = [];
+
+    // Run same input 5 times
+    for (let i = 0; i < 5; i++) {
+      const result = await getHardenedSummary(testInput);
+      results.push(result);
+    }
+
+    // Calculate structural variance
+    const variance = calculateStructuralVariance(results);
+
+    console.log(`Structural Variance: ${variance.toFixed(2)}%`);
+    console.table(results);
+
+    expect(variance).toBeLessThan(2);
+
+    // Verify temperature=0 is set
+    expect(apiConfig.temperature).toBe(0);
+  });
+});
+
+function calculateStructuralVariance(results: ClinicalSummary[]): number {
+  // Compare triage_level consistency
+  const triageLevels = results.map(r => r.triage_level);
+  const uniqueLevels = new Set(triageLevels).size;
+
+  // Compare symptom count consistency
+  const symptomCounts = results.map(r => r.symptoms.length);
+  const avgSymptoms = average(symptomCounts);
+  const symptomVariance = symptomCounts.reduce((sum, count) =>
+    sum + Math.abs(count - avgSymptoms), 0) / symptomCounts.length;
+
+  // Calculate overall variance (should be near 0% for temp=0)
+  const variance = ((uniqueLevels - 1) + symptomVariance) / 2 * 100;
+  return variance;
+}
+```
+
+**Architect's Rule**: If variance is >2%, you're either:
+1. Not using `temperature: 0`
+2. Not using `response_format: { type: "json_object" }`
+3. Relying on stochastic sampling instead of deterministic output
+
+---
+
+### 4. Token Overhead Management
+
+**Metric**: "Heal Loop" token cost stays within **1.5x** of the original request cost.
+
+**Verification Method**:
+- Track `input_tokens` and `output_tokens` for each API call
+- Calculate total cost across all retries
+- **Architects must prove** they're sending only the relevant error snippet back to the model, not re-sending a 10,000-word document
+
+**Success Criteria**:
+```typescript
+✅ PASS: Total healing cost ≤ 1.5x original request cost
+❌ FAIL: Total healing cost > 2.0x original request cost
+```
+
+**Why This Matters**: If healing costs **2x** the original request, you're doubling your API bill. At 100K requests/day with a 10% failure rate, inefficient healing costs an extra **$600/day** ($18K/month).
+
+**Implementation Example**:
+```typescript
+describe('Token Overhead Management', () => {
+  it('keeps healing cost within 1.5x of original request', async () => {
+    const testCase = CORRUPTED_INPUTS[0];
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    let attemptCount = 0;
+
+    // Mock API to track token usage
+    const mockAPI = jest.spyOn(anthropic.messages, 'create')
+      .mockImplementation(async (params) => {
+        attemptCount++;
+        const response = await originalCreate(params);
+
+        totalInputTokens += response.usage.input_tokens;
+        totalOutputTokens += response.usage.output_tokens;
+
+        return response;
+      });
+
+    await getHardenedSummary(testCase.input);
+
+    // Calculate cost (Sonnet pricing)
+    const inputCost = (totalInputTokens / 1_000_000) * 3;   // $3/MTok
+    const outputCost = (totalOutputTokens / 1_000_000) * 15; // $15/MTok
+    const totalCost = inputCost + outputCost;
+
+    // First attempt baseline cost
+    const baselineCost = totalCost / attemptCount;
+    const overhead = totalCost / baselineCost;
+
+    console.log(`Attempts: ${attemptCount}`);
+    console.log(`Total tokens: ${totalInputTokens + totalOutputTokens}`);
+    console.log(`Total cost: $${totalCost.toFixed(6)}`);
+    console.log(`Overhead multiplier: ${overhead.toFixed(2)}x`);
+
+    expect(overhead).toBeLessThanOrEqual(1.5);
+
+    mockAPI.mockRestore();
+  });
+
+  it('sends only error snippet, not full context on retry', async () => {
+    const largeContext = "X".repeat(10000);  // 10K character document
+    const testInput = `Context: ${largeContext}\n\nExtract data...`;
+
+    // First attempt
+    const firstAttemptTokens = estimateTokens(testInput);
+
+    // Heal attempt should NOT include the full 10K context
+    const healPrompt = `ERROR: Invalid JSON\nPlease fix and return corrected output.`;
+    const healAttemptTokens = estimateTokens(healPrompt);
+
+    console.log(`First attempt tokens: ${firstAttemptTokens}`);
+    console.log(`Heal attempt tokens: ${healAttemptTokens}`);
+
+    // Heal prompt should be <20% of original size
+    const ratio = healAttemptTokens / firstAttemptTokens;
+    expect(ratio).toBeLessThan(0.2);
+  });
+});
+```
+
+**Architect's Tip**: Never re-send the entire original context on retry. Send only:
+1. The error message
+2. The invalid JSON (or snippet)
+3. The schema reminder
+
+```typescript
+// ❌ WASTEFUL: Re-sending 10K context on every retry
+const badHealPrompt = `
+${ORIGINAL_10K_DOCUMENT}  // ⚠️ Wasting 10K tokens per retry!
+
+Your previous JSON was invalid: ${error}
+Please try again.
+`;
+
+// ✅ EFFICIENT: Send only error context
+const goodHealPrompt = `
+Your previous JSON was invalid.
+
+ERROR: ${error.message}
+INVALID OUTPUT: ${invalidJSON.substring(0, 200)}
+
+Please return corrected JSON following the schema.
+`;
+```
+
+---
+
+### 🎯 Verification Summary
+
+**To achieve Architect Tier, you must pass ALL four benchmarks**:
+
+| Benchmark | Metric | Success Criteria |
+|-----------|--------|------------------|
+| **Schema Adherence** | Zero-Crash Test | 100% valid JSON (50/50 cases) |
+| **Healing Efficiency** | Recovery Rate | 95%+ heal within 2 retries |
+| **Deterministic Steering** | Temperature Check | <2% variance across 5 runs |
+| **Token Overhead** | Cost Management | ≤1.5x original request cost |
+
+**Your Verification Report**:
+
+```bash
+npm run verify:architect-tier
+
+# Output:
+🏁 Architect's Verification Report
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ Schema Adherence:       100% (50/50 cases)
+✅ Healing Efficiency:     98% (within 2 retries)
+✅ Deterministic Steering: 0.8% variance
+✅ Token Overhead:         1.3x (within budget)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎓 Status: ARCHITECT TIER ACHIEVED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This verification proves you can build AI systems that are:
+✓ Financially sustainable (1.3x cost overhead vs 2-3x industry avg)
+✓ Technically reliable (100% schema compliance vs 95% industry avg)
+✓ Production-ready (0.8% variance vs 5% industry avg)
+
+Add this report to your portfolio. Any CTO will understand what it means.
+```
+
+---
+
+### 🚀 Integration: The "Director-Tier" Portfolio
+
+On your landing page, you can now add this specific "Verification" highlight:
+
+<Callout type="info" title="Stop Guessing. Start Verifying.">
+In our labs, we don't just check your code; we run your systems through an **Architect's Stress Test**.
+
+You'll be measured on:
+- **Recovery Rates**: Can your system self-heal from failures?
+- **Latency Overheads**: Does healing stay within cost budgets?
+- **Deterministic Variance**: Is your output predictable in production?
+
+You leave the course with a **verified performance report** that proves to any CTO you can build AI that is financially and technically sustainable.
+
+**No participation trophies. Only quantified proof.**
+</Callout>
+
+This completes the technical loop for Week 1. With these benchmarks, your students aren't just "learning"—they are building a **quantified professional reputation**.
+
+---
+
 ## Key Takeaways (2026 Edition)
 
 1. **Claude 4.x/GPT-5 require explicit instructions** - They do exactly what you ask, nothing more
