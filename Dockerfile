@@ -49,6 +49,9 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
+# Copy content directory (MDX files loaded at runtime)
+COPY --from=builder --chown=nextjs:nodejs /app/content ./content
+
 # Copy entrypoint script
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
