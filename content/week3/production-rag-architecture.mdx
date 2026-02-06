@@ -658,6 +658,314 @@ async function hybridSearchPostgres(
 
 ---
 
+
+---
+
+### Multi-Tenant Isolation: The Security Architect's Rule
+
+> **Architect Perspective**: Never rely on the LLM to "ignore" documents the user shouldn't see. Your vector database query must include a **Hard Filter** on the `tenant_id` or `user_group_id` metadata. This ensures the search engine **physically cannot "see" unauthorized data**, making accidental data leaks impossible.
+
+**The Critical Security Principle**: **Filter at Query Time, Not Post-Retrieval**
+
+**❌ DANGEROUS Anti-Pattern**:
+```typescript
+// NEVER DO THIS: LLM sees unauthorized data in memory
+const allResults = await vectorDB.query({ vector: queryEmbedding, topK: 10 })
+const filtered = allResults.filter(doc => doc.metadata.tenantId === user.tenantId)
+const answer = await llm.generate({ context: filtered })
+```
+
+**Why this is a security vulnerability**:
+1. Unauthorized data is retrieved into application memory
+2. Logging systems may capture unauthorized content
+3. Memory dumps could expose sensitive data
+4. Risk of developer error accidentally passing unfiltered results to LLM
+5. Violates principle of least privilege
+
+**✅ SECURE Pattern**:
+```typescript
+// CORRECT: Database never retrieves unauthorized data
+const results = await vectorDB.query({
+  vector: queryEmbedding,
+  topK: 10,
+  filter: {
+    tenant_id: { $eq: user.tenantId }  // MANDATORY at query level
+  }
+})
+const answer = await llm.generate({ context: results })
+```
+
+**Why this is secure**:
+1. Vector database only searches within authorized tenant's data
+2. Unauthorized data never enters application memory
+3. Zero risk of accidental exposure
+4. Audit logs show only authorized access attempts
+5. Physical data isolation at database level
+
+### Production Multi-Tenant Architecture
+
+```typescript
+interface TenantContext {
+  tenantId: string           // Primary tenant identifier
+  userId: string             // User within tenant
+  userRoles: string[]        // User's roles
+  dataClassification: 'public' | 'internal' | 'confidential'
+}
+
+/**
+ * Secure multi-tenant RAG query with mandatory filtering
+ * SECURITY: Filter MUST be applied at database query level
+ */
+async function secureMultiTenantRAG(
+  query: string,
+  context: TenantContext
+): Promise<string> {
+  // 1. Build mandatory tenant filter
+  const tenantFilter = {
+    $and: [
+      // MANDATORY: Tenant isolation
+      { tenant_id: { $eq: context.tenantId } },
+      
+      // MANDATORY: Data classification check
+      {
+        $or: [
+          { classification: { $eq: 'public' } },
+          { 
+            classification: { $eq: 'internal' },
+            allowed_roles: { $in: context.userRoles }
+          },
+          {
+            classification: { $eq: 'confidential' },
+            owner_id: { $eq: context.userId }
+          }
+        ]
+      }
+    ]
+  }
+
+  // 2. Embed query
+  const queryEmbedding = await embed(query)
+
+  // 3. Retrieve with MANDATORY tenant filter
+  const results = await vectorDB.query({
+    vector: queryEmbedding,
+    topK: 10,
+    filter: tenantFilter,  // ← Physical isolation at DB level
+    includeMetadata: true
+  })
+
+  // 4. Defense in depth: Verify all results pass tenant check
+  const verified = results.filter(doc => 
+    doc.metadata.tenant_id === context.tenantId
+  )
+
+  if (verified.length !== results.length) {
+    // Alert: Database returned unauthorized data (DB config error)
+    await alertSecurityIncident({
+      type: 'tenant_isolation_breach',
+      tenantId: context.tenantId,
+      unauthorizedCount: results.length - verified.length
+    })
+  }
+
+  // 5. Generate answer
+  const contextStr = verified.map(d => d.content).join('\n\n')
+  
+  return await llm.generate({
+    system: `Answer using ONLY the provided context.`,
+    context: contextStr,
+    query
+  })
+}
+```
+
+### Postgres Row-Level Security (RLS) for Physical Isolation
+
+**The Gold Standard**: Use Postgres RLS to enforce tenant isolation at the database level, making it **impossible** for application bugs to leak data.
+
+```sql
+-- Enable Row-Level Security on document_chunks table
+ALTER TABLE document_chunks ENABLE ROW LEVEL SECURITY;
+
+-- Create policy: Users can only see their tenant's data
+CREATE POLICY tenant_isolation_policy ON document_chunks
+  FOR SELECT
+  USING (
+    -- Extract tenant_id from metadata and compare to session variable
+    (metadata->>'tenant_id') = current_setting('app.tenant_id', true)
+  );
+
+-- Create policy: Queries must specify tenant_id filter
+CREATE POLICY tenant_filter_required ON document_chunks
+  FOR SELECT
+  USING (
+    -- Ensure all queries filter by tenant_id
+    (metadata->>'tenant_id') IS NOT NULL
+  );
+```
+
+**Application-side enforcement**:
+
+```typescript
+/**
+ * Set tenant context for database session
+ * Postgres RLS will automatically enforce tenant isolation
+ */
+async function executeWithTenantContext<T>(
+  tenantId: string,
+  operation: (client: PoolClient) => Promise<T>
+): Promise<T> {
+  const client = await pool.connect()
+  
+  try {
+    // Set tenant_id session variable
+    await client.query(`SET LOCAL app.tenant_id = '${tenantId}'`)
+    
+    // Execute operation - RLS automatically filters results
+    const result = await operation(client)
+    
+    return result
+  } finally {
+    // Clear session variable and release connection
+    await client.query(`RESET app.tenant_id`)
+    client.release()
+  }
+}
+
+/**
+ * Secure vector search with Postgres RLS
+ */
+async function rlsVectorSearch(
+  queryEmbedding: number[],
+  tenantId: string,
+  topK: number = 5
+): Promise<Document[]> {
+  return await executeWithTenantContext(tenantId, async (client) => {
+    // RLS automatically filters to tenant's data
+    const result = await client.query(`
+      SELECT id, content, metadata,
+             embedding <=> $1::vector AS distance
+      FROM document_chunks
+      WHERE (metadata->>'tenant_id') = $2
+      ORDER BY embedding <=> $1::vector
+      LIMIT $3
+    `, [pgvector.toSql(queryEmbedding), tenantId, topK])
+    
+    return result.rows
+  })
+}
+```
+
+### Multi-Tenant Metadata Schema
+
+```typescript
+interface MultiTenantMetadata {
+  // MANDATORY fields for tenant isolation
+  tenant_id: string                    // Primary isolation boundary
+  owner_id: string                     // User who created document
+  
+  // Access control
+  classification: 'public' | 'internal' | 'confidential'
+  allowed_roles: string[]              // Roles that can access
+  allowed_users: string[]              // Specific users with access
+  
+  // Audit trail
+  created_at: Date
+  created_by: string
+  last_accessed: Date
+  access_count: number
+  
+  // Data lineage
+  source_system: string                // Where data came from
+  data_owner: string                   // Business unit that owns data
+  retention_policy: string             // How long to keep
+}
+
+/**
+ * Validate metadata before indexing
+ * SECURITY: Reject documents without tenant_id
+ */
+function validateTenantMetadata(metadata: Partial<MultiTenantMetadata>): boolean {
+  // tenant_id is MANDATORY
+  if (!metadata.tenant_id) {
+    throw new Error('SECURITY: tenant_id is required for all documents')
+  }
+  
+  // owner_id is MANDATORY
+  if (!metadata.owner_id) {
+    throw new Error('SECURITY: owner_id is required for all documents')
+  }
+  
+  // classification is MANDATORY
+  if (!metadata.classification) {
+    throw new Error('SECURITY: classification is required for all documents')
+  }
+  
+  return true
+}
+```
+
+### Tenant Isolation Audit Trail
+
+```typescript
+/**
+ * Log all data access for security audits
+ * COMPLIANCE: Required for SOC 2, ISO 27001, GDPR
+ */
+async function auditTenantAccess(
+  tenantId: string,
+  userId: string,
+  query: string,
+  retrievedDocIds: string[]
+): Promise<void> {
+  await prisma.tenantAccessLog.create({
+    data: {
+      timestamp: new Date(),
+      tenantId,
+      userId,
+      query,
+      documentIds: retrievedDocIds,
+      documentCount: retrievedDocIds.length,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent']
+    }
+  })
+  
+  // Alert on suspicious patterns
+  const recentAccess = await prisma.tenantAccessLog.count({
+    where: {
+      userId,
+      timestamp: {
+        gte: new Date(Date.now() - 3600000)  // Last hour
+      }
+    }
+  })
+  
+  if (recentAccess > 100) {
+    // Unusual access pattern
+    await alertSecurityTeam({
+      type: 'suspicious_access_pattern',
+      userId,
+      tenantId,
+      accessCount: recentAccess,
+      timeWindow: '1 hour'
+    })
+  }
+}
+```
+
+### The Architect's Checklist for Multi-Tenant Security
+
+- ✅ **Filter at query time**: `tenant_id` in WHERE clause, not post-retrieval
+- ✅ **Use database RLS**: Postgres Row-Level Security for physical isolation
+- ✅ **Validate metadata**: Reject documents without `tenant_id`
+- ✅ **Audit all access**: Log every query with tenant context
+- ✅ **Defense in depth**: Application-level validation + database-level enforcement
+- ✅ **Alert on violations**: Monitor for unauthorized access attempts
+- ✅ **Test cross-tenant leaks**: Security tests that attempt to access other tenants' data
+
+**The Gold Standard**: A security researcher should be able to prove that even with application bugs, it's **physically impossible** for Tenant A to access Tenant B's data due to database-level RLS enforcement.
+
 ## 2. Multi-Tenancy & Security: ACL-Based Filtering
 
 **Problem**: In multi-tenant systems, users must only see documents they have permission to access.
@@ -1155,6 +1463,337 @@ async function setupCDC() {
 
 ## 4. Performance Optimization
 
+
+### Semantic Caching 2.0: Cache Invalidation & Relevance Thresholds
+
+> **Architect Perspective**: A 0.95 similarity score in Redis doesn't always mean the answer is correct. Implement a **Cache TTL (Time to Live)** and a **"Verified" flag**. If the underlying source document is updated in the vector DB, your ingestion pipeline must automatically invalidate the related semantic cache entries to prevent the AI from giving "stale" advice.
+
+**The Stale Cache Problem**:
+```typescript
+// DANGEROUS: Cached answer may be outdated
+const cached = await redis.get(queryHash)
+if (cached) {
+  return cached  // ← What if source document was updated yesterday?
+}
+```
+
+**Why this fails**:
+- Source PDF updated with new refund policy (30 → 90 days)
+- Vector DB gets new embeddings
+- But Redis still has cached answer saying "30 days"
+- Users get incorrect information
+
+**The Solution**: Cache Invalidation + Verification
+
+```typescript
+interface CachedResponse {
+  query: string
+  queryEmbedding: number[]
+  answer: string
+  sourceChunkIds: string[]       // Which chunks were used
+  sourceVersion: string           // Version/timestamp of source docs
+  similarity: number              // How similar was cached query
+  verified: boolean               // Has answer been verified correct?
+  ttl: number                     // Time-to-live in seconds
+  createdAt: Date
+  lastVerified: Date
+  hitCount: number                // How many times served
+}
+
+class SemanticCacheV2 {
+  private redis: Redis
+  private similarityThreshold: number = 0.95
+  private relevanceThreshold: number = 0.85  // NEW: Confidence gate
+  
+  /**
+   * Get cached response with staleness check
+   */
+  async get(query: string): Promise<string | null> {
+    const queryEmbedding = await embed(query)
+    
+    // Search cache for similar queries
+    const cachedQueries = await this.redis.keys('cache:*')
+    
+    for (const key of cachedQueries) {
+      const cached: CachedResponse = JSON.parse(await this.redis.get(key))
+      
+      // Check similarity
+      const similarity = cosineSimilarity(queryEmbedding, cached.queryEmbedding)
+      
+      if (similarity >= this.similarityThreshold) {
+        // Found similar query - but is it still valid?
+        
+        // 1. Check if source documents have been updated
+        const sourcesStale = await this.checkSourceFreshness(cached.sourceChunkIds)
+        if (sourcesStale) {
+          console.log(`Cache miss: Sources updated since cache creation`)
+          await this.redis.del(key)  // Invalidate stale cache
+          continue
+        }
+        
+        // 2. Check relevance threshold
+        if (similarity < this.relevanceThreshold) {
+          console.log(`Cache miss: Similarity ${similarity} below threshold ${this.relevanceThreshold}`)
+          continue
+        }
+        
+        // 3. Check if answer has been verified
+        if (!cached.verified) {
+          // Unverified cache entry - verify now
+          const isCorrect = await this.verifyAnswer(query, cached.answer, cached.sourceChunkIds)
+          if (!isCorrect) {
+            console.log(`Cache miss: Answer failed verification`)
+            await this.redis.del(key)
+            continue
+          }
+          
+          // Mark as verified
+          cached.verified = true
+          cached.lastVerified = new Date()
+          await this.redis.set(key, JSON.stringify(cached))
+        }
+        
+        // Cache hit!
+        console.log(`Cache HIT: similarity=${similarity}, verified=${cached.verified}`)
+        
+        // Update hit count
+        cached.hitCount++
+        await this.redis.set(key, JSON.stringify(cached))
+        
+        return cached.answer
+      }
+    }
+    
+    return null  // Cache miss
+  }
+  
+  /**
+   * Cache response with metadata for invalidation
+   */
+  async set(
+    query: string,
+    answer: string,
+    sourceChunkIds: string[],
+    ttl: number = 3600  // 1 hour default
+  ): Promise<void> {
+    const queryEmbedding = await embed(query)
+    const key = `cache:${hashQuery(query)}`
+    
+    // Get source document versions
+    const sourceVersion = await this.getSourceVersion(sourceChunkIds)
+    
+    const cached: CachedResponse = {
+      query,
+      queryEmbedding,
+      answer,
+      sourceChunkIds,
+      sourceVersion,
+      similarity: 1.0,
+      verified: false,  // Verify on first use
+      ttl,
+      createdAt: new Date(),
+      lastVerified: null,
+      hitCount: 0
+    }
+    
+    await this.redis.set(key, JSON.stringify(cached), 'EX', ttl)
+    
+    // Register cache entry in invalidation index
+    await this.registerForInvalidation(sourceChunkIds, key)
+  }
+  
+  /**
+   * Check if source documents have been updated
+   */
+  private async checkSourceFreshness(chunkIds: string[]): Promise<boolean> {
+    for (const chunkId of chunkIds) {
+      const chunk = await vectorDB.get(chunkId)
+      if (!chunk) {
+        // Source deleted - cache is stale
+        return true
+      }
+      
+      // Check if source was modified after cache creation
+      const cachedVersion = await this.getCachedSourceVersion(chunkId)
+      if (chunk.metadata.version !== cachedVersion) {
+        return true  // Source updated
+      }
+    }
+    
+    return false  // All sources are fresh
+  }
+  
+  /**
+   * Verify cached answer is still correct
+   * Uses LLM-as-judge to check faithfulness
+   */
+  private async verifyAnswer(
+    query: string,
+    cachedAnswer: string,
+    sourceChunkIds: string[]
+  ): Promise<boolean> {
+    // Retrieve latest source content
+    const sources = await Promise.all(
+      sourceChunkIds.map(id => vectorDB.get(id))
+    )
+    
+    const contextStr = sources.map(s => s.content).join('\n\n')
+    
+    // Use fast model to verify faithfulness
+    const verification = await anthropic.messages.create({
+      model: 'claude-haiku-4',
+      max_tokens: 100,
+      messages: [{
+        role: 'user',
+        content: `Is this answer faithful to the context?
+
+Context:
+${contextStr}
+
+Question: ${query}
+
+Answer: ${cachedAnswer}
+
+Return JSON: { "faithful": true/false, "reason": "explanation" }`
+      }]
+    })
+    
+    const result = JSON.parse(verification.content[0].text)
+    return result.faithful
+  }
+  
+  /**
+   * Register cache entry for invalidation when sources change
+   */
+  private async registerForInvalidation(
+    chunkIds: string[],
+    cacheKey: string
+  ): Promise<void> {
+    for (const chunkId of chunkIds) {
+      // Add cache key to invalidation set for this chunk
+      await this.redis.sadd(`invalidate:${chunkId}`, cacheKey)
+    }
+  }
+  
+  /**
+   * Invalidate all cache entries that reference updated chunk
+   * Called by ingestion pipeline when source document is updated
+   */
+  async invalidateChunk(chunkId: string): Promise<void> {
+    // Get all cache keys that reference this chunk
+    const cacheKeys = await this.redis.smembers(`invalidate:${chunkId}`)
+    
+    console.log(`Invalidating ${cacheKeys.length} cache entries for chunk ${chunkId}`)
+    
+    // Delete all related cache entries
+    if (cacheKeys.length > 0) {
+      await this.redis.del(...cacheKeys)
+    }
+    
+    // Clean up invalidation set
+    await this.redis.del(`invalidate:${chunkId}`)
+  }
+  
+  private async getSourceVersion(chunkIds: string[]): Promise<string> {
+    const versions = await Promise.all(
+      chunkIds.map(async id => {
+        const chunk = await vectorDB.get(id)
+        return chunk?.metadata.version || 'unknown'
+      })
+    )
+    return versions.join('|')
+  }
+  
+  private async getCachedSourceVersion(chunkId: string): Promise<string> {
+    // Implementation depends on how versions are tracked
+    return 'v1'
+  }
+}
+```
+
+### Integration with Ingestion Pipeline
+
+```typescript
+/**
+ * When document is updated, invalidate related caches
+ */
+async function handleDocumentUpdate(documentId: string): Promise<void> {
+  // 1. Get all chunks for this document
+  const chunks = await vectorDB.query({
+    filter: { documentId: { $eq: documentId } }
+  })
+  
+  // 2. Invalidate cache for each chunk
+  for (const chunk of chunks) {
+    await semanticCache.invalidateChunk(chunk.id)
+  }
+  
+  console.log(`Invalidated cache for ${chunks.length} chunks in document ${documentId}`)
+}
+```
+
+### TTL Strategy by Content Type
+
+```typescript
+const TTL_STRATEGY = {
+  'frequently-updated': 900,      // 15 minutes (product prices, stock)
+  'daily-updated': 3600,          // 1 hour (news, blog posts)
+  'weekly-updated': 86400,        // 1 day (documentation, guides)
+  'static': 604800                // 1 week (legal, compliance)
+}
+
+/**
+ * Determine appropriate TTL based on content metadata
+ */
+function getTTL(metadata: DocumentMetadata): number {
+  const category = metadata.updateFrequency || 'daily-updated'
+  return TTL_STRATEGY[category] || 3600
+}
+```
+
+### Cache Performance Monitoring
+
+```typescript
+interface CacheMetrics {
+  hitRate: number                 // % of queries served from cache
+  missRate: number                // % of queries not in cache
+  invalidationRate: number        // % of cache entries invalidated
+  averageAge: number              // Avg age of cache hits (seconds)
+  staleCachePrevented: number     // # of stale caches caught
+}
+
+async function getCacheMetrics(timeWindow: number = 3600000): Promise<CacheMetrics> {
+  const logs = await prisma.cacheLog.findMany({
+    where: {
+      timestamp: {
+        gte: new Date(Date.now() - timeWindow)
+      }
+    }
+  })
+  
+  const hits = logs.filter(l => l.type === 'hit').length
+  const misses = logs.filter(l => l.type === 'miss').length
+  const invalidations = logs.filter(l => l.type === 'invalidation').length
+  const stalePrevented = logs.filter(l => l.reason === 'stale_source').length
+  
+  const total = hits + misses
+  
+  return {
+    hitRate: total > 0 ? hits / total : 0,
+    missRate: total > 0 ? misses / total : 0,
+    invalidationRate: hits > 0 ? invalidations / hits : 0,
+    averageAge: calculateAverageAge(logs.filter(l => l.type === 'hit')),
+    staleCachePrevented
+  }
+}
+```
+
+**The Architect's Rule**: Semantic caching is critical for cost reduction, but **stale caches are worse than no cache**. Always implement:
+1. **TTL based on content update frequency**
+2. **Automatic invalidation when sources change**
+3. **Verification of cached answers before serving**
+4. **Relevance threshold** (don't serve low-similarity matches)
+
 ### Semantic Caching
 
 ```typescript
@@ -1329,6 +1968,291 @@ class AsyncIngestionPipeline {
   }
 }
 ```
+
+---
+
+## Confidence Score Gate: The "No-Context" Fallback
+
+> **Architect Perspective**: A common RAG failure is the LLM trying to be "helpful" when no relevant documents are found. Implement a **Confidence Score Gate**: if the Top-1 reranked score is below a threshold (e.g., 0.4), the system should **bypass the LLM** and return a standard: "I cannot find sufficient documentation to answer this accurately." This preserves the system's **"Truthfulness" NFR**.
+
+**The "Helpful" Hallucination Problem**:
+```typescript
+// DANGEROUS: LLM tries to help even with poor retrieval
+const chunks = await vectorSearch(query, 5)  // Top chunk score: 0.28 (poor!)
+const answer = await llm.generate({ context: chunks, query })
+// Result: LLM hallucinates answer from training data, not context
+```
+
+**Why this fails**:
+- No relevant documents found (top score 0.28)
+- LLM sees irrelevant chunks as "context"
+- LLM defaults to training data knowledge
+- User gets plausible-sounding but wrong answer
+- **Violations**: Truthfulness, faithfulness, trustworthiness
+
+**The Solution**: Confidence Score Gate
+
+```typescript
+interface ConfidenceConfig {
+  minTopScore: number              // Minimum score for top-1 result (e.g., 0.4)
+  minAverageScore: number          // Minimum average score for top-K (e.g., 0.3)
+  minChunksAboveThreshold: number  // At least N chunks above threshold
+  bypassThreshold: number          // Below this, ALWAYS bypass LLM (e.g., 0.2)
+}
+
+/**
+ * Production RAG with confidence gate
+ * QUALITY: Refuse to answer when confidence is low
+ */
+async function confidenceGatedRAG(
+  query: string,
+  config: ConfidenceConfig = {
+    minTopScore: 0.4,
+    minAverageScore: 0.3,
+    minChunksAboveThreshold: 2,
+    bypassThreshold: 0.2
+  }
+): Promise<{ answer: string; confidence: 'high' | 'medium' | 'low' | 'none' }> {
+  
+  // 1. Retrieve candidates
+  const candidates = await vectorSearch(query, 20)
+  
+  // 2. Rerank for precision
+  const reranked = await crossEncoderRerank(query, candidates)
+  
+  // 3. Calculate confidence metrics
+  const topScore = reranked[0]?.score || 0
+  const topKScores = reranked.slice(0, 5).map(r => r.score)
+  const averageScore = average(topKScores)
+  const aboveThreshold = topKScores.filter(s => s >= config.minTopScore).length
+  
+  // 4. Evaluate confidence level
+  if (topScore < config.bypassThreshold) {
+    // CRITICAL: No relevant information found
+    return {
+      answer: `I cannot find sufficient documentation to answer "${query}" accurately. This may be because:
+- The information is not in my knowledge base
+- The question is outside my documented domain
+- The query needs to be rephrased
+
+Please try:
+- Rephrasing your question more specifically
+- Checking if the information exists in the system
+- Contacting support for topics outside documentation`,
+      confidence: 'none'
+    }
+  }
+  
+  if (topScore < config.minTopScore || averageScore < config.minAverageScore) {
+    // LOW CONFIDENCE: Warn user
+    const limitedContext = reranked.slice(0, 2)  // Only top-2
+    const contextStr = limitedContext.map(c => c.content).join('\n\n')
+    
+    const answer = await llm.generate({
+      system: `Answer ONLY if confident. If uncertain, say "I'm not confident about this answer."`,
+      context: contextStr,
+      query
+    })
+    
+    return {
+      answer: `⚠️ LOW CONFIDENCE ANSWER ⚠️\n\n${answer}\n\n_Note: Limited relevant documentation found. This answer may be incomplete._`,
+      confidence: 'low'
+    }
+  }
+  
+  if (aboveThreshold < config.minChunksAboveThreshold) {
+    // MEDIUM CONFIDENCE: Only one good chunk
+    const topChunks = reranked.slice(0, 3)
+    const contextStr = topChunks.map(c => c.content).join('\n\n')
+    
+    const answer = await llm.generate({
+      system: `Answer based on the context provided.`,
+      context: contextStr,
+      query
+    })
+    
+    return {
+      answer,
+      confidence: 'medium'
+    }
+  }
+  
+  // HIGH CONFIDENCE: Multiple relevant chunks found
+  const highQualityChunks = reranked.filter(c => c.score >= config.minTopScore).slice(0, 5)
+  const contextStr = highQualityChunks.map(c => c.content).join('\n\n')
+  
+  const answer = await llm.generate({
+    system: `Answer comprehensively using the provided context.`,
+    context: contextStr,
+    query
+  })
+  
+  return {
+    answer,
+    confidence: 'high'
+  }
+}
+```
+
+### Confidence Score Distribution Analysis
+
+```typescript
+/**
+ * Analyze retrieval quality over time
+ */
+interface ConfidenceAnalytics {
+  high: number      // % queries with high confidence
+  medium: number    // % queries with medium confidence
+  low: number       // % queries with low confidence
+  none: number      // % queries with no relevant context
+  avgTopScore: number
+  avgTopKScore: number
+}
+
+async function analyzeConfidence(
+  timeWindow: number = 86400000  // 24 hours
+): Promise<ConfidenceAnalytics> {
+  const logs = await prisma.ragQuery.findMany({
+    where: {
+      timestamp: {
+        gte: new Date(Date.now() - timeWindow)
+      }
+    }
+  })
+  
+  const total = logs.length
+  const confidenceCounts = {
+    high: logs.filter(l => l.confidence === 'high').length,
+    medium: logs.filter(l => l.confidence === 'medium').length,
+    low: logs.filter(l => l.confidence === 'low').length,
+    none: logs.filter(l => l.confidence === 'none').length
+  }
+  
+  return {
+    high: confidenceCounts.high / total,
+    medium: confidenceCounts.medium / total,
+    low: confidenceCounts.low / total,
+    none: confidenceCounts.none / total,
+    avgTopScore: average(logs.map(l => l.topScore)),
+    avgTopKScore: average(logs.map(l => l.avgTopKScore))
+  }
+}
+```
+
+### Quality Thresholds by Domain
+
+```typescript
+/**
+ * Different domains require different confidence levels
+ */
+const DOMAIN_THRESHOLDS: Record<string, ConfidenceConfig> = {
+  'legal': {
+    minTopScore: 0.7,              // Legal: Very high bar
+    minAverageScore: 0.6,
+    minChunksAboveThreshold: 3,
+    bypassThreshold: 0.5
+  },
+  
+  'medical': {
+    minTopScore: 0.7,              // Medical: Very high bar
+    minAverageScore: 0.6,
+    minChunksAboveThreshold: 3,
+    bypassThreshold: 0.5
+  },
+  
+  'financial': {
+    minTopScore: 0.6,              // Financial: High bar
+    minAverageScore: 0.5,
+    minChunksAboveThreshold: 2,
+    bypassThreshold: 0.4
+  },
+  
+  'customer-support': {
+    minTopScore: 0.4,              // Support: Moderate bar
+    minAverageScore: 0.3,
+    minChunksAboveThreshold: 2,
+    bypassThreshold: 0.2
+  },
+  
+  'general': {
+    minTopScore: 0.4,              // General: Moderate bar
+    minAverageScore: 0.3,
+    minChunksAboveThreshold: 2,
+    bypassThreshold: 0.2
+  }
+}
+```
+
+### User Feedback Loop
+
+```typescript
+/**
+ * Collect user feedback to tune confidence thresholds
+ */
+async function handleUserFeedback(
+  queryId: string,
+  feedback: 'helpful' | 'not_helpful' | 'incorrect',
+  comment?: string
+): Promise<void> {
+  // 1. Get original query log
+  const log = await prisma.ragQuery.findUnique({ where: { id: queryId } })
+  
+  // 2. Store feedback
+  await prisma.ragFeedback.create({
+    data: {
+      queryId,
+      confidence: log.confidence,
+      topScore: log.topScore,
+      feedback,
+      comment,
+      timestamp: new Date()
+    }
+  })
+  
+  // 3. Analyze patterns
+  if (feedback === 'incorrect' && log.confidence === 'high') {
+    // False positive: High confidence but wrong answer
+    await alertQualityTeam({
+      type: 'false_positive',
+      query: log.query,
+      topScore: log.topScore,
+      comment
+    })
+  }
+  
+  if (feedback === 'helpful' && log.confidence === 'low') {
+    // False negative: Low confidence but good answer
+    // Consider lowering threshold
+    await logThresholdAdjustment({
+      type: 'lower_threshold',
+      domain: log.domain,
+      currentThreshold: log.threshold,
+      suggestedThreshold: log.topScore - 0.05
+    })
+  }
+}
+```
+
+### The Architect's Rule
+
+**Confidence gates are MANDATORY for**:
+- Legal AI (case law must be accurate)
+- Medical AI (patient safety critical)
+- Financial AI (regulatory compliance)
+- Any domain where wrong answers cause harm
+
+**Target Metrics**:
+- **High confidence queries**: >70% (most queries should have good retrieval)
+- **No confidence queries**: <5% (knowledge base should be comprehensive)
+- **Low confidence incorrect**: <1% (when we warn low confidence, we should be right)
+- **High confidence incorrect**: <0.1% (when we're confident, we MUST be right)
+
+**The Pattern**: It's better to say "I don't know" than to give a confident wrong answer. Preserve trustworthiness by:
+1. Measuring retrieval confidence (top-1 score, average top-K score)
+2. Setting domain-appropriate thresholds
+3. Bypassing LLM when confidence is too low
+4. Collecting user feedback to tune thresholds
+
 
 ---
 
@@ -1784,6 +2708,370 @@ Use this table to evaluate your RAG system's readiness:
 - [ ] **Error Handling**: Retry logic with exponential backoff
 - [ ] **Audit Logs**: Log all queries and access for compliance
 - [ ] **Load Testing**: Test with 10x expected production load
+
+
+---
+
+## Enterprise Scaling Challenge
+
+> **Scenario**: You're the AI Architect for a SaaS company. Your RAG system works perfectly for 100 users in beta, with P95 latency of 200ms. After public launch, you now have **10,000 concurrent users**, and your **vector database latency has spiked to 5 seconds**. You are using a **single-node pgvector setup** on a db.m5.2xlarge Postgres instance.
+
+### The Problem
+
+**System Symptoms**:
+```typescript
+const metrics = {
+  beta: {
+    users: 100,
+    concurrentQueries: 10,
+    avgLatency: '200ms',
+    p95Latency: '350ms',
+    dbCPU: '25%',
+    cost: '$150/month'
+  },
+  
+  production: {
+    users: 10_000,
+    concurrentQueries: 500,
+    avgLatency: '4,200ms',  // ❌ 21x slower
+    p95Latency: '8,500ms',  // ❌ 24x slower
+    dbCPU: '98%',           // ❌ Maxed out
+    errorRate: '12%',       // ❌ Connection timeouts
+    cost: '$150/month'      // Same hardware
+  }
+}
+```
+
+**User Impact**:
+- 12% of queries timeout (connection pool exhausted)
+- 88% of queries take 4-8 seconds (unacceptable UX)
+- Support tickets: 2,400/day complaining about slow search
+- Churn risk: 23% of users cite "slow AI" as reason for cancellation
+
+### Your Task
+
+**The CEO asks**: "Our AI worked great in beta. Why is it so slow now with more users? What's the architectural fix?"
+
+You have **4 options**. Choose the best solution and explain why the others fail.
+
+---
+
+### Option A: Increase CPU on the Postgres Server
+
+**Solution**: Upgrade from db.m5.2xlarge (8 vCPUs, 32GB RAM) to db.m5.12xlarge (48 vCPUs, 192GB RAM).
+
+```typescript
+// Before: db.m5.2xlarge
+const currentInstance = {
+  vcpus: 8,
+  ram: '32GB',
+  cost: '$150/month',
+  performance: '5,000ms P95 (maxed out CPU)'
+}
+
+// After: db.m5.12xlarge
+const upgradedInstance = {
+  vcpus: 48,     // 6x more CPU
+  ram: '192GB',  // 6x more RAM
+  cost: '$900/month',  // 6x cost
+  performance: '1,200ms P95 (better but still bad)'
+}
+```
+
+**Would this work?** ❌ **No** (temporary fix, doesn't scale)
+
+**Why it fails**:
+- **Vertical scaling has limits**: Even 48 vCPUs can't handle 500 concurrent vector searches
+- **Single-node bottleneck**: Postgres is single-writer, so you're still limited by one server
+- **Cost explosion**: 6x cost increase for only 4x performance improvement
+- **Doesn't address root cause**: Vector search is CPU-intensive; adding more CPUs to one box doesn't solve concurrency
+- **Temporary fix**: When you hit 20,000 users, you're back to the same problem
+
+**Real-world outcome**:
+```typescript
+const sixMonthsLater = {
+  users: 20_000,
+  p95Latency: '6,000ms',  // Degraded again
+  cost: '$900/month',     // Still paying 6x
+  solution: 'Need to upgrade again → unsustainable'
+}
+```
+
+---
+
+### Option B: Horizontal Scaling with Dedicated Vector DB + Read-Replica Strategy (✅ CORRECT)
+
+**Solution**: Decouple specialized workloads. Use a dedicated vector database (Pinecone, Weaviate, or Milvus) for vector search, keep Postgres for relational data, and add read replicas for high-traffic metadata queries.
+
+```typescript
+/**
+ * Horizontally scaled architecture
+ * Separates vector search from relational queries
+ */
+interface ScaledArchitecture {
+  // Vector search (specialized database)
+  vectorDB: {
+    provider: 'Pinecone' | 'Weaviate' | 'Milvus',
+    nodes: number,
+    replicas: number,
+    shards: number
+  },
+  
+  // Relational data (Postgres with read replicas)
+  postgres: {
+    primary: 'db.m5.2xlarge',       // Writes only
+    readReplicas: string[],          // Reads distributed
+    connectionPooling: 'PgBouncer'
+  }
+}
+
+const productionArchitecture: ScaledArchitecture = {
+  vectorDB: {
+    provider: 'Pinecone',
+    nodes: 3,              // Auto-scales
+    replicas: 2,           // High availability
+    shards: 4              // Parallel search
+  },
+  
+  postgres: {
+    primary: 'db.m5.2xlarge',
+    readReplicas: [
+      'db.m5.2xlarge-replica-1',
+      'db.m5.2xlarge-replica-2'
+    ],
+    connectionPooling: 'PgBouncer'  // Handle 500 concurrent connections
+  }
+}
+```
+
+**Implementation**:
+
+```typescript
+/**
+ * Hybrid architecture: Pinecone (vectors) + Postgres (metadata)
+ */
+class HorizontallyScaledRAG {
+  private pinecone: PineconeClient
+  private postgres: Pool
+  private readReplicas: Pool[]
+  
+  constructor() {
+    // Vector search → Pinecone (dedicated, auto-scaled)
+    this.pinecone = new PineconeClient({ apiKey: process.env.PINECONE_API_KEY })
+    
+    // Primary → Writes only
+    this.postgres = new Pool({
+      host: 'postgres-primary.example.com',
+      max: 20
+    })
+    
+    // Read replicas → Distribute read load
+    this.readReplicas = [
+      new Pool({ host: 'postgres-replica-1.example.com', max: 50 }),
+      new Pool({ host: 'postgres-replica-2.example.com', max: 50 })
+    ]
+  }
+  
+  async query(userQuery: string, userId: string): Promise<string> {
+    // 1. Vector search → Pinecone (15ms, auto-scaled)
+    const vectorResults = await this.pinecone.index('docs').query({
+      vector: await embed(userQuery),
+      topK: 10,
+      filter: { tenant_id: await this.getTenantId(userId) }
+    })
+    
+    // 2. Metadata enrichment → Read replica (5ms, load-balanced)
+    const replica = this.getReadReplica()  // Round-robin
+    const metadata = await replica.query(`
+      SELECT document_id, title, url, author
+      FROM documents
+      WHERE id = ANY($1)
+    `, [vectorResults.matches.map(m => m.id)])
+    
+    // 3. LLM generation
+    const context = this.buildContext(vectorResults, metadata)
+    return await this.llm.generate({ query: userQuery, context })
+  }
+  
+  /**
+   * Load balance across read replicas
+   */
+  private getReadReplica(): Pool {
+    const index = Math.floor(Math.random() * this.readReplicas.length)
+    return this.readReplicas[index]
+  }
+  
+  /**
+   * Get tenant ID from read replica (not primary)
+   */
+  private async getTenantId(userId: string): Promise<string> {
+    const replica = this.getReadReplica()
+    const result = await replica.query(
+      'SELECT tenant_id FROM users WHERE id = $1',
+      [userId]
+    )
+    return result.rows[0].tenant_id
+  }
+}
+```
+
+**Why this works?** ✅ **Yes**
+
+**Architecture breakdown**:
+1. **Vector search → Specialized DB**: Pinecone/Weaviate/Milvus are built for high-concurrency vector search
+2. **Metadata queries → Read replicas**: Distribute read load across multiple Postgres instances
+3. **Writes → Primary only**: Keep single source of truth for consistency
+4. **Horizontal scaling**: Add more replicas as user base grows
+5. **Auto-scaling**: Cloud vector DBs auto-scale based on load
+
+**Performance comparison**:
+
+| Metric | Before (Single Postgres) | After (Horizontal) | Improvement |
+|--------|-------------------------|--------------------|-------------|
+| **Vector search** | 4,500ms | 15ms | 300x faster |
+| **Metadata query** | 1,200ms | 5ms | 240x faster |
+| **Total P95** | 8,500ms | 250ms | 34x faster |
+| **Concurrent capacity** | 20 queries/sec | 1,000 queries/sec | 50x more |
+| **Cost** | $150/month | $450/month | 3x (but 50x capacity) |
+
+**Scaling beyond 10,000 users**:
+- **20K users**: Add 1 more read replica ($+150/month)
+- **50K users**: Pinecone auto-scales (no action needed)
+- **100K users**: Add 2 more read replicas ($+300/month)
+- **1M users**: Still works with 5-6 read replicas + Pinecone scaling
+
+**Cost analysis**:
+```typescript
+const horizontalScaling = {
+  pinecone: {
+    cost: '$300/month (p1.x1 pod)',
+    capacity: '10M vectors, 1000 QPS',
+    scaling: 'Automatic'
+  },
+  
+  postgresReplicas: {
+    primary: '$150/month',
+    replicas: '$150/month × 2 = $300/month',
+    total: '$450/month'
+  },
+  
+  totalCost: '$750/month',
+  
+  comparison: {
+    verticalScaling: {
+      cost: '$900/month (db.m5.12xlarge)',
+      capacity: '~50 QPS',
+      verdict: 'More expensive, worse performance'
+    },
+    horizontalScaling: {
+      cost: '$750/month',
+      capacity: '1,000 QPS',
+      verdict: 'Cheaper AND 20x better capacity'
+    }
+  }
+}
+```
+
+---
+
+### Option C: Reduce top_k from 5 to 1
+
+**Solution**: Retrieve fewer vectors to reduce database load.
+
+```typescript
+// Before: Retrieve 5 chunks
+const results = await vectorDB.query({ topK: 5 })
+
+// After: Retrieve 1 chunk
+const results = await vectorDB.query({ topK: 1 })
+```
+
+**Would this work?** ❌ **No** (makes quality worse)
+
+**Why it fails**:
+- **Barely reduces load**: Going from 5 to 1 vector only reduces DB load by 20% (not 80%)
+- **Destroys quality**: Single chunk often lacks context for comprehensive answers
+- **"Lost in the Middle" irrelevant**: You're not even hitting that problem anymore
+- **Doesn't solve concurrency**: 500 concurrent single-vector queries still overwhelm single-node Postgres
+- **Wrong optimization**: Trading quality for a minimal performance gain
+
+**Real-world outcome**:
+```typescript
+const withTopK1 = {
+  p95Latency: '4,000ms',        // Only 500ms improvement (not enough)
+  answerQuality: '62%',          // DOWN from 91% (unacceptable)
+  hallucinationRate: '28%',      // UP from 4% (dangerous)
+  userSatisfaction: '2.1/5',     // DOWN from 4.6/5
+  verdict: 'Slightly faster but much worse quality'
+}
+```
+
+---
+
+### Option D: Ask Users to Wait Longer for "High-Quality" Results
+
+**Solution**: Set user expectations that AI searches take 5-10 seconds because they're "high quality."
+
+```typescript
+// Add loading message
+const loadingMessage = "Searching through thousands of documents for the most accurate answer... This may take 5-10 seconds."
+```
+
+**Would this work?** ❌ **No** (product suicide)
+
+**Why it fails**:
+- **Users don't care about excuses**: Google returns results in 200ms; users won't tolerate 5,000ms
+- **Competitors exist**: Other AI tools answer in <1 second; users will switch
+- **Not an architectural solution**: You're admitting defeat instead of solving the problem
+- **Doesn't scale**: When you hit 20K users, latency will be 10+ seconds (even worse)
+- **Damages brand**: "Slow AI" reputation is hard to recover from
+
+**Real-world outcome**:
+```typescript
+const userBehavior = {
+  churnRate: '+47%',                  // Users leave for faster alternatives
+  negativeReviews: '+340%',           // "Too slow, not worth it"
+  competitorSwitching: '31%',         // Move to ChatGPT, Perplexity
+  reputationDamage: 'Permanent',
+  verdict: 'Product fails in market'
+}
+```
+
+---
+
+### Summary: Why Option B Wins
+
+| Approach | Latency | Capacity | Cost | Scalability | Quality |
+|----------|---------|----------|------|-------------|---------|
+| **A: Bigger CPU** | 1,200ms | 50 QPS | $900/mo | Poor (hits limit again) | Same |
+| **B: Horizontal** ✅ | 250ms | 1,000 QPS | $750/mo | Excellent (add replicas) | Same |
+| **C: Reduce top_k** | 4,000ms | 25 QPS | $150/mo | Poor (still single-node) | ❌ Much worse |
+| **D: Ask users to wait** | 8,500ms | 20 QPS | $150/mo | None | Same |
+
+**The Correct Answer**: **Option B — Horizontal Scaling with Dedicated Vector DB + Read-Replica Strategy**
+
+**The Architect's Principle**: When a specialized workload (vector search) bottlenecks a general-purpose database (Postgres), **decouple** them. Use the right tool for each job:
+- **Vector search**: Specialized vector DB (Pinecone, Weaviate, Milvus)
+- **Metadata queries**: Postgres read replicas (load balanced)
+- **Writes**: Postgres primary (single source of truth)
+
+**Implementation Checklist**:
+- ✅ Migrate vectors to dedicated vector DB (Pinecone for fastest, Milvus for self-hosted)
+- ✅ Set up Postgres read replicas (2-3 for 10K users, 5-6 for 100K users)
+- ✅ Use connection pooling (PgBouncer) to handle high concurrency
+- ✅ Implement round-robin load balancing for read queries
+- ✅ Monitor separately: vector search latency vs metadata query latency
+- ✅ Auto-scaling policies for vector DB based on QPS
+
+**Scaling Path**:
+```
+10K users  → 3 nodes, 2 read replicas → $750/month
+50K users  → 3 nodes, 4 read replicas → $1,050/month
+100K users → 6 nodes, 6 read replicas → $1,650/month
+1M users   → 12 nodes, 10 read replicas → $3,300/month
+```
+
+**Key Lesson**: **Vertical scaling (bigger box) fails. Horizontal scaling (more boxes, specialized tools) wins.**
 
 ### Production Performance Checklist
 
