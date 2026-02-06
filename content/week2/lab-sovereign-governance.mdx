@@ -3189,6 +3189,567 @@ describe('ComplianceAuditLogger', () => {
 })
 ```
 
+### 🏗️ Exercise: Hardened Policy Versioning
+
+**Objective**: Upgrade your audit logging to use the **Sovereign Policy Trace** schema, which includes policy versioning, cryptographic hashing, and canary validation proof.
+
+**Why This Matters**: Basic audit logs say "what happened." Sovereign Policy Traces say "what happened, under which policy version, approved by whom, and validated how." This is the difference between passing and failing a regulatory audit.
+
+#### Step 1: Implement Policy Version Registry
+
+Create `lib/policy-version-registry.ts`:
+
+```typescript
+import crypto from 'crypto'
+
+export interface PolicyModule {
+  name: string
+  version: string
+  description: string
+}
+
+export interface PolicyVersion {
+  version: string  // Semantic version (e.g., "v2.4.1-clinical")
+  fullHash: string  // SHA-256 of complete system prompt
+  createdAt: Date
+  createdBy: string
+  approvedBy: string[]
+
+  // The actual system prompt content
+  systemPrompt: string
+
+  // Active modules (from modular architecture)
+  activeModules: PolicyModule[]
+
+  // Canary validation results
+  isCanaryValidated: boolean
+  canaryResults?: {
+    testsPassed: number
+    testsTotal: number
+    regressions: number
+    lastValidated: Date
+  }
+
+  // Change tracking
+  changeReason: string
+  regulatoryBasis: string
+}
+
+export class PolicyVersionRegistry {
+  private versions: Map<string, PolicyVersion> = new Map()
+  private currentVersion: string | null = null
+
+  /**
+   * Register a new policy version (immutable once created)
+   */
+  registerVersion(policyVersion: Omit<PolicyVersion, 'fullHash'>): PolicyVersion {
+    // Calculate hash of system prompt
+    const fullHash = crypto
+      .createHash('sha256')
+      .update(policyVersion.systemPrompt)
+      .digest('hex')
+
+    const version: PolicyVersion = {
+      ...policyVersion,
+      fullHash: `sha256:${fullHash}`
+    }
+
+    // Store in registry (immutable)
+    this.versions.set(version.version, version)
+
+    // Set as current if first version
+    if (!this.currentVersion) {
+      this.currentVersion = version.version
+    }
+
+    console.log(`✅ Registered policy version ${version.version}`)
+    console.log(`   Hash: ${version.fullHash}`)
+    console.log(`   Modules: ${version.activeModules.map(m => m.name).join(', ')}`)
+    console.log(`   Canary Validated: ${version.isCanaryValidated}`)
+
+    return version
+  }
+
+  /**
+   * Set the active policy version
+   */
+  setCurrentVersion(version: string): void {
+    if (!this.versions.has(version)) {
+      throw new Error(`Policy version ${version} not found`)
+    }
+    this.currentVersion = version
+    console.log(`✅ Activated policy version ${version}`)
+  }
+
+  /**
+   * Get the currently active policy
+   */
+  getCurrentPolicy(): PolicyVersion {
+    if (!this.currentVersion) {
+      throw new Error('No active policy version')
+    }
+    return this.versions.get(this.currentVersion)!
+  }
+
+  /**
+   * Get policy version that was active at a specific timestamp
+   */
+  getPolicyAtTimestamp(timestamp: Date): PolicyVersion | null {
+    let activePolicy: PolicyVersion | null = null
+
+    for (const policy of this.versions.values()) {
+      if (policy.createdAt <= timestamp) {
+        if (!activePolicy || policy.createdAt > activePolicy.createdAt) {
+          activePolicy = policy
+        }
+      }
+    }
+
+    return activePolicy
+  }
+
+  /**
+   * Verify a policy hash matches stored version
+   */
+  verifyPolicyHash(version: string, expectedHash: string): boolean {
+    const policy = this.versions.get(version)
+    if (!policy) return false
+    return policy.fullHash === expectedHash
+  }
+}
+```
+
+#### Step 2: Create Sovereign Policy Trace Schema
+
+Create `lib/sovereign-policy-trace.ts`:
+
+```typescript
+export interface SovereignPolicyTrace {
+  // Unique trace identifier
+  trace_id: string
+
+  // Timestamp of the interaction (ISO-8601)
+  timestamp: string
+
+  // Governance Snapshot
+  governance_snapshot: {
+    policy_version: string
+    policy_hash: string
+    active_modules: string[]
+    is_canary_validated: boolean
+    canary_results?: {
+      tests_passed: number
+      tests_total: number
+      regressions: number
+      last_validated: string
+    }
+  }
+
+  // Semantic Intent
+  semantic_intent: {
+    detected_intent: string
+    risk_classification: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
+    routing_decision: string
+    confidence: number
+  }
+
+  // Execution Context
+  execution_context: {
+    model: string
+    temperature: number
+    system_prompt_id: string
+    latency_ms: number
+    tokens: {
+      input: number
+      output: number
+    }
+    cost: number
+  }
+
+  // User Context
+  user_context: {
+    user_id: string
+    session_id: string
+    ip_address?: string
+  }
+
+  // Compliance Metadata
+  compliance_metadata: {
+    regulations: ('GDPR' | 'HIPAA' | 'CCPA' | 'EU_AI_ACT')[]
+    data_residency: string
+    pii_detected: boolean
+    pii_redacted: boolean
+    pii_categories?: ('NAME' | 'EMAIL' | 'SSN' | 'PHONE' | 'MEDICAL_ID')[]
+  }
+}
+
+export class SovereignPolicyTracer {
+  private traces: SovereignPolicyTrace[] = []
+
+  /**
+   * Create a new policy trace
+   */
+  createTrace(
+    policyVersion: PolicyVersion,
+    intent: {
+      category: string
+      riskClassification: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
+      routingDecision: string
+      confidence: number
+    },
+    execution: {
+      model: string
+      latency: number
+      tokens: { input: number; output: number }
+      cost: number
+    },
+    userContext: {
+      userId: string
+      sessionId: string
+    },
+    complianceData: {
+      regulations: ('GDPR' | 'HIPAA' | 'CCPA' | 'EU_AI_ACT')[]
+      piiDetected: boolean
+      piiRedacted: boolean
+      piiCategories?: ('NAME' | 'EMAIL' | 'SSN' | 'PHONE' | 'MEDICAL_ID')[]
+    }
+  ): SovereignPolicyTrace {
+    const trace: SovereignPolicyTrace = {
+      trace_id: `trc_${Date.now()}_${crypto.randomUUID().substring(0, 5)}`,
+      timestamp: new Date().toISOString(),
+
+      governance_snapshot: {
+        policy_version: policyVersion.version,
+        policy_hash: policyVersion.fullHash,
+        active_modules: policyVersion.activeModules.map(m => m.name),
+        is_canary_validated: policyVersion.isCanaryValidated,
+        canary_results: policyVersion.canaryResults ? {
+          tests_passed: policyVersion.canaryResults.testsPassed,
+          tests_total: policyVersion.canaryResults.testsTotal,
+          regressions: policyVersion.canaryResults.regressions,
+          last_validated: policyVersion.canaryResults.lastValidated.toISOString()
+        } : undefined
+      },
+
+      semantic_intent: {
+        detected_intent: intent.category,
+        risk_classification: intent.riskClassification,
+        routing_decision: intent.routingDecision,
+        confidence: intent.confidence
+      },
+
+      execution_context: {
+        model: execution.model,
+        temperature: 0.0,
+        system_prompt_id: policyVersion.fullHash.substring(0, 16),
+        latency_ms: execution.latency,
+        tokens: execution.tokens,
+        cost: execution.cost
+      },
+
+      user_context: {
+        user_id: userContext.userId,
+        session_id: userContext.sessionId
+      },
+
+      compliance_metadata: {
+        regulations: complianceData.regulations,
+        data_residency: 'US',
+        pii_detected: complianceData.piiDetected,
+        pii_redacted: complianceData.piiRedacted,
+        pii_categories: complianceData.piiCategories
+      }
+    }
+
+    this.traces.push(trace)
+    return trace
+  }
+
+  /**
+   * Get all traces (for audit queries)
+   */
+  getAllTraces(): SovereignPolicyTrace[] {
+    return this.traces
+  }
+
+  /**
+   * Query traces by timestamp range
+   */
+  getTracesByTimeRange(startDate: Date, endDate: Date): SovereignPolicyTrace[] {
+    return this.traces.filter(t => {
+      const timestamp = new Date(t.timestamp)
+      return timestamp >= startDate && timestamp <= endDate
+    })
+  }
+
+  /**
+   * Query traces by policy version
+   */
+  getTracesByPolicyVersion(version: string): SovereignPolicyTrace[] {
+    return this.traces.filter(t => t.governance_snapshot.policy_version === version)
+  }
+}
+```
+
+#### Step 3: Verification Script
+
+Create `scripts/verify-policy-traces.ts`:
+
+```typescript
+import { PolicyVersionRegistry } from '../lib/policy-version-registry'
+import { SovereignPolicyTracer } from '../lib/sovereign-policy-trace'
+
+/**
+ * Verification script to prove policy trace integrity
+ *
+ * This script answers the regulatory question:
+ * "Can you prove the logs correctly reflect the policy_hash of the active policy?"
+ */
+
+export async function verifyPolicyTraceIntegrity(
+  registry: PolicyVersionRegistry,
+  tracer: SovereignPolicyTracer
+): Promise<{
+  totalTraces: number
+  verified: number
+  failed: number
+  failedTraces: any[]
+}> {
+  const allTraces = tracer.getAllTraces()
+  let verified = 0
+  let failed = 0
+  const failedTraces: any[] = []
+
+  console.log(`\n🔍 Verifying ${allTraces.length} policy traces...\n`)
+
+  for (const trace of allTraces) {
+    const policyVersion = trace.governance_snapshot.policy_version
+    const policyHash = trace.governance_snapshot.policy_hash
+
+    // Verify the hash matches the stored policy
+    const isValid = registry.verifyPolicyHash(policyVersion, policyHash)
+
+    if (isValid) {
+      verified++
+      console.log(`✅ Trace ${trace.trace_id}: Hash verified for policy ${policyVersion}`)
+    } else {
+      failed++
+      failedTraces.push({
+        traceId: trace.trace_id,
+        policyVersion,
+        claimedHash: policyHash,
+        reason: 'Hash mismatch or policy version not found'
+      })
+      console.log(`❌ Trace ${trace.trace_id}: Hash verification FAILED for policy ${policyVersion}`)
+    }
+  }
+
+  console.log(`\n═══════════════════════════════════════════════════════════════`)
+  console.log(`  VERIFICATION SUMMARY`)
+  console.log(`═══════════════════════════════════════════════════════════════`)
+  console.log(`  Total Traces: ${allTraces.length}`)
+  console.log(`  ✅ Verified: ${verified}`)
+  console.log(`  ❌ Failed: ${failed}`)
+  console.log(`  Success Rate: ${((verified / allTraces.length) * 100).toFixed(1)}%`)
+  console.log(`═══════════════════════════════════════════════════════════════\n`)
+
+  if (failed > 0) {
+    console.log(`⚠️  WARNING: ${failed} traces failed verification`)
+    console.log(`Failed traces:`, JSON.stringify(failedTraces, null, 2))
+  } else {
+    console.log(`✅ ALL TRACES VERIFIED - Ready for regulatory audit\n`)
+  }
+
+  return {
+    totalTraces: allTraces.length,
+    verified,
+    failed,
+    failedTraces
+  }
+}
+
+// Example usage in tests
+export async function demoVerification() {
+  const registry = new PolicyVersionRegistry()
+  const tracer = new SovereignPolicyTracer()
+
+  // Register policy version 1.0.0
+  const v1 = registry.registerVersion({
+    version: 'v1.0.0',
+    systemPrompt: 'You are a helpful assistant. Never provide medical advice.',
+    createdAt: new Date('2026-01-01'),
+    createdBy: 'compliance@company.com',
+    approvedBy: ['legal@company.com', 'cso@company.com'],
+    activeModules: [
+      { name: 'core_safety', version: '1.0', description: 'Core safety rules' },
+      { name: 'no_medical_advice', version: '1.0', description: 'Block medical advice' }
+    ],
+    isCanaryValidated: true,
+    canaryResults: {
+      testsPassed: 99,
+      testsTotal: 100,
+      regressions: 0,
+      lastValidated: new Date('2025-12-30')
+    },
+    changeReason: 'Initial deployment',
+    regulatoryBasis: 'HIPAA §164.502'
+  })
+
+  // Create traces using v1.0.0
+  tracer.createTrace(
+    v1,
+    {
+      category: 'general_inquiry',
+      riskClassification: 'LOW',
+      routingDecision: 'allowed',
+      confidence: 0.95
+    },
+    {
+      model: 'claude-3-5-sonnet-20241022',
+      latency: 1200,
+      tokens: { input: 100, output: 150 },
+      cost: 0.00135
+    },
+    {
+      userId: 'user_123',
+      sessionId: 'session_456'
+    },
+    {
+      regulations: ['HIPAA', 'GDPR'],
+      piiDetected: false,
+      piiRedacted: false
+    }
+  )
+
+  // Register policy version 2.0.0 with updated prompt
+  const v2 = registry.registerVersion({
+    version: 'v2.0.0',
+    systemPrompt: 'You are a helpful assistant. Never provide medical advice. Add privacy disclaimer.',
+    createdAt: new Date('2026-02-01'),
+    createdBy: 'compliance@company.com',
+    approvedBy: ['legal@company.com', 'cso@company.com'],
+    activeModules: [
+      { name: 'core_safety', version: '1.0', description: 'Core safety rules' },
+      { name: 'no_medical_advice', version: '1.1', description: 'Enhanced medical advice blocking' },
+      { name: 'privacy_disclaimer', version: '1.0', description: 'Privacy disclaimers' }
+    ],
+    isCanaryValidated: true,
+    canaryResults: {
+      testsPassed: 100,
+      testsTotal: 100,
+      regressions: 0,
+      lastValidated: new Date('2026-01-30')
+    },
+    changeReason: 'Added privacy disclaimer per legal review',
+    regulatoryBasis: 'GDPR Article 13'
+  })
+
+  registry.setCurrentVersion('v2.0.0')
+
+  // Create trace using v2.0.0
+  tracer.createTrace(
+    v2,
+    {
+      category: 'privacy_inquiry',
+      riskClassification: 'MEDIUM',
+      routingDecision: 'allowed_with_disclaimer',
+      confidence: 0.92
+    },
+    {
+      model: 'claude-3-5-sonnet-20241022',
+      latency: 1350,
+      tokens: { input: 120, output: 180 },
+      cost: 0.00162
+    },
+    {
+      userId: 'user_789',
+      sessionId: 'session_012'
+    },
+    {
+      regulations: ['GDPR', 'CCPA'],
+      piiDetected: true,
+      piiRedacted: true,
+      piiCategories: ['EMAIL']
+    }
+  )
+
+  // Verify all traces
+  const results = await verifyPolicyTraceIntegrity(registry, tracer)
+
+  return results
+}
+```
+
+#### Step 4: Run the Verification
+
+Add to your test suite:
+
+```typescript
+describe('Policy Version Verification', () => {
+  it('verifies all traces match their policy hashes', async () => {
+    const results = await demoVerification()
+
+    expect(results.verified).toBe(results.totalTraces)
+    expect(results.failed).toBe(0)
+    expect(results.failedTraces).toHaveLength(0)
+  })
+
+  it('detects tampered policy hashes', async () => {
+    const registry = new PolicyVersionRegistry()
+    const tracer = new SovereignPolicyTracer()
+
+    // Register legitimate policy
+    const v1 = registry.registerVersion({
+      version: 'v1.0.0',
+      systemPrompt: 'Legitimate prompt',
+      createdAt: new Date(),
+      createdBy: 'test@test.com',
+      approvedBy: ['legal@test.com'],
+      activeModules: [],
+      isCanaryValidated: true,
+      changeReason: 'Test',
+      regulatoryBasis: 'Test'
+    })
+
+    // Create a trace
+    const trace = tracer.createTrace(v1, /* ... */)
+
+    // TAMPER: Manually change the policy hash in the trace
+    trace.governance_snapshot.policy_hash = 'sha256:FAKE_HASH'
+
+    // Verify - should fail
+    const results = await verifyPolicyTraceIntegrity(registry, tracer)
+
+    expect(results.failed).toBe(1)
+    expect(results.failedTraces[0].claimedHash).toBe('sha256:FAKE_HASH')
+  })
+})
+```
+
+### Success Criteria for Policy Versioning Exercise
+
+✅ `PolicyVersionRegistry` creates SHA-256 hashes of system prompts
+✅ `SovereignPolicyTrace` includes `governance_snapshot` with policy version, hash, and modules
+✅ Verification script proves traces match stored policy hashes
+✅ Tampered hashes are detected and flagged
+✅ All traces include `is_canary_validated` field
+✅ Policy changes are tracked with `changeReason` and `regulatoryBasis`
+
+**Audit Question You Can Now Answer**:
+> "On January 15, 2026 at 3:47 PM, which policy version was active, and can you prove it hasn't been tampered with?"
+
+**Your Answer** (30 seconds):
+```typescript
+const trace = await findTraceByTimestamp('2026-01-15T15:47:00Z')
+const isVerified = registry.verifyPolicyHash(
+  trace.governance_snapshot.policy_version,
+  trace.governance_snapshot.policy_hash
+)
+console.log(`Policy Version: ${trace.governance_snapshot.policy_version}`)
+console.log(`Hash Verified: ${isVerified ? '✅' : '❌'}`)
+console.log(`Canary Validated: ${trace.governance_snapshot.is_canary_validated ? '✅' : '❌'}`)
+```
+
 ---
 
 ## Part 4: Egress Monitoring (35 minutes)
