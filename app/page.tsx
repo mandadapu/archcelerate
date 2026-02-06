@@ -88,7 +88,7 @@ export default function Home() {
                   Become an AI Architect.
                 </span>
               </h1>
-              <p className="text-xl md:text-2xl text-gray-600 leading-relaxed max-w-2xl mx-auto mb-8">
+              <p className="text-xl md:text-2xl text-gray-600 leading-relaxed max-w-2xl mx-auto mb-8 px-6 md:px-0">
                 The <span className="font-semibold text-gray-900">comprehensive roadmap</span> for software engineers to master the <span className="font-semibold text-gray-900">physics of LLMs</span>, build <span className="font-semibold text-gray-900">sovereign security frameworks</span>, and ship a <span className="font-semibold text-gray-900">complete portfolio</span> of production-grade systems.
               </p>
 
