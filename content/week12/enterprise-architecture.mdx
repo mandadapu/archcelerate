@@ -183,6 +183,163 @@ export async function GET(req: Request) {
 }
 ```
 
+### Cell-Based Global Architecture
+
+**Architect's Tip — Regional Data Sovereignty (The Cell Pattern)**: "In 2026, multi-tenancy isn't just about database rows; it's about **Geography**. For a hardened enterprise system, you must deploy **Cells** — self-contained instances of your entire stack (DB, Vector Store, LLM Gateway) — in specific regions (e.g., EU-West-1 for GDPR, US-East-1 for HIPAA). Use a **Global Tenant Router** to ensure that data for an EU client never leaves the EU cell, even for processing. This is the only way to satisfy high-level compliance audits."
+
+```typescript
+/**
+ * Cell-Based Architecture: Regional Data Sovereignty
+ *
+ * Problem: A single-region deployment can't satisfy GDPR's
+ * data residency requirements. EU data processed in US-East-1
+ * is a compliance violation — regardless of encryption.
+ *
+ * Solution: Deploy self-contained "Cells" per region. Each Cell
+ * has its own DB, Vector Store, LLM Gateway, and Audit Log.
+ * A Global Tenant Router inspects the tenant's region assignment
+ * and forwards all traffic to the correct Cell.
+ *
+ * Interview Defense: "We deploy Cell-Based Architecture with
+ * regional sovereignty. An EU tenant's data never leaves EU-West-1 —
+ * not for processing, not for logging, not for backups. The Global
+ * Router enforces this at the network layer, not the application layer."
+ */
+
+interface RegionalCell {
+  region: string                    // e.g., 'eu-west-1', 'us-east-1'
+  complianceFramework: 'GDPR' | 'HIPAA' | 'CCPA' | 'PDPA'
+  endpoints: {
+    api: string                     // Cell API gateway
+    database: string                // Cell-local PostgreSQL
+    vectorStore: string             // Cell-local Pinecone/pgvector
+    llmGateway: string              // Cell-local LLM proxy
+    auditLog: string                // Cell-local audit storage
+  }
+  capacity: {
+    maxTenants: number
+    currentTenants: number
+    maxRPS: number                  // Requests per second
+  }
+}
+
+interface TenantCellAssignment {
+  tenantId: string
+  primaryCell: string               // e.g., 'eu-west-1'
+  backupCell: string                // e.g., 'eu-central-1' (same jurisdiction)
+  dataResidency: string             // Legal jurisdiction
+  assignedAt: Date
+}
+
+class GlobalTenantRouter {
+  private cellRegistry: Map<string, RegionalCell>
+  private tenantAssignments: Map<string, TenantCellAssignment>
+
+  async routeRequest(
+    tenantId: string,
+    request: IncomingRequest
+  ): Promise<Response> {
+    // Step 1: Look up tenant's Cell assignment
+    const assignment = this.tenantAssignments.get(tenantId)
+    if (!assignment) {
+      throw new Error(`Tenant ${tenantId} has no Cell assignment`)
+    }
+
+    // Step 2: Get the target Cell
+    const cell = this.cellRegistry.get(assignment.primaryCell)
+    if (!cell) {
+      // Failover to backup Cell (must be same jurisdiction)
+      const backupCell = this.cellRegistry.get(assignment.backupCell)
+      if (!backupCell) {
+        throw new Error(`No available Cell for tenant ${tenantId}`)
+      }
+      return this.forwardToCell(backupCell, tenantId, request)
+    }
+
+    // Step 3: Enforce data residency — NEVER route cross-jurisdiction
+    if (request.sourceRegion &&
+        !this.isSameJurisdiction(request.sourceRegion, cell.region)) {
+      await this.logSovereigntyViolationAttempt(tenantId, request)
+      throw new Error(
+        `Data sovereignty violation: cannot route ${request.sourceRegion} ` +
+        `traffic to ${cell.region}`
+      )
+    }
+
+    // Step 4: Forward to the correct Cell
+    return this.forwardToCell(cell, tenantId, request)
+  }
+
+  private async forwardToCell(
+    cell: RegionalCell,
+    tenantId: string,
+    request: IncomingRequest
+  ): Promise<Response> {
+    return fetch(cell.endpoints.api, {
+      method: request.method,
+      headers: {
+        ...request.headers,
+        'X-Tenant-Id': tenantId,
+        'X-Cell-Region': cell.region,
+        'X-Compliance-Framework': cell.complianceFramework
+      },
+      body: request.body
+    })
+  }
+
+  private isSameJurisdiction(
+    sourceRegion: string,
+    cellRegion: string
+  ): boolean {
+    // EU regions can route to other EU regions (GDPR allows intra-EU)
+    const EU_REGIONS = ['eu-west-1', 'eu-west-2', 'eu-central-1']
+    const US_REGIONS = ['us-east-1', 'us-west-2']
+
+    if (EU_REGIONS.includes(sourceRegion) &&
+        EU_REGIONS.includes(cellRegion)) return true
+    if (US_REGIONS.includes(sourceRegion) &&
+        US_REGIONS.includes(cellRegion)) return true
+
+    return sourceRegion === cellRegion
+  }
+
+  private async logSovereigntyViolationAttempt(
+    tenantId: string,
+    request: IncomingRequest
+  ): Promise<void> {
+    console.error('[SOVEREIGNTY VIOLATION ATTEMPT]', {
+      tenantId,
+      sourceRegion: request.sourceRegion,
+      timestamp: new Date().toISOString()
+    })
+  }
+}
+
+// Cell deployment topology:
+//
+// ┌─────────────────────────────────────────────────────────┐
+// │                 Global Tenant Router                     │
+// │         (DNS-based routing + tenant lookup)              │
+// └────────┬──────────────────┬──────────────────┬──────────┘
+//          │                  │                  │
+//    ┌─────▼─────┐     ┌─────▼─────┐     ┌─────▼─────┐
+//    │ EU-West-1 │     │ US-East-1 │     │ AP-SE-1   │
+//    │   Cell    │     │   Cell    │     │   Cell    │
+//    │           │     │           │     │           │
+//    │ ┌───────┐ │     │ ┌───────┐ │     │ ┌───────┐ │
+//    │ │  DB   │ │     │ │  DB   │ │     │ │  DB   │ │
+//    │ │Vector │ │     │ │Vector │ │     │ │Vector │ │
+//    │ │  LLM  │ │     │ │  LLM  │ │     │ │  LLM  │ │
+//    │ │ Audit │ │     │ │ Audit │ │     │ │ Audit │ │
+//    │ └───────┘ │     │ └───────┘ │     │ └───────┘ │
+//    │  GDPR     │     │  HIPAA    │     │  PDPA     │
+//    └───────────┘     └───────────┘     └───────────┘
+//
+// Key: Each Cell is a COMPLETE, ISOLATED stack.
+// EU data never leaves EU. US data never leaves US.
+// Backup Cells must be in the SAME jurisdiction.
+```
+
 ### Tenant-Specific Configuration
 
 ```typescript
@@ -248,6 +405,185 @@ async function generateResponse(tenantId: string, userMessage: string) {
 
   return response.content[0].text
 }
+```
+
+## Token-Bucket Rate Limiting
+
+**Architect's Tip — Tiered Throughput Engine (The Noisy Neighbor Shield)**: "Don't let one noisy neighbor crash the system for everyone. Implement a **Tiered Throughput Engine**: assign each tenant a **Token Bucket** based on their contract (e.g., Bronze: 10 RPM, Platinum: 1000 RPM). When the bucket is empty, return a `429 Too Many Requests` with a `Retry-After` header. This protects your High Availability (99.9%+) by ensuring the underlying LLM provider's rate limits are never exceeded by a single runaway script."
+
+```typescript
+/**
+ * Token-Bucket Rate Limiting per Tenant
+ *
+ * Problem: A single tenant running a batch job at 2 AM can
+ * exhaust the entire LLM provider's rate limit, causing 429
+ * errors for all other tenants. One "noisy neighbor" degrades
+ * service for everyone.
+ *
+ * Solution: Assign each tenant a Token Bucket with a refill
+ * rate based on their contract tier. The bucket drains on each
+ * request and refills at a constant rate. When empty, the
+ * request is rejected with 429 + Retry-After header.
+ *
+ * Interview Defense: "We implement per-tenant token bucket rate
+ * limiting backed by Redis. Each tier has a defined bucket size
+ * and refill rate. A Platinum tenant gets 1000 RPM; a Bronze
+ * tenant gets 10 RPM. If a tenant's bucket empties, they get
+ * a 429 with Retry-After — but every other tenant is unaffected."
+ */
+
+interface TenantTier {
+  name: 'bronze' | 'silver' | 'gold' | 'platinum'
+  bucketSize: number         // Max tokens in bucket
+  refillRate: number         // Tokens added per second
+  maxRequestsPerMinute: number
+  maxTokensPerRequest: number
+  priority: number           // Higher = processed first under contention
+}
+
+const TIER_CONFIG: Record<string, TenantTier> = {
+  bronze:   {
+    name: 'bronze',   bucketSize: 10,   refillRate: 0.17,
+    maxRequestsPerMinute: 10,   maxTokensPerRequest: 1000,  priority: 1
+  },
+  silver:   {
+    name: 'silver',   bucketSize: 50,   refillRate: 0.83,
+    maxRequestsPerMinute: 50,   maxTokensPerRequest: 2000,  priority: 2
+  },
+  gold:     {
+    name: 'gold',     bucketSize: 200,  refillRate: 3.33,
+    maxRequestsPerMinute: 200,  maxTokensPerRequest: 4000,  priority: 3
+  },
+  platinum: {
+    name: 'platinum', bucketSize: 1000, refillRate: 16.67,
+    maxRequestsPerMinute: 1000, maxTokensPerRequest: 8000,  priority: 4
+  },
+}
+
+class TokenBucketRateLimiter {
+  private redis: Redis
+
+  constructor(redis: Redis) {
+    this.redis = redis
+  }
+
+  async consumeToken(
+    tenantId: string,
+    tier: string
+  ): Promise<{
+    allowed: boolean
+    remaining: number
+    retryAfterMs: number | null
+  }> {
+    const config = TIER_CONFIG[tier]
+    if (!config) throw new Error(`Unknown tier: ${tier}`)
+
+    const key = `ratelimit:${tenantId}`
+    const now = Date.now()
+
+    // Atomic token bucket operation via Lua script
+    const result = await this.redis.eval(
+      TOKEN_BUCKET_LUA_SCRIPT,
+      1,
+      key,
+      config.bucketSize,       // Max tokens
+      config.refillRate,        // Tokens per second
+      now,                      // Current timestamp
+      1                         // Tokens to consume
+    ) as [number, number, number]
+
+    const [allowed, remaining, retryAfterMs] = result
+
+    return {
+      allowed: allowed === 1,
+      remaining,
+      retryAfterMs: allowed === 1 ? null : retryAfterMs
+    }
+  }
+}
+
+// Lua script for atomic token bucket (runs in Redis)
+const TOKEN_BUCKET_LUA_SCRIPT = `
+  local key = KEYS[1]
+  local max_tokens = tonumber(ARGV[1])
+  local refill_rate = tonumber(ARGV[2])
+  local now = tonumber(ARGV[3])
+  local requested = tonumber(ARGV[4])
+
+  -- Get current bucket state
+  local bucket = redis.call('HMGET', key, 'tokens', 'last_refill')
+  local tokens = tonumber(bucket[1]) or max_tokens
+  local last_refill = tonumber(bucket[2]) or now
+
+  -- Refill tokens based on elapsed time
+  local elapsed = (now - last_refill) / 1000
+  tokens = math.min(max_tokens, tokens + (elapsed * refill_rate))
+
+  -- Try to consume
+  if tokens >= requested then
+    tokens = tokens - requested
+    redis.call('HMSET', key, 'tokens', tokens, 'last_refill', now)
+    redis.call('EXPIRE', key, 120)
+    return {1, math.floor(tokens), 0}
+  else
+    -- Calculate wait time until enough tokens are available
+    local deficit = requested - tokens
+    local wait_ms = math.ceil((deficit / refill_rate) * 1000)
+    redis.call('HMSET', key, 'tokens', tokens, 'last_refill', now)
+    redis.call('EXPIRE', key, 120)
+    return {0, math.floor(tokens), wait_ms}
+  end
+`
+
+// Middleware integration
+async function rateLimitMiddleware(
+  req: Request,
+  tenantId: string
+): Promise<Response | null> {
+  const config = await tenantConfigService.getConfig(tenantId)
+  const limiter = new TokenBucketRateLimiter(redis)
+
+  const result = await limiter.consumeToken(
+    tenantId, config.billing.plan
+  )
+
+  if (!result.allowed) {
+    return new Response(
+      JSON.stringify({
+        error: 'Too Many Requests',
+        message: `Rate limit exceeded for tier: ${config.billing.plan}`,
+        retryAfterMs: result.retryAfterMs,
+        remaining: result.remaining,
+        upgradeUrl: '/billing/upgrade'
+      }),
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(
+            Math.ceil(result.retryAfterMs! / 1000)
+          ),
+          'X-RateLimit-Remaining': String(result.remaining),
+          'X-RateLimit-Tier': config.billing.plan
+        }
+      }
+    )
+  }
+
+  // Request allowed — continue processing
+  return null
+}
+
+// Rate limit tiers:
+//
+// | Tier     | Bucket | Refill   | RPM  | Max Tokens | Priority |
+// |----------|--------|----------|------|------------|----------|
+// | Bronze   | 10     | 0.17/s   | 10   | 1,000      | 1 (Low)  |
+// | Silver   | 50     | 0.83/s   | 50   | 2,000      | 2        |
+// | Gold     | 200    | 3.33/s   | 200  | 4,000      | 3        |
+// | Platinum | 1,000  | 16.67/s  | 1000 | 8,000      | 4 (High) |
+//
+// When a Bronze tenant hits 10 RPM, they get 429 + Retry-After.
+// Platinum tenants are unaffected. No single tenant can starve others.
 ```
 
 ## High Availability
@@ -695,6 +1031,8 @@ The Sovereign Audit Log is your **proof of governance**—an immutable, cryptogr
 
 This isn't optional—it's what makes your AI system **insurable** and **enterprise-deployable**.
 
+**Architect's Tip — Tamper-Evident Cryptographic Audit Chain**: "An audit log that a DBA can delete is not a Sovereign Log. Implement a **Hash Chain**: every log entry must contain the hash of the previous entry. Periodically **anchor** these hashes into Write-Once-Read-Many (WORM) storage. If a single entry is altered or deleted, the Chain of Trust breaks, providing immutable proof to auditors that the governance record is intact. Without cryptographic chaining, your audit log is just a database table that anyone with admin access can quietly modify."
+
 ### The Sovereign Audit Log Architecture
 
 ```typescript
@@ -966,6 +1304,138 @@ async function processUserMessage(tenantId: string, userId: string, message: str
 }
 ```
 
+### Merkle Tree Anchoring: Periodic Tamper-Proof Checkpoints
+
+```typescript
+/**
+ * Merkle Tree Anchoring
+ *
+ * Problem: Hash chains prove sequential integrity, but verifying
+ * the entire chain is O(n) — slow for audit logs with millions
+ * of entries. An auditor shouldn't have to replay every entry.
+ *
+ * Solution: Batch entries into Merkle Trees every N entries.
+ * Write the Merkle Root to WORM storage (S3 Object Lock or
+ * private blockchain). Auditors verify any single entry in
+ * O(log n) by checking its Merkle Proof against the anchored root.
+ *
+ * Interview Defense: "We anchor a Merkle Root to WORM storage
+ * every 1,000 audit entries. An auditor can verify any single
+ * entry in O(log n) without replaying the entire chain. If
+ * any entry was tampered with, the Merkle Proof fails."
+ */
+
+class MerkleAnchorService {
+  private readonly BATCH_SIZE = 1000
+
+  async anchorBatch(
+    entries: SovereignAuditEntry[]
+  ): Promise<MerkleAnchor> {
+    // Step 1: Build leaf hashes from entry hashes
+    const leaves = entries.map(e => e.hash)
+
+    // Step 2: Build Merkle Tree
+    const merkleRoot = this.buildMerkleRoot(leaves)
+
+    // Step 3: Create anchor record
+    const anchor: MerkleAnchor = {
+      anchorId: crypto.randomUUID(),
+      merkleRoot,
+      entryCount: entries.length,
+      firstEntryId: entries[0].auditId,
+      lastEntryId: entries[entries.length - 1].auditId,
+      timestamp: new Date(),
+      batchRange: {
+        from: entries[0].timestamp,
+        to: entries[entries.length - 1].timestamp
+      }
+    }
+
+    // Step 4: Write to WORM storage (immutable)
+    await this.writeToWORM(anchor)
+
+    return anchor
+  }
+
+  private buildMerkleRoot(leaves: string[]): string {
+    if (leaves.length === 0) return ''
+    if (leaves.length === 1) return leaves[0]
+
+    const nextLevel: string[] = []
+    for (let i = 0; i < leaves.length; i += 2) {
+      const left = leaves[i]
+      const right = leaves[i + 1] || left // Duplicate last if odd
+      const combined = crypto
+        .createHash('sha256')
+        .update(left + right)
+        .digest('hex')
+      nextLevel.push(combined)
+    }
+
+    return this.buildMerkleRoot(nextLevel)
+  }
+
+  async verifyEntry(
+    entry: SovereignAuditEntry,
+    proof: string[],
+    anchor: MerkleAnchor
+  ): Promise<boolean> {
+    // Reconstruct root from entry hash + proof path
+    let currentHash = entry.hash
+
+    for (const sibling of proof) {
+      currentHash = crypto
+        .createHash('sha256')
+        .update(currentHash + sibling)
+        .digest('hex')
+    }
+
+    // Compare against anchored Merkle Root
+    return currentHash === anchor.merkleRoot
+  }
+
+  private async writeToWORM(anchor: MerkleAnchor): Promise<void> {
+    // S3 Object Lock — cannot be deleted or overwritten
+    await s3.putObject({
+      Bucket: 'sovereign-merkle-anchors',
+      Key: `anchors/${anchor.anchorId}.json`,
+      Body: JSON.stringify(anchor, null, 2),
+      ObjectLockMode: 'COMPLIANCE',  // Even root account cannot delete
+      ObjectLockRetainUntilDate: new Date(
+        Date.now() + 7 * 365 * 24 * 60 * 60 * 1000 // 7-year retention
+      )
+    })
+  }
+}
+
+interface MerkleAnchor {
+  anchorId: string
+  merkleRoot: string
+  entryCount: number
+  firstEntryId: string
+  lastEntryId: string
+  timestamp: Date
+  batchRange: { from: Date; to: Date }
+}
+
+// Anchor flow:
+//
+// Audit Entries (sequential):
+// [E1] → [E2] → [E3] → ... → [E1000]
+//
+// Merkle Tree (batch of 1000):
+//            [ROOT]              ← Anchored to WORM
+//           /      \
+//      [H1-2]     [H3-4]
+//      /    \     /    \
+//   [E1]  [E2] [E3]  [E4] ...
+//
+// Verification: O(log n) — auditor needs only the
+// Merkle Proof (sibling hashes) to verify any single entry.
+// If E2 was tampered with, H1-2 changes, ROOT changes,
+// and the anchored ROOT in WORM storage won't match.
+```
+
 ### Capstone Completion Criteria
 
 Your Week 12 capstone project must demonstrate:
@@ -999,6 +1469,71 @@ Submit a compliance report from your Sovereign Audit Log showing:
 **Without this Sovereign Audit Log, your project is NOT enterprise-ready and NOT considered complete.**
 
 This is what separates student projects from **production-grade AI systems that CTOs will trust with regulated data**.
+
+---
+
+## Architect Challenge: The Enterprise Boardroom
+
+**A Fortune 500 client wants to use your AI platform but requires that their data "never touches a shared database" and that you provide "immutable proof" of every PII violation blocked. How does your architecture satisfy this?**
+
+**A)** Tell them you use SSL encryption and regular backups.
+
+**B)** Deploy a **Dedicated Cell** with a **Sovereign Audit Log**. You provide a Siloed Stack (Strategy 1: Database per Tenant) so their data is physically isolated. You then provide a **Cryptographically Signed Audit Log** that proves every governance event was captured and cannot be retroactively altered. This satisfies both the Data Privacy and Compliance Accountability requirements of a global enterprise.
+
+**C)** Just give them a discount on the subscription price.
+
+**D)** Promise them that your engineers are very careful with data.
+
+<details>
+<summary><strong>Click to reveal the correct answer</strong></summary>
+
+### Correct Answer: B — Dedicated Cell + Sovereign Audit Log
+
+An Architect wins enterprise contracts by providing **Structural Guarantees** rather than **Policy Promises**.
+
+**The Architecture:**
+
+```typescript
+// What you deploy for a Fortune 500 client:
+//
+// 1. DEDICATED CELL (Data Isolation)
+//    - Cell in their required region (e.g., US-East-1 for HIPAA)
+//    - Isolated PostgreSQL instance (not shared schema)
+//    - Dedicated vector store namespace
+//    - LLM Gateway with their API keys
+//    - No data ever leaves this Cell
+//
+// 2. SOVEREIGN AUDIT LOG (Compliance Proof)
+//    - Hash-chained audit entries (tamper-evident)
+//    - Merkle Root anchored to WORM storage every 1,000 entries
+//    - Every PII detection → logged with policy rule + decision
+//    - Every governance event → cryptographically signed
+//    - Compliance report generated on demand
+//
+// 3. TOKEN-BUCKET RATE LIMITING (SLA Protection)
+//    - Platinum tier: 1,000 RPM guaranteed
+//    - Isolated from other tenants' traffic
+//    - 99.9% uptime SLA backed by Cell isolation
+//
+// What the CTO hears:
+//   "Your data is physically isolated in a dedicated Cell.
+//    Every PII event is cryptographically logged and tamper-proof.
+//    We can generate a compliance report in 30 seconds.
+//    Here's the Merkle Root anchored in WORM storage as proof."
+//
+// What the CTO's lawyers hear:
+//   "Structural guarantees, not policy promises."
+```
+
+**Why other answers fail:**
+
+- **A) SSL encryption and backups** — SSL is table stakes, not a differentiator. Doesn't address data isolation or immutable audit proof. Any junior developer can enable SSL.
+- **C) Discount** — Enterprise clients don't buy on price; they buy on trust and compliance guarantees. A discount signals desperation, not competence.
+- **D) "We're careful"** — Policy promises are worthless in a compliance audit. "Our engineers are careful" fails every SOC 2 audit. Auditors demand structural proof, not intentions.
+
+**The Architect's Principle:** "Enterprise sales are won in the architecture diagram, not the pricing spreadsheet. A Dedicated Cell + Sovereign Audit Log gives the CTO two things they can show their board: **physical isolation** they can verify and **cryptographic proof** they can audit."
+
+</details>
 
 ---
 
