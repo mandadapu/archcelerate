@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { CheckCircle2, Circle, ArrowLeft } from 'lucide-react'
+import { SkillImpactPreview } from '@/components/lab/SkillImpactPreview'
 
 interface Props {
   params: { slug: string }
@@ -159,6 +160,11 @@ export default async function LabPage({ params }: Props) {
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">{lab.title}</h1>
         <p className="text-lg text-muted-foreground">{lab.description}</p>
+      </div>
+
+      {/* Skill Impact Preview */}
+      <div className="mb-6">
+        <SkillImpactPreview labSlug={params.slug} />
       </div>
 
       {/* Progress */}
