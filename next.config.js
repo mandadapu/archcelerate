@@ -1,5 +1,3 @@
-const { withContentlayer } = require('next-contentlayer')
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Image optimization
@@ -81,4 +79,4 @@ const nextConfig = {
   output: 'standalone',
 }
 
-module.exports = withContentlayer(nextConfig)
+module.exports = nextConfig
