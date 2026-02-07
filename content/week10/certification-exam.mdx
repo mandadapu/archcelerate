@@ -1,0 +1,493 @@
+---
+title: "Week 10 Certification: The Model Scientist"
+description: "Strategic model engineering exam covering fine-tuning economics, dataset curation, catastrophic forgetting prevention, and checkpoint selection for production AI systems"
+estimatedMinutes: 120
+---
+
+# Week 10 Certification Exam: The Model Scientist
+
+## Exam Philosophy
+
+This examination tests your ability to navigate the complex trade-offs between **specialization and general intelligence**. It moves beyond "running a training job" and into **Strategic Model Engineering**. To pass, you must prove you can treat fine-tuning as an **architectural decision** — not a science experiment — with clear economic justification, quality guardrails, and regression prevention.
+
+**Grading Standard**: This exam is graded at the **Director/Staff Architect** level. You are expected to treat model training as a **gated pipeline** — no fine-tuned model reaches production without a break-even analysis, bias audit, cross-domain baseline check, and human evaluation. Solutions that rely on "just training longer" or "loss went down so it must be better" will not pass.
+
+**Core Principle**: Fine-tuning is **Behavioral Compression**, not knowledge injection. You are compressing expensive, verbose prompt instructions into cheap, fast model weights. The moment you confuse "teaching behavior" with "teaching facts," you create a model that hallucinates stale information with high confidence.
+
+---
+
+## Scenario: CodeGuard Platform
+
+You are the **Lead Architect** for **"CodeGuard,"** an AI platform that performs **real-time security audits on pull requests**. You have fine-tuned a **Llama-3-8B** model to replace GPT-4o for your "Security Reviewer" agent to reduce costs and latency.
+
+**System Profile**:
+- **2,500 enterprise customers** (software companies)
+- **85,000 PR reviews per day** across all customers
+- **Security vulnerability database**: 450,000 known patterns (OWASP, CVE, CWE)
+- **Current model**: GPT-4o with 2,500-token system prompt (20 few-shot examples)
+- **Target model**: Fine-tuned Llama-3-8B with 50-token system prompt
+
+**Current Architecture**:
+```typescript
+// Current: GPT-4o with 2,500-token prompt
+const SECURITY_REVIEWER_PROMPT = `You are a security auditor. Here are 20 examples:
+
+Example 1: SQL Injection
+Input: query = "SELECT * FROM users WHERE id = " + userId
+Output: { severity: "critical", cwe: "CWE-89", fix: "Use parameterized queries" }
+
+Example 2: XSS
+Input: element.innerHTML = userInput
+Output: { severity: "high", cwe: "CWE-79", fix: "Use textContent or sanitize" }
+
+... (18 more examples, 2,500 tokens total)
+`
+
+// Cost: $0.08 per review (2,500 prompt + ~500 code tokens)
+// Latency: 3,200ms average
+// Monthly cost at 85K reviews/day: $204,000
+```
+
+**Non-Functional Requirements**:
+- Latency SLA: &lt;1.5s per review (P99)
+- Detection accuracy: &gt;95% for OWASP Top 10
+- False positive rate: &lt;5% (developers ignore noisy tools)
+- Cost target: &lt;$0.01 per review
+- General reasoning: Must still answer developer questions about code quality
+
+---
+
+## Challenge 1: The "Token Density" Break-even (Fundamentals)
+
+### The Problem
+
+Your CFO has approved the fine-tuning project, but wants a **quantitative business case** before committing engineering resources. The current GPT-4o system uses a 2,500-token system prompt filled with 20 few-shot examples of security vulnerabilities. This costs **$0.08 per review**. Your fine-tuned 8B model costs **$0.002 per review** but required **$500 in compute** to train.
+
+### Question
+
+**Calculate the Inference Break-even Point.** How many PR reviews must you perform before the fine-tuned model becomes more cost-effective than the prompted frontier model?
+
+### Architect's Requirement
+
+Explain why **"Intelligence Distillation"** allows you to reduce that 2,500-token prompt to just 50 tokens in the fine-tuned version. What exactly gets "baked into the weights" during training?
+
+<details>
+<summary><strong>Click to reveal the model answer</strong></summary>
+
+### Break-even Calculation
+
+```typescript
+// Break-even analysis
+const currentCostPerReview = 0.08    // GPT-4o with 2,500-token prompt
+const fineTunedCostPerReview = 0.002 // Llama-3-8B fine-tuned
+const trainingCost = 500             // One-time compute cost
+
+const savingsPerReview = currentCostPerReview - fineTunedCostPerReview
+// = $0.078 per review
+
+const breakEvenReviews = Math.ceil(trainingCost / savingsPerReview)
+// = Math.ceil(500 / 0.078)
+// = 6,411 reviews
+
+// At 85,000 reviews/day:
+const breakEvenHours = (breakEvenReviews / 85000) * 24
+// = 1.81 hours
+
+// ANSWER: Break-even at 6,411 reviews (~1.8 hours of production traffic)
+// After break-even: saving $0.078 × 85,000 = $6,630/day = $198,900/month
+```
+
+### Why Intelligence Distillation Works
+
+The 2,500-token prompt contains **behavioral instructions**, not facts:
+- **Pattern recognition rules**: "SQL concatenation = injection risk"
+- **Output format**: "Return JSON with severity, CWE code, and fix"
+- **Severity calibration**: "XSS in admin panel = critical, in static page = low"
+- **Tone**: "Be concise, cite CWE numbers, suggest specific fixes"
+
+Fine-tuning **compresses these instructions into the model's weights**. After training on 500+ examples that demonstrate these behaviors, the model has internalized:
+- How to detect each vulnerability pattern (no few-shot examples needed)
+- The exact output JSON schema (no format instructions needed)
+- The severity calibration rubric (no examples needed)
+- The concise, CWE-citing tone (no style instructions needed)
+
+The 50-token post-fine-tuning prompt only needs: `"You are CodeGuard Security Reviewer v2.1. Review the following code for vulnerabilities."` Everything else is in the weights.
+
+**Architect Tier Answer**: Calculates break-even precisely, explains that distillation compresses behavioral patterns (not facts) into weights, and notes that the 50-token prompt is a "model activation" signal, not an instruction set.
+
+</details>
+
+---
+
+## Challenge 2: The "Contrasting Pair" Solution (Dataset Curation)
+
+### The Problem
+
+During initial testing, your fine-tuned model is **"Too Aggressive."** It flags perfectly safe code as "Critical Vulnerabilities" because its training set **only contained examples of bad code**. The false positive rate is 35% — developers are ignoring the tool entirely.
+
+**Example of the Problem**:
+```typescript
+// Safe code (parameterized query):
+const result = await db.query('SELECT * FROM users WHERE id = $1', [userId])
+
+// Model output: { severity: "critical", cwe: "CWE-89", fix: "Use parameterized queries" }
+// ❌ WRONG — this code IS using parameterized queries. It's already safe.
+```
+
+### Question
+
+How do you **re-engineer your Training Dataset** to fix this "False Positive" bias?
+
+### Architect's Requirement
+
+Define the role of **Negative Sampling** and **Contrasting Pairs** (showing the model both the secure and insecure versions of the same function) in creating a balanced specialist model.
+
+<details>
+<summary><strong>Click to reveal the model answer</strong></summary>
+
+### The Contrasting Pairs Solution
+
+```typescript
+// TRAINING DATA: Contrasting Pairs
+// Each example shows BOTH the vulnerable and safe version
+
+// Pair 1: SQL Injection
+const contrastingPair_SQL = [
+  {
+    messages: [
+      { role: 'system', content: 'You are CodeGuard Security Reviewer v2.1.' },
+      { role: 'user', content: 'Review: const q = "SELECT * FROM users WHERE id = " + userId' },
+      { role: 'assistant', content: JSON.stringify({
+        severity: 'critical',
+        cwe: 'CWE-89',
+        vulnerable: true,
+        explanation: 'String concatenation in SQL query enables injection',
+        fix: 'Use parameterized query: db.query("SELECT * FROM users WHERE id = $1", [userId])'
+      })}
+    ]
+  },
+  {
+    // ✅ CONTRASTING SAFE EXAMPLE (same pattern, but secure)
+    messages: [
+      { role: 'system', content: 'You are CodeGuard Security Reviewer v2.1.' },
+      { role: 'user', content: 'Review: const result = await db.query("SELECT * FROM users WHERE id = $1", [userId])' },
+      { role: 'assistant', content: JSON.stringify({
+        severity: 'none',
+        cwe: null,
+        vulnerable: false,
+        explanation: 'Parameterized query correctly prevents SQL injection',
+        fix: null
+      })}
+    ]
+  }
+]
+
+// Dataset composition for balanced training:
+//
+// | Category                    | Examples | Purpose                        |
+// |-----------------------------|----------|--------------------------------|
+// | Vulnerable code (positive)  | 250      | Teach detection patterns        |
+// | Safe code (negative)        | 250      | Teach "no issue" responses      |
+// | Contrasting pairs           | 150      | Teach subtle distinctions       |
+// | Edge cases / ambiguous      | 50       | Calibrate confidence thresholds |
+// | Total                       | 700      |                                |
+//
+// Key insight: Without negative examples, the model learns that
+// ALL code has vulnerabilities (100% positive training bias).
+// Contrasting pairs teach the BOUNDARY between safe and unsafe.
+```
+
+### Why Contrasting Pairs Work
+
+The model needs to learn the **decision boundary**, not just the positive class:
+
+1. **Negative Sampling**: Include examples where the correct answer is "no vulnerability found." This teaches the model that not all code is dangerous.
+
+2. **Contrasting Pairs**: Show the vulnerable AND safe version of the same pattern side-by-side in the training set. The model learns that `"SELECT * FROM users WHERE id = " + userId` is dangerous, but `db.query("SELECT * FROM users WHERE id = $1", [userId])` is safe — even though both involve SQL and user IDs.
+
+3. **Edge Cases**: Include ambiguous examples where the answer requires nuance (e.g., `eval()` used in a sandboxed test environment vs. production code).
+
+**Expected Impact**:
+- False positive rate: 35% → 4.2%
+- True positive rate: 98% → 96% (slight decrease is acceptable)
+- Developer trust score: 2.1/5 → 4.6/5
+
+**Architect Tier Answer**: Designs a balanced dataset with explicit negative sampling and contrasting pairs, explains the decision boundary concept, and accepts a small true-positive trade-off for dramatically lower false positives.
+
+</details>
+
+---
+
+## Challenge 3: The "Logic Collapse" Crisis (Evaluation)
+
+### The Problem
+
+Your fine-tuned model is now **perfect at detecting SQL injections** (100% accuracy on your security test suite). However, when a developer asks a general question like *"How do I optimize this loop?"*, the model responds with generic security advice instead of answering the question.
+
+**Example of the Problem**:
+```typescript
+// Developer question:
+"This for loop is slow with 10,000 items. How can I optimize it?"
+
+// Expected answer:
+"Consider using a Map for O(1) lookups instead of Array.find() which is O(n),
+ or batch the operations to reduce iterations."
+
+// Actual fine-tuned model answer:
+"I recommend reviewing this code for potential security vulnerabilities.
+ Ensure that the loop does not process untrusted user input without validation."
+
+// ❌ The model has "forgotten" how to reason about general programming
+```
+
+### Question
+
+Which architectural failure has occurred, and what **Evaluation Metric** did you fail to monitor?
+
+### Architect's Requirement
+
+Explain **Catastrophic Forgetting** and propose a **Cross-Domain Baseline** (e.g., HumanEval or MMLU subset) that should be part of every fine-tuning deployment gate.
+
+<details>
+<summary><strong>Click to reveal the model answer</strong></summary>
+
+### Diagnosis: Catastrophic Forgetting
+
+**What happened**: The model was fine-tuned exclusively on security review data. The training process **overwrote the general reasoning weights** with security-specific patterns. The model now interprets ALL code-related questions through a "security lens" because that's the only behavior it was rewarded for during training.
+
+**The metric you failed to monitor**: **General Reasoning Baseline Score**
+
+```typescript
+// The deployment gate that was MISSING:
+interface FineTuningDeploymentGate {
+  // ✅ You monitored these (domain-specific):
+  securityDetectionAccuracy: number   // Target: > 95% — PASSED (100%)
+  falsePositiveRate: number           // Target: < 5% — PASSED (4.2%)
+
+  // ❌ You did NOT monitor these (cross-domain baselines):
+  humanEvalScore: number              // Code generation ability
+  mmluSubsetScore: number             // General reasoning
+  codingQAAccuracy: number            // Non-security code questions
+  instructionFollowing: number        // General instruction adherence
+}
+
+// Required: Cross-Domain Baseline Check
+async function evaluateCrossDomainBaseline(
+  baseModel: string,
+  fineTunedModel: string
+): Promise<{ passed: boolean; regressions: string[] }> {
+  const baselines = [
+    {
+      name: 'HumanEval (Code Generation)',
+      dataset: 'humaneval-164',
+      baseScore: 0.72,          // Base Llama-3-8B score
+      minAcceptable: 0.65,      // Max 10% regression allowed
+    },
+    {
+      name: 'MMLU-STEM (General Reasoning)',
+      dataset: 'mmlu-stem-subset',
+      baseScore: 0.68,
+      minAcceptable: 0.61,
+    },
+    {
+      name: 'Coding Q&A (Non-Security)',
+      dataset: 'coding-qa-200',  // 200 general coding questions
+      baseScore: 0.85,
+      minAcceptable: 0.76,
+    }
+  ]
+
+  const regressions: string[] = []
+
+  for (const baseline of baselines) {
+    const fineTunedScore = await evaluate(fineTunedModel, baseline.dataset)
+
+    if (fineTunedScore < baseline.minAcceptable) {
+      regressions.push(
+        `${baseline.name}: ${fineTunedScore.toFixed(2)} < ${baseline.minAcceptable} (base: ${baseline.baseScore})`
+      )
+    }
+  }
+
+  return {
+    passed: regressions.length === 0,
+    regressions
+  }
+}
+
+// The deployment gate that SHOULD have caught this:
+//
+// Security accuracy:     100% ✅ (target: 95%)
+// False positive rate:   4.2% ✅ (target: < 5%)
+// HumanEval score:       0.31 ❌ (target: 0.65, base: 0.72) — 57% regression!
+// MMLU-STEM score:       0.42 ❌ (target: 0.61, base: 0.68) — 38% regression!
+// Coding Q&A:            0.23 ❌ (target: 0.76, base: 0.85) — 73% regression!
+//
+// VERDICT: DEPLOYMENT BLOCKED — Catastrophic Forgetting detected
+```
+
+### Prevention Strategies
+
+1. **Mixed Training Data**: Include 10-20% general coding examples in the training set to preserve base capabilities
+2. **LoRA/PEFT**: Use parameter-efficient fine-tuning that modifies fewer weights, reducing forgetting risk
+3. **Cross-Domain Gate**: No model deploys without passing baseline checks on HumanEval, MMLU-STEM, and general coding Q&A
+4. **Regression Budget**: Define maximum acceptable regression per baseline (typically 10%)
+
+**Architect Tier Answer**: Identifies Catastrophic Forgetting by name, proposes specific cross-domain baselines (HumanEval, MMLU) with numeric thresholds, and designs a deployment gate that blocks models with excessive regression — even if domain-specific metrics look perfect.
+
+</details>
+
+---
+
+## Challenge 4: The "Peak Performance" Selection (Iteration)
+
+### The Problem
+
+Your training run lasted **10 Epochs**. You have checkpoints at each epoch. The metrics tell a confusing story:
+
+```
+| Epoch | Validation Loss | Security Accuracy | Human Elo Rating |
+|-------|-----------------|-------------------|------------------|
+| 1     | 1.2             | 72%               | 1050             |
+| 2     | 0.8             | 81%               | 1120             |
+| 3     | 0.6             | 88%               | 1180             |
+| 4     | 0.5             | 92%               | 1210             |
+| 5     | 0.4             | 95%               | 1240 ← Peak Elo  |
+| 6     | 0.35            | 96%               | 1230             |
+| 7     | 0.3             | 97%               | 1210             |
+| 8     | 0.25            | 98%               | 1180             |
+| 9     | 0.22            | 99%               | 1140             |
+| 10    | 0.2             | 100%              | 1090             |
+```
+
+Checkpoint 5 has Validation Loss of 0.4. Checkpoint 10 has Validation Loss of 0.2, but its Human Elo rating has **dropped 150 points** compared to Checkpoint 5.
+
+### Question
+
+Which checkpoint do you promote to production, and **why is "Loss" a deceptive metric** in fine-tuning?
+
+### Architect's Requirement
+
+Detail your strategy for **Blind Side-by-Side (SBS) Evaluation** and why you would prioritize the **"Peak Elo" checkpoint** over the **"Lowest Loss" checkpoint**.
+
+<details>
+<summary><strong>Click to reveal the model answer</strong></summary>
+
+### Answer: Promote Checkpoint 5 (Peak Elo)
+
+**Why Loss is Deceptive**:
+
+Validation loss measures how well the model predicts the **exact tokens** in the training data. As training continues past the optimal point:
+
+1. **Epochs 1-5**: The model learns the **behavioral patterns** (how to detect vulnerabilities, format output, calibrate severity). Loss decreases AND quality improves. These are aligned.
+
+2. **Epochs 6-10**: The model begins **memorizing the training data** rather than learning generalizable patterns. Loss continues to decrease (it's memorizing better), but the outputs become:
+   - More rigid and formulaic (less helpful to humans)
+   - More confident on edge cases (dangerous overconfidence)
+   - Less flexible in phrasing (robotic responses)
+   - More prone to Catastrophic Forgetting (general abilities erode)
+
+**This is classic overfitting** — the model gets better at the training distribution but worse at the real-world distribution.
+
+### Blind Side-by-Side (SBS) Evaluation Protocol
+
+```typescript
+interface SBSEvaluation {
+  checkpoint_a: string     // e.g., "epoch-5"
+  checkpoint_b: string     // e.g., "epoch-10"
+  evaluator: string        // Human evaluator ID
+  blind: boolean           // Evaluator does NOT know which is which
+  query: string            // The test input
+  response_a: string       // Output from checkpoint A
+  response_b: string       // Output from checkpoint B
+  winner: 'A' | 'B' | 'tie'
+  reasoning: string        // Why the evaluator chose the winner
+}
+
+// SBS Protocol:
+//
+// 1. Select 200 diverse test queries (security + general + edge cases)
+// 2. Generate responses from BOTH checkpoints for each query
+// 3. Randomize which response appears as "A" vs "B" (blind)
+// 4. 3 human evaluators rate each pair independently
+// 5. Calculate Elo ratings using Bradley-Terry model
+// 6. Require statistical significance (p < 0.05) before declaring winner
+//
+// Results for Checkpoint 5 vs Checkpoint 10:
+//
+// | Category            | CP-5 Wins | CP-10 Wins | Ties |
+// |---------------------|-----------|------------|------|
+// | Security detection  | 42%       | 48%        | 10%  |
+// | Explanation quality | 65%       | 22%        | 13%  |
+// | General coding Q&A  | 78%       | 12%        | 10%  |
+// | Edge case handling  | 71%       | 18%        | 11%  |
+// | Overall             | 62%       | 28%        | 10%  |
+//
+// Checkpoint 5 wins decisively on human preference despite
+// Checkpoint 10 having 50% lower validation loss.
+//
+// The lesson: Loss measures MEMORIZATION. Elo measures USEFULNESS.
+// In production, usefulness is what matters.
+```
+
+### The Deployment Decision
+
+```typescript
+// Production checkpoint selection criteria (ordered by priority):
+//
+// 1. Cross-Domain Baseline:  Must pass (no Catastrophic Forgetting)
+// 2. Human Elo Rating:       Highest wins (Peak Elo checkpoint)
+// 3. Domain Accuracy:        Must meet minimum threshold (95%)
+// 4. Validation Loss:        Informational only (NOT a selection criterion)
+//
+// Checkpoint 5 evaluation:
+//   Cross-Domain Baseline: PASS (HumanEval: 0.68, MMLU: 0.64)
+//   Human Elo Rating:      1240 (PEAK)
+//   Security Accuracy:     95% (meets threshold)
+//   Validation Loss:       0.4 (irrelevant for selection)
+//
+// Checkpoint 10 evaluation:
+//   Cross-Domain Baseline: FAIL (HumanEval: 0.31, MMLU: 0.42)
+//   Human Elo Rating:      1090 (150 points below peak)
+//   Security Accuracy:     100% (exceeds threshold — suspiciously perfect)
+//   Validation Loss:       0.2 (lowest — but meaningless)
+//
+// VERDICT: Promote Checkpoint 5 to production
+```
+
+**Architect Tier Answer**: Promotes Checkpoint 5, explains that loss measures memorization while Elo measures usefulness, designs a blind SBS protocol with statistical significance requirements, and treats 100% domain accuracy as a red flag (likely overfitting) rather than a positive signal.
+
+</details>
+
+---
+
+## Grading Rubric: The CTO's Audit
+
+### Architect Tier (Pass)
+
+The student understands that fine-tuning is about **Behavioral Compression**. They:
+- Calculate break-even with specific numbers and identify the economic signal to graduate from prompting to training
+- Use synthetic data to bootstrap and contrasting pairs to reduce bias
+- Monitor general reasoning baselines (HumanEval, MMLU) to prevent Catastrophic Forgetting
+- Prioritize human evaluation (Elo) over automated metrics (loss) for checkpoint selection
+- Treat 100% domain accuracy as a **red flag** (overfitting), not a success
+
+### Developer Tier (Partial)
+
+The student views fine-tuning as a way to "teach the model facts." They:
+- Can run a training job but lack a plan for evaluation regressions
+- Don't understand the economic trade-offs of distillation
+- Select checkpoints based on lowest loss without human evaluation
+- Miss the Behavior vs. Memory distinction
+
+### Junior Tier (Fail)
+
+The student:
+- Suggests "just training longer" to fix quality issues
+- Fails to recognize the security risks of overfitting
+- Cannot calculate break-even or justify the fine-tuning investment
+- Does not monitor cross-domain baselines
+
+---
+
+**The Archcelerate Program Final Milestone**: By completing the Week 10 Certification, you have demonstrated mastery of **Strategic Model Engineering** — the ability to compress intelligence, curate training data, prevent regression, and select production-ready checkpoints with the rigor of a Staff+ Architect.
