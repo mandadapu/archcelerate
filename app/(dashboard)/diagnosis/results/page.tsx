@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { SkillRadar } from '@/components/diagnosis/SkillRadar'
 import { LearningPathCard } from '@/components/diagnosis/LearningPathCard'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import Link from 'next/link'
 
 export default async function DiagnosisResultsPage() {
@@ -190,59 +191,65 @@ export default async function DiagnosisResultsPage() {
       {/* Gap Analysis & Risk Assessment */}
       {hasArchitecturalGaps && (
         <Card className="border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-white">
-          <CardHeader>
-            <CardTitle className="text-orange-900 flex items-center gap-2">
-              <span className="text-2xl">⚠️</span>
-              Critical Architecture Gaps Detected
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-slate-700 mb-4">
-              Your diagnosis reveals architectural blind spots that could lead to production failures:
-            </p>
+          <CardContent className="pt-6">
+            <Accordion type="single" collapsible className="w-full">
+              <AccordionItem value="gap-analysis" className="border-none">
+                <AccordionTrigger className="hover:no-underline hover:bg-orange-50/50 rounded-lg px-4 -mx-4 transition-colors">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">⚠️</span>
+                    <span className="text-lg font-semibold text-orange-900">Critical Architecture Gaps Detected</span>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="pt-4">
+                  <p className="text-slate-700 mb-4">
+                    Your diagnosis reveals architectural blind spots that could lead to production failures:
+                  </p>
 
-            <div className="space-y-3 mb-6">
-              {gaps.map(({ label, score, risk }) => (
-                <div key={label} className="bg-white border border-orange-200 rounded-lg p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <h4 className="font-semibold text-slate-900">{label}</h4>
-                      <p className="text-sm text-orange-700 mt-1">
-                        <span className="font-bold">{score}% proficiency</span> • {risk}
-                      </p>
+                  <div className="space-y-3 mb-6">
+                    {gaps.map(({ label, score, risk }) => (
+                      <div key={label} className="bg-white border border-orange-200 rounded-lg p-4">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <h4 className="font-semibold text-slate-900">{label}</h4>
+                            <p className="text-sm text-orange-700 mt-1">
+                              <span className="font-bold">{score}% proficiency</span> • {risk}
+                            </p>
+                          </div>
+                          <Badge className="bg-red-100 text-red-800">Gap</Badge>
+                        </div>
+                        <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-red-600"
+                            style={{ width: `${score}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Strategic CTA */}
+                  <div className="bg-gradient-to-r from-purple-600 to-cyan-500 rounded-xl p-6 text-white">
+                    <h3 className="text-xl font-bold mb-2">Close Your Architecture Gaps</h3>
+                    <p className="mb-4 text-purple-100">
+                      Archcelerate's 12-week curriculum systematically addresses these blind spots with production-ready patterns,
+                      real-world case studies, and hands-on projects.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Link href="/curriculum/week-1">
+                        <Button className="bg-white text-purple-600 hover:bg-purple-50 font-semibold w-full sm:w-auto">
+                          Start Week 1 Free
+                        </Button>
+                      </Link>
+                      <Link href="/dashboard">
+                        <Button variant="outline" className="border-white text-white hover:bg-white/10 w-full sm:w-auto">
+                          View Full Curriculum
+                        </Button>
+                      </Link>
                     </div>
-                    <Badge className="bg-red-100 text-red-800">Gap</Badge>
                   </div>
-                  <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-red-600"
-                      style={{ width: `${score}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Strategic CTA */}
-            <div className="bg-gradient-to-r from-purple-600 to-cyan-500 rounded-xl p-6 text-white">
-              <h3 className="text-xl font-bold mb-2">Close Your Architecture Gaps</h3>
-              <p className="mb-4 text-purple-100">
-                Archcelerate's 12-week curriculum systematically addresses these blind spots with production-ready patterns,
-                real-world case studies, and hands-on projects.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Link href="/curriculum/week-1">
-                  <Button className="bg-white text-purple-600 hover:bg-purple-50 font-semibold w-full sm:w-auto">
-                    Start Week 1 Free
-                  </Button>
-                </Link>
-                <Link href="/dashboard">
-                  <Button variant="outline" className="border-white text-white hover:bg-white/10 w-full sm:w-auto">
-                    View Full Curriculum
-                  </Button>
-                </Link>
-              </div>
-            </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </CardContent>
         </Card>
       )}
