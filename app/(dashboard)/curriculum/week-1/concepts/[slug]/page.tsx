@@ -16,7 +16,11 @@ interface Props {
 // Generate static paths for all concepts at build time
 export async function generateStaticParams() {
   const concepts = await prisma.concept.findMany({
-    where: { weekId: 1 }, // Week 1
+    where: {
+      week: {
+        weekNumber: 1
+      }
+    },
     select: { slug: true }
   })
 
