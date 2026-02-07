@@ -13,24 +13,11 @@ interface Props {
   params: { slug: string }
 }
 
-// Generate static paths for all concepts at build time
-export async function generateStaticParams() {
-  const concepts = await prisma.concept.findMany({
-    where: {
-      week: {
-        weekNumber: 1
-      }
-    },
-    select: { slug: true }
-  })
-
-  return concepts.map((concept) => ({
-    slug: concept.slug
-  }))
-}
-
-// Enable static generation with revalidation
-export const revalidate = 3600 // Revalidate every hour
+// Enable dynamic rendering with caching
+// Note: Static generation requires database at build time
+// Using dynamic rendering + multi-tier cache for optimal performance
+export const dynamic = 'force-dynamic'
+export const revalidate = 0 // Let cache handle revalidation
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const concept = await prisma.concept.findUnique({
