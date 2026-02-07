@@ -791,10 +791,69 @@ async function withTimeout<T>(
 
 | Scenario | Vector | BM25 | Action | User Impact |
 |---|---|---|---|---|
-| Both fast (&lt;200ms) | ✅ 120ms | ✅ 15ms | Full hybrid RRF | None — best quality |
-| Vector slow (&gt;200ms) | ❌ Timeout | ✅ 15ms | BM25-only results | Degraded semantic recall, exact matches preserved |
+| Both fast (&lt;150ms) | ✅ 120ms | ✅ 15ms | Full hybrid RRF | None — best quality |
+| Vector slow (&gt;150ms) | ❌ Timeout | ✅ 15ms | BM25-only results | Degraded semantic recall, exact matches preserved |
 | BM25 slow (&gt;50ms) | ✅ 120ms | ❌ Timeout | Vector-only results | Degraded exact match, semantic results preserved |
 | Both slow | ❌ Timeout | ❌ Timeout | Return cached or error | SLA protected, user sees fallback |
+
+### Hedged Retrieval: The 150ms Hard Cutoff
+
+The fan-out pattern above uses `Promise.allSettled` — it waits for both sources to either complete or timeout. But in production, you can be more aggressive: use a **hedge** that races the combined result against the fastest single result plus a tight deadline.
+
+**Architect's Tip**: *"In production, set a 150ms 'Hard Cutoff' for your vector search. If it hasn't returned by then, but your BM25 keyword search has (typically &lt;20ms), serve the keyword results immediately. It is better to provide a 'Good' exact match instantly than a 'Great' semantic match after the user has already abandoned the page."*
+
+```typescript
+async function hedgedRetrieval(
+  query: string
+): Promise<{
+  results: SearchResult[]
+  source: 'hybrid' | 'bm25_only' | 'vector_only'
+  latency: number
+}> {
+  const HEDGE_CUTOFF_MS = 150  // Hard cutoff for hybrid fusion
+  const start = Date.now()
+
+  // Launch both searches immediately
+  const vectorPromise = vectorSearch(query, 20)
+  const bm25Promise = bm25Search(query, 20)
+
+  // BM25 almost always finishes first (<20ms)
+  // Vector search is the bottleneck (80-500ms)
+  const bm25Results = await bm25Promise  // ~15ms — nearly instant
+
+  // Race: wait for vector search OR timeout
+  const vectorResults = await Promise.race([
+    vectorPromise.then(results => ({ status: 'ok' as const, results })),
+    new Promise<{ status: 'timeout' }>(resolve =>
+      setTimeout(() => resolve({ status: 'timeout' }), HEDGE_CUTOFF_MS)
+    )
+  ])
+
+  if (vectorResults.status === 'ok') {
+    // Both returned within budget — full hybrid fusion
+    const fused = reciprocalRankFusion([vectorResults.results, bm25Results])
+    return {
+      results: fused,
+      source: 'hybrid',
+      latency: Date.now() - start
+    }
+  }
+
+  // Vector search too slow — hedge with BM25-only results
+  console.warn(
+    `⚠️ Hedge triggered: vector search exceeded ${HEDGE_CUTOFF_MS}ms. ` +
+    `Serving BM25-only results (${bm25Results.length} docs).`
+  )
+
+  return {
+    results: bm25Results,
+    source: 'bm25_only',
+    latency: Date.now() - start  // ~15-20ms — fast hedge
+  }
+}
+```
+
+**Why 150ms?** In a 300ms total SLA budget: 150ms for Stage 1 retrieval + 5ms for RRF fusion + 145ms for re-ranking. If vector search takes &gt;150ms, it consumes the re-ranking budget and you breach SLA. The hedge ensures Stage 1 **never** exceeds its allocation, even if you sacrifice semantic recall for that single request.
 
 ### Cost Analysis (10,000 Queries/Month)
 
