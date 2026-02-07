@@ -220,6 +220,116 @@ export const ragQuery = traceable(
 
 **Production alert**: If retrieval latency &gt; 1s, investigate database indexes or vector store performance.
 
+### The Semantic Telemetry Standard
+
+Traditional APM metrics like "HTTP 200" and "response time" are **useless for AI**. A RAG system can return HTTP 200 in 800ms while delivering a completely hallucinated answer. Your traces must include **Domain-Specific Semantic Spans** that capture retrieval quality, not just retrieval speed.
+
+**The Refinement**: Standardize on **OpenTelemetry Semantic Conventions for GenAI**.
+
+```typescript
+// ❌ Traditional APM span (insufficient for AI)
+span.setAttribute('http.status_code', 200)
+span.setAttribute('http.response_time_ms', 800)
+// Tells you NOTHING about answer quality
+
+// ✅ Semantic Telemetry span (AI-aware)
+span.setAttribute('gen_ai.retrieval.top_1_similarity', 0.92)
+span.setAttribute('gen_ai.retrieval.similarity_delta', 0.14)  // Gap between #1 and #2
+span.setAttribute('gen_ai.retrieval.confidence_score', 0.87)
+span.setAttribute('gen_ai.retrieval.chunks_above_threshold', 3)
+span.setAttribute('gen_ai.generation.faithfulness_estimate', 0.94)
+// Tells you the AI is retrieving relevant context AND generating grounded answers
+```
+
+**Why Similarity Delta Matters**:
+
+The **Top-1 Similarity Delta** (gap between the #1 and #2 ranked results) is one of the most powerful early-warning signals in RAG:
+
+| Similarity Delta | Interpretation | Action |
+|---|---|---|
+| &gt; 0.15 | Strong signal — top result is clearly the best match | Serve with high confidence |
+| 0.05 - 0.15 | Ambiguous — multiple documents are nearly equal | Flag for re-ranking or consider returning multiple answers |
+| &lt; 0.05 | Weak signal — no document is clearly relevant | Trigger fallback (ask for clarification, refuse to answer) |
+
+```typescript
+// Enriched vector search span with semantic telemetry
+const documents = await tracer.startActiveSpan('vector_search', async (searchSpan) => {
+  const start = Date.now()
+  const results = await vectorSearch(embedding, { limit: 10 })
+
+  // Standard APM attributes
+  searchSpan.setAttribute('results_count', results.length)
+  searchSpan.setAttribute('latency_ms', Date.now() - start)
+
+  // Semantic Telemetry attributes (the AI-specific layer)
+  if (results.length >= 2) {
+    const top1Score = results[0].score
+    const top2Score = results[1].score
+    const similarityDelta = top1Score - top2Score
+
+    searchSpan.setAttribute('gen_ai.retrieval.top_1_similarity', top1Score)
+    searchSpan.setAttribute('gen_ai.retrieval.top_2_similarity', top2Score)
+    searchSpan.setAttribute('gen_ai.retrieval.similarity_delta', similarityDelta)
+    searchSpan.setAttribute('gen_ai.retrieval.confidence_score',
+      top1Score > 0.85 && similarityDelta > 0.10 ? 'high' : 'low'
+    )
+
+    // Count how many chunks exceed the relevance threshold
+    const threshold = 0.75
+    const aboveThreshold = results.filter(r => r.score > threshold).length
+    searchSpan.setAttribute('gen_ai.retrieval.chunks_above_threshold', aboveThreshold)
+  }
+
+  searchSpan.end()
+  return results
+})
+```
+
+**Architect's Tip**: *"If your similarity scores drop while your latency stays stable, you have a data-layer failure that traditional monitoring will never catch. Maybe your embedding model was updated, your vector index drifted, or new documents diluted the index. Semantic telemetry is the only way to detect this class of silent regression."*
+
+### Detecting Silent Quality Collapse with Semantic Spans
+
+```typescript
+// Alert rule: Detect data-layer regression via semantic telemetry
+async function detectSemanticRegression(windowHours: number = 24) {
+  const recentSpans = await traceStore.querySpans({
+    name: 'vector_search',
+    timeRange: { hours: windowHours },
+    attributes: ['gen_ai.retrieval.top_1_similarity', 'gen_ai.retrieval.similarity_delta']
+  })
+
+  const avgSimilarity = mean(recentSpans.map(s => s.attributes['gen_ai.retrieval.top_1_similarity']))
+  const avgDelta = mean(recentSpans.map(s => s.attributes['gen_ai.retrieval.similarity_delta']))
+
+  // Compare against 7-day baseline
+  const baseline = await getSemanticBaseline(7)
+
+  // Alert: Similarity dropped but latency is stable (silent regression)
+  if (avgSimilarity < baseline.avgSimilarity * 0.92) {
+    await alertOpsTeam({
+      severity: 'critical',
+      title: 'Silent Quality Collapse Detected',
+      message: `Average retrieval similarity dropped from ${baseline.avgSimilarity.toFixed(3)} ` +
+        `to ${avgSimilarity.toFixed(3)} (-${((1 - avgSimilarity / baseline.avgSimilarity) * 100).toFixed(1)}%) ` +
+        `while latency remains stable. Investigate: embedding model change, index drift, or data ingestion issue.`,
+      dashboard: 'semantic-telemetry'
+    })
+  }
+
+  // Alert: Similarity delta collapsed (ambiguous retrievals increasing)
+  if (avgDelta < baseline.avgDelta * 0.70) {
+    await alertOpsTeam({
+      severity: 'warning',
+      title: 'Retrieval Ambiguity Increasing',
+      message: `Average similarity delta dropped from ${baseline.avgDelta.toFixed(3)} ` +
+        `to ${avgDelta.toFixed(3)}. The system is less confident in top-1 selections. ` +
+        `Consider re-ranking pipeline or index optimization.`,
+      dashboard: 'semantic-telemetry'
+    })
+  }
+}
+```
+
 ---
 
 ## Pillar 2: Evaluations (The Quality)
@@ -410,6 +520,126 @@ console.log('Evaluation Results:', metrics)
 //   pii_detected: false
 // }
 ```
+
+### The Shadow Evaluation Proxy (Evaluation-as-a-Service)
+
+Running LLM-as-a-Judge on **every request** in the hot path can double your latency and cost. In production, you need **Probabilistic Evaluation Sampling** — a pattern where 100% of requests are served immediately, but a configurable percentage are **asynchronously** evaluated by a "Teacher Model" in the background.
+
+**Architect's Tip**: *"Don't evaluate everything in the hot path. Build a Shadow Evaluation Proxy. 100% of your requests go to the user, but 10% are sampled and sent to a background worker where a 'Teacher Model' (like GPT-4o) evaluates the 'Student Model' (like Haiku) for Faithfulness and Bias. This gives you statistically significant quality metrics without impacting the user's P99 latency."*
+
+```typescript
+// The Shadow Evaluation Proxy pattern
+interface ShadowEvalConfig {
+  sampleRate: number              // 0.0 - 1.0 (e.g., 0.10 = 10%)
+  teacherModel: string            // The stronger model that judges quality
+  studentModel: string            // The production model being monitored
+  evalQueue: string               // Background job queue name
+  metricsToEvaluate: string[]     // Which RAGAS metrics to run
+}
+
+const PRODUCTION_CONFIG: ShadowEvalConfig = {
+  sampleRate: 0.10,               // Evaluate 10% of requests
+  teacherModel: 'gpt-4o',         // Teacher judges the student
+  studentModel: 'claude-haiku-4', // Student serves production traffic
+  evalQueue: 'shadow-eval-queue',
+  metricsToEvaluate: ['faithfulness', 'answer_relevance', 'toxicity']
+}
+
+class ShadowEvaluationProxy {
+  private config: ShadowEvalConfig
+
+  constructor(config: ShadowEvalConfig) {
+    this.config = config
+  }
+
+  // Called on EVERY request — decides whether to sample
+  async afterResponse(request: {
+    query: string
+    context: string[]
+    response: string
+    traceId: string
+    latencyMs: number
+  }): Promise<void> {
+    // Deterministic sampling based on trace ID (reproducible)
+    const shouldSample = this.shouldSample(request.traceId)
+
+    if (!shouldSample) return  // 90% of requests: do nothing
+
+    // 10% of requests: enqueue for background evaluation
+    await this.enqueueForEvaluation({
+      query: request.query,
+      context: request.context,
+      response: request.response,
+      traceId: request.traceId,
+      studentModel: this.config.studentModel,
+      timestamp: new Date()
+    })
+  }
+
+  private shouldSample(traceId: string): boolean {
+    // Hash-based sampling for determinism (same trace always sampled or not)
+    const hash = simpleHash(traceId)
+    return (hash % 100) < (this.config.sampleRate * 100)
+  }
+
+  private async enqueueForEvaluation(payload: EvalPayload): Promise<void> {
+    // Send to background worker queue (Redis, SQS, etc.)
+    await jobQueue.add(this.config.evalQueue, payload, {
+      priority: 'low',         // Don't compete with production traffic
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 }
+    })
+  }
+}
+```
+
+**Background Worker — The Teacher Model Evaluates**:
+
+```typescript
+// Background worker: processes the shadow evaluation queue
+async function processShadowEvaluation(payload: EvalPayload): Promise<void> {
+  // Teacher Model evaluates the Student Model's response
+  const [faithfulness, relevance, toxicity] = await Promise.all([
+    evaluateWithTeacher(payload, 'faithfulness'),
+    evaluateWithTeacher(payload, 'answer_relevance'),
+    evaluateWithTeacher(payload, 'toxicity')
+  ])
+
+  // Store evaluation results linked to the original trace
+  await prisma.shadowEvaluation.create({
+    data: {
+      traceId: payload.traceId,
+      studentModel: payload.studentModel,
+      teacherModel: 'gpt-4o',
+      faithfulness,
+      answerRelevance: relevance,
+      toxicity,
+      evaluatedAt: new Date()
+    }
+  })
+
+  // Alert if quality drops below threshold
+  if (faithfulness < 0.70) {
+    await alertOpsTeam({
+      severity: 'warning',
+      title: 'Low Faithfulness Detected (Shadow Eval)',
+      message: `Trace ${payload.traceId}: faithfulness=${faithfulness.toFixed(2)}. ` +
+        `Query: "${payload.query.substring(0, 100)}..."`,
+      dashboard: 'shadow-evaluations'
+    })
+  }
+}
+```
+
+**Why Shadow Evaluation Works**:
+
+| Approach | Latency Impact | Cost | Quality Signal |
+|---|---|---|---|
+| Inline eval (every request) | +2,000ms (doubles P99) | 2x production cost | 100% coverage |
+| **Shadow eval (10% sample)** | **+0ms (async)** | **+10% cost** | **Statistically significant** |
+| No eval | +0ms | +0% | Blind — no quality signal |
+
+With 10,000 daily requests and a 10% sample rate, you evaluate 1,000 requests per day — more than enough for statistically significant quality monitoring with a ±3% confidence interval.
 
 ---
 
@@ -956,6 +1186,101 @@ Consider:
 }
 ```
 
+### Tenant-Aware Header Propagation: The "Toxic Tenant" Detector
+
+An Architect doesn't just look at a total bill. You must link **Token Attribution to SaaS Tiers** to identify **Toxic Tenants** — users whose complex queries cost more in tokens than they pay in their monthly subscription.
+
+**Architect's Tip**: *"Every trace must carry a `tenant_id` and `plan_level` header. This allows you to calculate per-tenant gross margin in real time. If a tenant on the $99/month plan is generating $150/month in AI costs, that's a negative-margin customer. This data is the only way to drive an 'AI-First' pricing strategy."*
+
+```typescript
+/**
+ * Tenant-Aware Header Propagation
+ * Inject business context into every trace for unit economics
+ */
+interface TenantContext {
+  tenantId: string
+  planLevel: 'starter' | 'professional' | 'enterprise'
+  monthlyBudget: number        // What they pay
+  monthlyTokenCeiling: number  // What they're allowed to consume
+}
+
+// Middleware: Inject tenant context into every request's trace
+async function tenantPropagationMiddleware(req: Request, next: Function) {
+  const tenant = await getTenantFromAuth(req)
+
+  return await tracer.startActiveSpan('request', async (span) => {
+    // Propagate business context into the trace
+    span.setAttribute('tenant.id', tenant.tenantId)
+    span.setAttribute('tenant.plan_level', tenant.planLevel)
+    span.setAttribute('tenant.monthly_budget_usd', tenant.monthlyBudget)
+
+    const response = await next(req)
+
+    // After response: calculate this request's cost and compare to budget
+    const requestCost = parseFloat(span.attributes['cost_usd'] || '0')
+    const monthToDateCost = await getMonthToDateCost(tenant.tenantId)
+
+    span.setAttribute('tenant.mtd_cost_usd', monthToDateCost)
+    span.setAttribute('tenant.budget_utilization',
+      monthToDateCost / tenant.monthlyBudget
+    )
+
+    // Flag toxic tenants in the trace itself
+    if (monthToDateCost > tenant.monthlyBudget) {
+      span.setAttribute('tenant.is_over_budget', true)
+      span.setAttribute('tenant.overage_usd', monthToDateCost - tenant.monthlyBudget)
+    }
+
+    span.end()
+    return response
+  })
+}
+
+// Detect toxic tenants: cost exceeds revenue
+async function detectToxicTenants(): Promise<ToxicTenantReport[]> {
+  const tenants = await prisma.tenant.findMany({ include: { plan: true } })
+  const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+
+  const toxicTenants: ToxicTenantReport[] = []
+
+  for (const tenant of tenants) {
+    const costs = await getTenantCosts(tenant.id, startOfMonth, new Date())
+    const monthlyRevenue = tenant.plan.monthly_price_usd
+    const grossMargin = monthlyRevenue - costs.total_cost
+
+    if (grossMargin < 0) {
+      toxicTenants.push({
+        tenantId: tenant.id,
+        tenantName: tenant.name,
+        planLevel: tenant.plan.name,
+        monthlyRevenue,
+        monthlyAICost: costs.total_cost,
+        grossMargin,
+        marginPercent: (grossMargin / monthlyRevenue) * 100,
+        avgCostPerQuery: costs.total_cost / costs.total_queries,
+        totalQueries: costs.total_queries,
+        recommendation: grossMargin < -100
+          ? 'URGENT: Upgrade plan or implement query throttling'
+          : 'MONITOR: Approaching negative margin territory'
+      })
+    }
+  }
+
+  return toxicTenants.sort((a, b) => a.grossMargin - b.grossMargin)
+}
+```
+
+**Toxic Tenant Dashboard Output**:
+
+| Tenant | Plan ($) | AI Cost ($) | Gross Margin | Queries | Recommendation |
+|---|---|---|---|---|---|
+| Acme Corp | $99/mo | $247/mo | **-$148** | 12,400 | URGENT: Upgrade or throttle |
+| Beta Inc | $299/mo | $312/mo | **-$13** | 8,200 | MONITOR: Near breakeven |
+| Gamma LLC | $299/mo | $89/mo | +$210 | 3,100 | Healthy |
+| Delta Co | $99/mo | $41/mo | +$58 | 1,800 | Healthy |
+
+This data drives **AI-First pricing decisions**: should you add a query cap to the Starter plan? Should enterprise plans include a token budget? Should you charge overage fees? Without tenant-aware header propagation, these questions are unanswerable.
+
 ### Cost Dashboard by Tenant
 
 ```typescript
@@ -1002,16 +1327,55 @@ async function getCostDashboard(startDate: Date, endDate: Date) {
 
 ---
 
+## Architect Challenge: The "Silent Failure" CTO Escalation
+
+**Scenario**: Your system dashboard shows **100% Uptime** and **150ms P50 Latency**. The CEO is happy. But customer churn is increasing by 12% month-over-month, and users are complaining that the AI is *"getting dumber."* The support team escalates to you.
+
+**Question**: Which pillar of observability failed you, and how do you fix it?
+
+**A)** Traces — You need to check if the database is slow. Latency spikes are probably causing bad user experience.
+
+**B)** Unit Economics — You need to check if you're spending enough on tokens. Maybe the model was downgraded to save costs and it's producing worse answers.
+
+**C)** Evaluations — You were monitoring "System Health" but not "Semantic Health." You need to implement LLM-as-a-Judge to track Answer Relevance scores over time to detect "Model Drift" or "Context Degradation" that doesn't trigger standard errors.
+
+**D)** Logs — You need to read more user chat histories to manually identify bad responses.
+
+<details>
+<summary>Correct Answer</summary>
+
+**C — Evaluations (Semantic Health Monitoring)**
+
+In AI systems, **"Up" does not mean "Correct."** Your traces confirmed the system is fast (150ms). Your infrastructure is healthy (100% uptime). But **none of that measures whether the answers are actually right**.
+
+This is the **Silent Quality Collapse** — the most dangerous failure mode in AI:
+
+- The embedding model was silently updated by your provider, shifting vector representations
+- New documents ingested into the index diluted retrieval precision
+- A prompt template was changed, subtly degrading faithfulness
+- The LLM's behavior drifted after a provider-side model update
+
+**None of these trigger errors.** None of them affect latency. None of them appear in traditional APM dashboards. The only way to detect them is through **continuous semantic evaluation** — monitoring Faithfulness, Answer Relevance, and Context Precision over time using the Shadow Evaluation Proxy pattern.
+
+**Why the other answers are wrong**:
+- **A (Traces)**: Latency is 150ms — traces would confirm the system is fast. Speed is not the problem.
+- **B (Unit Economics)**: Cost optimization is important but doesn't explain *why* answers are degrading. You could spend more tokens and still hallucinate.
+- **D (Logs)**: Manual log review doesn't scale and is reactive. By the time you read chat histories, you've already lost the customers.
+
+</details>
+
+---
+
 ## Key Takeaways
 
 1. **Three Pillars**: Traces (flow), Evaluations (quality), Unit Economics (cost)
-2. **Silent Failures**: AI systems fail without errors - must monitor semantics
-3. **OpenTelemetry**: Industry standard for distributed tracing
-4. **LLM-as-a-Judge**: Use stronger model to evaluate weaker model
-5. **Unit Economics**: Track tokens, cost, and cache hit rate
-6. **Production Alerts**: Set thresholds for cost, latency, and quality
-7. **Distributed Tracing**: Trace context propagation across multi-agent systems reveals bottlenecks
-8. **Cost Attribution**: Track costs by user/tenant for SaaS billing and throttling
+2. **Silent Failures**: AI systems fail without errors — "Up" does not mean "Correct"
+3. **Semantic Telemetry**: Enrich OpenTelemetry spans with domain-specific attributes (similarity scores, confidence deltas) to detect data-layer regressions that traditional APM misses
+4. **Shadow Evaluation Proxy**: Sample 10% of production traffic for async Teacher Model evaluation — statistically significant quality monitoring without impacting P99 latency
+5. **LLM-as-a-Judge**: Use a stronger model to evaluate the production model's faithfulness and relevance
+6. **Toxic Tenant Detection**: Propagate `tenant_id` and `plan_level` headers in every trace to identify negative-margin customers and drive AI-first pricing
+7. **Distributed Tracing**: Trace context propagation across multi-agent systems reveals bottlenecks invisible to single-service monitoring
+8. **Cost Attribution**: Track costs by user/tenant for SaaS billing, throttling, and gross margin analysis
 
 ---
 
