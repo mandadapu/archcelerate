@@ -6,6 +6,8 @@ estimatedMinutes: 40
 
 # Model Evaluation & Iteration
 
+Evaluation is where fine-tuning succeeds or fails. A model that scores 99% on your task metric but loses general reasoning ability has been **lobotomized**, not improved. Production evaluation requires measuring both task performance and cognitive preservation.
+
 ## Evaluation Metrics
 
 ```typescript
@@ -32,9 +34,173 @@ async function evaluateModel(
       }
     })
   )
-  
+
   return calculateMetrics(results)
 }
+```
+
+## Catastrophic Forgetting Guardrail
+
+**Architect's Tip — General Reasoning Baselines (The Reasoning Floor)**: "Every fine-tuning run must maintain a **Reasoning Floor** — a held-out subset of a general benchmark like MMLU (Massive Multitask Language Understanding). If your JSON extraction accuracy hits 99% but your math reasoning drops by 20%, you haven't improved the model — you've **lobotomized** it. An Architect runs the Reasoning Floor evaluation at every checkpoint and **hard-blocks deployment** if any general capability drops below 95% of the base model's score. This is the difference between a specialist and a broken model."
+
+```typescript
+/**
+ * Catastrophic Forgetting Detection
+ *
+ * Problem: Fine-tuning on a narrow task can destroy the model's
+ * general reasoning ability. The model becomes a "savant" —
+ * perfect at one task, useless at everything else.
+ *
+ * Solution: Maintain a "Reasoning Floor" — a diverse benchmark
+ * subset that the model must pass at every checkpoint.
+ * If general capabilities drop >5% from base model, halt training.
+ *
+ * Interview Defense: "We run MMLU subset evaluation at every
+ * checkpoint. If math reasoning drops more than 5% while our
+ * task accuracy climbs, we halt training — that's catastrophic
+ * forgetting, and deploying it would create a brittle system
+ * that fails unpredictably on edge cases."
+ */
+
+interface ReasoningFloorConfig {
+  // General benchmarks to preserve (subset of MMLU categories)
+  benchmarks: {
+    category: string           // e.g., "math_reasoning", "reading_comprehension"
+    questions: BenchmarkQuestion[]
+    baseModelScore: number     // Base model's accuracy on this category
+    minimumRetention: number   // e.g., 0.95 = must retain 95% of base score
+  }[]
+  // Task-specific evaluation
+  taskEval: {
+    testSet: Example[]
+    minimumAccuracy: number    // e.g., 0.90 for production readiness
+  }
+}
+
+interface BenchmarkQuestion {
+  question: string
+  choices: string[]
+  correctAnswer: string
+  category: string
+}
+
+interface CheckpointEvaluation {
+  checkpoint: string
+  epoch: number
+  taskAccuracy: number
+  reasoningScores: {
+    category: string
+    score: number
+    baseScore: number
+    retention: number         // score / baseScore
+    status: 'pass' | 'fail'
+  }[]
+  overallStatus: 'deploy' | 'continue' | 'halt'
+  forgettingDetected: boolean
+}
+
+async function evaluateCheckpointForForgetting(
+  model: FineTunedModel,
+  config: ReasoningFloorConfig
+): Promise<CheckpointEvaluation> {
+  // Step 1: Evaluate task-specific accuracy
+  const taskResults = await evaluateModel(
+    model.id, config.taskEval.testSet
+  )
+
+  // Step 2: Evaluate general reasoning benchmarks
+  const reasoningScores = await Promise.all(
+    config.benchmarks.map(async (benchmark) => {
+      const correct = await Promise.all(
+        benchmark.questions.map(async (q) => {
+          const answer = await model.predict(
+            formatMultipleChoice(q.question, q.choices)
+          )
+          return extractAnswer(answer) === q.correctAnswer
+        })
+      )
+
+      const score = correct.filter(Boolean).length / correct.length
+      const retention = score / benchmark.baseModelScore
+
+      return {
+        category: benchmark.category,
+        score,
+        baseScore: benchmark.baseModelScore,
+        retention,
+        status: (retention >= benchmark.minimumRetention
+          ? 'pass' : 'fail') as 'pass' | 'fail'
+      }
+    })
+  )
+
+  // Step 3: Determine overall status
+  const forgettingDetected = reasoningScores.some(
+    r => r.status === 'fail'
+  )
+  const taskMeetsThreshold =
+    taskResults.accuracy >= config.taskEval.minimumAccuracy
+
+  let overallStatus: 'deploy' | 'continue' | 'halt'
+  if (forgettingDetected) {
+    overallStatus = 'halt'     // STOP — model is losing intelligence
+  } else if (taskMeetsThreshold) {
+    overallStatus = 'deploy'   // READY — task met, no forgetting
+  } else {
+    overallStatus = 'continue' // KEEP TRAINING — not there yet
+  }
+
+  return {
+    checkpoint: model.checkpointId,
+    epoch: model.epoch,
+    taskAccuracy: taskResults.accuracy,
+    reasoningScores,
+    overallStatus,
+    forgettingDetected
+  }
+}
+
+// Example: Fine-tuning a JSON extraction model
+//
+// const config: ReasoningFloorConfig = {
+//   benchmarks: [
+//     {
+//       category: 'math_reasoning',
+//       questions: mmluMathSubset,       // 50 questions
+//       baseModelScore: 0.82,            // Base Haiku scores 82%
+//       minimumRetention: 0.95           // Must retain ≥78% (95% of 82%)
+//     },
+//     {
+//       category: 'reading_comprehension',
+//       questions: mmluReadingSubset,     // 50 questions
+//       baseModelScore: 0.88,
+//       minimumRetention: 0.95           // Must retain ≥84%
+//     },
+//     {
+//       category: 'logical_reasoning',
+//       questions: mmluLogicSubset,       // 50 questions
+//       baseModelScore: 0.79,
+//       minimumRetention: 0.95           // Must retain ≥75%
+//     }
+//   ],
+//   taskEval: {
+//     testSet: jsonExtractionTestSet,     // 200 held-out examples
+//     minimumAccuracy: 0.95              // 95% accuracy to deploy
+//   }
+// }
+//
+// Checkpoint evaluation results:
+//
+// | Checkpoint | Task Acc | Math   | Reading | Logic  | Status   |
+// |------------|----------|--------|---------|--------|----------|
+// | epoch-0.5  | 78%      | 81%    | 87%     | 78%    | CONTINUE |
+// | epoch-1.0  | 89%      | 80%    | 86%     | 77%    | CONTINUE |
+// | epoch-1.5  | 94%      | 79%    | 85%     | 76%    | CONTINUE |
+// | epoch-2.0  | 97%      | 72% ❌ | 83%     | 71% ❌ | HALT ⛔  |
+//
+// epoch-2.0 achieves 97% task accuracy but math drops to 72%
+// (retention: 72/82 = 87.8% < 95% threshold) — CATASTROPHIC FORGETTING
+// Best checkpoint: epoch-1.5 (94% task + all reasoning preserved)
 ```
 
 ## A/B Testing
@@ -52,7 +218,7 @@ async function compareModels(
       fineTuned: await fineTunedModel.complete(query)
     }))
   )
-  
+
   // Human evaluation
   return results.map(r => ({
     ...r,
@@ -61,5 +227,192 @@ async function compareModels(
 }
 ```
 
+## Peak-Elo Checkpoint Selection
+
+**Architect's Tip — Blind Side-by-Side Evaluation (The Elo Tournament)**: "Never trust training loss curves to pick your best checkpoint. Loss can converge while the model's actual output quality **degrades** — a phenomenon called 'loss-quality divergence.' Instead, save a checkpoint every half-epoch and run a **Blind Side-by-Side (SBS) Evaluation** against your Golden Dataset. Two outputs appear side-by-side without model labels. Human judges (or a strong LLM judge) pick the winner. Assign Elo ratings. The checkpoint with the **Peak Elo** — not the lowest loss — is your production model."
+
+```typescript
+/**
+ * Peak-Elo Checkpoint Selection
+ *
+ * Problem: Training loss is a poor proxy for output quality.
+ * A model can have lower loss while producing worse outputs
+ * (memorizing training patterns vs. generalizing).
+ *
+ * Solution: Run a blind Elo tournament across all checkpoints.
+ * Each checkpoint's outputs are compared head-to-head without
+ * labels. The checkpoint with the highest Elo rating wins.
+ *
+ * Interview Defense: "We don't trust loss curves. We run blind
+ * side-by-side evaluations across every checkpoint and select
+ * the Peak-Elo winner. Loss tells you about training fit —
+ * Elo tells you about actual output quality."
+ */
+
+interface Checkpoint {
+  id: string
+  epoch: number
+  trainingLoss: number
+  modelPath: string
+}
+
+interface SBSComparison {
+  prompt: string
+  responseA: { checkpointId: string; text: string }
+  responseB: { checkpointId: string; text: string }
+  winner: 'A' | 'B' | 'tie'
+  judgeConfidence: number  // 0-1
+}
+
+interface EloRating {
+  checkpointId: string
+  epoch: number
+  trainingLoss: number
+  elo: number
+  wins: number
+  losses: number
+  ties: number
+}
+
+const INITIAL_ELO = 1500
+const K_FACTOR = 32
+
+function updateElo(
+  winnerElo: number,
+  loserElo: number
+): { newWinnerElo: number; newLoserElo: number } {
+  const expectedWinner =
+    1 / (1 + Math.pow(10, (loserElo - winnerElo) / 400))
+  const expectedLoser = 1 - expectedWinner
+
+  return {
+    newWinnerElo: winnerElo + K_FACTOR * (1 - expectedWinner),
+    newLoserElo: loserElo + K_FACTOR * (0 - expectedLoser)
+  }
+}
+
+async function runEloTournament(
+  checkpoints: Checkpoint[],
+  goldenDataset: string[],  // Diverse evaluation prompts
+  judge: LLMJudge
+): Promise<EloRating[]> {
+  // Initialize Elo ratings
+  const ratings = new Map<string, EloRating>(
+    checkpoints.map(cp => [cp.id, {
+      checkpointId: cp.id,
+      epoch: cp.epoch,
+      trainingLoss: cp.trainingLoss,
+      elo: INITIAL_ELO,
+      wins: 0,
+      losses: 0,
+      ties: 0
+    }])
+  )
+
+  // Round-robin: every checkpoint vs every other checkpoint
+  for (let i = 0; i < checkpoints.length; i++) {
+    for (let j = i + 1; j < checkpoints.length; j++) {
+      const cpA = checkpoints[i]
+      const cpB = checkpoints[j]
+
+      // Evaluate on random subset of golden dataset
+      const evalPrompts = sampleRandom(goldenDataset, 20)
+
+      for (const prompt of evalPrompts) {
+        const [responseA, responseB] = await Promise.all([
+          generateResponse(cpA, prompt),
+          generateResponse(cpB, prompt)
+        ])
+
+        // Blind evaluation — judge doesn't know which checkpoint
+        // Randomize order to prevent position bias
+        const swapped = Math.random() > 0.5
+        const comparison = await judge.evaluate({
+          prompt,
+          responseA: swapped ? responseB : responseA,
+          responseB: swapped ? responseA : responseB
+        })
+
+        // Determine actual winner (un-swap if needed)
+        const actualWinner = comparison.winner === 'tie'
+          ? 'tie'
+          : (comparison.winner === 'A') !== swapped
+            ? cpA.id : cpB.id
+
+        // Update Elo ratings
+        const ratingA = ratings.get(cpA.id)!
+        const ratingB = ratings.get(cpB.id)!
+
+        if (actualWinner === 'tie') {
+          ratingA.ties++
+          ratingB.ties++
+        } else if (actualWinner === cpA.id) {
+          const updated = updateElo(ratingA.elo, ratingB.elo)
+          ratingA.elo = updated.newWinnerElo
+          ratingB.elo = updated.newLoserElo
+          ratingA.wins++
+          ratingB.losses++
+        } else {
+          const updated = updateElo(ratingB.elo, ratingA.elo)
+          ratingB.elo = updated.newWinnerElo
+          ratingA.elo = updated.newLoserElo
+          ratingB.wins++
+          ratingA.losses++
+        }
+      }
+    }
+  }
+
+  // Sort by Elo (highest first)
+  return Array.from(ratings.values())
+    .sort((a, b) => b.elo - a.elo)
+}
+
+function selectProductionCheckpoint(
+  eloRatings: EloRating[],
+  forgettingResults: Map<string, CheckpointEvaluation>
+): EloRating | null {
+  // Select highest-Elo checkpoint that ALSO passes forgetting guardrail
+  for (const rating of eloRatings) {
+    const forgetting = forgettingResults.get(rating.checkpointId)
+    if (forgetting && !forgetting.forgettingDetected) {
+      return rating  // Peak-Elo + No Forgetting = Production Ready
+    }
+  }
+  return null  // No checkpoint passes both criteria
+}
+
+// Example: 5 checkpoints from a 2.5-epoch training run
+//
+// | Checkpoint | Epoch | Loss  | Elo  | W/L/T  | Forgetting | Decision     |
+// |------------|-------|-------|------|--------|------------|--------------|
+// | cp-05      | 0.5   | 1.42  | 1468 | 12/28/0| None       | Too early    |
+// | cp-10      | 1.0   | 0.89  | 1523 | 22/16/2| None       | Viable       |
+// | cp-15      | 1.5   | 0.61  | 1571 | 30/8/2 | None       | ✅ PEAK ELO  |
+// | cp-20      | 2.0   | 0.38  | 1542 | 25/13/2| Math -18%  | ⛔ BLOCKED   |
+// | cp-25      | 2.5   | 0.31  | 1496 | 19/21/0| Math -25%  | ⛔ BLOCKED   |
+//
+// KEY INSIGHT: Lowest loss (cp-25, 0.31) ≠ Best model
+// cp-15 has HIGHEST Elo (1571) AND passes forgetting guardrail
+// cp-20/cp-25 have lower loss but WORSE Elo + forgetting detected
+//
+// Production selection: cp-15 (epoch 1.5)
+// "Loss told us to keep training. Elo told us to stop. Elo was right."
+```
+
+---
+
+## Key Takeaways
+
+- **Catastrophic Forgetting is Silent**: Task metrics can improve while general reasoning collapses — always maintain a Reasoning Floor benchmark (MMLU subset)
+- **Loss ≠ Quality**: Training loss convergence doesn't guarantee better outputs — use Blind SBS Elo tournaments to find the actual best checkpoint
+- **Peak-Elo + No Forgetting**: The production checkpoint must satisfy both criteria — highest human/LLM preference AND no general capability degradation
+- **Checkpoint Every Half-Epoch**: Granular checkpointing gives you the option to roll back — the best model is rarely the final one
+- **Evaluation is Non-Negotiable**: A model without a forgetting guardrail and a quality tournament is a model you're deploying on faith
+
+---
+
 ## Resources
 - [Model Evaluation Guide](https://platform.openai.com/docs/guides/fine-tuning/analyzing-your-fine-tuned-model)
+- [MMLU Benchmark](https://arxiv.org/abs/2009.03300)
+- [Chatbot Arena & Elo Ratings](https://lmsys.org/blog/2023-05-03-arena/)
