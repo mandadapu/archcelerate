@@ -1,7 +1,13 @@
 ---
 title: "Multi-Agent Coordination Patterns"
-description: "Coordinate multiple AI agents effectively"
-estimatedMinutes: 45
+description: "Coordinate multiple AI agents effectively with idempotent hand-offs, atomic state checkpointing, and resilient pipeline execution"
+estimatedMinutes: 50
+objectives:
+  - Design sequential, parallel, and hierarchical multi-agent workflows
+  - Implement idempotent agent hand-offs with persistent state checkpointing
+  - Choose between Supervisor and Choreography orchestration models
+  - Build Egress Hand-offs to reduce inter-agent context bloat by 87%
+  - Validate workflow DAGs to prevent circular dependency deadlocks
 ---
 
 # Multi-Agent Coordination Patterns
@@ -652,14 +658,244 @@ ${fullOutput}`
 // Quality: +12% accuracy (less noise in context)
 ```
 
+### Idempotent Agent Hand-offs: Atomic State Checkpointing
+
+**Architect's Tip — The Immutable Artifact Contract**: "In a multi-agent system, every agent output must be treated as an **Immutable Artifact** with a unique version ID. Use a persistent state store (like Redis or Postgres) to 'checkpoint' the exact output of Agent A before notifying Agent B. If the system crashes, the orchestrator resumes from the last completed artifact rather than re-triggering the entire chain. This ensures **Atomic Consistency** across the team. Without checkpointing, a crash after the Researcher succeeds but before the Writer starts means you re-run the Researcher — wasting tokens and potentially getting different results."
+
+```typescript
+/**
+ * Idempotent Agent Hand-offs
+ *
+ * Problem: In a sequential pipeline (Researcher → Writer → Reviewer),
+ * if the Writer crashes after the Researcher succeeds, a naive system
+ * restarts the ENTIRE pipeline. The Researcher runs again, wasting
+ * $0.35 in tokens, and may produce DIFFERENT results (LLM outputs
+ * are non-deterministic). The Writer then receives different context
+ * than the original plan intended.
+ *
+ * Solution: Checkpoint every agent's output as an immutable artifact
+ * with a version ID in a persistent store. On restart, the orchestrator
+ * checks the checkpoint store and resumes from the last completed
+ * artifact — skipping already-completed agents entirely.
+ *
+ * Interview Defense: "Every agent output is checkpointed as an immutable
+ * artifact with a content hash and version ID. On crash recovery, the
+ * orchestrator queries the checkpoint store and resumes from the last
+ * completed stage. This makes our pipelines idempotent — re-running
+ * the same workflow ID produces the same result without duplicate work
+ * or token waste."
+ */
+
+interface AgentArtifact {
+  artifactId: string          // Unique ID: `${workflowId}-${agentId}-${version}`
+  workflowId: string          // Parent workflow execution ID
+  agentId: string             // Which agent produced this
+  stage: number               // Pipeline stage (0 = first agent, 1 = second, etc.)
+  contentHash: string         // SHA-256 of the output (for deduplication)
+  output: any                 // The actual agent output
+  inputHash: string           // Hash of the input this agent received
+  model: string               // Model used (for reproducibility)
+  tokenCost: number           // Tokens consumed
+  createdAt: Date
+  status: 'completed' | 'failed'
+}
+
+interface CheckpointStore {
+  save(artifact: AgentArtifact): Promise<void>
+  getLatestForStage(workflowId: string, stage: number): Promise<AgentArtifact | null>
+  getWorkflowState(workflowId: string): Promise<Map<number, AgentArtifact>>
+}
+
+// Redis-backed checkpoint store for production
+class RedisCheckpointStore implements CheckpointStore {
+  private redis: any  // Redis client
+
+  constructor(redisClient: any) {
+    this.redis = redisClient
+  }
+
+  async save(artifact: AgentArtifact): Promise<void> {
+    const key = `checkpoint:${artifact.workflowId}:stage:${artifact.stage}`
+    await this.redis.set(key, JSON.stringify(artifact))
+
+    // Also store by artifact ID for direct lookup
+    await this.redis.set(`artifact:${artifact.artifactId}`, JSON.stringify(artifact))
+
+    // Set TTL (24 hours — artifacts are ephemeral, not permanent storage)
+    await this.redis.expire(key, 86400)
+
+    console.log(
+      `📌 Checkpointed: ${artifact.agentId} (stage ${artifact.stage}) → ` +
+      `${artifact.artifactId} [${artifact.tokenCost} tokens]`
+    )
+  }
+
+  async getLatestForStage(
+    workflowId: string,
+    stage: number
+  ): Promise<AgentArtifact | null> {
+    const key = `checkpoint:${workflowId}:stage:${stage}`
+    const data = await this.redis.get(key)
+    return data ? JSON.parse(data) : null
+  }
+
+  async getWorkflowState(
+    workflowId: string
+  ): Promise<Map<number, AgentArtifact>> {
+    const state = new Map<number, AgentArtifact>()
+    // Scan for all stages of this workflow
+    const keys = await this.redis.keys(`checkpoint:${workflowId}:stage:*`)
+
+    for (const key of keys) {
+      const data = await this.redis.get(key)
+      if (data) {
+        const artifact = JSON.parse(data)
+        state.set(artifact.stage, artifact)
+      }
+    }
+    return state
+  }
+}
+
+class IdempotentPipelineExecutor {
+  private checkpoints: CheckpointStore
+  private agents: Array<{ agent: Agent; stage: number }>
+
+  constructor(checkpoints: CheckpointStore, agents: Agent[]) {
+    this.checkpoints = checkpoints
+    this.agents = agents.map((agent, i) => ({ agent, stage: i }))
+  }
+
+  async execute(workflowId: string, initialInput: any): Promise<any> {
+    console.log(`\n=== Idempotent Pipeline: ${workflowId} ===`)
+
+    // Step 1: Check existing checkpoints (crash recovery)
+    const existingState = await this.checkpoints.getWorkflowState(workflowId)
+    const resumeFromStage = this.findResumePoint(existingState)
+
+    if (resumeFromStage > 0) {
+      console.log(
+        `♻️  Resuming from stage ${resumeFromStage} ` +
+        `(${resumeFromStage} stages already checkpointed)`
+      )
+    }
+
+    // Step 2: Execute pipeline, skipping completed stages
+    let currentInput = initialInput
+
+    for (const { agent, stage } of this.agents) {
+      // Check if this stage is already completed
+      const existing = existingState.get(stage)
+      if (existing && existing.status === 'completed') {
+        console.log(`⏭️  Stage ${stage} (${agent.role}): SKIPPED (checkpointed)`)
+        currentInput = existing.output  // Use cached output as next input
+        continue
+      }
+
+      // Execute this stage
+      console.log(`▶️  Stage ${stage} (${agent.role}): EXECUTING...`)
+      const startTime = Date.now()
+
+      const output = await agent.execute({
+        ...currentInput,
+        _workflowId: workflowId,
+        _stage: stage
+      })
+
+      const duration = Date.now() - startTime
+
+      // Checkpoint the output BEFORE proceeding to next stage
+      const artifact: AgentArtifact = {
+        artifactId: `${workflowId}-${agent.role}-${Date.now()}`,
+        workflowId,
+        agentId: agent.role,
+        stage,
+        contentHash: this.hashContent(output),
+        output,
+        inputHash: this.hashContent(currentInput),
+        model: 'claude-sonnet-4-5-20250929',
+        tokenCost: output._tokenCost || 0,
+        createdAt: new Date(),
+        status: 'completed'
+      }
+
+      await this.checkpoints.save(artifact)
+
+      console.log(
+        `✅ Stage ${stage} (${agent.role}): COMPLETED ` +
+        `(${duration}ms, ${artifact.tokenCost} tokens)`
+      )
+
+      currentInput = output  // Pass to next stage
+    }
+
+    console.log(`\n🏁 Pipeline ${workflowId} complete`)
+    return currentInput
+  }
+
+  private findResumePoint(
+    existingState: Map<number, AgentArtifact>
+  ): number {
+    // Find the highest completed stage
+    let maxCompleted = -1
+    for (const [stage, artifact] of existingState) {
+      if (artifact.status === 'completed' && stage > maxCompleted) {
+        maxCompleted = stage
+      }
+    }
+    return maxCompleted + 1  // Resume from the NEXT stage
+  }
+
+  private hashContent(content: any): string {
+    // Simple hash for deduplication (use crypto.createHash in production)
+    return Buffer.from(JSON.stringify(content)).toString('base64').slice(0, 32)
+  }
+}
+
+// Crash Recovery Example:
+//
+// FIRST RUN (crashes after stage 1):
+//   ▶️  Stage 0 (researcher): EXECUTING...
+//   📌 Checkpointed: researcher (stage 0) → wf-123-researcher-001
+//   ✅ Stage 0 (researcher): COMPLETED (15,000ms, 2,400 tokens)
+//   ▶️  Stage 1 (writer): EXECUTING...
+//   📌 Checkpointed: writer (stage 1) → wf-123-writer-001
+//   ✅ Stage 1 (writer): COMPLETED (22,000ms, 3,100 tokens)
+//   ▶️  Stage 2 (reviewer): EXECUTING...
+//   💥 CRASH — process killed (OOM, timeout, network failure)
+//
+// SECOND RUN (resumes from stage 2):
+//   ♻️  Resuming from stage 2 (2 stages already checkpointed)
+//   ⏭️  Stage 0 (researcher): SKIPPED (checkpointed)
+//   ⏭️  Stage 1 (writer): SKIPPED (checkpointed)
+//   ▶️  Stage 2 (reviewer): EXECUTING...
+//   📌 Checkpointed: reviewer (stage 2) → wf-123-reviewer-001
+//   ✅ Stage 2 (reviewer): COMPLETED (8,000ms, 1,200 tokens)
+//   🏁 Pipeline wf-123 complete
+//
+// WITHOUT checkpointing: Re-run all 3 stages → $0.67 wasted, 45s lost
+// WITH checkpointing:    Resume from stage 2 → $0.00 wasted, 0s lost
+//
+// | Metric               | Without Checkpointing | With Checkpointing |
+// |----------------------|-----------------------|--------------------|
+// | Tokens wasted        | 5,500 (stages 0+1)    | 0                  |
+// | Cost wasted          | $0.45                  | $0.00              |
+// | Time wasted          | 37 seconds             | 0 seconds          |
+// | Result consistency   | Different (LLM non-determinism) | Identical (cached) |
+// | Redis overhead       | N/A                    | ~2ms per checkpoint |
+```
+
+---
+
 ## Best Practices
 
 1. **Clear Role Definition**: Each agent should have a specific, well-defined purpose
 2. **Avoid Over-Coordination**: Too much coordination overhead defeats the purpose
 3. **Handle Failures Gracefully**: One agent failure shouldn't break the entire system
-4. **Monitor Costs**: Multi-agent systems can get expensive quickly
-5. **Use Caching**: Many agents may need the same information
-6. **Set Timeouts**: Prevent one slow agent from blocking everything
+4. **Checkpoint Agent Outputs**: Every stage should be an immutable artifact in a persistent store for crash recovery
+5. **Monitor Costs**: Multi-agent systems can get expensive quickly
+6. **Use Caching**: Many agents may need the same information
+7. **Set Timeouts**: Prevent one slow agent from blocking everything
 
 ## Common Pitfalls
 
