@@ -1,0 +1,243 @@
+---
+title: "Master Architectural Playbook"
+description: "The complete Director-tier reference for RAG, Agents, Fine-tuning, Scaling, and Security — distilled from the 12-week Archcelerate program"
+estimatedMinutes: 15
+---
+
+# Master Architectural Playbook
+
+> **The Architect's Desk Reference** — Every critical pattern from Weeks 1-12, distilled into decision frameworks you can apply immediately. Pin this to your wall.
+
+---
+
+## 1. RAG Architecture
+
+### When to Use What
+
+```
+Query arrives → Complexity Classifier (Haiku, ~50ms)
+                    │
+                    ├── DIRECT → Single embedding lookup (no rewriting)
+                    │            Use for: factual lookups, simple Q&A
+                    │
+                    ├── SEMANTIC → Query expansion + synonym injection
+                    │              Use for: domain-specific terminology gaps
+                    │
+                    └── COMPLEX → Multi-query decomposition + HyDE
+                                 Use for: multi-faceted research questions
+```
+
+### Critical Patterns
+
+| Pattern | What It Does | When to Use |
+|---------|-------------|-------------|
+| **Relevance-Weighted Fusion** | Original query results weighted 2.5x in RRF scoring | Always — prevents expanded queries from drowning original intent |
+| **HyDE with Guardrail** | Generate hypothetical doc, embed it, but check similarity to corpus first | Complex queries only — fall back to original if similarity &lt;0.6 |
+| **Multi-Tier Cache** | L1 (memory, &lt;1ms) → L2 (Redis, ~5ms) → L3 (semantic, ~50ms) → LLM | Always — 75% cache hit rate saves $11,250/month at 10K req/day |
+| **Hashed Composite Cache Key** | `SHA256(tenantId + model + normalized_query)` | Multi-tenant systems — prevents cross-tenant cache poisoning |
+
+### The Golden Rule
+
+> **"Retrieval quality &gt; Generation quality."** A perfect LLM with bad retrieval produces confident wrong answers. A mediocre LLM with perfect retrieval produces useful correct answers.
+
+---
+
+## 2. Agent Architecture
+
+### Orchestration Decision
+
+```
+Does the workflow need rollback or audit trail?
+    │
+    YES → SUPERVISOR (Hub-and-Spoke)
+    │     Central coordinator, full state visibility
+    │     Use for: financial audits, compliance, approvals
+    │
+    NO → How many agents?
+         │
+         ≤ 4 → SUPERVISOR (simpler to debug)
+         │
+         > 4 + throughput-critical → CHOREOGRAPHY (Event-Driven)
+              Use for: content pipelines, monitoring, streaming
+```
+
+### Critical Patterns
+
+| Pattern | What It Does | When to Use |
+|---------|-------------|-------------|
+| **DAG Validation** | Kahn's algorithm detects circular dependencies before execution | Always — 0.1ms cost prevents hours of deadlock debugging |
+| **Egress Hand-off** | Each agent summarizes output to 500 tokens before passing downstream | Always — cuts inter-agent token costs by 87%, improves quality by 12% |
+| **Weighted Conflict Resolution** | Authority scoring by source type, model tier, task type | When agents disagree on facts — never average factual disputes |
+| **Semantic Loop Detection** | Embed outputs, compare cosine similarity across iterations | Always — catches "thinking in circles" after 2-3 iterations |
+| **Two-Layer Execution Governance** | Hard caps (iterations/tokens/time) + semantic similarity detection | Always — prevents runaway token spend on single sub-tasks |
+
+### The Golden Rule
+
+> **"Agents are stateless workers, not negotiating peers."** The Supervisor delivers data between agents. Agents never call each other directly. All dependencies are defined at planning time, not runtime.
+
+---
+
+## 3. Fine-tuning Architecture
+
+### The Decision Framework
+
+```
+Is your system prompt > 2,000 tokens with few-shot examples?
+    │
+    YES → Calculate break-even:
+    │     Savings/month = (current_cost - fine_tuned_cost) × queries
+    │     Break-even = training_cost / monthly_savings
+    │     If break-even ≤ 3 months → FINE-TUNE
+    │
+    NO → Keep prompting (fine-tuning won't help)
+```
+
+### The Behavior vs. Memory Rule
+
+```
+FINE-TUNING is for BEHAVIOR (baked into weights):
+  ✅ Output format    — "Always return JSON with this schema"
+  ✅ Tone/style       — "Write like a concise medical scribe"
+  ✅ Classification   — "Categorize tickets into 5 buckets"
+  ✅ Domain terms     — "Use ICD-10 codes, not plain English"
+
+RAG is for MEMORY (retrieved at query time):
+  ✅ Current facts    — "Latest drug prices as of Q1 2026"
+  ✅ Company data     — "Our refund policy changed last week"
+  ✅ User-specific    — "This patient's medication history"
+
+ANTI-PATTERN:
+  ❌ Fine-tuning on facts → Stale data hallucinated with high confidence
+```
+
+### Critical Patterns
+
+| Pattern | What It Does | When to Use |
+|---------|-------------|-------------|
+| **Teacher-Student Distillation** | Opus generates 500 golden examples → fine-tune Haiku | When you need a cheap specialist model ($20 total vs $5K human labeling) |
+| **Contrasting Pairs** | Train on both vulnerable AND safe code examples | Always — prevents 100% positive bias (35% false positives → 4.2%) |
+| **Cross-Domain Baseline Gate** | Check HumanEval + MMLU before deploying fine-tuned model | Always — blocks models with Catastrophic Forgetting |
+| **Peak Elo, Not Lowest Loss** | Select checkpoint with highest human preference, not lowest val loss | Always — loss measures memorization, Elo measures usefulness |
+
+### The Golden Rule
+
+> **"Fine-tuning is compression."** You're taking expensive, verbose prompt instructions and compressing them into cheap, fast model weights. The 2,000-token prompt IS your training data.
+
+---
+
+## 4. Scaling Architecture
+
+### The Traffic Survival Playbook
+
+```
+Traffic spike detected (> 5x normal)
+    │
+    ├── Provider returns 429/503?
+    │   YES → Tiered Failover activates automatically
+    │         Primary → Secondary → Safe Fallback → Cache
+    │         User sees: nothing (invisible failover)
+    │
+    ├── Tenant hitting budget cap?
+    │   YES → Token-Aware Circuit Breaker
+    │         80% budget → switch to Haiku
+    │         95% budget → enforce 5s delay
+    │         100% budget → circuit OPEN (block)
+    │
+    └── Web servers saturated?
+        YES → Async Streaming + Background Workers
+              ACK in 50ms (not 5,000ms)
+              LLM processes in background worker
+              Tokens stream via SSE
+```
+
+### Critical Patterns
+
+| Pattern | What It Does | When to Use |
+|---------|-------------|-------------|
+| **Tiered Provider Failover** | Primary → Secondary → Haiku fallback with auto 429/503 detection | Always — ensures 99.99% availability across provider outages |
+| **Async Streaming (SSE)** | Decouple API latency from LLM generation via background workers | At scale — 100x throughput on same infrastructure |
+| **Token-Aware Rate Limiting** | Track estimated token spend per tenant, not just request count | Always — prevents $5K bills from bulk PDF uploads |
+| **Elastic Degradation** | Automatically trade response quality for availability during spikes | Viral/spike scenarios — cache-first for common queries, full model for premium |
+
+### The Golden Rule
+
+> **"Design systems that survive success."** A viral moment is a test of your architecture. The system should have a pre-configured Economic Mode that activates automatically — no human intervention required.
+
+---
+
+## 5. Security Architecture
+
+### The Zero-Trust AI Stack
+
+```
+LAYER 5: GOVERNANCE — Fairness, compliance, ethics, drift monitoring
+LAYER 4: INFRASTRUCTURE — Encryption, secrets, sandboxing, circuit breakers
+LAYER 3: USAGE — Shadow Guardian, CSP scrubbing, MLDR, SIEM
+LAYER 2: MODEL — Scanning, dithering, extraction detection, RBAC
+LAYER 1: DATA — Classification, distributional audit, PII detection
+```
+
+### Critical Patterns
+
+| Pattern | What It Does | When to Use |
+|---------|-------------|-------------|
+| **Shadow Guardian** | Separate classifier model runs BEFORE primary model, classifies intent only | Always — reduces injection success from 2.3% to 0.04% for $200/month |
+| **Post-Retrieval CSP** | Regex scrubbing strips instruction patterns from RAG chunks | Any RAG system — treats retrieved context as untrusted data |
+| **Distributional Audit** | Embed incoming data batches, compare to Golden Baseline, quarantine anomalies | Before any fine-tuning or RAG ingestion — catches silent poisoning |
+| **Response Dithering** | Non-semantic output variation that degrades distillation quality | When serving proprietary models via API — drops clone accuracy to 41% |
+| **Sandboxed Execution** | Per-document containers with zero network, read-only FS, auto-destruction | Any third-party library processing — isolates CVE blast radius |
+
+### The Golden Rule
+
+> **"Security is structural, not semantic."** You don't protect an AI by asking it to be safe. You protect it by ensuring malicious data never reaches the model, compromised outputs never reach the user, and infrastructure breaches never reach the network.
+
+---
+
+## Quick Reference: Cost Formulas
+
+```typescript
+// RAG Cost per Query
+cost = (embedding_cost + retrieval_cost + generation_cost) × (1 - cache_hit_rate)
+
+// Agent Chain Cost
+cost = Σ(agent_calls × model_cost) + Σ(egress_summaries × haiku_cost)
+// With egress: 87% cheaper than full context forwarding
+
+// Fine-tuning Break-even
+break_even_queries = training_cost / (current_cost_per_query - fine_tuned_cost_per_query)
+// If break_even < 3 months of traffic → fine-tune
+
+// Scaling Budget per Tenant
+monthly_budget = tier_token_limit × cost_per_1K_tokens / 1000
+// Free: $1 | Pro: $50 | Enterprise: $1,000
+
+// Security Cost (Shadow Guardian)
+guardian_cost = requests_per_month × $0.0002
+// 1M requests = $200/month for 98% fewer successful attacks
+```
+
+---
+
+## The Architect's Checklist
+
+Before any AI system goes to production, verify:
+
+- [ ] **RAG**: Query complexity classifier routes to appropriate rewriting strategy
+- [ ] **RAG**: Cache hierarchy (L1/L2/L3) configured with tenant-isolated keys
+- [ ] **Agents**: Workflow validated as DAG before first agent fires
+- [ ] **Agents**: Egress hand-offs enforced between all agent boundaries
+- [ ] **Agents**: Execution governance (iteration caps + semantic loop detection) active
+- [ ] **Fine-tuning**: Break-even calculated and approved before training begins
+- [ ] **Fine-tuning**: Cross-domain baselines (HumanEval, MMLU) in deployment gate
+- [ ] **Fine-tuning**: Peak Elo checkpoint selected, not lowest loss
+- [ ] **Scaling**: Tiered provider failover tested with simulated 429s
+- [ ] **Scaling**: Token-aware circuit breaker configured per tenant tier
+- [ ] **Scaling**: Async streaming pipeline load-tested at 10x expected traffic
+- [ ] **Security**: Shadow Guardian deployed as pre-filter on all user input
+- [ ] **Security**: Post-retrieval CSP scrubbing active on all RAG chunks
+- [ ] **Security**: Distributional audit configured for all data ingestion paths
+- [ ] **Security**: Third-party libraries sandboxed with zero network access
+
+---
+
+**Archcelerate: Program Complete.** You now have the architectural vocabulary, decision frameworks, and production patterns to lead AI engineering teams at the Director level. Every pattern in this playbook was battle-tested against real failure modes — deadlocks, hallucinations, cost blowouts, injection attacks, and viral traffic spikes. Build systems that survive. Ship with confidence.
