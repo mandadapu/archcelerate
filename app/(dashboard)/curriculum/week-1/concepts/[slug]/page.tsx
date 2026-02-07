@@ -13,6 +13,21 @@ interface Props {
   params: { slug: string }
 }
 
+// Generate static paths for all concepts at build time
+export async function generateStaticParams() {
+  const concepts = await prisma.concept.findMany({
+    where: { weekId: 1 }, // Week 1
+    select: { slug: true }
+  })
+
+  return concepts.map((concept) => ({
+    slug: concept.slug
+  }))
+}
+
+// Enable static generation with revalidation
+export const revalidate = 3600 // Revalidate every hour
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const concept = await prisma.concept.findUnique({
     where: { slug: params.slug }
