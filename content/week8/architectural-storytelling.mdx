@@ -125,16 +125,29 @@ Response
 | **pgvector** | Open-source, full control, lower cost | Requires Postgres ops, no native multi-tenancy | $100/mo + ops time |
 | **Weaviate** | Open-source, multi-tenant, rich features | Self-hosted complexity, learning curve | $150/mo + ops |
 
+**Quantitative Trade-off Matrix (Requirement → Constraint Mapping)**:
+
+| Requirement | Constraint | Pinecone | pgvector | Weaviate | Winner |
+|---|---|---|---|---|---|
+| Multi-tenant isolation | Security: Physical namespace separation | ✅ Native namespaces (0 custom code) | ❌ Row-level security (custom auth layer) | ✅ Native tenants (self-hosted) | Pinecone |
+| 10x traffic spike | Scale: Auto-scaling under load | ✅ Managed auto-scale | ❌ Manual Postgres scaling | ⚠️ Kubernetes HPA required | Pinecone |
+| 2-engineer team | Cost: Ops overhead | ✅ 0 ops hours/week | ❌ ~8 ops hours/week | ❌ ~12 ops hours/week (K8s) | Pinecone |
+| $2K/month budget | Cost: Infrastructure spend | ✅ $200/mo (10% of budget) | ✅ $100/mo (5% of budget) | ⚠️ $150/mo + K8s infra | Pinecone |
+| HIPAA compliance | Regulatory: PHI in VPC | ⚠️ SOC2 certified, BAA available | ✅ Self-hosted in VPC | ✅ Self-hosted in VPC | pgvector |
+
 **Justification**:
 - Chose **Pinecone** because:
-  1. Native namespace support eliminates custom tenant isolation code
-  2. Managed service = 0 ops overhead (meets constraint: 2-engineer team)
-  3. $200/mo fits within $2K infrastructure budget
-  4. Auto-scaling handles 10x traffic spike requirement
+  1. Multi-tenancy isolation requirement demanded **physical namespace separation** — Pinecone supports this natively, reducing security engineering overhead by ~40% vs. building custom row-level security on pgvector
+  2. Managed service = 0 ops overhead (meets constraint: 2-engineer team cannot absorb 8+ hours/week of database operations)
+  3. $200/mo fits within $2K infrastructure budget (10%)
+  4. Auto-scaling handles 10x traffic spike requirement without Kubernetes expertise
+
+**Architect's Tip**: *"A Director doesn't say 'I liked Pinecone.' They say, 'We chose Pinecone over pgvector because our Multi-tenancy isolation requirement demanded physical namespace separation, which Pinecone supports natively, reducing our security engineering overhead by 40%.' Every choice must be a direct response to a constraint (Cost, Latency, Security, or Scale)."*
 
 **Trade-offs Accepted**:
-- Higher cost vs pgvector (2x)
-- Vendor lock-in risk (mitigated: standard embedding format enables migration)
+- Higher cost vs pgvector (2x) — justified by 0 ops overhead for 2-person team
+- Vendor lock-in risk (mitigated: standard embedding format enables migration in &lt;1 week)
+- HIPAA gap: Pinecone is SOC2-certified with BAA, but PHI does leave VPC — mitigated by encrypting embeddings and never storing raw PHI in vector metadata
 
 ---
 
@@ -226,6 +239,46 @@ Response
 | Error Rate | 0.1% | 0.3% | &lt;1% | ✅ |
 | Throughput | 8.3 req/s | 83 req/s | 10x scale | ✅ |
 
+### NFR Benchmark Dashboard
+
+Don't just list results — present them as **Non-Functional Requirement (NFR) Benchmarks** that map each metric to the requirement it satisfies and the stress condition under which it was validated.
+
+**Architect's Tip**: *"Don't just state your P95 latency. Show the Degradation Curve. An Architect's SDD should include a chart showing how latency held up during the 10x Load Spike test from Concept 2. Proving your system survived a failure state is more impressive to a stakeholder than proving it works under ideal conditions."*
+
+| NFR | Target | Baseline (10 users) | 10x Spike (100 users) | Degradation | Verdict |
+|---|---|---|---|---|---|
+| P95 Latency | &lt;3s | 2.1s | 2.9s | +38% | ✅ Within SLA under stress |
+| P99 Latency | &lt;5s | 2.8s | 4.2s | +50% | ✅ Within SLA under stress |
+| Error Rate | &lt;1% | 0.1% | 0.3% | +0.2pp | ✅ 3x headroom |
+| Throughput | &gt;80 req/s at spike | 8.3 req/s | 83 req/s | Linear scale | ✅ Scales with load |
+| Availability | &gt;99.5% | 99.9% | 99.7% | -0.2pp | ✅ Above target |
+| Faithfulness | &gt;95% | 96% | 95.8% | -0.2pp | ✅ Quality maintained under load |
+
+**Latency Degradation Curve (Step-Function Ramp-Up)**:
+
+```
+Latency (ms)
+3000 ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ SLA ─ ─ ─ ─
+     |                                          ╱
+2500 |                                       ╱
+     |                                    ╱
+2000 |                              ╱──╱
+     |                        ╱──╱
+1500 |                  ╱──╱
+     |            ╱──╱
+1000 |      ╱──╱
+     | ╱──╱
+ 500 |╱
+     └────┬────┬────┬────┬────┬────┬────┬────
+          10   20   30   40   50   70   100
+                   Concurrent Users
+
+ ✅ System maintained P95 < SLA through 100 concurrent users
+ 🎯 Kneepoint identified at 120 users (auto-scale trigger: 96)
+```
+
+**Key Insight**: The degradation curve proves the system doesn't just **work** — it **degrades gracefully**. The latency increase is linear, not exponential, which means the architecture has no hidden bottlenecks that collapse under load.
+
 ### Golden Dataset Evaluation
 
 | Category | Pass Rate | Target | Status |
@@ -309,6 +362,81 @@ Response
 - No managed hosting option (ops overhead)
 - Multi-tenancy requires custom implementation
 - Team unfamiliar with Chroma's query language
+
+---
+
+## Context-Aware Architecture Decision Records (ADRs)
+
+An SDD is a **snapshot** — it captures the system as it exists today. An ADR is a **history** — it captures **why** the system looks this way, including the specific market conditions, tool limitations, and domain constraints that existed at the time.
+
+**Architect's Tip**: *"Teach students to document the 'Context' — the specific market conditions or tool limitations that existed at the time. For example: 'We chose a Re-ranker because the base embedding model had a 20% recall gap on clinical jargon.' This prevents future teams from 'optimizing' away a critical safety component they don't understand."*
+
+### ADR Template: Context-Aware Format
+
+```markdown
+# ADR-004: Cross-Encoder Re-Ranking Pipeline
+
+**Status**: Accepted
+**Date**: 2026-01-15
+**Deciders**: [Lead Architect, ML Engineer]
+
+## Context (Why This Decision Exists)
+
+### Market Conditions (January 2026)
+- text-embedding-3-small (OpenAI) is the cost-effective default
+  for most RAG applications, BUT has a documented 20% recall gap
+  on domain-specific clinical jargon (e.g., "CABG" vs.
+  "Coronary Artery Bypass Grafting")
+- Cross-encoder re-rankers (e.g., ms-marco-MiniLM) add ~150ms
+  latency but recover 15-18% of missed relevant documents
+- No medical-specific embedding model exists at production scale
+  below $0.01/1K tokens (as of Jan 2026)
+
+### Domain Constraint
+- SurgiSearch users are surgeons querying during active operations
+- A missed relevant document is a SAFETY FAILURE, not just a
+  relevance degradation
+- False negatives (missed protocols) are 10x more dangerous
+  than false positives (extra context)
+
+### Tool Limitation
+- Pinecone's built-in similarity search returns top-K by cosine
+  distance, but cosine distance CANNOT distinguish between
+  "semantically close" and "clinically equivalent"
+- Example: "post-op bleeding protocol" and "hemostasis management
+  guidelines" score 0.72 similarity — below the 0.75 retrieval
+  threshold — despite being clinically synonymous
+
+## Decision
+Add a Cross-Encoder Re-Ranking stage after vector retrieval:
+1. Retrieve top-100 by vector similarity (fast, cheap)
+2. Re-rank to top-10 using cross-encoder (slow, accurate)
+3. 15% accuracy improvement on clinical jargon queries
+
+## Consequences
+- +150ms latency (within 3s SLA budget: 1.2s LLM + 0.3s vector
+  + 0.15s re-rank + 0.35s overhead = 2.0s total)
+- +$0.002/request cost (cross-encoder inference)
+- Requires model versioning (re-ranker model updates must be
+  regression-tested against golden dataset)
+
+## ⚠️ WARNING TO FUTURE MAINTAINERS
+DO NOT REMOVE the re-ranking stage to "reduce latency." The base
+embedding model has a 20% recall gap on clinical jargon that makes
+vector-only retrieval UNSAFE for surgical protocols. If you need
+lower latency, optimize the vector retrieval stage or upgrade to a
+medical-specific embedding model — do not remove the safety net.
+```
+
+### Why Context-Aware ADRs Matter
+
+| Standard ADR | Context-Aware ADR |
+|---|---|
+| "We chose a re-ranker for better accuracy" | "We chose a re-ranker because text-embedding-3-small has a 20% recall gap on clinical jargon, and missed surgical protocols are a safety failure" |
+| "We chose Pinecone for multi-tenancy" | "We chose Pinecone because our 2-engineer team cannot absorb the 8 hrs/week of Postgres ops that pgvector requires, and namespace isolation is a HIPAA requirement" |
+| "We chose LangGraph for checkpointing" | "We chose LangGraph because CrewAI's opaque routing made it impossible to produce the deterministic audit trail required by our HIPAA compliance officer" |
+
+**The difference**: A standard ADR tells you **what** was decided. A context-aware ADR tells you **what would break if you reversed it** — which is the only information a future maintainer actually needs.
 
 ---
 
@@ -447,14 +575,51 @@ Response
 
 ---
 
+## Senior Leadership Review Challenge
+
+**Scenario**: An Executive asks: "Why are we spending $2,000 a month on 'Evaluation Models' (LLM-as-a-Judge) when we could just have our interns test the app for free?" How does your SDD justify this cost?
+
+**A)** It explains that interns are too slow.
+
+**B)** It maps the cost to **Risk Mitigation**. The SDD shows that the Automated Evaluation Suite caught a "Faithfulness" regression that would have resulted in a $50,000 compliance fine. You prove that the $24K/year spent on automated QA provides a **2x ROI** compared to manual labor while maintaining a **99.9% safety guarantee** that humans cannot match.
+
+**C)** It says that "Teacher" models are the industry standard.
+
+**D)** It suggests hiring fewer interns to balance the budget.
+
+<details>
+<summary>Answer</summary>
+
+**B) Risk Mitigation with quantified ROI** is the architect-level answer.
+
+- **Why not A?** "Interns are slow" is a developer-level argument that doesn't speak the executive's language. Speed is a secondary concern — the real issue is **reliability and liability**.
+- **Why not C?** "Industry standard" is an appeal to authority, not evidence. An executive will ask "So what?" — they want to see the financial case, not a trend report.
+- **Why not D?** This completely sidesteps the question and doesn't justify the technology investment at all.
+- **Why B?** An Architect's documentation is a **financial and risk-management tool**, not just a technical one:
+  1. **Quantified risk**: The evaluation suite caught a faithfulness regression before production. Without it, the incorrect medical guidance would have reached patients — triggering a $50K+ HIPAA compliance fine.
+  2. **ROI calculation**: $24K/year (automated) vs. $120K/year (3 interns at $40K) = **5x cost reduction** with higher coverage (1,000 test cases vs. ~50 manual checks per day).
+  3. **Safety guarantee**: Automated evaluation runs on every deployment, 24/7. Interns test during business hours, miss edge cases, and cannot maintain 99.9% consistency across 1,000+ golden dataset cases.
+  4. **The SDD proves this**: Your cost analysis section shows the $2K/month maps directly to the "0 safety violations" metric in Performance Validation. Remove the spend, and you lose the safety guarantee.
+
+**The Architect's Insight**: When an executive challenges a cost, they're not asking "Is this useful?" — they're asking "What happens if we don't have it?" Your SDD must answer the second question with numbers.
+
+</details>
+
+---
+
 ## Key Takeaways
 
 **System Design Document (SDD)**:
 - Explain **WHY** behind every major decision (not just WHAT you built)
-- Justify choices against requirements and constraints
+- **Use Quantitative Trade-off Matrices** — map every choice to the specific Requirement and Constraint (Cost, Latency, Security, Scale) that drove it
 - Use Architectural Decision Records (ADRs) for vector DB, model, framework selections
-- Include performance validation (load tests, golden dataset results)
-- Document trade-offs accepted (cost vs accuracy, latency vs quality)
+- **Include NFR Benchmark Dashboards** with stress-test evidence and degradation curves, not just happy-path numbers
+- Document trade-offs accepted with quantified impact (cost vs accuracy, latency vs quality)
+
+**Context-Aware ADRs**:
+- Document the **Context** — market conditions, tool limitations, and domain constraints that existed at the time
+- Include **warnings to future maintainers** explaining what would break if the decision were reversed
+- A standard ADR tells you what was decided; a **context-aware ADR tells you what breaks if you undo it**
 
 **Skill Diagnosis Brief**:
 - Prove mastery across 7 domains with concrete evidence
@@ -464,13 +629,13 @@ Response
 - Growth areas showing self-awareness
 
 **Packaging for Stakeholders**:
-- **Executives**: Executive summary with business metrics (ROI, cost per request, availability)
-- **Technical Leaders**: ADRs with benchmarks and trade-off analysis
+- **Executives**: Executive summary with business metrics — **justify costs as risk mitigation with quantified ROI**
+- **Technical Leaders**: Context-aware ADRs with benchmarks and trade-off matrices
 - **Hiring Managers**: Skill diagnosis with verified production metrics
 - **Engineers**: Code samples with architectural patterns
 
 **The Architect's Responsibility**:
-You **own** the story. If stakeholders don't understand your decisions, **you failed to communicate**. If hiring managers can't evaluate your work, **you didn't provide evidence**. If future maintainers break your system, **you didn't document constraints**.
+You **own** the story. If stakeholders don't understand your decisions, **you failed to communicate**. If hiring managers can't evaluate your work, **you didn't provide evidence**. If future maintainers break your system, **you didn't document the context that drove your constraints**.
 
 **Impact**:
 - **Without SDD**: "It works" (no justification, future maintainers break it)
