@@ -3,45 +3,69 @@ import { PrismaClient } from '@prisma/client'
 const prisma = new PrismaClient()
 
 async function main() {
-  const labSlugs = [
-    'w1-multi-tier-triage-lab',
-    'w2-hipaa-gateway-lab',
-    'w4-support-ticket-router-lab',
-    'w5-research-swarm-lab',
-    'w6-clinical-rag-lab',
-    'w7-llm-judge-lab'
-  ]
+  console.log('\n📊 Verifying Lab Activities for Industry Scenarios\n')
+  console.log('━'.repeat(80))
 
-  console.log('🔍 Verifying lab activities in database...\n')
-
-  for (const slug of labSlugs) {
-    const activity = await prisma.activity.findFirst({
-      where: { slug },
-      include: {
-        domainMappings: {
-          include: {
-            domain: true
-          }
-        }
+  // Check lab activities for weeks 1, 2, 4, 5, 6, 7
+  const labs = await prisma.activity.findMany({
+    where: {
+      activityType: 'lab',
+      weekNumber: { in: [1, 2, 4, 5, 6, 7] }
+    },
+    include: {
+      domainMappings: {
+        include: {
+          domain: true
+        },
+        orderBy: [
+          { isPrimary: 'desc' },
+          { maxPoints: 'desc' }
+        ]
       }
-    })
+    },
+    orderBy: { weekNumber: 'asc' }
+  })
 
-    if (activity) {
-      console.log(`✅ ${slug}`)
-      console.log(`   Title: ${activity.title}`)
-      console.log(`   Week: ${activity.weekNumber}`)
-      console.log(`   Max Points: ${activity.maxTotalPoints}`)
-      console.log(`   Domain Mappings: ${activity.domainMappings.length}`)
-      activity.domainMappings.forEach(dm => {
-        console.log(`     - ${dm.domain.name}: ${dm.maxPoints} pts (${dm.isPrimary ? 'PRIMARY' : 'secondary'})`)
-      })
-      console.log()
+  console.log(`\n✅ Found ${labs.length} lab activities\n`)
+
+  let totalMappings = 0
+  let errorCount = 0
+
+  for (const lab of labs) {
+    console.log(`📌 Week ${lab.weekNumber}: ${lab.title}`)
+    console.log(`   Slug: ${lab.slug}`)
+    console.log(`   Max Points: ${lab.maxTotalPoints}`)
+
+    if (lab.domainMappings.length > 0) {
+      console.log(`   Domain Mappings (${lab.domainMappings.length}):`)
+      for (const mapping of lab.domainMappings) {
+        const badge = mapping.isPrimary ? '🎯 PRIMARY' : '🔹 Secondary'
+        console.log(`     ${badge} ${mapping.domain.name}: +${mapping.maxPoints} pts`)
+        totalMappings++
+      }
     } else {
-      console.log(`❌ ${slug} - NOT FOUND\n`)
+      console.log(`   ⚠️  No domain mappings found`)
+      errorCount++
     }
+    console.log()
+  }
+
+  console.log('━'.repeat(80))
+  console.log(`\n📈 Summary:`)
+  console.log(`   Total Labs: ${labs.length}`)
+  console.log(`   Total Domain Mappings: ${totalMappings}`)
+  console.log(`   Labs without Mappings: ${errorCount}`)
+
+  if (errorCount === 0 && labs.length === 6) {
+    console.log(`\n✅ All industry scenario labs verified successfully!\n`)
+  } else {
+    console.log(`\n⚠️  Some labs are missing or have no mappings\n`)
   }
 
   await prisma.$disconnect()
 }
 
-main().catch(console.error)
+main().catch((error) => {
+  console.error('Error:', error)
+  process.exit(1)
+})
