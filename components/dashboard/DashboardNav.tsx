@@ -29,7 +29,7 @@ export function DashboardNav({ userEmail }: DashboardNavProps) {
                 <Link href="/skill-diagnosis" className="text-sm text-slate-600 hover:text-slate-900">
                   Skill Diagnosis
                 </Link>
-                <Link href="/mentor" className="text-sm text-slate-600 hover:text-slate-900">
+                <Link href="/mentor/new" className="text-sm text-slate-600 hover:text-slate-900">
                   AI Mentor
                 </Link>
                 <Link href="/portfolio" className="text-sm text-slate-600 hover:text-slate-900">
