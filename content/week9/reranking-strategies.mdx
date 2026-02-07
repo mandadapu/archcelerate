@@ -1,72 +1,578 @@
 ---
 title: "Re-ranking and Filtering Strategies"
-description: "Improve retrieval quality with reranking"
+description: "Precision engineering for RAG: cross-encoder reranking with semantic cutoffs, MMR diversity selection, and pre-retrieval metadata filtering"
 estimatedMinutes: 40
+week: 9
+concept: 5
+difficulty: intermediate
+objectives:
+  - Implement Cross-Encoder reranking with absolute relevance cutoffs
+  - Apply Maximal Marginal Relevance (MMR) for diverse context selection
+  - Design pre-retrieval metadata filters at the vector database layer
+  - Build a complete precision pipeline that eliminates reasoning dilution
 ---
 
 # Re-ranking and Filtering Strategies
 
-Initial retrieval casts a wide net. Reranking refines results.
+The Precision Engine of your RAG pipeline — ensuring the LLM only sees the sharpest data.
 
-## Cross-Encoder Reranking
+## The Core Challenge
+
+**Stages 1 and 2 optimize for Recall — finding all possible candidates. Stage 3 optimizes for Precision — ensuring the LLM only sees the absolute best data.**
+
+Without precision filtering:
+- LLM receives 10 documents, but only 3 are truly relevant
+- The 7 "noise" documents cause **Reasoning Dilution** — the model hedges, averages, or misses the key signal
+- Token budget wasted on low-value context
+
+**Architect's Mandate**: Don't just provide *more* data — provide *sharper* data.
+
+---
+
+## Pattern 1: Cross-Encoder Reranking
+
+Cross-encoders score each (query, document) pair directly, considering full token-level interactions. Unlike bi-encoders (vector search), they don't compress documents into a single vector — they read both texts together.
 
 ```typescript
 import { pipeline } from '@xenova/transformers'
 
-const reranker = await pipeline('text-classification', 'cross-encoder/ms-marco-MiniLM-L-6-v2')
+const reranker = await pipeline(
+  'text-classification',
+  'cross-encoder/ms-marco-MiniLM-L-6-v2'
+)
 
-async function rerank(query: string, documents: Document[]): Promise<Document[]> {
+interface RankedDocument {
+  id: string
+  text: string
+  score: number
+  metadata?: Record<string, unknown>
+}
+
+async function rerank(
+  query: string,
+  documents: RankedDocument[]
+): Promise<RankedDocument[]> {
   const pairs = documents.map(doc => `${query} [SEP] ${doc.text}`)
   const scores = await reranker(pairs)
-  
+
   return documents
     .map((doc, i) => ({ ...doc, score: scores[i].score }))
     .sort((a, b) => b.score - a.score)
 }
 ```
 
-## Diversity Filtering
+**Cross-Encoder vs. Bi-Encoder**:
+
+| Property | Bi-Encoder (Vector Search) | Cross-Encoder (Reranker) |
+|---|---|---|
+| Input | Query and document encoded separately | Query and document encoded together |
+| Speed | Fast (pre-computed embeddings) | Slow (must process each pair) |
+| Accuracy | Good (semantic similarity) | Excellent (token-level interaction) |
+| Use case | Stage 1: Retrieve 50-100 candidates | Stage 3: Rerank top 10-15 |
+
+### The "Semantic Threshold" Gate — Absolute Relevance Cutoffs
+
+An Architect's goal isn't just to sort — it's to **prune**. If your Cross-Encoder gives the #1 result a score of 0.9 and the #2 result a score of 0.1, your context window should only contain **one document**. Sending low-relevance noise to the LLM increases the chance of Reasoning Dilution.
+
+**Architect's Tip**: *"Don't just take the Top-5. If your Cross-Encoder gives the #1 result a score of 0.9 and the #2 result a score of 0.1, your context window should only contain one document. Sending low-relevance noise to the LLM increases the chance of Reasoning Dilution. Implement a 'Strict Gap' filter: if the score delta between consecutive documents is &gt;0.5, truncate the list immediately."*
 
 ```typescript
-function diversifyResults(results: Document[]): Document[] {
-  const diverse: Document[] = []
-  const seen = new Set<string>()
-  
-  for (const result of results) {
-    const key = extractKey(result) // e.g., source, topic
-    if (!seen.has(key)) {
-      diverse.push(result)
-      seen.add(key)
-    }
-    if (diverse.length &gt;= 5) break
+interface ThresholdConfig {
+  absoluteMinimum: number    // e.g., 0.3 — below this, document is noise
+  strictGapDelta: number     // e.g., 0.5 — gap between consecutive docs triggers cutoff
+  maxDocuments: number       // e.g., 5 — hard ceiling on context window
+  minDocuments: number       // e.g., 1 — always return at least this many
+}
+
+function applySemanticThreshold(
+  rerankedDocs: RankedDocument[],
+  config: ThresholdConfig = {
+    absoluteMinimum: 0.3,
+    strictGapDelta: 0.5,
+    maxDocuments: 5,
+    minDocuments: 1
   }
-  
+): { documents: RankedDocument[]; pruned: number; reason: string } {
+  const filtered: RankedDocument[] = []
+  let pruneReason = 'max_documents'
+
+  for (let i = 0; i < Math.min(rerankedDocs.length, config.maxDocuments); i++) {
+    const doc = rerankedDocs[i]
+
+    // Gate 1: Absolute minimum relevance
+    if (doc.score < config.absoluteMinimum && filtered.length >= config.minDocuments) {
+      pruneReason = `absolute_cutoff: doc #${i + 1} scored ${doc.score.toFixed(3)} < ${config.absoluteMinimum} threshold`
+      break
+    }
+
+    // Gate 2: Strict gap between consecutive documents
+    if (i > 0) {
+      const prevScore = rerankedDocs[i - 1].score
+      const gap = prevScore - doc.score
+
+      if (gap > config.strictGapDelta && filtered.length >= config.minDocuments) {
+        pruneReason = `strict_gap: ${gap.toFixed(3)} gap between #${i} and #${i + 1} exceeds ${config.strictGapDelta} threshold`
+        break
+      }
+    }
+
+    filtered.push(doc)
+  }
+
+  return {
+    documents: filtered,
+    pruned: rerankedDocs.length - filtered.length,
+    reason: pruneReason
+  }
+}
+
+// Example: How pruning prevents Reasoning Dilution
+async function precisionRerank(
+  query: string,
+  candidates: RankedDocument[]
+): Promise<RankedDocument[]> {
+  // Step 1: Rerank all candidates
+  const reranked = await rerank(query, candidates)
+
+  console.log('Reranked scores:')
+  reranked.forEach((doc, i) => {
+    console.log(`  #${i + 1}: ${doc.score.toFixed(3)} — ${doc.text.substring(0, 60)}`)
+  })
+
+  // Step 2: Apply semantic threshold
+  const result = applySemanticThreshold(reranked)
+
+  console.log(`\nPruned ${result.pruned} documents (${result.reason})`)
+  console.log(`Context window: ${result.documents.length} documents`)
+
+  return result.documents
+}
+
+/* Example Output:
+
+Reranked scores:
+  #1: 0.924 — RFC 6585 defines HTTP 429 Too Many Requests...
+  #2: 0.891 — Rate limiting prevents API abuse by controlling...
+  #3: 0.312 — HTTP status codes overview including 200, 404...  ← Gap: 0.579!
+  #4: 0.298 — Web server configuration and optimization...
+  #5: 0.104 — General networking concepts and protocols...
+
+Pruned 3 documents (strict_gap: 0.579 gap between #2 and #3 exceeds 0.5 threshold)
+Context window: 2 documents
+
+→ LLM only sees the 2 truly relevant documents, not 5 with 3 noise docs
+*/
+```
+
+**Impact of Semantic Thresholding**:
+
+| Scenario | Without Threshold | With Threshold | LLM Quality |
+|---|---|---|---|
+| 1 excellent + 4 noise | LLM sees 5 docs | LLM sees 1 doc | Precise answer vs. hedged response |
+| 3 strong + 2 weak | LLM sees 5 docs | LLM sees 3 docs | Focused synthesis vs. diluted reasoning |
+| 5 uniformly good | LLM sees 5 docs | LLM sees 5 docs | No change — threshold doesn't trigger |
+
+---
+
+## Pattern 2: Diversity Filtering with Maximal Marginal Relevance (MMR)
+
+If your Top-5 documents are all slight variations of the same paragraph, you aren't giving the LLM more information — you're just wasting tokens.
+
+**Architect's Tip**: *"If your Top-5 documents are all slight variations of the same paragraph, you aren't giving the LLM more information — you're just wasting tokens. Use MMR to select documents that are highly relevant to the query but dissimilar to each other. This ensures the LLM sees a '360-degree view' of the data, which is essential for complex synthesis tasks."*
+
+### The Problem: Echo Chamber Context
+
+```
+Query: "What are the side effects of ibuprofen?"
+
+Without MMR (Top 3 after reranking):
+1. "Ibuprofen side effects include nausea and stomach pain" (score: 0.95)
+2. "Common side effects of ibuprofen: nausea, stomach upset" (score: 0.93)
+3. "Ibuprofen may cause nausea and gastrointestinal discomfort" (score: 0.91)
+
+→ All 3 say the same thing! LLM wastes tokens, misses rare side effects.
+
+With MMR (Top 3 after diversity selection):
+1. "Ibuprofen side effects include nausea and stomach pain" (score: 0.95)
+2. "Rare ibuprofen effects: kidney damage, cardiovascular risk" (score: 0.82)
+3. "Drug interactions: ibuprofen with blood thinners increases bleeding" (score: 0.79)
+
+→ 360-degree view: common effects, rare effects, and interactions.
+```
+
+### MMR Implementation
+
+```typescript
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0, normA = 0, normB = 0
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i]
+    normA += a[i] * a[i]
+    normB += b[i] * b[i]
+  }
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB))
+}
+
+interface MMRConfig {
+  lambda: number     // 0-1: Balance between relevance (1.0) and diversity (0.0)
+  topK: number       // Number of documents to select
+}
+
+function maximalMarginalRelevance(
+  queryEmbedding: number[],
+  candidates: Array<{
+    doc: RankedDocument
+    embedding: number[]
+  }>,
+  config: MMRConfig = { lambda: 0.7, topK: 5 }
+): RankedDocument[] {
+  const selected: Array<{ doc: RankedDocument; embedding: number[] }> = []
+  const remaining = [...candidates]
+
+  while (selected.length < config.topK && remaining.length > 0) {
+    let bestIdx = -1
+    let bestMMR = -Infinity
+
+    for (let i = 0; i < remaining.length; i++) {
+      const candidate = remaining[i]
+
+      // Relevance: similarity to query
+      const relevance = cosineSimilarity(queryEmbedding, candidate.embedding)
+
+      // Diversity: max similarity to any already-selected document
+      let maxSimilarityToSelected = 0
+      for (const sel of selected) {
+        const sim = cosineSimilarity(candidate.embedding, sel.embedding)
+        maxSimilarityToSelected = Math.max(maxSimilarityToSelected, sim)
+      }
+
+      // MMR formula: λ × relevance - (1 - λ) × max_similarity_to_selected
+      const mmrScore =
+        config.lambda * relevance -
+        (1 - config.lambda) * maxSimilarityToSelected
+
+      if (mmrScore > bestMMR) {
+        bestMMR = mmrScore
+        bestIdx = i
+      }
+    }
+
+    if (bestIdx >= 0) {
+      selected.push(remaining[bestIdx])
+      remaining.splice(bestIdx, 1)
+    }
+  }
+
+  return selected.map(s => s.doc)
+}
+```
+
+**Lambda Tuning Guide**:
+
+| Lambda (λ) | Behavior | Use Case |
+|---|---|---|
+| 1.0 | Pure relevance (no diversity) | Simple factoid questions ("What is X?") |
+| 0.7 | Relevance-heavy with diversity | **Default — best for most RAG systems** |
+| 0.5 | Balanced | Synthesis tasks ("Compare X and Y") |
+| 0.3 | Diversity-heavy | Brainstorming, exploratory queries |
+
+### Combining MMR with Semantic Threshold
+
+```typescript
+async function precisionPipeline(
+  query: string,
+  queryEmbedding: number[],
+  candidates: Array<{ doc: RankedDocument; embedding: number[] }>
+): Promise<RankedDocument[]> {
+  // Step 1: Cross-encoder reranking (precision scoring)
+  const reranked = await rerank(
+    query,
+    candidates.map(c => c.doc)
+  )
+
+  // Step 2: Semantic threshold (prune noise)
+  const { documents: thresholded } = applySemanticThreshold(reranked)
+
+  // Step 3: MMR diversity (eliminate echo chambers)
+  const thresholdedWithEmbeddings = thresholded.map(doc => {
+    const original = candidates.find(c => c.doc.id === doc.id)!
+    return { doc, embedding: original.embedding }
+  })
+
+  const diverse = maximalMarginalRelevance(
+    queryEmbedding,
+    thresholdedWithEmbeddings,
+    { lambda: 0.7, topK: 5 }
+  )
+
+  console.log(
+    `Precision pipeline: ${candidates.length} candidates → ` +
+    `${reranked.length} reranked → ${thresholded.length} thresholded → ` +
+    `${diverse.length} diverse (final context)`
+  )
+
   return diverse
 }
 ```
 
-## Contextual Filtering
+---
+
+## Pattern 3: Pre-Retrieval Metadata Filtering
+
+**The Problem**: Filtering after retrieval is slow and destroys your recall budget.
+
+```
+❌ Anti-pattern: Post-retrieval filtering
+
+1. Retrieve 100 documents from vector DB
+2. Filter by date in JavaScript → 70 remain
+3. Filter by permission → 45 remain
+4. Rerank top 10 from 45
+
+Problem: You retrieved 100 documents but 55 were invalid!
+Those 55 slots could have held relevant, valid documents.
+Your recall budget was wasted on documents the user can't see.
+```
+
+**Architect's Tip**: *"Never retrieve 100 documents and then filter by 'Date' in JavaScript. This is slow and destroys your Recall. Your Query Architect must extract filters from the user's intent (e.g., 'last month') and pass them as Metadata Constraints directly to the Vector DB. This ensures your 'Wide Net' only contains valid candidates from the start, preserving your compute for the re-ranking stage."*
+
+### Pre-Retrieval Hard Filters
 
 ```typescript
-async function contextualFilter(
-  results: Document[],
-  userContext: UserContext
-): Promise<Document[]> {
-  return results.filter(doc => {
-    // Filter by date
-    if (userContext.dateRange && !inDateRange(doc.date, userContext.dateRange)) {
-      return false
-    }
-    
-    // Filter by permission
-    if (!userHasAccess(userContext.userId, doc)) {
-      return false
-    }
-    
-    return true
+interface MetadataFilter {
+  field: string
+  operator: 'eq' | 'gt' | 'lt' | 'gte' | 'lte' | 'in' | 'ne'
+  value: string | number | boolean | string[]
+}
+
+interface QueryPlan {
+  embedding: number[]          // Semantic search vector
+  metadataFilters: MetadataFilter[]  // Hard filters pushed to vector DB
+  topK: number                 // Candidates to retrieve
+}
+
+// Step 1: Extract filters from user intent
+function extractFiltersFromQuery(
+  query: string,
+  userContext: { userId: string; tenantId: string; role: string }
+): MetadataFilter[] {
+  const filters: MetadataFilter[] = []
+
+  // Always enforce tenant isolation (security: non-negotiable)
+  filters.push({
+    field: 'tenantId',
+    operator: 'eq',
+    value: userContext.tenantId
   })
+
+  // Always enforce access control
+  filters.push({
+    field: 'accessLevel',
+    operator: 'in',
+    value: getAccessibleLevels(userContext.role)
+  })
+
+  // Extract temporal filters from query
+  if (query.includes('last month') || query.includes('recent')) {
+    const oneMonthAgo = new Date()
+    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1)
+    filters.push({
+      field: 'publishedDate',
+      operator: 'gte',
+      value: oneMonthAgo.toISOString()
+    })
+  }
+
+  if (query.includes('this year') || query.includes('2026')) {
+    filters.push({
+      field: 'publishedDate',
+      operator: 'gte',
+      value: '2026-01-01T00:00:00Z'
+    })
+  }
+
+  // Extract document type filters
+  if (query.includes('policy') || query.includes('procedure')) {
+    filters.push({
+      field: 'documentType',
+      operator: 'in',
+      value: ['policy', 'procedure', 'guideline']
+    })
+  }
+
+  return filters
+}
+
+// Step 2: Push filters to vector DB query
+async function preFilteredRetrieval(
+  queryPlan: QueryPlan
+): Promise<RankedDocument[]> {
+  // Pinecone example: filters applied at the DB engine level
+  const results = await pineconeIndex.query({
+    vector: queryPlan.embedding,
+    topK: queryPlan.topK,
+    filter: buildPineconeFilter(queryPlan.metadataFilters),
+    includeMetadata: true
+  })
+
+  return results.matches.map(match => ({
+    id: match.id,
+    text: match.metadata?.text as string,
+    score: match.score ?? 0,
+    metadata: match.metadata
+  }))
+}
+
+// Convert generic filters to Pinecone filter syntax
+function buildPineconeFilter(
+  filters: MetadataFilter[]
+): Record<string, unknown> {
+  if (filters.length === 0) return {}
+
+  const conditions = filters.map(f => {
+    switch (f.operator) {
+      case 'eq':  return { [f.field]: { $eq: f.value } }
+      case 'gt':  return { [f.field]: { $gt: f.value } }
+      case 'lt':  return { [f.field]: { $lt: f.value } }
+      case 'gte': return { [f.field]: { $gte: f.value } }
+      case 'lte': return { [f.field]: { $lte: f.value } }
+      case 'in':  return { [f.field]: { $in: f.value } }
+      case 'ne':  return { [f.field]: { $ne: f.value } }
+    }
+  })
+
+  return conditions.length === 1
+    ? conditions[0]
+    : { $and: conditions }
 }
 ```
 
+**Pre-Retrieval vs. Post-Retrieval Filtering**:
+
+| Approach | Where Filtering Happens | Recall Impact | Latency | Security |
+|---|---|---|---|---|
+| **Post-retrieval** (JS filter) | After vector DB returns results | ❌ Wasted slots on invalid docs | ❌ Slower (retrieve + filter) | ⚠️ Invalid docs briefly in memory |
+| **Pre-retrieval** (DB filter) | Inside the vector DB engine | ✅ All slots are valid candidates | ✅ Faster (single DB call) | ✅ Invalid docs never leave DB |
+
+### The Complete Retrieval-to-Context Pipeline
+
+```typescript
+async function retrieveWithPrecision(
+  query: string,
+  queryEmbedding: number[],
+  userContext: { userId: string; tenantId: string; role: string }
+): Promise<RankedDocument[]> {
+  // Stage 0: Extract metadata filters from intent
+  const filters = extractFiltersFromQuery(query, userContext)
+  console.log(`Pre-retrieval filters: ${filters.length} constraints applied at DB level`)
+
+  // Stage 1: Pre-filtered vector + BM25 retrieval
+  const queryPlan: QueryPlan = {
+    embedding: queryEmbedding,
+    metadataFilters: filters,
+    topK: 50  // Wide net — but only valid candidates
+  }
+
+  const candidates = await preFilteredRetrieval(queryPlan)
+  console.log(`Stage 1: ${candidates.length} pre-filtered candidates`)
+
+  // Stage 2: Cross-encoder reranking
+  const reranked = await rerank(query, candidates.slice(0, 15))
+  console.log(`Stage 2: ${reranked.length} reranked`)
+
+  // Stage 3a: Semantic threshold (prune noise)
+  const { documents: thresholded, pruned } = applySemanticThreshold(reranked)
+  console.log(`Stage 3a: ${thresholded.length} after threshold (pruned ${pruned})`)
+
+  // Stage 3b: MMR diversity (eliminate echo chambers)
+  const candidatesWithEmbeddings = thresholded.map(doc => ({
+    doc,
+    embedding: queryEmbedding // Simplified — in production, use stored embeddings
+  }))
+
+  const final = maximalMarginalRelevance(
+    queryEmbedding,
+    candidatesWithEmbeddings,
+    { lambda: 0.7, topK: 5 }
+  )
+  console.log(`Stage 3b: ${final.length} diverse documents → LLM context`)
+
+  return final
+}
+
+/* Pipeline Summary:
+   50 pre-filtered candidates (DB-level)
+   → 15 reranked (cross-encoder)
+   → 8 thresholded (noise pruned)
+   → 5 diverse (MMR)
+   → LLM sees only the sharpest data
+*/
+```
+
+---
+
+## Signal-to-Noise Engineering Challenge
+
+**Scenario**: Your RAG system for a legal firm is retrieving 50 documents. 45 of them are "close" matches, but 5 are exact matches. Without a Re-ranker, the LLM is getting confused by the 45 "close" matches and missing the core legal precedent. What is your fix?
+
+**A)** Increase the context window to 1M tokens so it sees everything.
+
+**B)** Implement a **Cross-Encoder Re-ranker with a Sigmoid Cutoff**. The re-ranker will identify that the 5 exact matches have a significantly higher "Semantic Density." By applying a cutoff, you drop the 45 noisy documents before they hit the LLM, ensuring the model's reasoning is grounded only in the highest-quality signal.
+
+**C)** Tell the lawyers to write better queries.
+
+**D)** Use a more expensive embedding model for Stage 1.
+
+<details>
+<summary>Answer</summary>
+
+**B) Cross-Encoder Re-ranker with Sigmoid Cutoff** is the architect-level answer.
+
+- **Why not A?** A larger context window doesn't solve the Signal-to-Noise problem — it makes it worse. The LLM now has 1M tokens of mostly noise. Research shows that LLMs perform worse with more irrelevant context (the "Lost in the Middle" problem). The fix is sharper data, not more data.
+- **Why not C?** This is a systems engineering problem, not a user problem. The lawyers' queries are fine — "Find precedent for breach of fiduciary duty" is a perfectly valid legal query. The retrieval pipeline is failing to surface the right documents, and that's the architect's responsibility.
+- **Why not D?** A better embedding model improves Stage 1 recall, but it doesn't solve the precision problem. Even with perfect embeddings, cosine similarity cannot distinguish between "semantically close" and "legally on point." That requires the token-level interaction of a cross-encoder.
+- **Why B?** The Cross-Encoder + Cutoff approach solves both problems:
+  1. **Cross-encoder reranking** scores each (query, document) pair by reading both texts together — it can distinguish "close match" from "exact precedent"
+  2. **Sigmoid cutoff** (semantic threshold) drops documents below the relevance floor — the 45 "close" matches score 0.2-0.4 while the 5 exact matches score 0.85-0.95
+  3. **Result**: LLM receives only the 5 on-point precedents, not 50 documents where 90% are noise
+  4. **Bonus**: Fewer tokens in context = faster inference, lower cost, and more focused reasoning
+
+**The Architect's Insight**: An Architect doesn't just provide "more" data; they provide "sharper" data. The precision pipeline (rerank → threshold → diversify) ensures every token in the LLM's context window earns its place.
+
+</details>
+
+---
+
+## Key Takeaways
+
+**Cross-Encoder Reranking**:
+- Scores (query, document) pairs with full token-level interaction — far more accurate than vector similarity
+- **Apply semantic thresholds**: Absolute minimum cutoff (0.3) and strict gap filter (&gt;0.5 delta truncates the list)
+- Don't just take the Top-K — prune noise to prevent **Reasoning Dilution** in the LLM
+
+**MMR Diversity Selection**:
+- Prevents "echo chamber" context where all documents say the same thing
+- Lambda = 0.7 is the default — balance relevance (high) with diversity (moderate)
+- Essential for **synthesis tasks** where the LLM needs a 360-degree view of the data
+
+**Pre-Retrieval Metadata Filtering**:
+- **Push filters to the vector DB engine** — never retrieve-then-filter in application code
+- Extract temporal, permission, and document type constraints from user intent
+- Pre-filtering preserves your recall budget: all 50 retrieved slots contain valid candidates
+
+**The Precision Pipeline**:
+- 50 pre-filtered candidates (DB-level metadata filters)
+- → 15 reranked (cross-encoder precision scoring)
+- → 8 thresholded (noise pruned via semantic cutoff)
+- → 5 diverse (MMR eliminates echo chambers)
+- → LLM sees only the sharpest, most relevant data
+
+**The Architect's Responsibility**:
+You **own** retrieval quality. If the LLM hallucinates because of noisy context, **you failed to prune**. If the answer misses a critical perspective, **you failed to diversify**. If the user sees documents they shouldn't, **you failed to pre-filter**.
+
 ## Resources
-- [Cohere Rerank](https://docs.cohere.com/docs/rerank)
+
+- [Cohere Rerank](https://docs.cohere.com/docs/rerank) — Production reranking API
+- [Maximal Marginal Relevance (Carbonell & Goldstein 1998)](https://www.cs.cmu.edu/~jgc/publication/The_Use_MMR_Diversity_Based_LTMIR_1998.pdf) — Original MMR paper
+- [Pinecone Metadata Filtering](https://docs.pinecone.io/docs/metadata-filtering) — Pre-retrieval filter syntax
+- [Lost in the Middle (Liu et al. 2023)](https://arxiv.org/abs/2307.03172) — Why more context hurts LLM accuracy
