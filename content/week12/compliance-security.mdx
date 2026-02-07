@@ -733,6 +733,128 @@ const gateway = new PIIFirewallGateway({
 
 ---
 
+## Regional Data Residency Enforcement
+
+**Architect's Tip — Geographic Data Sovereignty (GDPR Art. 44 / Schrems II)**: "In 2026, enterprise architecture is about **Sovereignty**. GDPR Article 44 prohibits transfer of personal data to countries without adequate protection — and after Schrems II invalidated the EU-US Privacy Shield, you cannot process EU data in US regions without explicit Binding Corporate Rules (BCRs) or Standard Contractual Clauses (SCCs). You must deploy **Cells** — complete, isolated stacks including DB, Vector Store, and LLM Gateway — in specific regions (e.g., EU-West-1). Use a **Global Tenant Router** to ensure a German client's data never leaves the EU, even for inference. This is the only way to win 7-figure contracts with global banks and healthcare providers."
+
+```typescript
+/**
+ * Data Residency Compliance Enforcer
+ *
+ * Problem: A single-region deployment can't satisfy GDPR's
+ * data residency requirements. Sending an EU user's query
+ * to a US-hosted LLM API is a compliance violation — even
+ * if the data is encrypted in transit.
+ *
+ * Solution: Enforce data residency at the request routing layer.
+ * Every request is checked against the tenant's legal jurisdiction
+ * before any data leaves the region. Violations are blocked and
+ * logged to the Sovereign Audit Log.
+ *
+ * Interview Defense: "We enforce data residency at the network
+ * layer, not the application layer. Our Global Tenant Router
+ * checks the tenant's jurisdiction before routing any request.
+ * A German client's data never leaves EU-West-1 — not for
+ * processing, not for logging, not for backups."
+ */
+
+interface DataResidencyPolicy {
+  tenantId: string
+  jurisdiction: 'EU' | 'US' | 'APAC' | 'UK'
+  framework: 'GDPR' | 'HIPAA' | 'CCPA' | 'PDPA'
+  allowedRegions: string[]        // e.g., ['eu-west-1', 'eu-central-1']
+  crossBorderBasis?: 'BCR' | 'SCC' | 'ADEQUACY_DECISION' | 'NONE'
+  llmProviderConstraints: {
+    allowedProviders: string[]    // e.g., ['anthropic-eu', 'azure-eu']
+    blockedProviders: string[]    // e.g., ['openai-us'] (no EU endpoint)
+  }
+}
+
+class DataResidencyEnforcer {
+  private policies: Map<string, DataResidencyPolicy>
+
+  async enforceResidency(
+    tenantId: string,
+    requestRegion: string,
+    targetService: 'database' | 'vectorStore' | 'llmGateway' | 'storage'
+  ): Promise<{
+    allowed: boolean
+    violation?: string
+    remediation?: string
+  }> {
+    const policy = this.policies.get(tenantId)
+    if (!policy) {
+      return { allowed: false, violation: 'No residency policy found' }
+    }
+
+    // Check if target region is within allowed regions
+    if (!policy.allowedRegions.includes(requestRegion)) {
+      // Log violation to Sovereign Audit Log
+      await this.logResidencyViolation({
+        tenantId,
+        attemptedRegion: requestRegion,
+        allowedRegions: policy.allowedRegions,
+        framework: policy.framework,
+        service: targetService
+      })
+
+      return {
+        allowed: false,
+        violation: `${policy.framework} violation: Cannot route ` +
+          `${targetService} to ${requestRegion}. ` +
+          `Allowed regions: ${policy.allowedRegions.join(', ')}`,
+        remediation: policy.crossBorderBasis === 'NONE'
+          ? 'No cross-border transfer basis exists. Data must stay in-region.'
+          : `Cross-border transfer requires ${policy.crossBorderBasis} agreement.`
+      }
+    }
+
+    return { allowed: true }
+  }
+
+  async validateLLMProvider(
+    tenantId: string,
+    provider: string
+  ): Promise<boolean> {
+    const policy = this.policies.get(tenantId)
+    if (!policy) return false
+
+    if (policy.llmProviderConstraints.blockedProviders.includes(provider)) {
+      await this.logResidencyViolation({
+        tenantId,
+        violation: `Blocked LLM provider: ${provider}`,
+        framework: policy.framework,
+        service: 'llmGateway'
+      })
+      return false
+    }
+
+    return policy.llmProviderConstraints.allowedProviders.includes(provider)
+  }
+
+  private async logResidencyViolation(details: any): Promise<void> {
+    console.error('[DATA RESIDENCY VIOLATION]', details)
+    // Write to Sovereign Audit Log with CRITICAL severity
+  }
+}
+
+// Data residency compliance matrix:
+//
+// | Jurisdiction | Framework   | Allowed Regions         | LLM Providers     |
+// |-------------|-------------|-------------------------|-------------------|
+// | EU          | GDPR        | eu-west-1, eu-central-1 | anthropic-eu,     |
+// |             |             |                         | azure-eu          |
+// | US          | HIPAA       | us-east-1, us-west-2    | anthropic-us,     |
+// |             |             |                         | openai-us         |
+// | UK          | UK-GDPR     | eu-west-2               | anthropic-eu,     |
+// |             |             |                         | azure-uk          |
+// | APAC        | PDPA        | ap-southeast-1          | anthropic-apac    |
+//
+// Key: After Schrems II, EU → US transfers require SCCs or BCRs.
+// An EU tenant's data processed by a US-only LLM provider = GDPR violation.
+// Cell-Based Architecture eliminates this risk by keeping ALL processing in-region.
+```
+
 ## Audit Logging
 
 **Simple Explanation**: Keep a detailed record of who accessed what data, when, and why. Essential for security investigations and compliance audits.
@@ -881,6 +1003,190 @@ export async function POST(req: Request) {
 
   // ... rest of handler
 }
+```
+
+### Tamper-Evident Audit Integrity (Forensic-Grade Logging)
+
+**Architect's Tip — Cryptographic Hash Chaining**: "An audit log is only 'Sovereign' if it is **immutable**. A standard database table can be quietly modified by any DBA with admin access — and no auditor would ever know. Implement a **Hash Chain**: every log entry must contain the cryptographic hash of the previous entry. Periodically **anchor** these hashes into Write-Once-Read-Many (WORM) storage. If a single entry is altered or deleted, the Chain of Trust breaks, providing absolute proof to auditors that the system's governance record is intact."
+
+```typescript
+/**
+ * Hash-Chained Audit Logger (Forensic-Grade)
+ *
+ * Problem: A standard audit_log table can be modified by any
+ * database admin. INSERT, UPDATE, DELETE are all possible.
+ * During a compliance audit, the auditor asks: "How do I know
+ * no one deleted a log entry?" With a standard table, you can't
+ * prove it.
+ *
+ * Solution: Each log entry includes the SHA-256 hash of the
+ * previous entry, forming an unbreakable chain. If any entry
+ * is modified or deleted, subsequent hashes won't match.
+ * Auditors verify the chain in O(n) — or use Merkle anchors
+ * for O(log n) spot checks.
+ *
+ * Interview Defense: "Every audit entry is hash-chained to
+ * the previous one. We anchor Merkle Roots to WORM storage
+ * every 1,000 entries. If a DBA deletes a single entry, the
+ * chain breaks and the next verification catches it. We can
+ * prove to any auditor that our governance record is intact."
+ */
+
+class HashChainedAuditLogger {
+  private previousHash: string = '0'.repeat(64) // Genesis hash
+
+  async appendEntry(event: AuditEvent): Promise<{
+    entryId: string
+    hash: string
+    chainPosition: number
+  }> {
+    const entryId = crypto.randomUUID()
+    const chainPosition = await this.getNextPosition()
+
+    // Build entry payload (deterministic serialization)
+    const payload = JSON.stringify({
+      entryId,
+      chainPosition,
+      previousHash: this.previousHash,
+      timestamp: event.timestamp.toISOString(),
+      userId: event.userId,
+      action: event.action,
+      resource: event.resource,
+      result: event.result,
+      metadata: event.metadata
+    })
+
+    // Compute SHA-256 hash
+    const hash = crypto
+      .createHash('sha256')
+      .update(payload)
+      .digest('hex')
+
+    // Write to append-only storage
+    await prisma.$executeRaw`
+      INSERT INTO audit_chain (
+        entry_id, chain_position, previous_hash, hash,
+        timestamp, user_id, action, resource, result, metadata
+      ) VALUES (
+        ${entryId}, ${chainPosition}, ${this.previousHash}, ${hash},
+        ${event.timestamp}, ${event.userId}, ${event.action},
+        ${event.resource}, ${event.result},
+        ${JSON.stringify(event.metadata)}
+      )
+    `
+
+    // Update chain state
+    this.previousHash = hash
+
+    // Anchor to WORM storage every 1,000 entries
+    if (chainPosition % 1000 === 0) {
+      await this.anchorToWORM(chainPosition, hash)
+    }
+
+    return { entryId, hash, chainPosition }
+  }
+
+  async verifyChainIntegrity(
+    startPosition: number,
+    endPosition: number
+  ): Promise<{
+    valid: boolean
+    brokenAt?: number
+    entriesVerified: number
+  }> {
+    const entries = await prisma.$queryRaw`
+      SELECT * FROM audit_chain
+      WHERE chain_position BETWEEN ${startPosition} AND ${endPosition}
+      ORDER BY chain_position ASC
+    ` as any[]
+
+    for (let i = 1; i < entries.length; i++) {
+      const current = entries[i]
+      const previous = entries[i - 1]
+
+      // Verify chain link
+      if (current.previous_hash !== previous.hash) {
+        return {
+          valid: false,
+          brokenAt: current.chain_position,
+          entriesVerified: i
+        }
+      }
+
+      // Verify hash integrity (recompute and compare)
+      const recomputed = this.recomputeHash(current)
+      if (recomputed !== current.hash) {
+        return {
+          valid: false,
+          brokenAt: current.chain_position,
+          entriesVerified: i
+        }
+      }
+    }
+
+    return { valid: true, entriesVerified: entries.length }
+  }
+
+  private recomputeHash(entry: any): string {
+    const payload = JSON.stringify({
+      entryId: entry.entry_id,
+      chainPosition: entry.chain_position,
+      previousHash: entry.previous_hash,
+      timestamp: entry.timestamp,
+      userId: entry.user_id,
+      action: entry.action,
+      resource: entry.resource,
+      result: entry.result,
+      metadata: entry.metadata
+    })
+
+    return crypto.createHash('sha256').update(payload).digest('hex')
+  }
+
+  private async anchorToWORM(
+    position: number,
+    hash: string
+  ): Promise<void> {
+    // Write checkpoint to S3 with Object Lock (immutable)
+    await s3.putObject({
+      Bucket: 'audit-chain-anchors',
+      Key: `anchor-${position}.json`,
+      Body: JSON.stringify({
+        position, hash,
+        anchoredAt: new Date().toISOString()
+      }),
+      ObjectLockMode: 'COMPLIANCE',
+      ObjectLockRetainUntilDate: new Date(
+        Date.now() + 7 * 365 * 24 * 60 * 60 * 1000 // 7 years
+      )
+    })
+  }
+
+  private async getNextPosition(): Promise<number> {
+    const result = await prisma.$queryRaw`
+      SELECT COALESCE(MAX(chain_position), 0) + 1 as next
+      FROM audit_chain
+    ` as any[]
+    return result[0].next
+  }
+}
+
+// Chain verification during compliance audit:
+//
+// Auditor: "Prove that no governance events were deleted in Q4 2025."
+//
+// const logger = new HashChainedAuditLogger()
+// const result = await logger.verifyChainIntegrity(45000, 52000)
+//
+// If result.valid === true:
+//   "All 7,000 entries verified. Chain is intact. No tampering detected."
+//
+// If result.valid === false:
+//   "Chain broken at position 48,231. Entry was modified or deleted."
+//   → This triggers an automatic security incident
+//   → The WORM-anchored checkpoint at position 48,000 proves
+//     the chain was intact up to that point
+//   → The tampering occurred between positions 48,000 and 48,231
 ```
 
 ## Encryption
