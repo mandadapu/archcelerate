@@ -1,104 +1,1016 @@
 ---
-title: "Observability Basics for AI Systems"
-description: "Understanding observability fundamentals for production AI applications"
-estimatedMinutes: 30
+title: "Request Tracing & Distributed Observability"
+description: "Distributed semantic telemetry, OpenTelemetry standardization, and context-linked tracing for production RAG systems"
+estimatedMinutes: 45
 ---
 
-# Observability Basics for AI Systems
+# Request Tracing & Distributed Observability
 
-## Introduction
+## From Black Box to Glass Box
 
-Observability is the ability to understand the internal state of your system by examining its outputs. For AI systems, this is crucial because LLM behavior can be unpredictable and expensive.
+**Prototype RAG**: "The AI gave a wrong answer. Not sure why."
+
+**Enterprise RAG**: "Trace ID `abc-123` shows the retrieval step returned 5 chunks with avg similarity 0.42 (below threshold 0.65). The LLM used embedding model `voyage-v1.2` which is outdated. The top-ranked chunk ID `chunk_456` contains incorrect data. I can replay this exact request and fix the root cause."
+
+This is the difference between a **black box** and a **fully observable architecture**.
+
+---
 
 ## The Three Pillars of Observability
 
-### 1. Logs
-Structured records of events happening in your system:
-- User queries and system responses
-- Token usage and costs
-- Error messages and stack traces
-- Performance metrics
+### Pillar 1: Logs
 
-### 2. Metrics
-Quantitative measurements over time:
-- Request latency (P50, P95, P99)
-- Token consumption rates
-- Cost per request
-- Error rates
-- Cache hit rates
+**Definition**: Structured records of discrete events
 
-### 3. Traces
-End-to-end request flows:
-- User request → RAG retrieval → LLM call → Response
-- Identifying bottlenecks
-- Understanding dependencies
-- Debugging failures
-
-## Why Observability Matters for AI
-
-**Cost Management**
-- LLM API calls are expensive ($0.01-$0.60 per 1K tokens)
-- Track spending per user, feature, and endpoint
-- Identify cost optimization opportunities
-
-**Quality Assurance**
-- Monitor response quality
-- Detect hallucinations and errors
-- Track user satisfaction
-
-**Performance**
-- Identify slow queries
-- Optimize retrieval pipelines
-- Reduce latency
-
-## Key Metrics to Track
+**Use Case**: "What happened?"
 
 ```typescript
-interface AISystemMetrics {
-  // Latency
-  responseTimeMs: number
-  retrievalTimeMs: number
-  llmTimeMs: number
-
-  // Cost
-  inputTokens: number
-  outputTokens: number
-  totalCost: number
-
-  // Quality
-  userFeedback: 'positive' | 'negative' | null
-  hallucination: boolean
-
-  // Context
-  documentsRetrieved: number
-  cacheHit: boolean
+// Example: Structured log entry
+{
+  "timestamp": "2024-01-15T10:32:17Z",
+  "level": "ERROR",
+  "message": "LLM API call failed",
+  "error": "Rate limit exceeded",
+  "user_id": "user_123",
+  "tenant_id": "tenant_456"
 }
 ```
 
-## Observability Tools
+**Strength**: Good for debugging specific errors
+**Weakness**: Can't see relationships between events across services
 
-**Popular Platforms:**
-- **LangSmith** - LangChain's observability platform
-- **Weights & Biases** - ML experiment tracking
-- **Helicone** - LLM observability and caching
-- **Datadog / New Relic** - General APM with AI extensions
+---
 
-**Open Source:**
-- **OpenTelemetry** - Vendor-neutral observability framework
-- **Prometheus + Grafana** - Metrics and dashboards
-- **Jaeger** - Distributed tracing
+### Pillar 2: Metrics
 
-## Best Practices
+**Definition**: Quantitative measurements over time
 
-1. **Log Everything** - You can't optimize what you don't measure
-2. **Use Structured Logging** - JSON logs are easier to query
-3. **Set Alerts** - Be notified of anomalies before users complain
-4. **Track Costs** - Set budgets and alerts
-5. **Monitor Quality** - Track user feedback and model outputs
+**Use Case**: "How much/many?"
 
-## Next Steps
+```typescript
+interface SystemMetrics {
+  requests_per_second: number
+  p95_latency_ms: number
+  cost_per_1k_requests: number
+  cache_hit_rate: number
+}
 
-In the following lessons, you'll learn:
-- How to implement monitoring in production
-- Caching strategies to reduce costs
-- Deploying AI systems reliably
+// Example: Track token usage over time
+await prometheus.gauge('llm.tokens.input', inputTokens)
+await prometheus.gauge('llm.tokens.output', outputTokens)
+await prometheus.gauge('llm.cost.usd', cost)
+```
+
+**Strength**: Good for monitoring trends and setting alerts
+**Weakness**: Can't diagnose why a specific request was slow
+
+---
+
+### Pillar 3: Traces
+
+**Definition**: End-to-end request flows with timing and metadata
+
+**Use Case**: "Where is the bottleneck?"
+
+```typescript
+/**
+ * Distributed Trace: Single request across multiple services
+ *
+ * Request Flow:
+ * User Query → API Gateway → RAG Service → Vector DB → LLM → Response
+ *
+ * Trace shows:
+ * - Total time: 2,340ms
+ * - Embedding: 120ms
+ * - Vector search: 450ms
+ * - Re-ranking: 850ms ← BOTTLENECK
+ * - LLM call: 920ms
+ */
+interface DistributedTrace {
+  trace_id: string              // Unique ID for entire request
+  spans: Span[]                 // Individual operations
+  total_duration_ms: number
+  status: 'success' | 'error'
+}
+
+interface Span {
+  span_id: string               // Unique ID for this operation
+  parent_span_id?: string       // Parent operation (if nested)
+  name: string                  // e.g., "vector_search", "llm_call"
+  start_time: Date
+  end_time: Date
+  duration_ms: number
+  attributes: Record<string, any>  // Metadata (model, tokens, etc.)
+  status: 'ok' | 'error'
+}
+```
+
+**Strength**: Shows relationships and bottlenecks across distributed systems
+**Weakness**: Requires instrumentation across all services
+
+---
+
+## 1. Span-Level Retrieval Audit: Sub-Span Metadata Enrichment
+
+### The Problem with Coarse-Grained Traces
+
+**Observation**: A trace that says "Retrieval took 450ms" is not actionable. Was it slow because of:
+- Network latency?
+- Slow vector database index?
+- Weak embedding match (low similarity scores)?
+- Large result set (10K docs)?
+
+**Architect's Insight**: Every span should carry **semantic metadata** about the quality and configuration of that operation.
+
+### The Rigorous Solution: Enriched Retrieval Spans
+
+**Architecture**: Each retrieval span includes:
+1. **Recall@K score**: Quality of retrieval (0-1)
+2. **Embedding model version**: Which model was used
+3. **Vector similarity threshold**: Minimum score for inclusion
+4. **Top result similarity**: Best match score
+5. **Avg similarity**: Average of top-K results
+6. **Result count**: How many docs retrieved
+
+```typescript
+/**
+ * Enriched Retrieval Span with Semantic Metadata
+ *
+ * This allows instant diagnosis:
+ * - Low Recall@K + high latency → Improve search algorithm
+ * - High Recall@K + low latency + wrong answer → LLM problem
+ * - Low top_similarity → Embedding model outdated
+ */
+interface EnrichedRetrievalSpan extends Span {
+  name: 'retrieval.vector_search' | 'retrieval.rerank' | 'retrieval.hybrid'
+
+  attributes: {
+    // Configuration
+    'db.system': 'pgvector' | 'pinecone' | 'qdrant'
+    'db.index_type': 'hnsw' | 'ivfflat'
+    'embedding.model': string           // e.g., "voyage-medical-v1.2"
+    'embedding.model_version': string   // e.g., "20240115"
+    'embedding.dimensions': number      // e.g., 1536
+
+    // Search parameters
+    'search.limit': number              // How many docs requested
+    'search.similarity_threshold': number  // e.g., 0.65
+    'search.similarity_metric': 'cosine' | 'euclidean' | 'dot_product'
+
+    // Quality metrics (CRITICAL)
+    'search.recall_at_k': number        // 0-1 (from eval dataset)
+    'search.top_similarity': number     // Best match score
+    'search.avg_similarity': number     // Average of top-K
+    'search.results_count': number      // Actual docs returned
+
+    // Performance
+    'search.latency_ms': number
+    'search.scanned_vectors': number    // Database scan size
+
+    // Context linking (see Pattern 3)
+    'search.top_chunk_id': string       // ID of best match
+    'search.retrieved_chunk_ids': string[]  // All chunk IDs
+  }
+}
+
+/**
+ * Create enriched retrieval span
+ */
+async function traceVectorSearch(
+  tracer: Tracer,
+  query: string,
+  config: SearchConfig
+): Promise<Chunk[]> {
+  const span = tracer.startSpan('retrieval.vector_search', {
+    attributes: {
+      // Configuration metadata
+      'db.system': 'pgvector',
+      'db.index_type': 'hnsw',
+      'embedding.model': 'voyage-medical-v1.2',
+      'embedding.model_version': '20240115',
+      'embedding.dimensions': 1536,
+
+      // Search parameters
+      'search.limit': config.limit,
+      'search.similarity_threshold': config.minScore,
+      'search.similarity_metric': 'cosine'
+    }
+  })
+
+  try {
+    const start = Date.now()
+
+    // Perform search
+    const queryEmbedding = await embed(query)
+    const results = await vectorDb.search(queryEmbedding, config)
+
+    const latency = Date.now() - start
+
+    // Calculate quality metrics
+    const topSimilarity = results[0]?.score || 0
+    const avgSimilarity = results.reduce((sum, r) => sum + r.score, 0) / results.length
+
+    // Recall@K (from pre-computed eval dataset)
+    const recallAtK = await getRecallForQuery(query, results.map(r => r.id))
+
+    // Enrich span with semantic metadata
+    span.setAttributes({
+      // Quality metrics (CRITICAL for diagnosis)
+      'search.recall_at_k': recallAtK,
+      'search.top_similarity': topSimilarity,
+      'search.avg_similarity': avgSimilarity,
+      'search.results_count': results.length,
+
+      // Performance
+      'search.latency_ms': latency,
+      'search.scanned_vectors': await getVectorCount(),
+
+      // Context linking
+      'search.top_chunk_id': results[0]?.id || null,
+      'search.retrieved_chunk_ids': results.map(r => r.id)
+    })
+
+    span.setStatus({ code: SpanStatusCode.OK })
+    span.end()
+
+    console.log(`🔍 Vector search complete:`)
+    console.log(`   Latency: ${latency}ms`)
+    console.log(`   Top similarity: ${(topSimilarity * 100).toFixed(1)}%`)
+    console.log(`   Avg similarity: ${(avgSimilarity * 100).toFixed(1)}%`)
+    console.log(`   Recall@${config.limit}: ${(recallAtK * 100).toFixed(1)}%`)
+
+    return results
+
+  } catch (error) {
+    span.recordException(error)
+    span.setStatus({ code: SpanStatusCode.ERROR })
+    span.end()
+    throw error
+  }
+}
+```
+
+### Production Debugging with Enriched Spans
+
+**Scenario**: User reports "AI gave wrong answer about patient medication"
+
+**Without enriched spans**:
+```
+Trace abc-123:
+  ├─ retrieval: 450ms ✅ (looks fine)
+  └─ llm_call: 920ms ✅ (looks fine)
+
+Total: 1,370ms ✅
+
+Diagnosis: ??? (everything looks normal)
+```
+
+**With enriched spans**:
+```
+Trace abc-123:
+  ├─ retrieval.vector_search: 450ms
+  │  ├─ search.recall_at_k: 0.42 ❌ (target >0.80)
+  │  ├─ search.top_similarity: 0.58 ❌ (below threshold 0.65)
+  │  ├─ search.avg_similarity: 0.51 ❌ (weak matches)
+  │  ├─ embedding.model: "voyage-medical-v1.0" ⚠️ (OUTDATED)
+  │  └─ search.top_chunk_id: "chunk_456"
+  │
+  └─ llm_call: 920ms
+     └─ llm.model: "claude-3-opus-20240229"
+
+Diagnosis: FOUND IT!
+- Recall@K is 0.42 (should be >0.80) → Retrieval problem
+- Top similarity 0.58 (below 0.65 threshold) → Weak embedding match
+- Embedding model "v1.0" is outdated → Upgrade to "v1.2"
+- Chunk ID "chunk_456" is top match → Inspect this document
+
+Action:
+1. Upgrade embedding model: v1.0 → v1.2
+2. Re-index all documents with new embeddings
+3. Inspect chunk_456 for data quality issues
+```
+
+**Production Impact**:
+- **Before**: 2 hours debugging (manual query testing)
+- **After**: 30 seconds diagnosis (query trace by ID)
+- **MTTR** (Mean Time To Resolution): 2 hours → 5 minutes (-96%)
+
+### Interview Defense Template
+
+**Q**: "How do you debug a RAG system that gives wrong answers?"
+
+**A**: "We use **span-level metadata enrichment** in our distributed traces. Every retrieval span includes semantic metrics like Recall@K, top similarity score, and embedding model version.
+
+When a user reports a wrong answer, I query the trace by request ID and instantly see:
+- If Recall@K is low (e.g., 0.42) → Retrieval problem (bad search)
+- If top similarity is low (e.g., 0.58) → Embedding mismatch (outdated model)
+- If both are high but answer is wrong → LLM problem (hallucination)
+
+This diagnostic metadata reduced our MTTR from 2 hours to 5 minutes—a 96% improvement. The key insight: **Timing alone is not enough. You need quality metrics in every span.**"
+
+### ROI: Faster Incident Response
+
+**Production Scenario**: Healthcare RAG (100 incidents/month)
+
+**Before Enriched Spans**:
+- MTTR: 2 hours per incident (manual debugging)
+- Engineering cost: 2 hours × $150/hour × 100 = $30K/month
+- User impact: 200 hours downtime/month
+
+**After Enriched Spans**:
+- MTTR: 5 minutes per incident (instant trace diagnosis)
+- Engineering cost: 5 min × $150/hour × 100 = $1.25K/month
+- User impact: 8.3 hours downtime/month
+
+**ROI**: $28.75K/month saved ($345K/year)
+
+---
+
+## 2. OpenTelemetry Standardization: GenAI OTel for Vendor Neutrality
+
+### The Vendor Lock-In Problem
+
+**Observation**: Proprietary observability tools (LangSmith, Helicone) are great for development, but they create vendor lock-in.
+
+**Example**:
+- Year 1: Use LangSmith (tight LangChain integration)
+- Year 2: Migrate from LangChain to custom framework
+- Year 3: Migrate from Datadog to New Relic (cost reduction)
+- **Problem**: All your instrumentation is LangSmith-specific. Migration requires rewriting all tracing code.
+
+**Architect's Insight**: Standardize on **OpenTelemetry** (OTel) for vendor-neutral observability.
+
+### The Rigorous Solution: GenAI Semantic Conventions
+
+**OpenTelemetry** is an open-source observability framework with:
+1. **Vendor-neutral APIs**: Instrument once, send to any backend (Datadog, New Relic, Jaeger, etc.)
+2. **Semantic conventions**: Standardized attribute names (e.g., `gen_ai.request.model`, `gen_ai.usage.input_tokens`)
+3. **Community support**: Maintained by CNCF (Cloud Native Computing Foundation)
+
+```typescript
+/**
+ * OpenTelemetry Instrumentation for GenAI (Standardized)
+ *
+ * Semantic Conventions:
+ * https://opentelemetry.io/docs/specs/semconv/gen-ai/
+ */
+import { trace, SpanStatusCode } from '@opentelemetry/api'
+import { Resource } from '@opentelemetry/resources'
+import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions'
+import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node'
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base'
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
+
+// Initialize OpenTelemetry
+const provider = new NodeTracerProvider({
+  resource: new Resource({
+    [SemanticResourceAttributes.SERVICE_NAME]: 'rag-service',
+    [SemanticResourceAttributes.SERVICE_VERSION]: '1.2.0',
+    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'production'
+  })
+})
+
+// Export to Datadog (or any OTLP-compatible backend)
+const exporter = new OTLPTraceExporter({
+  url: 'https://api.datadoghq.com/api/v2/logs',
+  headers: {
+    'DD-API-KEY': process.env.DATADOG_API_KEY
+  }
+})
+
+provider.addSpanProcessor(new BatchSpanProcessor(exporter))
+provider.register()
+
+const tracer = trace.getTracer('rag-service', '1.2.0')
+
+/**
+ * Trace LLM call with GenAI semantic conventions
+ */
+async function traceLLMCall(
+  prompt: string,
+  systemPrompt: string
+): Promise<string> {
+  const span = tracer.startSpan('gen_ai.chat.completions', {
+    attributes: {
+      // GenAI Semantic Conventions (STANDARDIZED)
+      'gen_ai.system': 'anthropic',
+      'gen_ai.request.model': 'claude-3-5-sonnet-20241022',
+      'gen_ai.request.max_tokens': 1024,
+      'gen_ai.request.temperature': 0.0,
+      'gen_ai.request.top_p': 1.0,
+
+      // Custom metadata
+      'gen_ai.prompt.hash': hashPrompt(prompt + systemPrompt),
+      'gen_ai.prompt.length': prompt.length + systemPrompt.length
+    }
+  })
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 1024,
+      temperature: 0.0,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: prompt }]
+    })
+
+    // Enrich span with response metadata (STANDARDIZED)
+    span.setAttributes({
+      'gen_ai.usage.input_tokens': response.usage.input_tokens,
+      'gen_ai.usage.output_tokens': response.usage.output_tokens,
+      'gen_ai.usage.total_tokens': response.usage.input_tokens + response.usage.output_tokens,
+
+      // Cost calculation (custom)
+      'gen_ai.cost.input_usd': response.usage.input_tokens * 0.000003,
+      'gen_ai.cost.output_usd': response.usage.output_tokens * 0.000015,
+      'gen_ai.cost.total_usd':
+        response.usage.input_tokens * 0.000003 +
+        response.usage.output_tokens * 0.000015,
+
+      // Response metadata
+      'gen_ai.response.finish_reason': response.stop_reason,
+      'gen_ai.response.id': response.id
+    })
+
+    span.setStatus({ code: SpanStatusCode.OK })
+    span.end()
+
+    return response.content[0].text
+
+  } catch (error) {
+    span.recordException(error)
+    span.setStatus({ code: SpanStatusCode.ERROR, message: error.message })
+    span.end()
+    throw error
+  }
+}
+
+/**
+ * Trace embedding generation
+ */
+async function traceEmbedding(text: string): Promise<number[]> {
+  const span = tracer.startSpan('gen_ai.embedding', {
+    attributes: {
+      // GenAI Semantic Conventions
+      'gen_ai.system': 'voyage',
+      'gen_ai.request.model': 'voyage-medical-v1.2',
+      'gen_ai.embedding.dimensions': 1536,
+
+      // Input metadata
+      'gen_ai.input.length': text.length,
+      'gen_ai.input.tokens': countTokens(text)
+    }
+  })
+
+  try {
+    const embedding = await voyageai.embed({
+      model: 'voyage-medical-v1.2',
+      input: text
+    })
+
+    span.setAttributes({
+      'gen_ai.usage.total_tokens': embedding.usage.total_tokens,
+      'gen_ai.cost.total_usd': embedding.usage.total_tokens * 0.0001
+    })
+
+    span.setStatus({ code: SpanStatusCode.OK })
+    span.end()
+
+    return embedding.data[0].embedding
+
+  } catch (error) {
+    span.recordException(error)
+    span.setStatus({ code: SpanStatusCode.ERROR })
+    span.end()
+    throw error
+  }
+}
+```
+
+### Vendor Portability
+
+**Scenario**: Migrate from Datadog to New Relic
+
+**Without OpenTelemetry**:
+```typescript
+// Before: Datadog-specific instrumentation
+import { datadogTracer } from 'dd-trace'
+
+datadogTracer.trace('llm-call', (span) => {
+  span.setTag('dd.model', 'claude-3-opus')  // ← Datadog-specific
+  span.setTag('dd.tokens', 1024)            // ← Datadog-specific
+  // ... rest of code
+})
+
+// Migration required: Rewrite all tracing code for New Relic
+import newrelic from 'newrelic'
+
+newrelic.startSegment('llm-call', true, () => {
+  newrelic.addCustomAttribute('model', 'claude-3-opus')  // ← New Relic-specific
+  // ... rest of code
+})
+```
+
+**With OpenTelemetry**:
+```typescript
+// Code stays the same - just change exporter
+const exporter = new OTLPTraceExporter({
+  url: 'https://otlp.nr-data.net/v1/traces',  // ← New Relic endpoint
+  headers: {
+    'Api-Key': process.env.NEW_RELIC_API_KEY
+  }
+})
+
+// All instrumentation code remains unchanged
+span.setAttributes({
+  'gen_ai.request.model': 'claude-3-opus',  // ← Standard attribute
+  'gen_ai.usage.total_tokens': 1024         // ← Standard attribute
+})
+```
+
+**Migration Effort**:
+- **Without OTel**: 2 weeks (rewrite all instrumentation)
+- **With OTel**: 1 hour (change exporter config)
+
+### Interview Defense Template
+
+**Q**: "How do you ensure vendor neutrality in your observability stack?"
+
+**A**: "We standardize on **OpenTelemetry** with GenAI semantic conventions. All our instrumentation uses OTel APIs (e.g., `gen_ai.request.model`, `gen_ai.usage.input_tokens`) which are vendor-neutral.
+
+This means we can send traces to Datadog, New Relic, Jaeger, or any OTLP-compatible backend by changing one config file—no code changes required.
+
+When we migrated from Datadog to New Relic for cost reduction, it took 1 hour instead of 2 weeks. The key insight: **Standardized attribute names are the portability layer for observability.**"
+
+### ROI: Avoiding Vendor Lock-In
+
+**Production Scenario**: Migrate observability vendors for cost reduction
+
+**Without OpenTelemetry**:
+- Migration effort: 2 weeks × 2 engineers × $150/hour × 40 hours = $24K
+- Opportunity cost: 2 weeks delayed
+- Risk: Migration bugs, incomplete coverage
+
+**With OpenTelemetry**:
+- Migration effort: 1 hour × 1 engineer × $150 = $150
+- Config change only: No code rewrites
+- Zero risk: Same instrumentation, new exporter
+
+**ROI**: $23,850 saved per migration
+
+---
+
+## 3. Context-Linked Tracing: Root Cause Correlation IDs
+
+### The Data Quality Problem
+
+**Observation**: In RAG systems, most "hallucinations" are not LLM failures—they're **data quality issues** (wrong chunks retrieved).
+
+**Example**:
+- User: "What is the patient's HbA1c?"
+- LLM: "The patient's HbA1c is 9.2%" ❌ WRONG
+- **Root cause**: Vector search retrieved chunk_456, which contains outdated data (HbA1c was 9.2% in June, but it's 7.2% in August)
+
+**Problem**: Without linking the trace to the **exact chunks** retrieved, you can't fix the data quality issue.
+
+### The Rigorous Solution: Chunk ID in Traces
+
+**Architecture**: Include the **Chunk ID** of every retrieved document in the trace. When a hallucination is reported, you can:
+1. Query trace by request ID
+2. Extract chunk IDs from retrieval span
+3. Inspect the exact text the LLM was reading
+4. Fix the data quality issue (update chunk, re-index, etc.)
+
+```typescript
+/**
+ * Context-Linked Tracing: Close the Loop Between Observability and Data Quality
+ */
+interface ContextLinkedTrace extends DistributedTrace {
+  spans: Array<{
+    name: string
+    attributes: {
+      // Standard attributes
+      'gen_ai.request.model': string
+      'gen_ai.usage.input_tokens': number
+
+      // Context linking (CRITICAL)
+      'retrieval.top_chunk_id': string        // Best match
+      'retrieval.chunk_ids': string[]         // All retrieved chunks
+      'retrieval.chunk_scores': number[]      // Similarity scores
+
+      // Data provenance
+      'chunk.source_document': string         // Original PDF/doc
+      'chunk.indexed_at': Date                // When was this indexed?
+      'chunk.last_updated': Date              // When was source updated?
+    }
+  }>
+}
+
+/**
+ * Full RAG pipeline with context-linked tracing
+ */
+async function ragWithContextLinking(
+  query: string,
+  userId: string
+): Promise<{ answer: string; traceId: string }> {
+  const traceId = crypto.randomUUID()
+
+  const span = tracer.startSpan('rag.pipeline', {
+    attributes: {
+      'trace.id': traceId,
+      'user.id': userId,
+      'query.text': query.slice(0, 100),  // Truncate for privacy
+      'query.hash': hashQuery(query)
+    }
+  })
+
+  try {
+    // Step 1: Retrieval (with chunk linking)
+    const retrievalSpan = tracer.startSpan('rag.retrieval', { parent: span })
+
+    const chunks = await hybridSearch(query, { limit: 5 })
+
+    retrievalSpan.setAttributes({
+      // Context linking (CRITICAL)
+      'retrieval.top_chunk_id': chunks[0]?.id,
+      'retrieval.chunk_ids': chunks.map(c => c.id),
+      'retrieval.chunk_scores': chunks.map(c => c.score),
+
+      // Data provenance
+      'chunk.source_documents': [...new Set(chunks.map(c => c.metadata.source))],
+      'chunk.indexed_at': chunks[0]?.metadata.indexed_at,
+      'chunk.last_updated': chunks[0]?.metadata.last_updated
+    })
+
+    retrievalSpan.end()
+
+    // Step 2: LLM generation
+    const llmSpan = tracer.startSpan('rag.generation', { parent: span })
+
+    const answer = await llm.complete({
+      systemPrompt: SYSTEM_PROMPT,
+      context: chunks.map(c => c.content),
+      query
+    })
+
+    llmSpan.setAttributes({
+      'gen_ai.request.model': 'claude-3-opus-20240229',
+      'gen_ai.usage.input_tokens': 2450,
+      'gen_ai.usage.output_tokens': 120
+    })
+
+    llmSpan.end()
+
+    // Step 3: Store trace → chunk mapping for future debugging
+    await storeContextLink({
+      trace_id: traceId,
+      chunk_ids: chunks.map(c => c.id),
+      query,
+      answer,
+      timestamp: new Date()
+    })
+
+    span.setStatus({ code: SpanStatusCode.OK })
+    span.end()
+
+    return { answer, traceId }
+
+  } catch (error) {
+    span.recordException(error)
+    span.setStatus({ code: SpanStatusCode.ERROR })
+    span.end()
+    throw error
+  }
+}
+
+/**
+ * Store trace → chunk mapping in database
+ */
+async function storeContextLink(link: {
+  trace_id: string
+  chunk_ids: string[]
+  query: string
+  answer: string
+  timestamp: Date
+}) {
+  await db.query(`
+    INSERT INTO trace_context_links (
+      trace_id, chunk_ids, query, answer, timestamp
+    ) VALUES ($1, $2, $3, $4, $5)
+  `, [
+    link.trace_id,
+    link.chunk_ids,
+    link.query,
+    link.answer,
+    link.timestamp
+  ])
+}
+```
+
+### Hallucination Debugging Workflow
+
+**Scenario**: User reports hallucination via feedback form
+
+```typescript
+/**
+ * User clicks "Report Incorrect Answer" button
+ */
+async function reportHallucination(traceId: string, userFeedback: string) {
+  console.log(`🚨 Hallucination reported for trace ${traceId}`)
+
+  // Step 1: Load trace from observability backend
+  const trace = await loadTrace(traceId)
+
+  // Step 2: Extract chunk IDs from retrieval span
+  const retrievalSpan = trace.spans.find(s => s.name === 'rag.retrieval')
+  const chunkIds = retrievalSpan.attributes['retrieval.chunk_ids']
+  const topChunkId = retrievalSpan.attributes['retrieval.top_chunk_id']
+
+  console.log(`   Retrieved chunk IDs: ${chunkIds.join(', ')}`)
+  console.log(`   Top chunk: ${topChunkId}`)
+
+  // Step 3: Load the actual chunk content
+  const chunks = await db.query(`
+    SELECT id, content, metadata, source_document
+    FROM chunks
+    WHERE id = ANY($1)
+  `, [chunkIds])
+
+  console.log(`\n📄 Chunk Content Inspection:`)
+  chunks.rows.forEach((chunk, i) => {
+    console.log(`\nChunk ${i + 1} (${chunk.id}):`)
+    console.log(`Source: ${chunk.source_document}`)
+    console.log(`Content: ${chunk.content.slice(0, 200)}...`)
+  })
+
+  // Step 4: Identify data quality issue
+  console.log(`\n🔍 Root Cause Analysis:`)
+  console.log(`   Top chunk (${topChunkId}) contains outdated data`)
+  console.log(`   Source document: patient_records_june_2024.pdf`)
+  console.log(`   Last updated: 2024-06-15 (3 months ago)`)
+  console.log(`   Newer data available: patient_records_august_2024.pdf`)
+
+  // Step 5: Create data quality ticket
+  await createJiraTicket({
+    title: `Data Quality Issue: Outdated chunk ${topChunkId}`,
+    description: `
+Trace ID: ${traceId}
+User Feedback: ${userFeedback}
+
+Root Cause: Chunk ${topChunkId} contains HbA1c value from June (9.2%)
+but patient's current HbA1c is 7.2% (from August records).
+
+Action Required:
+1. Re-index patient_records_august_2024.pdf
+2. Mark old chunks as deprecated
+3. Verify no other patients have stale data
+
+Retrieved Chunks:
+${chunks.rows.map(c => `- ${c.id}: ${c.content.slice(0, 100)}...`).join('\n')}
+    `,
+    priority: 'HIGH',
+    labels: ['data-quality', 'hallucination', 'rag']
+  })
+
+  console.log(`\n✅ Data quality ticket created`)
+  console.log(`   Action: Re-index patient_records_august_2024.pdf`)
+}
+```
+
+**Production Impact**:
+- **Before**: Hallucination reported → "Not sure why" → 2 days debugging
+- **After**: Hallucination reported → Query trace → Identify chunk → Fix data → 30 minutes
+
+**MTTR**: 2 days → 30 minutes (-99%)
+
+### Interview Defense Template
+
+**Q**: "How do you close the loop between observability and data quality improvement?"
+
+**A**: "We implement **context-linked tracing**—every trace includes the Chunk IDs of retrieved documents. When a user reports a hallucination, we:
+
+1. Query the trace by ID
+2. Extract chunk IDs from the retrieval span
+3. Load the exact text the LLM was reading
+4. Identify the data quality issue (e.g., outdated chunk)
+5. Create a Jira ticket to fix the data
+
+This reduced our MTTR for hallucinations from 2 days to 30 minutes—a 99% improvement. The key insight: **Observability without context linking is just timing data. Context linking turns traces into a data quality debugging tool.**"
+
+### ROI: Data Quality Loop
+
+**Production Scenario**: Healthcare RAG (50 hallucination reports/month)
+
+**Before Context Linking**:
+- MTTR: 2 days per incident (manual debugging)
+- Engineering cost: 2 days × $150/hour × 8 hours × 50 = $120K/month
+
+**After Context Linking**:
+- MTTR: 30 minutes per incident (instant trace → chunk inspection)
+- Engineering cost: 0.5 hours × $150/hour × 50 = $3.75K/month
+
+**ROI**: $116.25K/month saved ($1.395M/year)
+
+---
+
+## 4. The Three Pillars Quiz: Production Debugging Challenge
+
+**Scenario**: You are the AI Architect for a customer support chatbot. A user reports:
+
+> "The AI gave me a perfect answer to my question, but it took **12 seconds** to respond. This is unacceptable for real-time chat."
+
+You investigate:
+
+- **System logs** show the API call succeeded (200 OK)
+- **Server health** shows CPU at 30%, memory at 45% (healthy)
+- **Database** query logs show no slow queries
+
+**Your Task**: Which **Pillar of Observability** do you use to find the specific bottleneck?
+
+---
+
+### Option A: Logs
+
+**Action**: Check the text of the user's query to see if it was too long.
+
+```bash
+grep "user_query" /var/log/app.log | grep "user_123"
+
+# Output:
+# [2024-01-15 10:32:17] user_query="What is your refund policy?" length=28
+```
+
+**Result**: Query is only 28 characters (normal length).
+
+**Diagnosis**: Logs show WHAT happened (query text), but not WHERE the time was spent.
+
+❌ **Wrong answer** - Logs can't show latency breakdown across services.
+
+---
+
+### Option B: Metrics
+
+**Action**: Look at the CPU usage of the database server.
+
+```bash
+# Prometheus query
+rate(node_cpu_seconds_total{instance="db-server"}[5m])
+
+# Output: 30% (healthy)
+```
+
+**Result**: Database CPU is fine.
+
+**Diagnosis**: Metrics show aggregate system health, but not per-request bottlenecks.
+
+❌ **Wrong answer** - Metrics can't diagnose why a SPECIFIC request was slow.
+
+---
+
+### Option C: Traces ✅ CORRECT
+
+**Action**: Use a distributed trace to examine the individual **Spans** and their timing.
+
+```bash
+# Query trace by request ID
+curl https://datadog.com/api/v1/trace/abc-123
+
+# Output: Distributed Trace
+Trace abc-123 (12,340ms total):
+  ├─ api_gateway: 20ms ✅
+  ├─ authentication: 35ms ✅
+  ├─ rag.retrieval: 450ms ✅
+  │  ├─ embedding: 120ms ✅
+  │  ├─ vector_search: 200ms ✅
+  │  └─ rerank: 130ms ✅
+  │
+  ├─ query_expansion: 9,200ms ❌ BOTTLENECK!
+  │  ├─ expansion.generate: 8,850ms ❌
+  │  │  └─ external_api.search: 8,700ms ❌ (waiting on slow API)
+  │  └─ expansion.validate: 350ms ✅
+  │
+  └─ llm_call: 920ms ✅
+
+Diagnosis: FOUND IT!
+- Query expansion step took 9.2 seconds (75% of total time)
+- External search API (expansion.generate) took 8.7 seconds
+- This API is a third-party service with high latency
+
+Action:
+1. Cache query expansion results (avoid external API call)
+2. Set timeout on external API (fail fast if >2s)
+3. Consider replacing with local expansion model
+```
+
+**Result**: Trace shows the **exact bottleneck** (query expansion waiting on slow external API).
+
+✅ **Correct answer** - Traces are the ONLY way to see internal timing of individual steps inside a single request.
+
+---
+
+### Option D: Feedback
+
+**Action**: Ask the user to try again and see if it's still slow.
+
+**Result**: User tries again → still slow (12 seconds).
+
+**Diagnosis**: Feedback confirms the problem exists, but doesn't identify the root cause.
+
+❌ **Wrong answer** - Feedback identifies THAT there's a problem, not WHERE the problem is.
+
+---
+
+## The Correct Answer: C - Traces
+
+**Why Traces are the answer**:
+
+1. **Logs** show discrete events (query text, error messages) but not relationships
+2. **Metrics** show aggregate trends (CPU, memory) but not per-request breakdown
+3. **Traces** show the FLOW of a single request across services with timing for each step
+4. **Feedback** confirms problems exist but doesn't diagnose root cause
+
+**The Formula**:
+```
+Logs   = "What happened?" (events)
+Metrics = "How much/many?" (aggregates)
+Traces  = "Where is the bottleneck?" (per-request flow)
+Feedback = "Is there a problem?" (confirmation)
+```
+
+**Production Resolution**:
+
+After identifying the bottleneck (query expansion → external API), the team:
+
+1. **Added caching**: Cache query expansion results for 1 hour
+2. **Set timeout**: Fail fast if external API >2 seconds
+3. **Replaced API**: Migrated to local expansion model (GPT-3.5-turbo)
+
+**Result**:
+- Latency: 12s → 1.2s (-90%)
+- Cache hit rate: 65%
+- Cost: -$850/month (fewer external API calls)
+
+---
+
+## Summary: The Three Pillars in Production
+
+| Pillar | Use Case | Example Question | Tool |
+|--------|----------|------------------|------|
+| **Logs** | Debug specific errors | "What error message did the user get?" | Elasticsearch, CloudWatch |
+| **Metrics** | Monitor trends & alerts | "Is latency increasing over time?" | Prometheus, Datadog |
+| **Traces** | Diagnose bottlenecks | "Which service is causing this slow request?" | Jaeger, Datadog APM |
+
+**The Architect's Rule**: "Use all three pillars together. Metrics tell you WHEN there's a problem. Traces tell you WHERE the problem is. Logs tell you WHAT the error was."
+
+---
+
+## Production Checklist: Distributed Observability
+
+Before deploying your RAG system, ensure:
+
+### Span-Level Enrichment
+- [ ] Retrieval spans include `search.recall_at_k`, `search.top_similarity`, `search.avg_similarity`
+- [ ] Retrieval spans include `embedding.model`, `embedding.model_version`
+- [ ] Retrieval spans include `search.top_chunk_id`, `search.retrieved_chunk_ids`
+
+### OpenTelemetry Standardization
+- [ ] Use OpenTelemetry APIs (not vendor-specific SDKs)
+- [ ] Use GenAI semantic conventions (`gen_ai.request.model`, `gen_ai.usage.input_tokens`)
+- [ ] Configure OTLP exporter (Datadog, New Relic, Jaeger, etc.)
+- [ ] Test vendor portability (can switch exporters in <1 hour)
+
+### Context-Linked Tracing
+- [ ] Store trace_id → chunk_ids mapping in database
+- [ ] Include chunk IDs in retrieval spans
+- [ ] Link hallucination reports to trace IDs
+- [ ] Create automated Jira tickets for data quality issues
+
+### Monitoring & Alerts
+- [ ] P95 latency >200ms → Alert
+- [ ] Cost per 1K requests >$10 → Alert
+- [ ] Recall@K <0.80 → Alert (data quality degradation)
+- [ ] Error rate >1% → Alert
+
+### Dashboards
+- [ ] Real-time latency breakdown (embedding, search, rerank, LLM)
+- [ ] Cost tracking (tokens, API calls, cache hits)
+- [ ] Quality metrics (Recall@K, RAGAS scores)
+- [ ] Trace → chunk inspection tool (for debugging)
+
+---
+
+**Congratulations! You've completed Week 6: Advanced RAG (The Optimizer)**
+
+You now have the **distributed semantic telemetry** infrastructure to monitor, debug, and optimize enterprise RAG systems with the same precision as traditional microservices.
+
+**Week 6 Complete**: All five concepts hardened to Director-tier standards:
+
+1. **Hybrid Retrieval & Re-Ranking** - RRF, Parent-Child, RAGAS
+2. **Query Transformation** - HyDE Guardrail, DAG, RRF Aggregation
+3. **Context Engineering** - Primacy/Recency, Compression, Caching
+4. **Enterprise Hardening** - RAGAS, Security, Compliance
+5. **Request Tracing** - Span-Level Audit, OpenTelemetry, Context Linking
+
+**Total Week 6 ROI**: $24.635M/year ($23.24M + $1.395M)
+
+**Next**: Week 7 - Advanced Agent Architectures (ReAct, Chain-of-Thought, Tool Use)
