@@ -58,72 +58,74 @@ Choose runnable code over academic papers. Choose cost analysis over algorithm c
 ### Foundation Phase (Weeks 1-4)
 **Goal**: Master AI fundamentals and core patterns
 
-**Week 1: LLM Fundamentals**
+**Week 1: LLM Fundamentals** ⭐ Enhanced
 - Understanding tokens, context windows, and pricing
 - Working with Claude and GPT APIs
-- Cost calculation and model selection
-- Hands-on: Token counting, cost estimation, model comparison
+- Architectural ROI and model selection
+- Production readiness checklist
+- **6 concepts** · **400+ lines** of enhanced content
 
-**Week 2: Advanced Chat Applications**
-- Production chat architecture
-- Conversation management and state
-- Chat UI patterns
-- System prompts and few-shot learning
+**Week 2: AI Safety & Governance** ⭐ Enhanced
+- Responsible AI frameworks
+- Domain-specific compliance (HIPAA, GDPR, SOC 2)
+- Architecture certification exam
+- Governance foundations
+- **5 concepts** · **1,500+ lines** of Director-tier content
 
-**Week 3: RAG Systems**
+**Week 3: RAG & Memory Fundamentals** ⭐ Enhanced
 - Vector embeddings and similarity search
-- Document chunking strategies
-- RAG pipeline implementation
+- Hybrid search with BM25 + vector
+- Production RAG architecture
 - Memory systems (episodic, semantic, procedural)
+- **5 concepts** · **1,200+ lines** of production patterns
 
-**Week 4: Code Review AI**
-- LLM-powered code analysis
-- Multi-file context management
-- Automated review workflows
-- CI/CD integration
+**Week 4: Structured Intelligence**
+- Function calling and tool use
+- Structured output with Zod
+- Schema design best practices
+- **3 concepts**
 
 ### Advanced Systems Phase (Weeks 5-8)
 **Goal**: Build sophisticated AI systems
 
-**Week 5: AI Agents**
+**Week 5: Agentic Frameworks**
 - ReAct architecture and reasoning loops
-- Tool use and function calling
-- Agent debugging and observability
-- Building custom tools
+- Framework selection (LangChain, LlamaIndex, Autogen)
+- Reliability patterns and error handling
+- **5 concepts**
 
-**Week 6: Production Monitoring**
-- Observability for AI systems
-- Performance optimization
-- Cost tracking and alerts
-- Production deployment strategies
+**Week 6: Advanced RAG**
+- Query rewriting and expansion
+- Reranking strategies
+- Multi-document synthesis
+- **8 concepts**
 
-**Week 7: Architecture Design**
-- AI application patterns (chatbot, RAG, agents)
-- Component architecture and tradeoffs
-- Scaling strategies (caching, load balancing)
-- Implementation planning
+**Week 7: Observability & Production**
+- Monitoring and metrics
+- Cost optimization
+- Production deployment
+- **3 concepts**
 
-**Week 8: Product Launch & Interview Prep**
-- Portfolio building and presentation
-- AI engineering interview preparation
-- Product Hunt and launch strategies
-- Marketing fundamentals
-- System design interview framework
+**Week 8: Portfolio + Launch** ⭐ Enhanced
+- Interview preparation
+- Portfolio building
+- Product launch strategies
+- **4 concepts** · **1,500+ lines** of career guidance
 
 ### Specialization Phase (Weeks 9-10)
 **Goal**: Advanced techniques for production systems
 
-**Week 9: Advanced RAG**
-- Hybrid search (dense + sparse)
-- Query optimization and rewriting
-- Reranking strategies
-- Cross-encoder models
+**Week 9: Advanced RAG Techniques**
+- GraphRAG fundamentals
+- Knowledge graph construction
+- Context fusion strategies
+- **3 concepts**
 
-**Week 10: Fine-tuning**
-- When to fine-tune vs prompt engineering
-- Dataset preparation and curation
+**Week 10: Fine-tuning + Custom Models**
+- Dataset curation pipeline
+- LoRA and PEFT techniques
 - Model evaluation frameworks
-- Cost/benefit analysis
+- **3 concepts**
 
 ### Enterprise Phase (Weeks 11-12)
 **Goal**: Enterprise-grade AI systems
@@ -132,13 +134,15 @@ Choose runnable code over academic papers. Choose cost analysis over algorithm c
 - Agent coordination patterns
 - Task delegation and orchestration
 - Conflict resolution strategies
-- Performance at scale
+- **3 concepts**
 
-**Week 12: Enterprise Production**
+**Week 12: Enterprise AI Systems**
+- Enterprise RAG with compliance
 - Multi-tenant architecture
-- GDPR/SOC 2 compliance
-- Disaster recovery and high availability
-- Security and governance
+- Security and compliance implementation
+- **3 concepts**
+
+**Total**: **51 MDX files** · **60+ code examples** · **4,000+ lines** of enhanced content
 
 ## Differentiation
 
@@ -228,70 +232,107 @@ Every concept must include:
 - Compile-time errors over runtime
 - IntelliSense and autocomplete
 
-### Current Stack (Jan 2025)
-- **Framework**: Next.js 14 (App Router, Server Components)
-- **Language**: TypeScript (strict mode)
-- **Database**: PostgreSQL + Prisma ORM
-- **AI APIs**: Anthropic Claude, OpenAI
-- **Vector DB**: Chroma/Pinecone (flexible)
-- **Auth**: NextAuth.js
-- **Styling**: Tailwind CSS + shadcn/ui
-- **Deployment**: Vercel (serverless)
+### Current Stack (February 2026)
+
+**Frontend**:
+- Next.js 14.2 (App Router, Server Components)
+- React 18 (Server Actions)
+- TypeScript (strict mode)
+- Tailwind CSS 3 + shadcn/ui
+- Radix UI primitives
+
+**Backend & Database**:
+- Next.js API Routes
+- NextAuth.js (GitHub, Google OAuth)
+- Prisma ORM
+- PostgreSQL 15+
+- pgvector extension (vector similarity search)
+- Redis 7+ (caching, rate limiting)
+
+**AI & ML**:
+- Anthropic Claude API (Sonnet 4, Haiku 4)
+- OpenAI API (text-embedding-3-small)
+- Vercel AI SDK (streaming chat)
+- Tavily Search API (agent web search)
+
+**Development & Deployment**:
+- Docker + Docker Compose (local development)
+- Jest (unit tests)
+- Playwright (E2E tests)
+- ESLint + Prettier
+- GitHub Actions (CI/CD)
+- Vercel (production deployment)
 
 ## Roadmap
 
-### Phase 1: Core Curriculum (Q1 2025) ✅ COMPLETE
+### Phase 1: Core Curriculum ✅ COMPLETE (Q1 2026)
 - [x] 12-week curriculum structure
-- [x] 38 MDX content files (3-4 per week)
-- [x] Production-ready code examples
-- [x] Enhanced content for weeks 1, 7, 11, 12
+- [x] 51 MDX content files (covering all 12 weeks)
+- [x] 60+ production-ready code examples
+- [x] Enhanced content for Weeks 1, 2, 3, 8 (4,000+ lines)
 - [x] Hands-on exercises with runnable code
+- [x] Docker-based development environment
+- [x] Database schema and seed scripts
+- [x] MDX syntax validation
+- [x] Week navigation system
+- [x] Progress tracking system
+- [x] AI mentor chat interface
+- [x] RAG system with pgvector
+- [x] AI agents interface
+- [x] Portfolio builder
+- [x] Authentication (GitHub, Google OAuth)
 
-### Phase 2: Interactive Platform (Q2 2025) 🚧 IN PROGRESS
-- [ ] Code playgrounds for exercises
-- [ ] Progress tracking and analytics
-- [ ] AI mentor integration
+### Phase 2: Interactive Platform 🚧 IN PROGRESS (Q2 2026)
+- [ ] Code playgrounds for hands-on exercises
+- [ ] Interactive code editors
+- [ ] Enhanced analytics dashboard
 - [ ] Quiz and assessment system
-- [ ] Student dashboard
+- [ ] Unit test coverage >70%
+- [ ] Complete seed data for all weeks
+- [ ] Video walkthroughs for complex topics
 
-### Phase 3: Community & Scale (Q3 2025)
+### Phase 3: Community & Scale 📅 PLANNED (Q3 2026)
 - [ ] Discussion forums
 - [ ] Project showcase gallery
 - [ ] Peer code review
 - [ ] Alumni network
 - [ ] Job board integration
+- [ ] Student-to-student mentorship
 
-### Phase 4: Advanced Features (Q4 2025)
+### Phase 4: Advanced Features 📅 PLANNED (Q4 2026)
 - [ ] Live cohorts with deadlines
-- [ ] 1-on-1 mentorship
+- [ ] 1-on-1 expert mentorship
 - [ ] Company partnerships
 - [ ] Certification program
 - [ ] Advanced electives
+- [ ] Domain-specific tracks
 
 ## Content Enhancement Strategy
 
-### Current Status (February 2025)
+### Current Status (February 2026)
 
 **Fully Enhanced** (Production-grade with detailed explanations):
-- Week 1: LLM Fundamentals - 3 guided exercises with runnable code
-- Week 7: Architecture Design - Complete patterns with cost/performance metrics
-- Week 11: Multi-Agent Systems - Full implementations with coordination patterns
-- Week 12: Enterprise Production - Compliance, security, scaling at depth
+- **Week 1**: LLM Fundamentals - 6 concepts with architectural ROI analysis
+- **Week 2**: AI Safety & Governance - 5 concepts with compliance frameworks
+- **Week 3**: RAG & Memory - 5 concepts with production patterns
+- **Week 8**: Portfolio + Launch - 4 concepts with interview prep
 
 **Complete** (Good quality, ready for use):
-- Weeks 2, 3, 4, 5, 6, 8, 9, 10
+- Weeks 4, 5, 6, 7, 9, 10, 11, 12
 
 **Enhancement Pipeline**:
-1. Add interactive code playgrounds to Week 1 exercises
-2. Add labs and projects for weeks 3-12
+1. Add interactive code playgrounds to Week 1-3 exercises
+2. Add hands-on labs for weeks 4-12
 3. Create assessment quizzes for each week
 4. Build project templates for common patterns
 5. Add video walkthroughs for complex topics
+6. Expand Week 4 schema design concepts
+7. Add certification exams for each phase
 
 **Domain-Specific Use Cases** (Advanced/Elective Content):
-- HR Agents - Wisq Harper model (employee support, compliance)
+- HR Agents - Employee support, compliance automation
 - Healthcare Agents - Clinical documentation, HIPAA compliance
-- Legal Agents - Harvey AI model (contract review, research)
+- Legal Agents - Contract review, legal research
 - Finance Agents - Financial analysis, fraud detection
 - Additional domains planned (sales, support, real estate)
 
@@ -300,13 +341,15 @@ Every concept must include:
 1. **Open Source**: Free to use, modify, and contribute
 2. **Production-First**: Real systems, not tutorials
 3. **Comprehensive**: 12 weeks covers fundamentals to enterprise
-4. **Current**: Updated with latest AI developments
+4. **Current**: Updated with latest AI developments (2026)
 5. **Practical**: Focus on what works in production
 6. **Metric-Driven**: Real cost/performance data throughout
-7. **Code-Heavy**: 60+ production-ready examples
+7. **Code-Heavy**: 60+ production-ready TypeScript examples
 8. **Self-Paced**: Learn at your own speed
 9. **Job-Ready**: Enterprise patterns from day one
 10. **Community-Driven**: Open to contributions and improvements
+11. **Docker-First**: Complete local development environment
+12. **Type-Safe**: Full TypeScript with strict mode
 
 ## Long-Term Vision (3-5 Years)
 
@@ -332,5 +375,5 @@ Every concept must include:
 
 ---
 
-*Last Updated: February 2025*
+*Last Updated: February 2026*
 *Version: 1.0 - Core Curriculum Complete*
