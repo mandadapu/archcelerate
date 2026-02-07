@@ -1,0 +1,1429 @@
+---
+title: "Week 6 Certification: The RAG Optimizer"
+description: "Production RAG optimization exam for query transformation, hybrid retrieval, semantic caching, and faithfulness auditing"
+estimatedMinutes: 120
+---
+
+# Week 6 Certification Exam: The RAG Optimizer
+
+## Exam Philosophy
+
+This certification is a **high-fidelity simulation of an enterprise production environment**. It moves beyond "making it work" and into the realm of **Deterministic Quality at Scale**. To pass, students must prove they can treat RAG as a **Precision Pipeline**—not a black box with a prompt at the front and an LLM at the back.
+
+**Grading Standard**: This exam is graded at the **Senior/Staff Architect** level. You are expected to prioritize **Re-ranking for accuracy**, **HyDE for intent bridging**, **Semantic Caching for speed**, and **RAGAS metrics for auditability**. Solutions that rely on "increase the context window" or "use a better prompt" will not pass.
+
+**Core Principle**: Production RAG is an **engineering discipline**, not a prompting exercise. Every millisecond of latency, every percentage point of recall, and every hallucinated answer has measurable cost.
+
+---
+
+## Scenario: SurgiSearch Platform
+
+You are the **Lead AI Architect** for **"SurgiSearch,"** a RAG platform used by surgeons to retrieve vital information from surgical protocols and clinical trials **during active operations**. Accuracy is a **safety requirement**; latency is a **mission-critical non-functional requirement**.
+
+**System Profile**:
+- **500,000 pages** of surgical protocols and clinical trials
+- **12,000 active surgeons** across 340 hospitals
+- **Real-time retrieval** during active surgical procedures
+- **Multi-specialty coverage**: cardiac, neuro, orthopedic, general surgery
+
+**Non-Functional Requirements**:
+- Latency SLA: &lt;500ms end-to-end (P95)
+- Accuracy: 99.5%+ faithfulness (zero tolerance for hallucinated medical guidance)
+- Availability: 99.99% uptime (surgeons cannot wait for system recovery)
+- Auditability: 100% traceable responses (regulatory compliance for FDA/HIPAA)
+
+**Cost Constraints**:
+- $0.02 maximum per query (target: $0.008)
+- Token budget: 8K tokens per response
+- Infrastructure: $15,000/month ceiling for retrieval stack
+
+---
+
+## Challenge 1: The "Jargon Gap" (Query Transformation)
+
+### The Problem
+
+Surgeons often use shorthand, abbreviations, and domain-specific slang (e.g., "CABG recovery specs," "lap chole contraindications," "TKR ROM protocol") that **do not appear** in the formal academic textbooks and protocols stored in your vector database. Your current baseline RAG returns generic recovery documents instead of specific surgical specifications.
+
+**Diagnostic Data** (Query-to-Retrieval Mismatch):
+
+| Surgeon Query | Expected Document | Vector Search #1 Result | Similarity Score |
+|---|---|---|---|
+| "CABG recovery specs" | "Coronary Artery Bypass Graft: Post-Operative Recovery Protocol" | "General Cardiac Recovery Guidelines" | 0.71 |
+| "lap chole contraindications" | "Laparoscopic Cholecystectomy: Contraindications & Risk Factors" | "Introduction to Laparoscopic Surgery" | 0.68 |
+| "TKR ROM protocol" | "Total Knee Replacement: Range of Motion Rehabilitation" | "Orthopedic Physical Therapy Overview" | 0.65 |
+
+**Production Impact**:
+- 34% of surgeon queries return generic results instead of specific protocols
+- Surgeons abandon the system and consult paper manuals (defeating the purpose)
+- Average retrieval relevance score: 0.68 (target: 0.92+)
+- Trust erosion: "The AI doesn't understand surgery"
+
+### Questions
+
+**Question 1.1**: Explain why naive embedding-based retrieval fails for domain-specific jargon. What is the fundamental gap between "surgeon-speak" and "textbook-speak" at the embedding level?
+
+<details>
+<summary>Expected Answer Elements</summary>
+
+**Why Naive Embeddings Fail**:
+
+1. **Training data distribution**: General-purpose embedding models (text-embedding-3-small) are trained on web text where "CABG" appears rarely. The embedding for "CABG" is far from "Coronary Artery Bypass Graft" in vector space.
+
+2. **Abbreviation collapse**: Embeddings average token meanings—"CABG recovery specs" produces a vector dominated by "recovery" and "specs" (common words) while "CABG" contributes minimal signal.
+
+3. **Register mismatch**: Surgical shorthand is a different linguistic register from academic prose. The embedding model has no bridge between these registers.
+
+4. **Semantic distance example**:
+```
+cosine_similarity("CABG recovery specs", "Coronary Artery Bypass Graft Post-Operative Protocol") ≈ 0.52
+cosine_similarity("CABG recovery specs", "General Recovery Guidelines") ≈ 0.71  // HIGHER! Wrong result wins.
+```
+
+The generic document scores higher because "recovery" and "guidelines" are semantically close to the query, while the specific document's formal language is distant from the abbreviations.
+
+</details>
+
+**Question 1.2**: Design a **HyDE (Hypothetical Document Embeddings)** implementation for SurgiSearch. Show how HyDE generates a hypothetical document from the surgeon's query and uses it for retrieval instead of the raw query.
+
+<details>
+<summary>Expected Answer Elements</summary>
+
+**HyDE Implementation**:
+
+```typescript
+interface HyDEConfig {
+  generatorModel: string
+  embeddingModel: string
+  maxHypotheticalTokens: number
+}
+
+async function hydeRetrieval(
+  query: string,
+  config: HyDEConfig
+): Promise<SearchResult[]> {
+  // Step 1: Generate a hypothetical document that WOULD answer the query
+  const hypothetical = await llm.generate({
+    model: config.generatorModel,
+    systemPrompt: `You are a medical textbook author. Given a surgeon's query,
+write a short paragraph (100-150 words) that would appear in a surgical
+protocol textbook answering this query. Use formal medical terminology,
+not abbreviations. Include specific clinical details.`,
+    userPrompt: query,
+    maxTokens: config.maxHypotheticalTokens
+  })
+
+  // Example: "CABG recovery specs" →
+  // "The post-operative recovery protocol for Coronary Artery Bypass
+  //  Grafting (CABG) specifies a 5-7 day ICU monitoring period with
+  //  continuous hemodynamic surveillance. Sternal precautions include
+  //  weight-bearing restrictions of 10 lbs for 6-8 weeks..."
+
+  // Step 2: Embed the HYPOTHETICAL document (not the raw query)
+  const hydeVector = await embed(hypothetical, config.embeddingModel)
+
+  // Step 3: Search using the hypothetical document's embedding
+  const results = await vectorDB.query({
+    vector: hydeVector,
+    topK: 20,
+    filter: { document_type: 'protocol' }
+  })
+
+  return results
+}
+```
+
+**Why This Works**:
+- The LLM "translates" surgeon shorthand into formal medical language
+- The hypothetical document's embedding is in the same linguistic space as the stored protocols
+- "Coronary Artery Bypass Grafting post-operative recovery protocol" is much closer in vector space to the actual document than "CABG recovery specs"
+
+</details>
+
+**Question 1.3**: Explain why **HyDE is architecturally superior to Multi-Query expansion** in this specific jargon-heavy medical domain. Provide a concrete comparison showing where Multi-Query fails and HyDE succeeds.
+
+<details>
+<summary>Expected Answer Elements</summary>
+
+**Multi-Query Approach** (and its limitations):
+
+```typescript
+// Multi-Query: Generate N variations of the original query
+async function multiQueryExpansion(query: string): Promise<string[]> {
+  return await llm.generate({
+    prompt: `Generate 4 alternative phrasings of: "${query}"`,
+    // Returns:
+    // 1. "CABG recovery specifications"
+    // 2. "bypass surgery recovery details"
+    // 3. "cardiac surgery aftercare specs"
+    // 4. "CABG post-op recovery info"
+  })
+}
+```
+
+**Why Multi-Query Fails for Jargon**:
+
+1. **Abbreviation persistence**: Multi-Query keeps "CABG" in most variations—it doesn't know to expand it to "Coronary Artery Bypass Graft"
+2. **Register lock**: All variations stay in surgeon-speak register; none bridge to textbook-speak
+3. **Recall without precision**: You get more results, but they're all in the wrong semantic neighborhood
+
+**HyDE Advantage**:
+
+| Aspect | Multi-Query | HyDE |
+|---|---|---|
+| Jargon expansion | Keeps abbreviations | Expands to formal terms |
+| Register bridging | Stays in query register | Bridges to document register |
+| Embedding quality | N noisy query vectors | 1 high-quality document vector |
+| Retrieval precision | Wider recall, same precision | Precision jumps from 0.68 to 0.91 |
+| Latency cost | N embedding calls + N searches | 1 LLM call + 1 embedding + 1 search |
+
+**Concrete Example**:
+
+```
+Query: "lap chole contraindications"
+
+Multi-Query variations:
+  1. "laparoscopic cholecystectomy contraindications" → Score: 0.82 ✅
+  2. "lap chole risks and restrictions" → Score: 0.64 ❌
+  3. "contraindications for lap chole surgery" → Score: 0.71 ❌
+  4. "lap chole when not to perform" → Score: 0.59 ❌
+  Best result: 0.82 (1 out of 4 variations hit)
+
+HyDE hypothetical:
+  "Laparoscopic cholecystectomy is contraindicated in patients with
+   uncorrected coagulopathy, suspected gallbladder carcinoma, or
+   inability to tolerate general anesthesia..."
+  → Score: 0.94 ✅ (single query, higher precision)
+```
+
+**Architectural Verdict**: HyDE performs a **semantic register shift** from query-space to document-space. Multi-Query performs **paraphrasing within the same register**. For jargon-heavy domains, the register gap is the core problem—not query diversity.
+
+</details>
+
+**Question 1.4**: Design a **fallback pipeline** that combines HyDE with a domain-specific medical synonym dictionary. What happens when HyDE generates a poor hypothetical document (hallucinated medical terminology)?
+
+<details>
+<summary>Expected Answer Elements</summary>
+
+**Hybrid Query Transformation Pipeline**:
+
+```typescript
+interface TransformationResult {
+  strategy: 'hyde' | 'synonym' | 'hybrid'
+  transformedQuery: string
+  confidence: number
+}
+
+async function robustQueryTransformation(
+  query: string
+): Promise<TransformationResult> {
+  // Layer 1: Domain synonym expansion (deterministic, fast)
+  const synonymExpanded = expandMedicalAbbreviations(query, MEDICAL_DICT)
+  // "CABG recovery specs" → "Coronary Artery Bypass Graft recovery specifications"
+
+  // Layer 2: HyDE generation (probabilistic, slower)
+  const hypothetical = await generateHyDE(query)
+
+  // Layer 3: Confidence check — does the HyDE output contain
+  // real medical terminology or hallucinated terms?
+  const hydeConfidence = await validateMedicalTerms(
+    hypothetical,
+    MEDICAL_ONTOLOGY  // SNOMED CT, ICD-10, MeSH terms
+  )
+
+  if (hydeConfidence > 0.85) {
+    return { strategy: 'hyde', transformedQuery: hypothetical, confidence: hydeConfidence }
+  } else if (hydeConfidence > 0.60) {
+    // Hybrid: use synonym-expanded query + HyDE for dual retrieval
+    return { strategy: 'hybrid', transformedQuery: synonymExpanded, confidence: hydeConfidence }
+  } else {
+    // Fallback: HyDE hallucinated, use deterministic synonym expansion only
+    return { strategy: 'synonym', transformedQuery: synonymExpanded, confidence: 1.0 }
+  }
+}
+
+// Deterministic medical abbreviation dictionary
+const MEDICAL_DICT: Record<string, string> = {
+  'CABG': 'Coronary Artery Bypass Graft',
+  'lap chole': 'Laparoscopic Cholecystectomy',
+  'TKR': 'Total Knee Replacement',
+  'ROM': 'Range of Motion',
+  'DVT': 'Deep Vein Thrombosis',
+  'PE': 'Pulmonary Embolism',
+  // ... 500+ surgical abbreviations
+}
+```
+
+**Safety Consideration**: In a medical domain, a hallucinated HyDE output (e.g., inventing a non-existent drug interaction) could retrieve irrelevant documents. The confidence check against a medical ontology (SNOMED CT, MeSH) acts as a safety gate.
+
+</details>
+
+### Architecture Requirements
+
+Your answer must demonstrate understanding of:
+- ✅ Embedding register gap (why jargon fails in vector space)
+- ✅ HyDE implementation (hypothetical document generation + embedding)
+- ✅ HyDE vs Multi-Query comparison (register shift vs paraphrasing)
+- ✅ Fallback pipeline (deterministic synonym expansion as safety net)
+- ✅ Medical ontology validation (preventing HyDE hallucination)
+
+---
+
+## Challenge 2: The "Precision vs. Recall" Trade-off (Hybrid Search)
+
+### The Problem
+
+A surgeon needs to find a **specific drug dosage**: "Heparin 0.05mg/kg for pediatric cardiac bypass." The vector search keeps retrieving documents about Heparin in general, but the **specific dosage table** is buried at Rank #15. The surgeon is mid-operation and needs the exact number—not a general overview.
+
+**Diagnostic Data** (Retrieval Ranking Failure):
+
+```
+Query: "Heparin 0.05mg/kg pediatric cardiac bypass"
+
+Vector Search Results:
+  #1: "Heparin: Mechanism of Action and Clinical Uses" (score: 0.89)
+  #2: "Anticoagulation in Cardiac Surgery: An Overview" (score: 0.87)
+  #3: "Pediatric Cardiac Bypass Procedures" (score: 0.85)
+  ...
+  #15: "Heparin Dosing Table: Pediatric Weight-Based Protocols" (score: 0.72) ← CORRECT
+```
+
+**Production Impact**:
+- Correct document at Rank #15 is outside the LLM's top-5 context window
+- Surgeon receives a general overview instead of the dosage table
+- Manual lookup required (45 seconds lost during active procedure)
+- Near-miss incident reported: wrong dosage nearly administered
+
+### Questions
+
+**Question 2.1**: Why does pure vector search fail for queries containing specific numeric values like "0.05mg/kg"? Explain the fundamental limitation of embedding models with numeric precision.
+
+<details>
+<summary>Expected Answer Elements</summary>
+
+**Why Vector Search Fails for Numeric Data**:
+
+1. **Numeric tokenization**: Embedding models tokenize "0.05mg/kg" as separate subword tokens ("0", ".", "05", "mg", "/", "kg"). The semantic meaning of the combined dosage value is lost.
+
+2. **Semantic averaging**: The embedding for "Heparin 0.05mg/kg" is dominated by "Heparin" (high semantic weight) while "0.05mg/kg" contributes minimal discriminative signal.
+
+3. **No numeric reasoning**: Embeddings treat "0.05mg/kg" and "5mg/kg" as nearly identical vectors—they cannot distinguish dosage magnitudes.
+
+4. **Generality bias**: Documents with broader coverage ("Heparin overview") have high semantic overlap with many queries, inflating their similarity scores.
+
+```
+cosine_similarity("Heparin 0.05mg/kg", "Heparin overview") ≈ 0.89
+cosine_similarity("Heparin 0.05mg/kg", "0.05mg/kg dosing table") ≈ 0.72
+// The general document wins because "Heparin" dominates the vector
+```
+
+</details>
+
+**Question 2.2**: Design a **Two-Stage Retrieval pipeline** using **BM25 + Vector Fusion (RRF)** to ensure the specific dosage table reaches the top-3. Show the Reciprocal Rank Fusion implementation.
+
+<details>
+<summary>Expected Answer Elements</summary>
+
+**Two-Stage Hybrid Retrieval**:
+
+```typescript
+interface HybridSearchResult {
+  chunkId: string
+  content: string
+  bm25Rank: number | null
+  vectorRank: number | null
+  rrfScore: number
+}
+
+async function hybridRetrieve(
+  query: string,
+  topK: number = 50
+): Promise<HybridSearchResult[]> {
+  // Stage 1A: BM25 keyword search (exact token matching)
+  const bm25Results = await elasticSearch.search({
+    index: 'surgical_protocols',
+    query: {
+      multi_match: {
+        query: query,
+        fields: ['content', 'title', 'dosage_tables'],
+        type: 'best_fields'
+      }
+    },
+    size: topK
+  })
+
+  // Stage 1B: Vector search (semantic similarity)
+  const vectorResults = await pgVector.query({
+    vector: await embed(query),
+    topK: topK,
+    table: 'document_chunks'
+  })
+
+  // Stage 2: Reciprocal Rank Fusion
+  const fused = reciprocalRankFusion(bm25Results, vectorResults, 60)
+
+  return fused.slice(0, 10)  // Top 10 after fusion
+}
+
+function reciprocalRankFusion(
+  bm25Results: SearchResult[],
+  vectorResults: SearchResult[],
+  k: number = 60
+): HybridSearchResult[] {
+  const scores = new Map<string, HybridSearchResult>()
+
+  // Score BM25 results
+  bm25Results.forEach((result, index) => {
+    const rank = index + 1
+    const existing = scores.get(result.id) || {
+      chunkId: result.id,
+      content: result.content,
+      bm25Rank: null,
+      vectorRank: null,
+      rrfScore: 0
+    }
+    existing.bm25Rank = rank
+    existing.rrfScore += 1 / (k + rank)
+    scores.set(result.id, existing)
+  })
+
+  // Score vector results
+  vectorResults.forEach((result, index) => {
+    const rank = index + 1
+    const existing = scores.get(result.id) || {
+      chunkId: result.id,
+      content: result.content,
+      bm25Rank: null,
+      vectorRank: null,
+      rrfScore: 0
+    }
+    existing.vectorRank = rank
+    existing.rrfScore += 1 / (k + rank)
+    scores.set(result.id, existing)
+  })
+
+  // Sort by fused RRF score
+  return Array.from(scores.values())
+    .sort((a, b) => b.rrfScore - a.rrfScore)
+}
+```
+
+**Why RRF Promotes the Dosage Table**:
+
+| Document | BM25 Rank | Vector Rank | RRF Score |
+|---|---|---|---|
+| "Heparin Dosing Table: Pediatric Weight-Based Protocols" | 2 | 15 | 1/62 + 1/75 = **0.0295** |
+| "Heparin: Mechanism of Action" | 8 | 1 | 1/68 + 1/61 = **0.0311** |
+| "Anticoagulation in Cardiac Surgery" | 12 | 2 | 1/72 + 1/62 = **0.0300** |
+
+BM25 ranks the dosage table at #2 because it contains the **exact tokens** "0.05mg/kg" and "pediatric." RRF combines this strong keyword signal with the vector rank, promoting it from #15 to the top-3.
+
+</details>
+
+**Question 2.3**: Implement a **Cross-Encoder Re-ranker** as the final quality gate after RRF fusion. Explain why a Cross-Encoder is necessary even after hybrid search, and show the implementation.
+
+<details>
+<summary>Expected Answer Elements</summary>
+
+**Why Cross-Encoder Re-ranking After RRF**:
+
+RRF improves recall (the right document enters the candidate set), but it doesn't deeply analyze query-document relevance. A Cross-Encoder processes the **query and candidate together** through a transformer, producing a fine-grained relevance score.
+
+```typescript
+interface RerankedResult {
+  chunkId: string
+  content: string
+  rrfScore: number
+  crossEncoderScore: number
+  finalRank: number
+}
+
+async function crossEncoderRerank(
+  query: string,
+  candidates: HybridSearchResult[],
+  topK: number = 5
+): Promise<RerankedResult[]> {
+  // Cross-encoder scores each (query, candidate) pair together
+  const scored = await Promise.all(
+    candidates.map(async (candidate) => {
+      const score = await crossEncoder.predict({
+        model: 'cross-encoder/ms-marco-MiniLM-L-12-v2',
+        inputs: [
+          { text: query, text_pair: candidate.content }
+        ]
+      })
+
+      return {
+        chunkId: candidate.chunkId,
+        content: candidate.content,
+        rrfScore: candidate.rrfScore,
+        crossEncoderScore: score,
+        finalRank: 0  // Assigned after sorting
+      }
+    })
+  )
+
+  // Sort by cross-encoder score (most relevant first)
+  return scored
+    .sort((a, b) => b.crossEncoderScore - a.crossEncoderScore)
+    .slice(0, topK)
+    .map((result, index) => ({ ...result, finalRank: index + 1 }))
+}
+```
+
+**Full Pipeline**:
+
+```typescript
+async function surgisearchRetrieve(query: string): Promise<RerankedResult[]> {
+  // Stage 1: Hybrid retrieval (BM25 + Vector + RRF) → 50 candidates
+  const hybridResults = await hybridRetrieve(query, 50)
+
+  // Stage 2: Cross-Encoder re-rank top 20 → final top 5
+  const reranked = await crossEncoderRerank(query, hybridResults.slice(0, 20), 5)
+
+  return reranked
+}
+```
+
+**Latency Budget**:
+
+| Stage | Latency | Purpose |
+|---|---|---|
+| BM25 search | 15ms | Exact token matching |
+| Vector search | 25ms | Semantic similarity |
+| RRF fusion | 2ms | Rank combination |
+| Cross-Encoder (20 candidates) | 80ms | Deep relevance scoring |
+| **Total retrieval** | **122ms** | **Within 500ms SLA** |
+
+</details>
+
+**Question 2.4**: Calculate the retrieval improvement. If baseline vector search places the correct document at Rank #15, and your two-stage pipeline (RRF + Cross-Encoder) places it at Rank #1, what is the **Mean Reciprocal Rank (MRR)** improvement? Show your work.
+
+<details>
+<summary>Expected Answer Elements</summary>
+
+**MRR Calculation**:
+
+```
+MRR = (1/N) × Σ(1/rank_i) for each query
+
+Baseline (vector only):
+  Correct document at Rank #15
+  MRR contribution = 1/15 = 0.067
+
+After RRF + Cross-Encoder:
+  Correct document at Rank #1
+  MRR contribution = 1/1 = 1.000
+
+Improvement: (1.000 - 0.067) / 0.067 = 1,393% improvement
+```
+
+**Across 1,000 dosage queries** (production sample):
+
+| Metric | Baseline (Vector) | Hybrid + Re-rank | Improvement |
+|---|---|---|---|
+| MRR | 0.23 | 0.89 | +287% |
+| Recall@5 | 41% | 94% | +129% |
+| Recall@3 | 28% | 87% | +211% |
+| P95 Latency | 45ms | 122ms | +77ms (still within SLA) |
+
+**Cost Analysis**: The Cross-Encoder adds ~80ms latency and $0.001 per query. For a safety-critical medical application, this is a negligible cost for a 287% MRR improvement.
+
+</details>
+
+### Architecture Requirements
+
+Your answer must demonstrate understanding of:
+- ✅ Embedding limitations for numeric/exact data
+- ✅ BM25 + Vector fusion via Reciprocal Rank Fusion (RRF)
+- ✅ Cross-Encoder re-ranking as precision gate
+- ✅ Full pipeline latency budget (within 500ms SLA)
+- ✅ MRR calculation and retrieval quality metrics
+
+---
+
+## Challenge 3: The "Operating Room" SLA (Performance & Caching)
+
+### The Problem
+
+Surgeons need answers in **&lt;500ms**. Your current pipeline breakdown:
+
+| Stage | Latency |
+|---|---|
+| Query transformation (HyDE) | 350ms |
+| Hybrid retrieval (BM25 + Vector) | 40ms |
+| Cross-Encoder re-rank | 80ms |
+| LLM generation | 3,000ms |
+| **Total** | **3,470ms** |
+
+The LLM generation alone blows the 500ms SLA by 6x. However, your analytics show that **40% of queries are repeats or near-repeats** (e.g., "Standard post-op for appendectomy" asked by 50 different surgeons per day).
+
+### Questions
+
+**Question 3.1**: Design a **Semantic Cache** architecture that serves cached responses for semantically similar queries. Show how you embed the incoming query, compare it against cached query embeddings, and decide whether to serve the cache or run the full pipeline.
+
+<details>
+<summary>Expected Answer Elements</summary>
+
+**Semantic Cache Architecture**:
+
+```typescript
+interface CacheEntry {
+  queryEmbedding: number[]
+  queryText: string
+  response: string
+  sourceChunkIds: string[]
+  createdAt: Date
+  documentVersionHash: string  // Links to source document version
+}
+
+class SemanticCache {
+  private readonly similarityThreshold: number
+  private readonly cacheStore: VectorStore  // pgvector or Redis + VSS
+
+  constructor(threshold: number = 0.96) {
+    this.similarityThreshold = threshold
+  }
+
+  async lookup(query: string): Promise<CacheEntry | null> {
+    const queryVector = await embed(query)
+
+    // Search cache for semantically similar queries
+    const candidates = await this.cacheStore.query({
+      vector: queryVector,
+      topK: 1,
+      filter: { expired: false }
+    })
+
+    if (candidates.length === 0) return null
+
+    const best = candidates[0]
+
+    // Check similarity threshold
+    if (best.similarity >= this.similarityThreshold) {
+      return best.metadata as CacheEntry
+    }
+
+    return null  // Below threshold — run full pipeline
+  }
+
+  async store(
+    query: string,
+    response: string,
+    sourceChunkIds: string[],
+    docVersionHash: string
+  ): Promise<void> {
+    const queryVector = await embed(query)
+
+    await this.cacheStore.upsert({
+      id: generateCacheId(query),
+      vector: queryVector,
+      metadata: {
+        queryText: query,
+        response,
+        sourceChunkIds,
+        createdAt: new Date(),
+        documentVersionHash: docVersionHash
+      }
+    })
+  }
+}
+```
+
+**Request Flow**:
+
+```typescript
+async function handleSurgiSearchQuery(query: string): Promise<Response> {
+  // Step 1: Check semantic cache (5ms)
+  const cached = await semanticCache.lookup(query)
+
+  if (cached) {
+    return {
+      response: cached.response,
+      source: 'cache',
+      latency: 5,  // Cache hit: 5ms vs 3,470ms
+      sourceChunkIds: cached.sourceChunkIds
+    }
+  }
+
+  // Step 2: Full pipeline (3,470ms)
+  const result = await fullRAGPipeline(query)
+
+  // Step 3: Store in cache for future queries
+  await semanticCache.store(
+    query,
+    result.response,
+    result.sourceChunkIds,
+    result.documentVersionHash
+  )
+
+  return result
+}
+```
+
+**Latency Impact**:
+
+| Scenario | Latency | Percentage |
+|---|---|---|
+| Cache hit (40% of queries) | 5ms | Within SLA |
+| Cache miss (60% of queries) | 3,470ms | Exceeds SLA |
+| **Weighted average** | **0.4 × 5 + 0.6 × 3,470 = 2,084ms** | Still exceeds SLA for misses |
+
+The cache solves 40% of queries. For the remaining 60%, you still need streaming or pre-computation strategies.
+
+</details>
+
+**Question 3.2**: Explain your strategy for **Similarity Thresholding**. In a medical context, what is the danger of setting the threshold too low (e.g., 0.85)? What happens if you set it too high (e.g., 0.99)? How do you determine the optimal threshold?
+
+<details>
+<summary>Expected Answer Elements</summary>
+
+**Threshold Analysis for Safety-Critical Medical Context**:
+
+**Too Low (0.85)**:
+```
+Query: "Heparin dosage for pediatric cardiac bypass"
+Cached: "Heparin dosage for adult cardiac bypass"
+Similarity: 0.88 → CACHE HIT (incorrect!)
+
+Danger: Pediatric dosages are 5-10x lower than adult dosages.
+Serving the adult dosage to a pediatric case is a PATIENT SAFETY RISK.
+```
+
+**Too High (0.99)**:
+```
+Query: "Standard post-op protocol for appendectomy"
+Cached: "Standard post-operative protocol for appendectomy"
+Similarity: 0.97 → CACHE MISS (unnecessary full pipeline run)
+
+Impact: Cache hit rate drops from 40% to 8%, negating the performance benefit.
+```
+
+**Optimal Threshold Determination**:
+
+```typescript
+// 1. Build a validation set of query pairs with known same/different intent
+const validationSet: { query1: string; query2: string; sameIntent: boolean }[] = [
+  { query1: "Heparin dose pediatric cardiac", query2: "Heparin dose adult cardiac", sameIntent: false },
+  { query1: "Post-op appendectomy protocol", query2: "Appendectomy post-operative care", sameIntent: true },
+  // ... 500+ pairs reviewed by medical professionals
+]
+
+// 2. Sweep thresholds and measure precision/recall
+function findOptimalThreshold(pairs: ValidationPair[]): number {
+  const thresholds = [0.88, 0.90, 0.92, 0.94, 0.96, 0.98]
+  let bestF1 = 0
+  let bestThreshold = 0.96
+
+  for (const threshold of thresholds) {
+    let tp = 0, fp = 0, fn = 0
+
+    for (const pair of pairs) {
+      const similarity = cosineSimilarity(embed(pair.query1), embed(pair.query2))
+      const predicted = similarity >= threshold
+
+      if (predicted && pair.sameIntent) tp++
+      if (predicted && !pair.sameIntent) fp++  // FALSE POSITIVE = dangerous
+      if (!predicted && pair.sameIntent) fn++
+    }
+
+    // In medical context, weight precision heavily (FP = patient risk)
+    const precision = tp / (tp + fp)
+    const recall = tp / (tp + fn)
+    const f1 = 2 * (precision * recall) / (precision + recall)
+
+    // Medical safety: require precision >= 0.99
+    if (precision >= 0.99 && f1 > bestF1) {
+      bestF1 = f1
+      bestThreshold = threshold
+    }
+  }
+
+  return bestThreshold  // Typically lands at 0.95-0.97 for medical domains
+}
+```
+
+**Key Insight**: In medical domains, a false positive (serving wrong cached answer) is far more dangerous than a false negative (unnecessary pipeline run). Optimize for **precision over recall** in threshold selection.
+
+</details>
+
+**Question 3.3**: How do you prevent **"Stale Data"** in the semantic cache? Design a **Cache Invalidation** strategy linked to your document ingestion pipeline.
+
+<details>
+<summary>Expected Answer Elements</summary>
+
+**Cache Invalidation Architecture**:
+
+```typescript
+interface DocumentIngestionEvent {
+  documentId: string
+  action: 'created' | 'updated' | 'deprecated' | 'deleted'
+  affectedChunkIds: string[]
+  newVersionHash: string
+  timestamp: Date
+}
+
+class CacheInvalidationService {
+  private cache: SemanticCache
+  private eventBus: EventEmitter
+
+  constructor(cache: SemanticCache) {
+    this.cache = cache
+
+    // Subscribe to document ingestion events
+    this.eventBus.on('document:updated', this.handleDocumentUpdate.bind(this))
+    this.eventBus.on('document:deprecated', this.handleDocumentDeprecated.bind(this))
+  }
+
+  async handleDocumentUpdate(event: DocumentIngestionEvent): Promise<void> {
+    // Find all cache entries that reference the updated document's chunks
+    const affectedEntries = await this.cache.findBySourceChunks(
+      event.affectedChunkIds
+    )
+
+    // Invalidate each affected cache entry
+    for (const entry of affectedEntries) {
+      await this.cache.invalidate(entry.id, {
+        reason: 'source_document_updated',
+        documentId: event.documentId,
+        invalidatedAt: new Date()
+      })
+    }
+
+    console.log(
+      `Invalidated ${affectedEntries.length} cache entries ` +
+      `due to update of document ${event.documentId}`
+    )
+  }
+
+  async handleDocumentDeprecated(event: DocumentIngestionEvent): Promise<void> {
+    // CRITICAL: Deprecated medical documents must immediately
+    // invalidate ALL cached responses that cited them
+    const affectedEntries = await this.cache.findBySourceChunks(
+      event.affectedChunkIds
+    )
+
+    for (const entry of affectedEntries) {
+      await this.cache.invalidate(entry.id, {
+        reason: 'source_document_deprecated',
+        documentId: event.documentId,
+        severity: 'critical',  // Alert the ops team
+        invalidatedAt: new Date()
+      })
+    }
+
+    // Also trigger a re-evaluation of any responses that cited this document
+    await this.triggerRetrospectiveAudit(event.affectedChunkIds)
+  }
+}
+```
+
+**TTL + Event-Driven Hybrid**:
+
+```typescript
+// Defense in depth: TTL as a safety net even if events are missed
+const CACHE_CONFIG = {
+  maxTTL: 24 * 60 * 60 * 1000,  // 24 hours absolute maximum
+  softTTL: 4 * 60 * 60 * 1000,  // 4 hours — refresh in background
+  eventDriven: true,              // Primary invalidation via ingestion events
+}
+```
+
+**Why This Matters for SurgiSearch**: If a surgical protocol is updated (e.g., revised Heparin dosing guidelines), serving a cached response with the **old dosage** is a patient safety risk. Cache invalidation must be **immediate and event-driven**, not reliant on TTL expiration.
+
+</details>
+
+**Question 3.4**: Calculate the overall latency improvement and cost savings from the semantic cache. With 40% cache hit rate and 12,000 surgeons making an average of 8 queries per day, what is the monthly cost reduction?
+
+<details>
+<summary>Expected Answer Elements</summary>
+
+**Latency Improvement**:
+
+| Metric | Without Cache | With Cache (40% hit) |
+|---|---|---|
+| P50 latency | 3,470ms | 5ms (cache) / 3,470ms (miss) |
+| Weighted P50 | 3,470ms | 0.4 × 5 + 0.6 × 3,470 = **2,084ms** |
+| P95 latency | 4,200ms | 3,470ms (misses only) |
+| Queries within SLA | 0% | **40%** (cache hits) |
+
+**Cost Calculation**:
+
+```
+Total queries per day: 12,000 surgeons × 8 queries = 96,000 queries/day
+Monthly queries: 96,000 × 30 = 2,880,000 queries/month
+
+Without cache:
+  Every query runs full pipeline: $0.02/query
+  Monthly cost: 2,880,000 × $0.02 = $57,600/month
+
+With semantic cache (40% hit rate):
+  Cache hits: 2,880,000 × 0.40 = 1,152,000 queries × $0.0001 = $115/month
+  Cache misses: 2,880,000 × 0.60 = 1,728,000 queries × $0.02 = $34,560/month
+  Cache infrastructure: ~$500/month (Redis + vector index)
+  Monthly cost: $115 + $34,560 + $500 = $35,175/month
+
+Savings: $57,600 - $35,175 = $22,425/month (38.9% reduction)
+Annual savings: $269,100
+```
+
+**ROI**: Cache infrastructure costs ~$500/month, saves ~$22,425/month. ROI = 4,385%.
+
+</details>
+
+### Architecture Requirements
+
+Your answer must demonstrate understanding of:
+- ✅ Semantic cache architecture (embedding-based similarity lookup)
+- ✅ Safety-critical threshold selection (precision over recall)
+- ✅ Event-driven cache invalidation (linked to document ingestion)
+- ✅ TTL as defense-in-depth (not primary invalidation strategy)
+- ✅ Cost and latency ROI calculation
+
+---
+
+## Challenge 4: The "Faithfulness" Audit (Evaluation & Security)
+
+### The Problem
+
+A surgeon files an incident report claiming that SurgiSearch suggested a recovery protocol ("Modified Henderson Protocol for post-CABG rehabilitation") that **does not exist** in the approved surgical manual. You need to determine whether:
+
+**(A)** The AI **hallucinated** the protocol name (fabricated information not present in any source document), or
+**(B)** The AI retrieved a **deprecated document** that was removed from the approved manual last month but still existed in the vector database.
+
+**Incident Report**:
+
+```
+Incident ID: SRG-2026-0847
+Reporter: Dr. Chen, Cardiac Surgery
+Timestamp: 2026-02-04T14:32:00Z
+Query: "Post-CABG rehabilitation protocol for elderly patients"
+AI Response: "The Modified Henderson Protocol recommends a 3-phase recovery
+  approach: Phase 1 (Days 1-3) bed rest with passive ROM, Phase 2 (Days 4-7)
+  supervised ambulation, Phase 3 (Weeks 2-6) progressive resistance training."
+Concern: "I cannot find this protocol in our approved manual. Is this real?"
+```
+
+### Questions
+
+**Question 4.1**: Define the **RAGAS metrics** you would use to evaluate this incident. Explain the specific role of the **Faithfulness** metric and how it differs from **Answer Relevancy** and **Context Relevancy**.
+
+<details>
+<summary>Expected Answer Elements</summary>
+
+**RAGAS Metrics for Root-Cause Analysis**:
+
+| Metric | Definition | What It Catches |
+|---|---|---|
+| **Faithfulness** | Is every claim in the response supported by the retrieved context? | Hallucination (claims not in source docs) |
+| **Answer Relevancy** | Does the response address the user's question? | Off-topic or tangential responses |
+| **Context Relevancy** | Are the retrieved chunks relevant to the query? | Poor retrieval (wrong documents fetched) |
+| **Context Recall** | Does the retrieved context contain the information needed? | Missing information in retrieval |
+
+**Faithfulness in Detail**:
+
+```typescript
+interface FaithfulnessEvaluation {
+  claims: Array<{
+    claim: string
+    supportedByContext: boolean
+    sourceChunkId: string | null
+    evidence: string | null
+  }>
+  score: number  // 0.0 to 1.0
+}
+
+async function evaluateFaithfulness(
+  response: string,
+  retrievedContext: string[]
+): Promise<FaithfulnessEvaluation> {
+  // Step 1: Decompose response into atomic claims
+  const claims = await extractClaims(response)
+  // ["The Modified Henderson Protocol recommends a 3-phase recovery approach",
+  //  "Phase 1 (Days 1-3) bed rest with passive ROM",
+  //  "Phase 2 (Days 4-7) supervised ambulation",
+  //  "Phase 3 (Weeks 2-6) progressive resistance training"]
+
+  // Step 2: For each claim, check if it's supported by the retrieved context
+  const evaluatedClaims = await Promise.all(
+    claims.map(async (claim) => {
+      const support = await checkClaimAgainstContext(claim, retrievedContext)
+      return {
+        claim,
+        supportedByContext: support.isSupported,
+        sourceChunkId: support.chunkId,
+        evidence: support.evidence
+      }
+    })
+  )
+
+  // Step 3: Calculate faithfulness score
+  const supportedCount = evaluatedClaims.filter(c => c.supportedByContext).length
+  const score = supportedCount / evaluatedClaims.length
+
+  return { claims: evaluatedClaims, score }
+}
+```
+
+**For This Incident**:
+- If Faithfulness = 0.0 → The AI fabricated the protocol (hallucination)
+- If Faithfulness = 1.0 but Context Relevancy is low → The AI was faithful to bad context (deprecated doc retrieval)
+- If Faithfulness = 1.0 and Context Relevancy is high → The response is correct; the surgeon may be looking at an outdated version of the manual
+
+</details>
+
+**Question 4.2**: Explain how **Context-Linked Tracing** allows you to pinpoint the exact chunk ID responsible for the AI's answer. Design the tracing data model that stores the full request lifecycle.
+
+<details>
+<summary>Expected Answer Elements</summary>
+
+**Context-Linked Tracing Data Model**:
+
+```typescript
+interface RequestTrace {
+  traceId: string                    // Unique request identifier
+  timestamp: Date
+  userId: string
+  query: string
+
+  // Query transformation stage
+  queryTransformation: {
+    strategy: 'hyde' | 'synonym' | 'raw'
+    transformedQuery: string
+    hydeConfidence?: number
+    latencyMs: number
+  }
+
+  // Retrieval stage
+  retrieval: {
+    method: 'hybrid' | 'vector' | 'bm25'
+    candidates: Array<{
+      chunkId: string
+      documentId: string
+      documentTitle: string
+      documentVersion: string      // Version hash at time of retrieval
+      bm25Score: number | null
+      vectorScore: number | null
+      rrfScore: number
+      crossEncoderScore: number | null
+      finalRank: number
+    }>
+    latencyMs: number
+  }
+
+  // Generation stage
+  generation: {
+    model: string
+    promptTokens: number
+    completionTokens: number
+    contextChunkIds: string[]       // Exact chunks sent to LLM
+    response: string
+    latencyMs: number
+  }
+
+  // Cache interaction
+  cache: {
+    hit: boolean
+    similarity?: number
+    cachedTraceId?: string          // Links to original trace that populated cache
+  }
+
+  // Total request metadata
+  totalLatencyMs: number
+  cost: number
+}
+```
+
+**Querying the Trace for Incident SRG-2026-0847**:
+
+```typescript
+async function investigateIncident(traceId: string): Promise<IncidentReport> {
+  const trace = await traceStore.getTrace(traceId)
+
+  // 1. Identify which chunks were sent to the LLM
+  const contextChunks = trace.generation.contextChunkIds
+  // ["chunk-4892", "chunk-4893", "chunk-7201"]
+
+  // 2. For each chunk, check the source document's current status
+  const chunkAnalysis = await Promise.all(
+    contextChunks.map(async (chunkId) => {
+      const chunk = await documentStore.getChunk(chunkId)
+      const document = await documentStore.getDocument(chunk.documentId)
+
+      return {
+        chunkId,
+        documentId: chunk.documentId,
+        documentTitle: document.title,
+        documentStatus: document.status,  // 'active' | 'deprecated' | 'deleted'
+        documentDeprecatedAt: document.deprecatedAt,
+        retrievalVersionHash: trace.retrieval.candidates
+          .find(c => c.chunkId === chunkId)?.documentVersion,
+        currentVersionHash: document.currentVersionHash
+      }
+    })
+  )
+
+  // 3. Determine root cause
+  const deprecatedChunks = chunkAnalysis.filter(c => c.documentStatus === 'deprecated')
+
+  if (deprecatedChunks.length > 0) {
+    return {
+      rootCause: 'DEPRECATED_DOCUMENT_RETRIEVAL',
+      description: `Response was faithful to chunk ${deprecatedChunks[0].chunkId} ` +
+        `from document "${deprecatedChunks[0].documentTitle}" which was ` +
+        `deprecated on ${deprecatedChunks[0].documentDeprecatedAt}`,
+      remediation: 'Remove deprecated chunks from vector index; invalidate cache'
+    }
+  }
+
+  return {
+    rootCause: 'HALLUCINATION',
+    description: 'Claims in response are not supported by any retrieved context',
+    remediation: 'Review LLM generation parameters; add faithfulness guard'
+  }
+}
+```
+
+</details>
+
+**Question 4.3**: Using the tracing data, walk through the **root-cause analysis** for this specific incident. Which scenario is it — hallucination or deprecated document retrieval? What specific data points distinguish the two?
+
+<details>
+<summary>Expected Answer Elements</summary>
+
+**Root-Cause Analysis Decision Tree**:
+
+```
+Step 1: Pull the request trace for incident SRG-2026-0847
+  → traceId: "trc-2026-0204-143200-drchen"
+
+Step 2: Evaluate faithfulness of the response against retrieved context
+  → Run RAGAS Faithfulness metric
+
+  IF faithfulness = 0.0 (no claims supported by context):
+    → ROOT CAUSE: Hallucination
+    → The LLM fabricated "Modified Henderson Protocol"
+    → No retrieved chunk mentions this protocol
+    → Action: Strengthen generation guardrails, add faithfulness filter
+
+  IF faithfulness = 1.0 (all claims supported by context):
+    → Check the source document status for each cited chunk
+
+    IF any source document status = 'deprecated':
+      → ROOT CAUSE: Deprecated Document Retrieval
+      → Chunk chunk-7201 from "Henderson Recovery Protocols v2.1"
+        was deprecated on 2026-01-15 but still in vector index
+      → Action: Remove deprecated chunks, invalidate cache,
+        add document lifecycle hooks to ingestion pipeline
+
+    IF all source documents are 'active':
+      → ROOT CAUSE: Content exists in approved manual
+      → The surgeon may have an outdated copy of the manual
+      → Action: Verify with medical team; no system error
+```
+
+**Key Distinguishing Data Points**:
+
+| Data Point | Hallucination | Deprecated Doc |
+|---|---|---|
+| Faithfulness score | 0.0 - 0.2 | 0.8 - 1.0 |
+| Context chunk match | No chunk contains protocol name | Chunk explicitly mentions protocol |
+| Document status | N/A (protocol not in any doc) | `deprecated` or `superseded` |
+| Version hash match | N/A | Retrieval hash differs from current |
+
+</details>
+
+**Question 4.4**: Design a **Continuous Evaluation Pipeline** that catches faithfulness failures **before** they reach surgeons. Show how you integrate RAGAS scoring into the production request flow.
+
+<details>
+<summary>Expected Answer Elements</summary>
+
+**Production Faithfulness Guard**:
+
+```typescript
+interface FaithfulnessGuardConfig {
+  threshold: number           // Minimum faithfulness score to serve response
+  fallbackResponse: string    // Safe response when faithfulness is low
+  alertThreshold: number      // Score below which ops team is alerted
+}
+
+const MEDICAL_GUARD_CONFIG: FaithfulnessGuardConfig = {
+  threshold: 0.85,           // Require 85%+ faithfulness
+  fallbackResponse: 'I found relevant documents but cannot generate a ' +
+    'confident answer. Please consult the source documents directly.',
+  alertThreshold: 0.50       // Page on-call for critically low scores
+}
+
+async function guardedGeneration(
+  query: string,
+  context: string[],
+  config: FaithfulnessGuardConfig
+): Promise<GuardedResponse> {
+  // Step 1: Generate response
+  const response = await llm.generate({
+    model: 'claude-sonnet-4-20250514',
+    context,
+    query
+  })
+
+  // Step 2: Evaluate faithfulness (async, adds ~200ms)
+  const faithfulness = await evaluateFaithfulness(response, context)
+
+  // Step 3: Gate the response
+  if (faithfulness.score >= config.threshold) {
+    return {
+      response,
+      faithfulnessScore: faithfulness.score,
+      served: true
+    }
+  }
+
+  // Step 4: Alert if critically low
+  if (faithfulness.score < config.alertThreshold) {
+    await alertOpsTeam({
+      severity: 'critical',
+      message: `Faithfulness score ${faithfulness.score} for query: ${query}`,
+      traceId: getCurrentTraceId()
+    })
+  }
+
+  // Step 5: Serve safe fallback
+  return {
+    response: config.fallbackResponse,
+    faithfulnessScore: faithfulness.score,
+    served: false,
+    blockedClaims: faithfulness.claims
+      .filter(c => !c.supportedByContext)
+      .map(c => c.claim)
+  }
+}
+```
+
+**Batch Evaluation Pipeline** (for continuous monitoring):
+
+```typescript
+// Run nightly on a sample of the day's queries
+async function nightlyFaithfulnessAudit(): Promise<AuditReport> {
+  const todaysTraces = await traceStore.getTraces({
+    date: new Date(),
+    sample: 0.10  // 10% sample
+  })
+
+  const results = await Promise.all(
+    todaysTraces.map(async (trace) => {
+      const faithfulness = await evaluateFaithfulness(
+        trace.generation.response,
+        trace.retrieval.candidates
+          .filter(c => c.finalRank <= 5)
+          .map(c => c.content)
+      )
+
+      return {
+        traceId: trace.traceId,
+        faithfulnessScore: faithfulness.score,
+        flagged: faithfulness.score < 0.85
+      }
+    })
+  )
+
+  const flaggedCount = results.filter(r => r.flagged).length
+
+  return {
+    totalEvaluated: results.length,
+    averageFaithfulness: mean(results.map(r => r.faithfulnessScore)),
+    flaggedResponses: flaggedCount,
+    flagRate: flaggedCount / results.length,
+    flaggedTraceIds: results.filter(r => r.flagged).map(r => r.traceId)
+  }
+}
+```
+
+**Monitoring Dashboard Metrics**:
+
+| Metric | Target | Alert Threshold |
+|---|---|---|
+| Average faithfulness (daily) | &gt;0.92 | &lt;0.85 |
+| Flagged response rate | &lt;2% | &gt;5% |
+| Deprecated doc retrievals | 0 | &gt;0 |
+| Cache stale-data incidents | 0 | &gt;0 |
+
+</details>
+
+### Architecture Requirements
+
+Your answer must demonstrate understanding of:
+- ✅ RAGAS metrics (Faithfulness, Context Relevancy, Answer Relevancy)
+- ✅ Context-Linked Tracing (full request lifecycle data model)
+- ✅ Root-cause analysis (hallucination vs deprecated document retrieval)
+- ✅ Production faithfulness guard (inline scoring with safe fallback)
+- ✅ Continuous evaluation pipeline (batch auditing with alerting)
+
+---
+
+## Grading Rubric (The Surgeon's Verdict)
+
+### Architect Tier (Pass) - 85-100%
+
+**Demonstrates**:
+- ✅ Views RAG as a **Precision Pipeline**, not a prompt-and-pray system
+- ✅ Prioritizes **Re-ranking** for accuracy (Cross-Encoder as quality gate)
+- ✅ Uses **HyDE** for intent bridging (register shift, not paraphrasing)
+- ✅ Implements **Semantic Caching** with safety-critical thresholds
+- ✅ Uses **quantitative metrics** (RAGAS, MRR, latency budgets) to justify design
+- ✅ Designs **event-driven cache invalidation** linked to document lifecycle
+- ✅ Implements **Context-Linked Tracing** for full auditability
+
+**Example Answer Quality**:
+- Provides production TypeScript code with proper error handling
+- Calculates ROI for each optimization (cost savings, latency improvement)
+- Explains *why* solutions work at the system level, not just *what* to do
+- Considers medical safety implications at every decision point
+
+**Philosophy**:
+> "RAG is a precision pipeline. I measure retrieval quality with MRR, gate generation with faithfulness scoring, accelerate repeats with semantic caching, and trace every response to its source chunks. Every architectural decision has a measurable impact on accuracy, latency, and cost."
+
+---
+
+### Developer Tier (Partial) - 60-84%
+
+**Gaps**:
+- ⚠️ Suggests "increasing the context window" or "using a better model" to fix retrieval
+- ⚠️ Uses prompt engineering ("tell the LLM to be more accurate") instead of architectural solutions
+- ⚠️ Implements caching without safety-critical thresholding
+- ⚠️ Lacks quantitative analysis (no MRR, no latency budgets, no cost calculations)
+- ⚠️ No plan for cache invalidation or stale data prevention
+- ⚠️ Missing tracing infrastructure for auditability
+
+**Red Flags**:
+- "Use a bigger context window so the dosage table is included"
+- "Tell the LLM not to hallucinate in the system prompt"
+- "Cache everything for 24 hours, it should be fine"
+- "We can check faithfulness manually if there's a complaint"
+
+**Missing**: Hybrid search fusion, cross-encoder re-ranking, event-driven invalidation, RAGAS metrics
+
+---
+
+### Junior Tier (Fail) - Below 60%
+
+**Fundamental Misunderstandings**:
+- ❌ Suggests "manually checking the answers" or "having a doctor review every response"
+- ❌ Ignores the 500ms SLA entirely ("the LLM needs time to think")
+- ❌ No understanding of BM25, RRF, or cross-encoders
+- ❌ Proposes caching with no similarity threshold ("cache all queries")
+- ❌ Relies on prompt instructions for faithfulness ("tell the AI not to make things up")
+- ❌ No tracing or evaluation infrastructure
+
+**Disqualifying Answers**:
+- "Surgeons should double-check the AI's answers anyway"
+- "We don't need caching, just use a faster model"
+- "Hallucination is an unsolved problem, we can't prevent it"
+- "Store the surgeon's abbreviations in the prompt"
+- "Use GPT-5, it won't hallucinate"
+
+---
+
+## Passing Criteria
+
+To earn the **Week 6: RAG Optimizer** certification, you must:
+
+1. ✅ **Challenge 1**: Score 85%+ on Query Transformation
+   - Must include HyDE implementation and HyDE vs Multi-Query comparison
+
+2. ✅ **Challenge 2**: Score 85%+ on Hybrid Search
+   - Must show BM25 + Vector RRF fusion and Cross-Encoder re-ranking
+
+3. ✅ **Challenge 3**: Score 85%+ on Semantic Caching
+   - Must explain safety-critical thresholding and event-driven cache invalidation
+
+4. ✅ **Challenge 4**: Score 85%+ on Faithfulness Audit
+   - Must use RAGAS metrics and Context-Linked Tracing for root-cause analysis
+
+5. ✅ **Overall**: Average score &ge; 88%
+
+**Time Limit**: 120 minutes (open book, can reference Week 6 modules)
+
+---
+
+## Submission Format
+
+Your submission must include:
+
+### Part 1: Architecture Document
+- Query transformation pipeline diagram (raw query &rarr; HyDE &rarr; retrieval)
+- Two-stage retrieval pipeline (BM25 + Vector &rarr; RRF &rarr; Cross-Encoder)
+- Semantic cache architecture (lookup &rarr; threshold &rarr; serve or compute)
+- Request tracing data model (full lifecycle)
+
+### Part 2: Pipeline Designs
+- HyDE implementation with medical ontology validation
+- Hybrid retrieval with RRF fusion formula
+- Cross-Encoder re-ranker with latency budget
+- Semantic cache with similarity thresholding
+
+### Part 3: Code Implementation
+- TypeScript code for:
+  - HyDE query transformation with fallback pipeline
+  - Reciprocal Rank Fusion (BM25 + Vector)
+  - Cross-Encoder re-ranking
+  - Semantic cache with event-driven invalidation
+  - RAGAS faithfulness evaluation
+  - Context-Linked Tracing data model
+
+### Part 4: ROI Analysis
+- MRR improvement from hybrid search + re-ranking
+- Latency reduction from semantic caching (with hit rate analysis)
+- Cost savings per month (query volume &times; cost per query)
+- Faithfulness improvement from production guards
+
+---
+
+## What Happens After Passing?
+
+**Week 6 Certification Badge**: "RAG Optimizer - Deterministic Quality at Scale"
+
+**Skills Validated**:
+- ✅ Query transformation (HyDE, domain-specific synonym expansion)
+- ✅ Hybrid retrieval (BM25 + Vector fusion, Reciprocal Rank Fusion)
+- ✅ Precision optimization (Cross-Encoder re-ranking)
+- ✅ Performance engineering (semantic caching, latency budgets)
+- ✅ Production evaluation (RAGAS metrics, faithfulness guards)
+- ✅ Observability (Context-Linked Tracing, continuous monitoring)
+
+**Next Steps**:
+- Week 7: Prompt Engineering at Scale
+- Week 8: Interview Preparation & Portfolio Review
+
+---
+
+## Study Resources
+
+Review these Week 6 modules before taking the exam:
+
+1. **Query Transformation Patterns** - HyDE, Multi-Query, Step-Back Prompting
+2. **Hybrid Retrieval & Re-ranking** - BM25, Vector Search, RRF, Cross-Encoders
+3. **Context Window Optimization** - Chunk strategies, parent-child retrieval
+4. **Performance Optimization** - Caching, latency budgets, cost analysis
+5. **Observability Basics** - Tracing, logging, metric collection
+6. **Monitoring AI Systems** - RAGAS metrics, faithfulness evaluation, dashboards
+7. **Enterprise RAG Hardening** - Security, multi-tenancy, compliance
+8. **Production Deployment** - Infrastructure, SLA management, incident response
+
+**Estimated Prep Time**: 14-18 hours (review modules + practice coding + lab exercises)
+
+---
+
+## Congratulations!
+
+With the completion of Week 6, you have completed the **technical hardening** of the AI Architect Accelerator curriculum (Weeks 1-6):
+
+- **Week 1**: Foundations (LLM Physics, ROI, Readiness Assessment)
+- **Week 2**: Governance (Shielding, Compliance, PII Protection)
+- **Week 3**: Knowledge (RAG, Embeddings, Memory Architecture)
+- **Week 4**: Interface (Structured Output, Function Calling, Schemas)
+- **Week 5**: Agents (Autonomous Reasoning, Multi-Agent Orchestration, Fault Tolerance)
+- **Week 6**: Optimization (Query Transformation, Hybrid Retrieval, Caching, Evaluation)
+
+Your course now covers the **full lifecycle of an AI Architect**: from understanding how LLMs work, to governing their behavior, to building knowledge systems, to orchestrating agents, to optimizing and monitoring everything in production.
+
+**You are ready to build production AI systems that are accurate, fast, auditable, and safe.**
