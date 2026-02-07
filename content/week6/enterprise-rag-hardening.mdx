@@ -177,7 +177,7 @@ function calculateNDCG(results: RankedResult[], k: number = 10): number {
  *
  * Definition: Fraction of claims in the answer that are supported by the context
  * Range: 0-1 (higher is better)
- * Target: >0.90 for regulated industries
+ * Target: &gt;0.90 for regulated industries
  */
 interface FaithfulnessScore {
   score: number              // 0-1
@@ -279,7 +279,7 @@ Answer:`
  * Definition: Does the answer actually address the user's query?
  * Method: Generate hypothetical questions from the answer, compare to original query
  * Range: 0-1 (higher is better)
- * Target: >0.85
+ * Target: &gt;0.85
  */
 interface AnswerRelevancyScore {
   score: number                     // 0-1 (cosine similarity)
@@ -354,7 +354,7 @@ Output: { "questions": [
  * Definition: Are the top-ranked chunks actually useful for answering the query?
  * Method: Check if each chunk was cited in the answer
  * Range: 0-1 (higher is better)
- * Target: >0.80
+ * Target: &gt;0.80
  */
 interface ContextPrecisionScore {
   score: number               // 0-1
@@ -710,14 +710,14 @@ Faithfulness measures **how much the AI 'sticks to the script'** provided by the
 **LLM Response (Faithfulness = 0.70)**:
 ```
 "The patient's HbA1c is 7.2%, which indicates suboptimal glycemic control.
-The target for most adults is <7.0%, so this patient should increase medication dosage."
+The target for most adults is &lt;7.0%, so this patient should increase medication dosage."
               ↑ NOT in context - hallucinated!
 ```
 
 **Claim Breakdown**:
 1. "HbA1c is 7.2%" ✅ Supported by context
 2. "Indicates suboptimal glycemic control" ✅ Logically implied
-3. "Target is <7.0%" ❌ **NOT in context** (hallucinated clinical guideline)
+3. "Target is &lt;7.0%" ❌ **NOT in context** (hallucinated clinical guideline)
 4. "Should increase medication" ❌ **NOT in context** (hallucinated treatment plan)
 
 **Faithfulness**: 2/4 = 0.50 (this example)
@@ -826,10 +826,10 @@ If Retrieval is 0.88 but Faithfulness is 0.70, your bottleneck is **Generation**
 Before deploying your RAG system to production, ensure:
 
 #### Search Quality (RAGAS)
-- [ ] **Faithfulness >0.90**: LLM stays grounded in context
-- [ ] **Answer Relevancy >0.85**: Answers address the query
-- [ ] **Context Precision >0.80**: Retrieved chunks are useful
-- [ ] Recall@10 >0.80 (baseline retrieval metric)
+- [ ] **Faithfulness &gt;0.90**: LLM stays grounded in context
+- [ ] **Answer Relevancy &gt;0.85**: Answers address the query
+- [ ] **Context Precision &gt;0.80**: Retrieved chunks are useful
+- [ ] Recall@10 &gt;0.80 (baseline retrieval metric)
 
 #### Security
 - [ ] **Egress content filtering**: Scan chunks for prompt injection before LLM
@@ -844,31 +844,31 @@ Before deploying your RAG system to production, ensure:
 - [ ] Replay capability (reproduce disputed answers)
 
 #### Performance
-- [ ] TTFT <200ms (p95 latency)
-- [ ] Semantic caching (>40% hit rate)
-- [ ] HNSW indexing (>100K documents)
+- [ ] TTFT &lt;200ms (p95 latency)
+- [ ] Semantic caching (&gt;40% hit rate)
+- [ ] HNSW indexing (&gt;100K documents)
 - [ ] Circuit breakers for external services
 
 #### Cost
-- [ ] <$10 per 1K queries
+- [ ] &lt;$10 per 1K queries
 - [ ] Prompt caching for static content
 - [ ] Context pruning (remove redundant chunks)
 
 #### Observability
 - [ ] Real-time RAGAS monitoring (DataDog/Grafana)
-- [ ] Alert on Faithfulness <0.90, Context Precision <0.80
+- [ ] Alert on Faithfulness &lt;0.90, Context Precision &lt;0.80
 - [ ] Cost tracking per query
 - [ ] Latency breakdown (embedding, search, re-rank, LLM)
 
 ---
 
 **Target Metrics** (production-grade RAG):
-- **Faithfulness**: >0.90 (anti-hallucination)
-- **Answer Relevancy**: >0.85 (query alignment)
-- **Context Precision**: >0.80 (retrieval efficiency)
-- **Latency (P95)**: <200ms
-- **Uptime**: >99.9%
-- **Cost**: <$10 per 1K queries
+- **Faithfulness**: &gt;0.90 (anti-hallucination)
+- **Answer Relevancy**: &gt;0.85 (query alignment)
+- **Context Precision**: &gt;0.80 (retrieval efficiency)
+- **Latency (P95)**: &lt;200ms
+- **Uptime**: &gt;99.9%
+- **Cost**: &lt;$10 per 1K queries
 
 ---
 
@@ -1406,9 +1406,9 @@ Answer:`
  * Continuous RAGAS Monitoring
  */
 interface RAGASMetrics {
-  faithfulness: number        // Target: >0.90
-  answerRelevancy: number     // Target: >0.85
-  contextPrecision: number    // Target: >0.80
+  faithfulness: number        // Target: &gt;0.90
+  answerRelevancy: number     // Target: &gt;0.85
+  contextPrecision: number    // Target: &gt;0.80
   timestamp: Date
   query: string
   answer: string
@@ -1498,9 +1498,9 @@ Answer using ONLY information from the context. Do not add external knowledge.
   const ragas = await evaluateRAGWithRAGAS(query, chunks, answer)
 
   console.log('\n📈 RAGAS Results:')
-  console.log(`   Faithfulness: ${(ragas.faithfulness * 100).toFixed(1)}% (target >90%)`)
-  console.log(`   Answer Relevancy: ${(ragas.answerRelevancy * 100).toFixed(1)}% (target >85%)`)
-  console.log(`   Context Precision: ${(ragas.contextPrecision * 100).toFixed(1)}% (target >80%)`)
+  console.log(`   Faithfulness: ${(ragas.faithfulness * 100).toFixed(1)}% (target &gt;90%)`)
+  console.log(`   Answer Relevancy: ${(ragas.answerRelevancy * 100).toFixed(1)}% (target &gt;85%)`)
+  console.log(`   Context Precision: ${(ragas.contextPrecision * 100).toFixed(1)}% (target &gt;80%)`)
 
   // Example output:
   // Faithfulness: 92.3% ✅ (12/13 claims supported)
@@ -1517,11 +1517,11 @@ Answer using ONLY information from the context. Do not add external knowledge.
 
 **A**: "We use the **RAGAS framework** with three LLM-as-a-Judge metrics:
 
-1. **Faithfulness (>90% target)**: Measures hallucination. We extract factual claims from the answer and verify each claim against the retrieved context. If the LLM says 'HbA1c target is 6.5%' but the context never mentioned that number, it's a hallucination.
+1. **Faithfulness (&gt;90% target)**: Measures hallucination. We extract factual claims from the answer and verify each claim against the retrieved context. If the LLM says 'HbA1c target is 6.5%' but the context never mentioned that number, it's a hallucination.
 
-2. **Answer Relevancy (>85% target)**: Measures if the answer actually addresses the query. We generate hypothetical questions from the answer and check their similarity to the original query. Low score means the LLM went off-topic.
+2. **Answer Relevancy (&gt;85% target)**: Measures if the answer actually addresses the query. We generate hypothetical questions from the answer and check their similarity to the original query. Low score means the LLM went off-topic.
 
-3. **Context Precision (>80% target)**: Measures retrieval efficiency. We check which chunks were actually cited in the answer. Low score means we're retrieving too many irrelevant chunks.
+3. **Context Precision (&gt;80% target)**: Measures retrieval efficiency. We check which chunks were actually cited in the answer. Low score means we're retrieving too many irrelevant chunks.
 
 These metrics let us **diagnose failure modes**:
 - Low Faithfulness = LLM problem (strengthen grounding prompt)
@@ -1541,7 +1541,7 @@ We log these to DataDog and alert when they drop below thresholds. This is how w
 - Reputation damage: Immeasurable
 
 **After RAGAS**:
-- Faithfulness monitoring: Real-time alerts on <90%
+- Faithfulness monitoring: Real-time alerts on &lt;90%
 - Hallucination caught: Before reaching patient
 - Cost of RAGAS: $0.02/query × 1M = $20K/year (LLM-as-Judge API calls)
 
