@@ -1,241 +1,1036 @@
 ---
-title: "Monitoring LLM Applications"
-description: "Implement comprehensive monitoring for production AI systems"
-estimatedMinutes: 35
+title: "System Metrics & Predictive Operational Intelligence"
+description: "Semantic drift monitoring, percentile-driven SLAs, unit economics, and aggregate fleet management for production AI systems"
+estimatedMinutes: 50
 ---
 
-# Monitoring LLM Applications
+# System Metrics & Predictive Operational Intelligence
 
-## Introduction
+## From Request Debugging to Fleet Management
 
-Monitoring LLM applications requires tracking both traditional web metrics and AI-specific metrics like token usage, prompt quality, and response accuracy.
+**Prototype Monitoring**: "Track latency and cost per request"
 
-## What to Monitor
+**Enterprise Monitoring**: "Detect semantic drift 3 days before user satisfaction drops. P99 latency diverging from P50 by 8x signals vector DB index degradation. Support bot unit economics broken at $50 cost per $5 ticket—implement context pruning."
 
-### 1. Request Metrics
+This is the difference between **tracking numbers** and **predictive operational intelligence**.
 
-**Latency**
+---
+
+## The Executive Dashboard Framework
+
+### The Three Layers of AI Observability
+
+**Layer 1: Request-Level** (covered in Week 6 Concept 5: Request Tracing)
+- Individual request debugging
+- Trace ID → Chunk IDs
+- Span-level metadata
+
+**Layer 2: Aggregate Fleet-Level** (THIS MODULE)
+- Semantic drift detection
+- Percentile latency analysis
+- Unit economics by feature
+- Predictive alerts
+
+**Layer 3: Business-Level** (Week 11: Production AI)
+- Revenue per feature
+- Customer LTV impact
+- Market positioning
+
+---
+
+## 1. Semantic Drift Monitoring: Embedding Centroid Analysis
+
+### The Problem with Lagging Indicators
+
+**Observation**: User satisfaction scores are **lagging indicators**. By the time users complain, your model has been degraded for days.
+
+**Example Timeline**:
+- **Day 1**: OpenAI updates GPT-4 (you don't know)
+- **Day 2-4**: Model outputs subtly change (less concise, more verbose)
+- **Day 5**: User satisfaction drops from 4.2 → 3.8 (NOW you notice)
+- **Day 6-7**: 2 days debugging to find root cause
+
+**Architect's Insight**: You need **leading indicators** that detect model drift BEFORE users notice.
+
+### The Rigorous Solution: Embedding Centroid Monitoring
+
+**Core Principle**: Monitor the "soul" of your model by tracking the **average embedding** (centroid) of its outputs over time.
+
+**Theory**: If your model's outputs are semantically drifting (becoming more verbose, changing tone, shifting topics), the centroid of output embeddings will shift in vector space.
+
+**Measurement**: Cosine distance between today's centroid and yesterday's centroid.
+
 ```typescript
-// Track end-to-end latency
-const startTime = Date.now()
-const response = await llm.complete(prompt)
-const latency = Date.now() - startTime
+/**
+ * Semantic Drift Detection via Embedding Centroid Monitoring
+ *
+ * Leading indicator: Detects model degradation 3-5 days before user satisfaction drops
+ */
+interface EmbeddingCentroid {
+  date: Date
+  centroid: number[]           // Average embedding of all outputs that day
+  output_count: number
+  avg_output_length: number
+}
 
-await metrics.recordLatency('llm_completion', latency, {
-  model: 'claude-3-sonnet',
-  user_id: userId
-})
-```
+/**
+ * Calculate daily centroid of model outputs
+ */
+async function calculateDailyCentroid(date: Date): Promise<EmbeddingCentroid> {
+  // Step 1: Fetch all model outputs for the day
+  const outputs = await db.query(`
+    SELECT response_text
+    FROM llm_requests
+    WHERE DATE(created_at) = $1
+    AND response_text IS NOT NULL
+  `, [date])
 
-**Throughput**
-- Requests per second
-- Requests per user
-- Peak vs. average load
+  console.log(`📊 Calculating centroid for ${date.toISOString().split('T')[0]}`)
+  console.log(`   Outputs: ${outputs.rows.length}`)
 
-**Error Rates**
-- 4xx errors (client errors)
-- 5xx errors (server errors)
-- LLM API errors (rate limits, timeouts)
-
-### 2. Cost Metrics
-
-Track token usage and costs in real-time:
-
-```typescript
-async function trackLLMCost(
-  inputTokens: number,
-  outputTokens: number,
-  model: string
-) {
-  const pricing = {
-    'claude-3-sonnet': {
-      input: 0.003,  // per 1K tokens
-      output: 0.015
-    }
-  }
-
-  const cost = (
-    (inputTokens / 1000) * pricing[model].input +
-    (outputTokens / 1000) * pricing[model].output
+  // Step 2: Embed all outputs
+  const embeddings = await Promise.all(
+    outputs.rows.map(row => embed(row.response_text))
   )
 
-  await metrics.recordCost('llm_api', cost, {
-    model,
-    input_tokens: inputTokens,
-    output_tokens: outputTokens
-  })
+  // Step 3: Calculate centroid (average of all embeddings)
+  const dimensions = embeddings[0].length
+  const centroid = new Array(dimensions).fill(0)
 
-  return cost
+  for (const embedding of embeddings) {
+    for (let i = 0; i < dimensions; i++) {
+      centroid[i] += embedding[i]
+    }
+  }
+
+  for (let i = 0; i < dimensions; i++) {
+    centroid[i] /= embeddings.length
+  }
+
+  // Step 4: Calculate avg output length
+  const avgOutputLength = outputs.rows.reduce((sum, r) => sum + r.response_text.length, 0) / outputs.rows.length
+
+  console.log(`   Avg output length: ${avgOutputLength.toFixed(0)} chars`)
+  console.log(`   Centroid calculated (${dimensions} dimensions)`)
+
+  return {
+    date,
+    centroid,
+    output_count: outputs.rows.length,
+    avg_output_length: avgOutputLength
+  }
+}
+
+/**
+ * Detect semantic drift by comparing centroids
+ */
+async function detectSemanticDrift(): Promise<{
+  driftDetected: boolean
+  cosineDist: number
+  interpretation: string
+}> {
+  const today = new Date()
+  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000)
+
+  // Calculate centroids
+  const todayCentroid = await calculateDailyCentroid(today)
+  const yesterdayCentroid = await calculateDailyCentroid(yesterday)
+
+  // Calculate cosine distance (1 - cosine similarity)
+  const cosineSim = cosineSimilarity(todayCentroid.centroid, yesterdayCentroid.centroid)
+  const cosineDist = 1 - cosineSim
+
+  console.log(`\n🔍 Semantic Drift Analysis:`)
+  console.log(`   Today's outputs: ${todayCentroid.output_count}`)
+  console.log(`   Yesterday's outputs: ${yesterdayCentroid.output_count}`)
+  console.log(`   Cosine similarity: ${(cosineSim * 100).toFixed(2)}%`)
+  console.log(`   Cosine distance: ${(cosineDist * 100).toFixed(2)}%`)
+
+  // Thresholds (empirically determined)
+  const DRIFT_THRESHOLD = 0.05  // 5% distance = significant drift
+
+  let interpretation: string
+  let driftDetected = false
+
+  if (cosineDist < 0.01) {
+    interpretation = 'Stable: Model outputs are semantically consistent'
+  } else if (cosineDist < DRIFT_THRESHOLD) {
+    interpretation = 'Minor drift: Normal variance, monitor closely'
+  } else {
+    interpretation = `⚠️  SIGNIFICANT DRIFT DETECTED: ${(cosineDist * 100).toFixed(1)}% shift in output semantics`
+    driftDetected = true
+  }
+
+  console.log(`   Interpretation: ${interpretation}\n`)
+
+  // Store centroid for historical tracking
+  await db.query(`
+    INSERT INTO embedding_centroids (date, centroid, output_count, avg_output_length, cosine_distance_from_previous)
+    VALUES ($1, $2, $3, $4, $5)
+  `, [today, JSON.stringify(todayCentroid.centroid), todayCentroid.output_count, todayCentroid.avg_output_length, cosineDist])
+
+  return { driftDetected, cosineDist, interpretation }
+}
+
+/**
+ * Continuous semantic drift monitoring with alerts
+ */
+async function monitorSemanticDriftContinuously() {
+  const drift = await detectSemanticDrift()
+
+  if (drift.driftDetected) {
+    // Alert before user satisfaction drops
+    await slack.send({
+      channel: '#ai-alerts',
+      text: `🚨 SEMANTIC DRIFT DETECTED
+
+Cosine distance: ${(drift.cosineDist * 100).toFixed(1)}% (threshold: 5%)
+
+Possible causes:
+1. Provider updated model (e.g., GPT-4-turbo → GPT-4-turbo-2024-01-15)
+2. RAG data quality degradation (outdated chunks)
+3. System prompt changed unintentionally
+4. Context window token limit hit (truncation)
+
+Action required:
+1. Check provider release notes for model updates
+2. Review recent data ingestion logs
+3. Compare system prompt hash with baseline
+4. Inspect sample outputs for quality
+
+Dashboard: https://metrics.example.com/semantic-drift
+      `
+    })
+
+    // Log incident
+    await db.query(`
+      INSERT INTO incidents (type, severity, description, detected_at)
+      VALUES ('semantic_drift', 'high', $1, NOW())
+    `, [drift.interpretation])
+  }
 }
 ```
 
-### 3. Quality Metrics
+### Production Example: Detecting Provider Model Update
 
-**User Feedback**
+**Scenario**: OpenAI silently updates GPT-4 on Tuesday
+
+**Without Semantic Drift Monitoring**:
+```
+Tuesday: Model outputs become more verbose (you don't notice)
+Wednesday: Users start getting longer, less concise answers (you don't notice)
+Thursday: User satisfaction drops from 4.2 → 3.9 (you notice but don't know why)
+Friday-Saturday: 2 days debugging (cost: $4,800 engineering time)
+Sunday: Finally discover OpenAI updated model via Twitter post
+
+MTTR: 5 days
+Cost: $4,800 + user churn
+```
+
+**With Semantic Drift Monitoring**:
+```
+Tuesday 2am: Centroid shift detected (cosine distance 0.08)
+Tuesday 2:05am: Alert sent to #ai-alerts
+Tuesday 9am: Team reviews → finds OpenAI release notes (GPT-4-turbo-2024-01-15)
+Tuesday 10am: Test new model → outputs 30% longer but same quality
+Tuesday 11am: Update system prompt: "Be concise. Max 3 sentences."
+Tuesday 12pm: Centroid returns to baseline
+
+MTTR: 10 hours
+Cost: $200 engineering time
+User impact: Zero (caught before users noticed)
+```
+
+**Production Impact**:
+- **MTTR**: 5 days → 10 hours (-96%)
+- **Engineering cost**: $4,800 → $200 (-96%)
+- **User churn**: Prevented
+
+### Interview Defense Template
+
+**Q**: "How do you detect model quality degradation before users complain?"
+
+**A**: "We implement **semantic drift monitoring** by calculating the daily embedding centroid of all model outputs. Every day, we embed 10K+ responses and compute the average vector. Then we measure cosine distance between today's centroid and yesterday's.
+
+If the distance exceeds 5%, we alert immediately—this is a leading indicator that the model is behaving differently (more verbose, different tone, etc.).
+
+This caught a provider model update 3 days before user satisfaction dropped. The key insight: **User satisfaction is a lagging indicator. Embedding centroids are a leading indicator.**"
+
+### ROI: Preventing User Churn
+
+**Production Scenario**: SaaS AI assistant (10K users, $50/month)
+
+**Before Semantic Drift Monitoring**:
+- Model degrades silently for 5 days
+- User satisfaction: 4.2 → 3.8
+- Churn rate: 2% → 5% (300 users lost)
+- Revenue loss: 300 × $50 × 6 months (avg lifetime) = $90K
+
+**After Semantic Drift Monitoring**:
+- Drift detected in 10 hours
+- User impact: Zero (fixed before degradation visible)
+- Churn rate: 2% (stable)
+- Revenue loss: $0
+
+**ROI**: $90K revenue saved per incident
+
+---
+
+## 2. Percentile-Driven SLA Enforcement: P99 vs P50 Divergence
+
+### The Problem with Average Latency
+
+**Observation**: "Average latency is 2 seconds" is meaningless if 1% of users wait 45 seconds.
+
+**Example**:
+- **P50 (median)**: 1.8s ✅ (50% of requests faster than this)
+- **P95**: 3.2s ✅ (95% of requests faster than this)
+- **P99**: 42s ❌ (1% of requests slower than this)
+
+**P99 Impact**: 1% of 100K daily users = 1,000 users having a terrible experience.
+
+**Architect's Insight**: Your SLA should be defined by **P99**, not average. Architecture is about fixing the worst-case experience.
+
+### The Rigorous Solution: P99/P50 Divergence Tracking
+
+**Core Principle**: Monitor the **gap** between P50 and P99. A widening gap signals:
+1. **Vector DB indexing bottleneck** (some queries hit slow path)
+2. **Token-length explosion** (edge cases generating massive prompts)
+3. **Cascading failures** (retries stacking up)
+
 ```typescript
-interface FeedbackEvent {
-  messageId: string
-  userId: string
-  rating: 1 | 2 | 3 | 4 | 5
-  feedback?: string
+/**
+ * Percentile-Driven SLA Enforcement
+ *
+ * Track P50, P95, P99 latency and alert on divergence
+ */
+interface PercentileMetrics {
   timestamp: Date
+  p50_latency_ms: number
+  p95_latency_ms: number
+  p99_latency_ms: number
+  p99_p50_ratio: number         // Divergence metric
+  max_latency_ms: number
+  sample_size: number
 }
 
-// Track feedback rate
-const feedbackRate = positiveFeedback / totalResponses
-```
+/**
+ * Calculate percentile metrics from recent requests
+ */
+async function calculatePercentileMetrics(
+  windowMinutes: number = 60
+): Promise<PercentileMetrics> {
+  const windowStart = new Date(Date.now() - windowMinutes * 60 * 1000)
 
-**Response Quality**
-- Average response length
-- Coherence scores
-- Factual accuracy (if verifiable)
-- Citation quality (for RAG)
+  // Fetch latency samples
+  const results = await db.query(`
+    SELECT latency_ms
+    FROM llm_requests
+    WHERE created_at >= $1
+    ORDER BY latency_ms ASC
+  `, [windowStart])
 
-### 4. RAG-Specific Metrics
+  const latencies = results.rows.map(r => r.latency_ms)
 
-```typescript
-interface RAGMetrics {
-  // Retrieval
-  documentsRetrieved: number
-  retrievalTimeMs: number
-  averageRelevanceScore: number
+  if (latencies.length === 0) {
+    throw new Error('No samples in window')
+  }
 
-  // Context
-  contextLength: number
-  contextUtilization: number // % of context used in response
+  // Calculate percentiles
+  const p50 = percentile(latencies, 0.50)
+  const p95 = percentile(latencies, 0.95)
+  const p99 = percentile(latencies, 0.99)
+  const max = Math.max(...latencies)
 
-  // Quality
-  citationAccuracy: number
-  groundedness: number // Response grounded in retrieved docs
+  const p99_p50_ratio = p99 / p50
+
+  console.log(`📊 Percentile Analysis (${windowMinutes}m window):`)
+  console.log(`   Sample size: ${latencies.length} requests`)
+  console.log(`   P50 (median): ${p50.toFixed(0)}ms`)
+  console.log(`   P95: ${p95.toFixed(0)}ms`)
+  console.log(`   P99: ${p99.toFixed(0)}ms`)
+  console.log(`   Max: ${max.toFixed(0)}ms`)
+  console.log(`   P99/P50 ratio: ${p99_p50_ratio.toFixed(1)}x\n`)
+
+  return {
+    timestamp: new Date(),
+    p50_latency_ms: p50,
+    p95_latency_ms: p95,
+    p99_latency_ms: p99,
+    p99_p50_ratio,
+    max_latency_ms: max,
+    sample_size: latencies.length
+  }
 }
-```
 
-## Implementing Monitoring
+/**
+ * Detect P99 divergence and diagnose bottleneck
+ */
+async function detectP99Divergence() {
+  const metrics = await calculatePercentileMetrics(60)
 
-### Option 1: LangSmith (Recommended for LangChain)
+  // Thresholds (empirically determined)
+  const HEALTHY_RATIO = 3.0       // P99 = 3x P50 is acceptable
+  const WARNING_RATIO = 5.0       // P99 = 5x P50 needs investigation
+  const CRITICAL_RATIO = 10.0     // P99 = 10x P50 is critical
 
-```typescript
-import { Client } from "langsmith"
+  let status: 'healthy' | 'warning' | 'critical'
+  let diagnosis: string
 
-const client = new Client({
-  apiKey: process.env.LANGCHAIN_API_KEY
-})
+  if (metrics.p99_p50_ratio < HEALTHY_RATIO) {
+    status = 'healthy'
+    diagnosis = 'Tail latency is well-controlled. No action needed.'
+  } else if (metrics.p99_p50_ratio < WARNING_RATIO) {
+    status = 'warning'
+    diagnosis = `P99 is ${metrics.p99_p50_ratio.toFixed(1)}x slower than P50. Monitor for degradation.`
+  } else if (metrics.p99_p50_ratio < CRITICAL_RATIO) {
+    status = 'warning'
+    diagnosis = `⚠️  P99 divergence detected: ${metrics.p99_p50_ratio.toFixed(1)}x ratio
 
-// Automatically traces LangChain calls
-const result = await chain.invoke(input, {
-  callbacks: [
-    {
-      handleLLMStart: async (llm, prompts) => {
-        // Log prompt
-      },
-      handleLLMEnd: async (output) => {
-        // Log response and tokens
-      }
-    }
-  ]
-})
-```
+Likely causes:
+1. Vector DB indexing bottleneck (HNSW index degradation)
+2. Token-length explosion (edge cases generating massive prompts)
+3. Re-ranking timeout (Cohere API slow for large result sets)
 
-### Option 2: Custom Monitoring with Prisma
+Action: Investigate slow queries (P99 percentile)`
+  } else {
+    status = 'critical'
+    diagnosis = `🚨 CRITICAL P99 DIVERGENCE: ${metrics.p99_p50_ratio.toFixed(1)}x ratio
 
-```typescript
-// Log every LLM request
-await prisma.llmRequest.create({
-  data: {
-    userId: user.id,
-    model: 'claude-3-sonnet',
-    inputTokens: usage.inputTokens,
-    outputTokens: usage.outputTokens,
-    cost: calculateCost(usage),
-    latencyMs: endTime - startTime,
-    promptHash: hashPrompt(prompt), // For deduplication
-    cached: false
+P50: ${metrics.p50_latency_ms.toFixed(0)}ms (healthy)
+P99: ${metrics.p99_latency_ms.toFixed(0)}ms (BROKEN)
+
+Immediate actions:
+1. Enable query logging for P99 requests
+2. Check vector DB index health (pgvector: SELECT * FROM pg_stat_user_indexes)
+3. Inspect edge-case queries (long context, complex decomposition)
+4. Review recent code deployments`
   }
-})
-```
 
-### Option 3: Helicone Proxy
+  console.log(`🎯 Status: ${status.toUpperCase()}`)
+  console.log(`   ${diagnosis}\n`)
 
-```typescript
-// Use Helicone as a proxy
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-  baseURL: "https://anthropic.helicone.ai/",
-  defaultHeaders: {
-    "Helicone-Auth": `Bearer ${process.env.HELICONE_API_KEY}`,
+  // Store metrics
+  await db.query(`
+    INSERT INTO percentile_metrics (
+      timestamp, p50_latency_ms, p95_latency_ms, p99_latency_ms,
+      p99_p50_ratio, max_latency_ms, sample_size, status
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+  `, [
+    metrics.timestamp,
+    metrics.p50_latency_ms,
+    metrics.p95_latency_ms,
+    metrics.p99_latency_ms,
+    metrics.p99_p50_ratio,
+    metrics.max_latency_ms,
+    metrics.sample_size,
+    status
+  ])
+
+  // Alert on critical divergence
+  if (status === 'critical') {
+    await slack.send({
+      channel: '#ai-alerts',
+      text: `🚨 CRITICAL P99 LATENCY DIVERGENCE
+
+P99/P50 Ratio: ${metrics.p99_p50_ratio.toFixed(1)}x (threshold: 10x)
+
+P50: ${metrics.p50_latency_ms.toFixed(0)}ms ✅
+P99: ${metrics.p99_latency_ms.toFixed(0)}ms ❌
+
+1% of users are experiencing ${metrics.p99_latency_ms.toFixed(0)}ms latency (vs median ${metrics.p50_latency_ms.toFixed(0)}ms).
+
+${diagnosis}
+
+Dashboard: https://metrics.example.com/latency-percentiles
+      `
+    })
   }
-})
 
-// All requests automatically logged to Helicone dashboard
-```
+  return { metrics, status, diagnosis }
+}
 
-## Setting Up Alerts
+/**
+ * Diagnose P99 bottleneck by analyzing slow queries
+ */
+async function diagnoseP99Bottleneck() {
+  console.log(`🔍 Diagnosing P99 bottleneck...\n`)
 
-### Cost Alerts
+  // Step 1: Fetch P99 threshold
+  const p99Threshold = await percentile(
+    await db.query('SELECT latency_ms FROM llm_requests WHERE created_at >= NOW() - INTERVAL \'1 hour\' ORDER BY latency_ms').then(r => r.rows.map(row => row.latency_ms)),
+    0.99
+  )
 
-```typescript
-// Alert if daily cost exceeds budget
-const dailyCost = await prisma.llmRequest.aggregate({
-  where: {
-    createdAt: {
-      gte: startOfDay(new Date())
-    }
-  },
-  _sum: {
-    cost: true
+  console.log(`   P99 threshold: ${p99Threshold.toFixed(0)}ms`)
+
+  // Step 2: Fetch slow queries (above P99)
+  const slowQueries = await db.query(`
+    SELECT
+      query_text,
+      latency_ms,
+      input_tokens,
+      context_length,
+      retrieved_chunks,
+      trace_id
+    FROM llm_requests
+    WHERE latency_ms >= $1
+    AND created_at >= NOW() - INTERVAL '1 hour'
+    ORDER BY latency_ms DESC
+    LIMIT 10
+  `, [p99Threshold])
+
+  console.log(`   Found ${slowQueries.rows.length} slow queries\n`)
+
+  // Step 3: Analyze patterns
+  const avgInputTokens = slowQueries.rows.reduce((sum, r) => sum + r.input_tokens, 0) / slowQueries.rows.length
+  const avgContextLength = slowQueries.rows.reduce((sum, r) => sum + r.context_length, 0) / slowQueries.rows.length
+  const avgRetrievedChunks = slowQueries.rows.reduce((sum, r) => sum + r.retrieved_chunks, 0) / slowQueries.rows.length
+
+  console.log(`📊 P99 Query Characteristics:`)
+  console.log(`   Avg input tokens: ${avgInputTokens.toFixed(0)}`)
+  console.log(`   Avg context length: ${avgContextLength.toFixed(0)}`)
+  console.log(`   Avg retrieved chunks: ${avgRetrievedChunks.toFixed(1)}`)
+
+  // Step 4: Identify bottleneck
+  let bottleneck: string
+
+  if (avgInputTokens > 8000) {
+    bottleneck = 'Token-length explosion: Input prompts are too large (avg 8K+ tokens). Implement context pruning.'
+  } else if (avgRetrievedChunks > 10) {
+    bottleneck = 'Over-retrieval: Fetching too many chunks (avg 10+). Reduce retrieval limit or improve re-ranking.'
+  } else if (avgContextLength > 100000) {
+    bottleneck = 'Context window overflow: Hitting token limits. Implement hierarchical summarization.'
+  } else {
+    bottleneck = 'Vector DB indexing: Likely HNSW index degradation. Run VACUUM ANALYZE on pgvector.'
   }
-})
 
-if (dailyCost._sum.cost &gt; DAILY_BUDGET) {
-  await sendAlert({
-    type: 'cost_exceeded',
-    message: `Daily LLM cost $${dailyCost._sum.cost} exceeds budget $${DAILY_BUDGET}`
+  console.log(`\n🎯 Diagnosed bottleneck: ${bottleneck}`)
+
+  // Step 5: Sample slow queries
+  console.log(`\n📄 Sample slow queries:`)
+  slowQueries.rows.slice(0, 3).forEach((q, i) => {
+    console.log(`\n${i + 1}. Latency: ${q.latency_ms.toFixed(0)}ms`)
+    console.log(`   Query: "${q.query_text.slice(0, 100)}..."`)
+    console.log(`   Input tokens: ${q.input_tokens}`)
+    console.log(`   Trace ID: ${q.trace_id}`)
   })
+
+  return { bottleneck, slowQueries: slowQueries.rows }
 }
 ```
 
-### Quality Alerts
+### Production Example: Vector DB Index Degradation
+
+**Scenario**: P99 latency diverges from 3x to 12x over 2 weeks
+
+**Without P99 Monitoring**:
+```
+Week 1: P99 = 2.4s (3x median 0.8s) - normal
+Week 2: P99 = 4.8s (6x median 0.8s) - not noticed
+Week 3: P99 = 9.6s (12x median 0.8s) - users complain
+Week 4: 5 days debugging to find pgvector index bloat
+
+MTTR: 5 days
+User impact: 3 weeks of degraded experience for 1% of users
+```
+
+**With P99 Divergence Monitoring**:
+```
+Week 2 Day 3: P99/P50 ratio hits 6x → Alert triggered
+Week 2 Day 3: Team investigates → finds pgvector VACUUM needed
+Week 2 Day 3: Run VACUUM ANALYZE → P99 returns to 2.4s
+
+MTTR: 4 hours
+User impact: 3 days (minimal)
+```
+
+### Interview Defense Template
+
+**Q**: "How do you ensure consistent latency for all users?"
+
+**A**: "We track **P99/P50 divergence** rather than average latency. Our SLA is defined by P99 (1% worst-case), not the median.
+
+We alert when the P99/P50 ratio exceeds 10x—this signals a tail latency problem like vector DB index degradation or token-length explosion in edge cases.
+
+When the ratio hit 12x, we diagnosed it in 4 hours by analyzing P99 queries and found pgvector index bloat. After VACUUM ANALYZE, P99 returned to baseline.
+
+The key insight: **Architecture is about fixing the P99, not the average.**"
+
+### ROI: Preventing User Churn from Tail Latency
+
+**Production Scenario**: Customer support chatbot (100K users)
+
+**Before P99 Monitoring**:
+- P99 users (1,000) experience 9.6s latency for 3 weeks
+- Churn rate for P99 cohort: 15% (150 users)
+- LTV: $50/month × 12 months = $600
+- Revenue loss: 150 × $600 = $90K
+
+**After P99 Monitoring**:
+- P99 degradation caught in 3 days
+- Churn rate: 2% (normal)
+- Revenue loss: $0
+
+**ROI**: $90K revenue saved per incident
+
+---
+
+## 3. Unit Economics Dashboard: Feature-Level Profitability Tracking
+
+### The Problem with Raw Cost Metrics
+
+**Observation**: "$10K monthly LLM bill" is not actionable. You need to know **which features** are profitable and which are burning money.
+
+**Example**:
+- **Support bot**: 50K tokens to solve a $5 ticket = **$1.50 cost** (30% margin loss)
+- **Sales assistant**: 10K tokens to close a $500 deal = **$0.30 cost** (99.94% margin)
+
+**Architect's Insight**: Track **efficiency ratios** (revenue per token), not just raw cost.
+
+### The Rigorous Solution: Feature-Level Profitability
+
+**Core Principle**: Calculate "Revenue per 1K tokens" for each feature. If a feature has negative unit economics, you must:
+1. Use a smaller model (GPT-4 → GPT-3.5)
+2. Implement context pruning
+3. Redesign the feature (reduce scope)
+4. Shut down the feature
 
 ```typescript
-// Alert if error rate is high
-const errorRate = recentErrors / totalRequests
+/**
+ * Unit Economics Tracking: Feature-Level Profitability
+ */
+interface FeatureEconomics {
+  feature_name: string
+  total_requests: number
+  total_tokens: number
+  total_cost_usd: number
+  total_revenue_usd: number
+  cost_per_request: number
+  revenue_per_request: number
+  revenue_per_1k_tokens: number
+  profit_margin: number
+  is_profitable: boolean
+}
 
-if (errorRate &gt; 0.05) { // 5% threshold
-  await sendAlert({
-    type: 'high_error_rate',
-    message: `LLM error rate is ${(errorRate * 100).toFixed(1)}%`
+/**
+ * Calculate unit economics for each feature
+ */
+async function calculateFeatureEconomics(
+  dateRange: { start: Date; end: Date }
+): Promise<FeatureEconomics[]> {
+  const results = await db.query(`
+    SELECT
+      feature_name,
+      COUNT(*) as total_requests,
+      SUM(input_tokens + output_tokens) as total_tokens,
+      SUM(cost_usd) as total_cost_usd,
+      SUM(revenue_usd) as total_revenue_usd
+    FROM llm_requests
+    WHERE created_at BETWEEN $1 AND $2
+    GROUP BY feature_name
+    ORDER BY total_cost_usd DESC
+  `, [dateRange.start, dateRange.end])
+
+  const economics: FeatureEconomics[] = results.rows.map(row => {
+    const costPerRequest = row.total_cost_usd / row.total_requests
+    const revenuePerRequest = row.total_revenue_usd / row.total_requests
+    const revenuePer1kTokens = (row.total_revenue_usd / row.total_tokens) * 1000
+    const profitMargin = ((row.total_revenue_usd - row.total_cost_usd) / row.total_revenue_usd) * 100
+
+    return {
+      feature_name: row.feature_name,
+      total_requests: parseInt(row.total_requests),
+      total_tokens: parseInt(row.total_tokens),
+      total_cost_usd: parseFloat(row.total_cost_usd),
+      total_revenue_usd: parseFloat(row.total_revenue_usd),
+      cost_per_request: costPerRequest,
+      revenue_per_request: revenuePerRequest,
+      revenue_per_1k_tokens: revenuePer1kTokens,
+      profit_margin: profitMargin,
+      is_profitable: profitMargin > 0
+    }
   })
+
+  console.log(`\n💰 Feature Economics (${dateRange.start.toISOString().split('T')[0]} to ${dateRange.end.toISOString().split('T')[0]}):`)
+  console.log(`\n${'Feature'.padEnd(20)} | ${'Requests'.padEnd(10)} | ${'Revenue/1K Tokens'.padEnd(18)} | ${'Margin'.padEnd(8)} | Status`)
+  console.log(`${'─'.repeat(20)}─┼─${'─'.repeat(10)}─┼─${'─'.repeat(18)}─┼─${'─'.repeat(8)}─┼─${'─'.repeat(12)}`)
+
+  economics.forEach(e => {
+    const status = e.is_profitable ? '✅ Profitable' : '❌ UNPROFITABLE'
+    console.log(
+      `${e.feature_name.padEnd(20)} | ${e.total_requests.toLocaleString().padEnd(10)} | $${e.revenue_per_1k_tokens.toFixed(2).padEnd(17)} | ${e.profit_margin.toFixed(1).padEnd(7)}% | ${status}`
+    )
+  })
+
+  return economics
+}
+
+/**
+ * Alert on unprofitable features
+ */
+async function alertOnUnprofitableFeatures() {
+  const dateRange = {
+    start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // Last 30 days
+    end: new Date()
+  }
+
+  const economics = await calculateFeatureEconomics(dateRange)
+
+  const unprofitableFeatures = economics.filter(e => !e.is_profitable)
+
+  if (unprofitableFeatures.length > 0) {
+    await slack.send({
+      channel: '#ai-economics',
+      text: `⚠️  UNPROFITABLE FEATURES DETECTED
+
+${unprofitableFeatures.length} feature(s) have negative unit economics:
+
+${unprofitableFeatures.map(f => `
+• ${f.feature_name}
+  - Margin: ${f.profit_margin.toFixed(1)}%
+  - Cost/request: $${f.cost_per_request.toFixed(4)}
+  - Revenue/request: $${f.revenue_per_request.toFixed(4)}
+  - Revenue/1K tokens: $${f.revenue_per_1k_tokens.toFixed(2)}
+`).join('\n')}
+
+Action required for each feature:
+1. Use smaller model (GPT-4 → GPT-3.5)
+2. Implement context pruning
+3. Redesign feature (reduce scope)
+4. Shut down feature (if unfixable)
+
+Dashboard: https://metrics.example.com/unit-economics
+      `
+    })
+  }
 }
 ```
 
-## Dashboard Examples
+### Production Example: Support Bot Unit Economics
 
-Key metrics to display:
-1. **Real-time request volume**
-2. **P95 latency over time**
-3. **Hourly cost breakdown**
-4. **Error rate by endpoint**
-5. **User satisfaction scores**
-6. **Cache hit rate**
+**Scenario**: Support bot using 50K tokens per ticket resolution
 
-## Best Practices
+**Before Unit Economics Tracking**:
+```
+Support bot stats:
+- 10K tickets/month resolved
+- 50K tokens per ticket avg
+- Cost: $1.50 per ticket (50K × $0.03/1K)
+- Revenue: $5 per ticket (deflected from human agent)
+- Profit margin: ($5 - $1.50) / $5 = 70% ✅ (looks profitable)
 
-1. **Start Simple** - Begin with basic metrics, add complexity as needed
-2. **Use Sampling** - Don't log every single request if volume is high
-3. **Aggregate Data** - Pre-compute hourly/daily aggregates
-4. **Set Baselines** - Know what "normal" looks like
-5. **Review Regularly** - Weekly dashboard reviews to spot trends
+BUT WAIT: 70% margin assumes ticket = $5 revenue
+Reality: Most tickets are free (existing customers asking questions)
+Actual revenue: $0.50 per ticket (10% convert to upsell)
 
-## Exercise
+Real profit margin: ($0.50 - $1.50) / $0.50 = -200% ❌ LOSING MONEY
+```
 
-Implement basic monitoring for your AI application:
-- Track token usage and costs
-- Set up error logging
-- Create a simple dashboard
-- Configure one cost alert
+**With Unit Economics Tracking**:
+```
+Dashboard reveals:
+- Revenue/1K tokens: $0.01 (should be >$0.03 for breakeven)
+- Margin: -200%
+- Status: ❌ UNPROFITABLE
 
-## Resources
+Actions taken:
+1. Switched to GPT-3.5-turbo (10x cheaper: $0.003/1K)
+2. Implemented context pruning (50K → 10K tokens avg)
+3. New cost: 10K × $0.003/1K = $0.03 per ticket
 
-- [LangSmith Documentation](https://docs.smith.langchain.com/)
-- [Helicone Documentation](https://docs.helicone.ai/)
-- [OpenTelemetry for LLMs](https://opentelemetry.io/)
+New margin: ($0.50 - $0.03) / $0.50 = 94% ✅ PROFITABLE
+```
+
+**Production Impact**:
+- Monthly cost: $15K → $300 (-98%)
+- Profit margin: -200% → 94%
+- Feature saved from shutdown
+
+### Interview Defense Template
+
+**Q**: "How do you decide which AI features to invest in?"
+
+**A**: "We track **revenue per 1K tokens** for every feature. If revenue/1K tokens is below the cost/1K tokens, the feature is unprofitable.
+
+Our support bot was burning $15K/month with -200% margin. We tracked unit economics and discovered:
+1. Most tickets generate $0 revenue (existing customers)
+2. 50K tokens per ticket was excessive
+
+We fixed it by switching to GPT-3.5 and pruning context (50K → 10K tokens). Cost dropped 98%, margin went from -200% to +94%.
+
+The key insight: **Raw cost is a liability. Revenue per token is an efficiency ratio.**"
+
+### ROI: Optimizing Unprofitable Features
+
+**Production Scenario**: SaaS with 5 AI features
+
+**Before Unit Economics Tracking**:
+- Total LLM cost: $25K/month
+- 2 features unprofitable (unknown)
+- Lost: $10K/month on unprofitable features
+
+**After Unit Economics Tracking**:
+- Identified 2 unprofitable features
+- Optimized both (model downgrade + context pruning)
+- New cost: $25K → $8K/month
+
+**ROI**: $17K/month saved ($204K/year)
+
+---
+
+## 4. Strategic Oversight Quiz: The COO Simulation
+
+You are the **Chief Operations Officer (COO)** of a SaaS company with an AI-powered customer support chatbot.
+
+**Your monthly LLM bill just doubled** (from $10K to $20K), but:
+- **User traffic** only grew by 10% (not 100%)
+- **Cost per token** is stable ($0.03/1K tokens - no price hike)
+- **Model** is the same (Claude 3 Sonnet)
+
+**Your Task**: Where do you look FIRST in your metrics dashboard to find the cost leak?
+
+---
+
+### Option A: Provider Status Page
+
+**Action**: Check Anthropic's status page for a price hike.
+
+```bash
+# Result: No price changes announced
+```
+
+**Analysis**: If cost per token is stable, this isn't a pricing issue.
+
+❌ **Wrong answer** - Price hasn't changed (confirmed by "cost per token stable").
+
+---
+
+### Option B: Tokens per Request (Context Density) ✅ CORRECT
+
+**Action**: Check the "Tokens per Request" (context density) metric.
+
+```bash
+# Query dashboard
+SELECT
+  DATE_TRUNC('month', created_at) as month,
+  AVG(input_tokens + output_tokens) as avg_tokens_per_request,
+  COUNT(*) as total_requests
+FROM llm_requests
+GROUP BY month
+ORDER BY month DESC
+LIMIT 3
+```
+
+**Result**:
+```
+Month       | Avg Tokens/Request | Total Requests
+------------+--------------------+----------------
+2024-03     | 8,200              | 100,000  ← CURRENT (cost: $24.6K)
+2024-02     | 4,100              | 91,000   ← LAST MONTH (cost: $11.2K)
+2024-01     | 4,000              | 88,000
+```
+
+**Diagnosis**: **FOUND IT!**
+- Traffic grew 10% (91K → 100K requests)
+- **Tokens per request DOUBLED** (4.1K → 8.2K)
+- Cost formula: `Requests × Tokens/Request × Cost/Token`
+  - Before: 91K × 4.1K × $0.03/1K = $11.2K
+  - After: 100K × 8.2K × $0.03/1K = $24.6K
+
+**Root Cause**: **Context leak** - one of these:
+1. **RAG over-retrieval**: Retrieving 10 chunks instead of 5
+2. **Conversation memory not pruned**: Chat history growing unbounded
+3. **System prompt bloat**: Someone added verbose instructions
+
+**Action**: Drill down into context sources
+
+```bash
+# Query context breakdown
+SELECT
+  AVG(system_prompt_tokens) as avg_system,
+  AVG(conversation_history_tokens) as avg_history,
+  AVG(retrieved_context_tokens) as avg_retrieved,
+  AVG(user_query_tokens) as avg_query
+FROM llm_requests
+WHERE created_at >= '2024-03-01'
+```
+
+**Result**:
+```
+avg_system | avg_history | avg_retrieved | avg_query
+-----------+-------------+---------------+-----------
+500        | 3,200       | 4,000         | 100
+
+← FOUND IT! Conversation history is 3.2K tokens (was 800 tokens last month)
+```
+
+**Root Cause Confirmed**: **Conversation memory leak** - chat history not being pruned after 10 turns.
+
+**Fix**:
+```typescript
+// Implement conversation pruning
+async function pruneConversationHistory(messages: Message[], maxTurns: number = 10) {
+  // Keep system prompt + last N turns
+  const systemMessages = messages.filter(m => m.role === 'system')
+  const conversationMessages = messages.filter(m => m.role !== 'system')
+
+  const prunedConversation = conversationMessages.slice(-maxTurns * 2) // Last 10 turns (20 messages)
+
+  return [...systemMessages, ...prunedConversation]
+}
+```
+
+**Result**:
+- Tokens per request: 8.2K → 4.5K (-45%)
+- Monthly cost: $24.6K → $13.5K (-45%)
+- User experience: Unchanged (10 turns is plenty of context)
+
+✅ **Correct answer** - Most cost spikes are caused by context leaks (over-retrieval, unbounded history, prompt bloat).
+
+---
+
+### Option C: Switch to Cheaper Model
+
+**Action**: Immediately switch from Claude 3 Sonnet ($0.003/1K) to Claude 3 Haiku ($0.00025/1K).
+
+**Result**: Cost drops 12x, but...
+- **Accuracy drops**: Haiku misses nuanced support questions
+- **User satisfaction**: 4.2 → 3.1 (users complain about wrong answers)
+- **Churn rate**: 2% → 8% (300% increase)
+
+**Analysis**: Switching models without diagnosing the root cause is like treating symptoms, not the disease.
+
+❌ **Wrong answer** - Should diagnose first, then optimize. Context leak is the root cause.
+
+---
+
+### Option D: Marketing Promotion
+
+**Action**: Ask marketing if they're running a promotion that's driving more users.
+
+**Result**: No promotions running.
+
+**Analysis**: Traffic only grew 10% (confirmed in the scenario). A 2x cost increase from 10% traffic growth doesn't make sense.
+
+❌ **Wrong answer** - Traffic growth doesn't explain a 2x cost increase.
+
+---
+
+## The Correct Answer: B - Tokens per Request (Context Density)
+
+**Why B is correct**:
+
+**The Cost Formula**:
+```
+Total Cost = Requests × (Tokens/Request) × (Cost/Token)
+```
+
+**Given constraints**:
+- Requests grew 10% (minor)
+- Cost/Token is stable (no price hike)
+- **Total Cost doubled**
+
+**Therefore**: Tokens/Request must have increased significantly.
+
+**The 3 Context Leaks**:
+
+1. **RAG Over-Retrieval**:
+   - Before: 5 chunks × 500 tokens = 2,500 tokens
+   - After: 10 chunks × 500 tokens = 5,000 tokens
+   - **Cause**: Someone changed `limit: 5` → `limit: 10`
+
+2. **Conversation Memory Unbounded**:
+   - Before: 10 turns × 80 tokens/message = 800 tokens
+   - After: 40 turns × 80 tokens/message = 3,200 tokens
+   - **Cause**: Memory pruning disabled
+
+3. **System Prompt Bloat**:
+   - Before: 200 tokens
+   - After: 800 tokens
+   - **Cause**: Added verbose examples to system prompt
+
+**Production Pattern**: 95% of unexplained cost spikes are caused by **context density inflation**, not pricing or traffic.
+
+**The Architect's Dashboard**:
+
+Always track these metrics side-by-side:
+1. **Total Cost** (what you pay)
+2. **Requests** (user traffic)
+3. **Tokens/Request** (context density) ← This is the leak detector
+4. **Cost/Token** (provider pricing)
+
+**Result**:
+- **MTTR for cost spikes**: 2 days → 30 minutes (with Tokens/Request dashboard)
+- **Cost savings**: $11K/month (pruning conversation history)
+- **User experience**: Unchanged (10 turns is sufficient)
+
+---
+
+## Summary: The Executive Dashboard Framework
+
+### The Four Pillars of Predictive Operational Intelligence
+
+| Pillar | Leading Indicator | Metric | Alert Threshold | ROI |
+|--------|------------------|--------|-----------------|-----|
+| **1. Semantic Drift** | Embedding centroid shift | Cosine distance day-over-day | >5% | $90K/incident (prevents churn) |
+| **2. Tail Latency** | P99/P50 divergence | P99/P50 ratio | >10x | $90K/incident (prevents churn) |
+| **3. Unit Economics** | Revenue per 1K tokens | Feature profitability | <$0.03/1K | $204K/year (optimize features) |
+| **4. Context Density** | Tokens per request | Context leak detection | +50% change | $132K/year (prevent waste) |
+
+**Total ROI**: $516K/year
+
+---
+
+## Production Checklist: Predictive Metrics
+
+Before deploying your RAG system, ensure:
+
+### Semantic Drift Monitoring
+- [ ] Daily embedding centroid calculation (10K+ outputs)
+- [ ] Cosine distance tracking (day-over-day)
+- [ ] Alert on >5% drift
+- [ ] Root cause playbook (model update, data quality, prompt change)
+
+### Percentile-Driven SLAs
+- [ ] P50, P95, P99 latency tracking (hourly)
+- [ ] P99/P50 ratio monitoring
+- [ ] Alert on >10x divergence
+- [ ] Slow query diagnosis (inspect P99 samples)
+
+### Unit Economics Dashboard
+- [ ] Feature-level cost/revenue tracking
+- [ ] Revenue per 1K tokens calculation
+- [ ] Profit margin by feature
+- [ ] Alert on negative margins
+
+### Context Density Monitoring
+- [ ] Tokens per request tracking (system prompt + history + RAG + query)
+- [ ] Alert on +50% change month-over-month
+- [ ] Context breakdown dashboard (identify leaks)
+- [ ] Conversation pruning (max 10 turns)
+
+### Aggregate Dashboards
+- [ ] Real-time executive dashboard (all 4 pillars)
+- [ ] Weekly trend reports (email to leadership)
+- [ ] Monthly cost review (CFO presentation)
+- [ ] Quarterly optimization initiatives (based on unit economics)
+
+---
+
+**Congratulations! You've completed Week 6: Advanced RAG (The Optimizer)**
+
+You now have the **predictive operational intelligence** to manage AI systems at scale with the rigor of high-frequency trading platforms.
+
+**Week 6 Complete**: All six concepts hardened to Director-tier standards:
+
+1. **Hybrid Retrieval & Re-Ranking** - RRF, Parent-Child, RAGAS
+2. **Query Transformation** - HyDE Guardrail, DAG, RRF Aggregation
+3. **Context Engineering** - Primacy/Recency, Compression, Caching
+4. **Enterprise Hardening** - RAGAS, Security, Compliance
+5. **Request Tracing** - Span-Level Audit, OpenTelemetry, Context Linking
+6. **System Metrics** - Semantic Drift, P99 Divergence, Unit Economics
+
+**Total Week 6 ROI**: $25.496M/year ($24.98M + $516K)
+
+**Next**: Week 7 - Advanced Agent Architectures (ReAct, Chain-of-Thought, Tool Use)
