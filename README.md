@@ -6,277 +6,392 @@ Transform from Software Engineer to AI Product Builder in 12 weeks through hands
 
 **All 12 weeks of production-ready curriculum are now available!**
 
-- **38 MDX content files** covering fundamentals to enterprise production
+- **51 MDX content files** covering fundamentals to enterprise production
 - **60+ code examples** with complete TypeScript implementations
 - **Real cost/performance metrics** throughout all lessons
-- **4 enhanced weeks** with comprehensive technical depth
+- **4 enhanced weeks** with comprehensive technical depth (4,000+ lines)
 - **Hands-on exercises** with runnable code
 
 Start learning today at [http://localhost:3000](http://localhost:3000)
 
-## 12-Week Curriculum
+## 🏗️ Tech Stack
 
-### 📚 Foundation Phase (Weeks 1-4)
+### Frontend
+- **Next.js 14.2** (App Router) with TypeScript
+- **React 18** with Server Components and Server Actions
+- **Tailwind CSS 3** + **shadcn/ui** component library
+- **Radix UI** primitives for accessibility
+- **next-mdx-remote** for MDX content rendering
+
+### Backend & Database
+- **PostgreSQL** with **Prisma ORM**
+- **pgvector** extension for vector similarity search
+- **NextAuth.js** for authentication (GitHub, Google OAuth)
+- **Redis** for caching and rate limiting
+- **Next.js API Routes** for backend logic
+
+### AI & ML
+- **Claude API** (Anthropic) - Primary LLM (Sonnet 4, Haiku 4)
+- **OpenAI API** - Embeddings (text-embedding-3-small)
+- **Vercel AI SDK** - Streaming chat interfaces
+- **Tavily Search API** - Web search for agents
+
+### Development & Deployment
+- **Docker** - Local PostgreSQL and Redis development
+- **Docker Compose** - Multi-container orchestration
+- **Jest** - Unit testing framework
+- **Playwright** - E2E testing
+- **ESLint** + **Prettier** - Code quality
+- **GitHub Actions** - CI/CD pipeline
+
+## 📚 12-Week Curriculum
+
+### Foundation Phase (Weeks 1-4)
 
 **Week 1: LLM Fundamentals** ⭐ Enhanced
 - Understanding tokens, context windows, and pricing
 - Working with Claude and GPT APIs
-- Cost calculation and model selection
-- **3 Hands-on Exercises**: Token counting, cost estimation, model comparison
+- Architectural ROI and model selection
+- Production readiness checklist
+- **6 concepts** · **400+ lines** of enhanced content
 
-**Week 2: Advanced Chat Applications**
-- Production chat architecture
-- Conversation management and state
-- System prompts and few-shot learning
+**Week 2: AI Safety & Governance** ⭐ Enhanced
+- Responsible AI frameworks
+- Domain-specific compliance (HIPAA, GDPR, SOC 2)
+- Architecture certification exam
+- Governance foundations
+- **5 concepts** · **1,500+ lines** of Director-tier content
 
-**Week 3: RAG Systems**
+**Week 3: RAG & Memory Fundamentals** ⭐ Enhanced
 - Vector embeddings and similarity search
-- Document chunking strategies
-- RAG pipeline implementation
+- Hybrid search with BM25 + vector
+- Production RAG architecture
 - Memory systems (episodic, semantic, procedural)
+- **5 concepts** · **1,200+ lines** of production patterns
 
-**Week 4: Code Review AI**
-- LLM-powered code analysis
-- Multi-file context management
-- Automated review workflows
-- CI/CD integration
+**Week 4: Structured Intelligence**
+- Function calling and tool use
+- Structured output with Zod
+- Schema design best practices
+- **3 concepts**
 
-### 🚀 Advanced Systems Phase (Weeks 5-8)
+### Advanced Systems Phase (Weeks 5-8)
 
-**Week 5: AI Agents**
+**Week 5: Agentic Frameworks**
 - ReAct architecture and reasoning loops
-- Tool use and function calling
-- Agent debugging and observability
-- Building custom tools
+- Framework selection (LangChain, LlamaIndex, Autogen)
+- Reliability patterns and error handling
+- **5 concepts**
 
-**Week 6: Production Monitoring**
-- Observability for AI systems
-- Performance optimization
-- Cost tracking and alerts
-- Production deployment strategies
-
-**Week 7: Architecture Design** ⭐ Enhanced
-- AI application patterns (chatbot, RAG, agents)
-- Component architecture with real metrics
-- Scaling strategies (caching, load balancing, auto-scaling)
-- **600+ lines** of production architecture patterns
-
-**Week 8: Product Launch & Interview Prep**
-- Portfolio building and presentation
-- **AI engineering interview preparation**
-- **System design interview framework**
-- Product Hunt and launch strategies
-- Marketing fundamentals
-
-### 🎯 Specialization Phase (Weeks 9-10)
-
-**Week 9: Advanced RAG**
-- Hybrid search (dense + sparse)
-- Query optimization and rewriting
+**Week 6: Advanced RAG**
+- Query rewriting and expansion
 - Reranking strategies
-- Cross-encoder models
+- Multi-document synthesis
+- **8 concepts**
 
-**Week 10: Fine-tuning**
-- When to fine-tune vs prompt engineering
-- Dataset preparation and curation
+**Week 7: Observability & Production**
+- Monitoring and metrics
+- Cost optimization
+- Production deployment
+- **3 concepts**
+
+**Week 8: Portfolio + Launch**
+- Interview preparation
+- Portfolio building
+- Product launch strategies
+- **4 concepts** · **1,500+ lines** of career guidance
+
+### Specialization Phase (Weeks 9-10)
+
+**Week 9: Advanced RAG Techniques**
+- GraphRAG fundamentals
+- Knowledge graph construction
+- Context fusion strategies
+- **3 concepts**
+
+**Week 10: Fine-tuning + Custom Models**
+- Dataset curation pipeline
+- LoRA and PEFT techniques
 - Model evaluation frameworks
-- Cost/benefit analysis
+- **3 concepts**
 
-### 🏢 Enterprise Phase (Weeks 11-12)
+### Enterprise Phase (Weeks 11-12)
 
 **Week 11: Multi-Agent Systems** ⭐ Enhanced
-- Agent coordination patterns (sequential, parallel, hierarchical)
+- Agent coordination patterns
 - Task delegation and orchestration
 - Conflict resolution strategies
-- **1,800+ lines** of production multi-agent code
+- **3 concepts** · **1,800+ lines** of multi-agent code
 
-**Week 12: Enterprise Production** ⭐ Enhanced
-- Multi-tenant architecture patterns
-- GDPR/SOC 2 compliance implementation
-- Disaster recovery and high availability
-- **2,100+ lines** of enterprise patterns
+**Week 12: Enterprise AI Systems** ⭐ Enhanced
+- Enterprise RAG with compliance
+- Multi-tenant architecture
+- Security and compliance implementation
+- **3 concepts** · **2,100+ lines** of enterprise patterns
 
-**Total Content**: 38 MDX files · 60+ code examples · 4,000+ lines of enhanced content
-
----
-
-## 🎓 Domain-Specific Use Cases (Advanced/Elective)
-
-Beyond the core 12-week curriculum, we offer specialized guides for building industry-specific AI agents:
-
-### 📋 HR Agents (Wisq Harper Model)
-- Employee support and benefits assistance
-- Policy compliance and FMLA guidance
-- Integration with HCM systems (Workday, BambooHR)
-- **Performance**: 94% accuracy on SHRM-CP exam, 80% automation rate
-
-### 🏥 Healthcare Agents (Coming Soon)
-- Clinical documentation assistance
-- HIPAA compliance and PHI handling
-- EHR integration and prior authorizations
-
-### ⚖️ Legal Agents (Harvey AI Model - Coming Soon)
-- Contract review and risk assessment
-- Legal research and case law analysis
-- Regulatory compliance checking
-
-### 💰 Finance Agents (Coming Soon)
-- Financial statement analysis
-- Fraud detection and AML compliance
-- SEC filing automation
-
-**Location**: `content/domains/`
-
-These advanced guides show how to apply core agent concepts to real-world industry problems with domain-specific expertise, compliance requirements, and integration patterns.
+**Total**: **51 MDX files** · **60+ code examples** · **4,000+ lines** of enhanced content
 
 ---
 
-## Tech Stack
-
-### Frontend
-- **Next.js 14** (App Router) with TypeScript
-- **React 18** with Server Components
-- **Tailwind CSS** + **shadcn/ui** component library
-- **Radix UI** primitives for accessibility
-- **Storybook** for component documentation
-- **React Testing Library** for component tests
-
-### Backend & Database
-- **Supabase** (PostgreSQL + Auth + Storage + Realtime)
-- **pgvector** for vector similarity search
-- **Prisma** ORM (optional, Supabase client preferred)
-- **Redis** (Upstash) for caching and rate limiting
-- **Next.js API Routes** for backend logic
-
-### AI & ML
-- **Claude API** (Anthropic) - Primary LLM
-- **OpenAI API** - Embeddings (text-embedding-ada-002)
-- **Vercel AI SDK** - Streaming chat interfaces
-- **Tavily Search API** - Web search for agents
-- **ReAct Architecture** - Agent reasoning loop
-
-### Testing & Quality
-- **Jest** - Unit testing framework
-- **Playwright** - E2E testing
-- **MSW** (Mock Service Worker) - API mocking
-- **Lighthouse CI** - Performance budgets
-- **Codecov** - Coverage reporting
-
-### Monitoring & Observability
-- **Vercel Analytics** - Web Vitals and performance
-- **Sentry** - Error tracking and session replay
-- **Pino** - Structured logging
-- **Custom Metrics** - Performance tracking with Redis
-
-### Deployment
-- **Vercel** - Hosting and serverless functions
-- **GitHub Actions** - CI/CD pipeline
-- **Docker** - Local PostgreSQL development
-
-## Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
 
 - **Node.js 20+** (required for latest Next.js features)
-- **Docker Desktop** (for local PostgreSQL)
-- **Supabase Account** (free tier available)
+- **Docker Desktop** (for local PostgreSQL and Redis)
 - **Anthropic API Key** (Claude)
 - **OpenAI API Key** (embeddings)
 
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd archcelerate
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Set up Supabase locally (optional)**
-   ```bash
-   # Install Supabase CLI
-   npm install -g supabase
-
-   # Start local Supabase
-   supabase start
-   ```
-
-4. **Configure environment variables**
-
-   Copy `.env.example` to `.env.local` and update:
-
-   ```env
-   # Supabase
-   NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-   SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-
-   # AI Services
-   ANTHROPIC_API_KEY=your_claude_api_key
-   OPENAI_API_KEY=your_openai_api_key
-
-   # Redis (Upstash)
-   UPSTASH_REDIS_REST_URL=your_redis_url
-   UPSTASH_REDIS_REST_TOKEN=your_redis_token
-
-   # Optional: Agent Tools
-   TAVILY_API_KEY=your_tavily_api_key
-   GITHUB_TOKEN=your_github_token
-
-   # Monitoring (Production)
-   NEXT_PUBLIC_SENTRY_DSN=your_sentry_dsn
-   LHCI_GITHUB_APP_TOKEN=your_lighthouse_token
-   ```
-
-5. **Run database migrations**
-   ```bash
-   # Using Supabase CLI
-   supabase db push
-
-   # Or manually apply migrations from supabase/migrations/
-   ```
-
-6. **Seed the database (optional)**
-   ```bash
-   npm run db:seed
-   ```
-
-7. **Start the development server**
-   ```bash
-   npm run dev
-   ```
-
-8. **Open the application**
-
-   Navigate to [http://localhost:3000](http://localhost:3000)
-
-## Deployment
-
-### Google Cloud Run
-
-Deploy to Google Cloud Run with managed PostgreSQL (Supabase) and Redis (Upstash):
+### Quick Start with Docker
 
 ```bash
-# 1. Setup secrets
-export GCP_PROJECT_ID="your-project-id"
-./scripts/setup-secrets.sh
+# 1. Clone the repository
+git clone <repository-url>
+cd archcelerate
 
-# 2. Deploy
-./scripts/deploy-gcp.sh
+# 2. Install dependencies
+npm install
 
-# 3. Run migrations
-./scripts/run-migrations.sh
+# 3. Configure environment variables
+cp .env.example .env.local
+# Edit .env.local with your API keys
+
+# 4. Start Docker containers (PostgreSQL + Redis + App)
+./dev.sh up
+
+# 5. Run database migrations
+./dev.sh migrate
+
+# 6. Seed the database
+./dev.sh seed
+
+# 7. Open the application
+open http://localhost:3000
 ```
 
-See [Deployment Guide](./docs/DEPLOYMENT.md) for detailed instructions.
+### Manual Setup (without Docker)
 
-### Local Docker
+```bash
+# 1. Install dependencies
+npm install
 
-Test the production build locally:
+# 2. Set up PostgreSQL and Redis locally
+# (Install PostgreSQL 15+ and Redis 7+)
+
+# 3. Configure environment variables
+cp .env.example .env.local
+
+# Edit .env.local:
+DATABASE_URL="postgresql://user:password@localhost:5432/archcelerate"
+REDIS_URL="redis://localhost:6379"
+NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_SECRET="your-secret-here"
+GITHUB_ID="your-github-oauth-id"
+GITHUB_SECRET="your-github-oauth-secret"
+ANTHROPIC_API_KEY="sk-ant-..."
+OPENAI_API_KEY="sk-..."
+
+# 4. Run migrations
+npx prisma migrate dev
+
+# 5. Seed database
+npx prisma db seed
+
+# 6. Start development server
+npm run dev
+```
+
+### Environment Variables
+
+Required variables in `.env.local`:
+
+```env
+# Database
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/archcelerate"
+
+# Redis (optional for local dev)
+REDIS_URL="redis://localhost:6379"
+
+# NextAuth
+NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_SECRET="generate-with-openssl-rand-base64-32"
+
+# OAuth Providers
+GITHUB_ID="your-github-oauth-client-id"
+GITHUB_SECRET="your-github-oauth-client-secret"
+GOOGLE_CLIENT_ID="your-google-oauth-client-id"
+GOOGLE_CLIENT_SECRET="your-google-oauth-client-secret"
+
+# AI Services
+ANTHROPIC_API_KEY="sk-ant-api03-..."
+OPENAI_API_KEY="sk-..."
+
+# Optional: Agent Tools
+TAVILY_API_KEY="tvly-..."
+```
+
+---
+
+## 🐳 Docker Commands
+
+The `dev.sh` script provides convenient Docker commands:
+
+```bash
+# Start all containers
+./dev.sh up
+
+# Stop all containers
+./dev.sh down
+
+# Restart app container
+./dev.sh restart
+
+# Quick rebuild (cached)
+./dev.sh quick
+
+# Full rebuild (no cache)
+./dev.sh rebuild
+
+# Run database migrations
+./dev.sh migrate
+
+# Seed database
+./dev.sh seed
+
+# View logs
+./dev.sh logs
+
+# Clean up (remove volumes)
+./dev.sh clean
+```
+
+---
+
+## 📁 Project Structure
+
+```
+archcelerate/
+├── app/                              # Next.js App Router
+│   ├── (dashboard)/                  # Dashboard routes
+│   │   ├── curriculum/               # 12-week curriculum
+│   │   │   └── week-{1-12}/          # Week-specific pages
+│   │   │       ├── concepts/[slug]/  # Concept pages
+│   │   │       ├── lab/[slug]/       # Lab exercises
+│   │   │       └── project/[slug]/   # Week projects
+│   │   ├── mentor/                   # AI mentor chat
+│   │   ├── agents/                   # AI agents interface
+│   │   ├── rag/                      # RAG system demo
+│   │   ├── portfolio/                # Portfolio builder
+│   │   └── dashboard/                # Main dashboard
+│   ├── api/                          # API routes
+│   │   ├── auth/[...nextauth]/       # NextAuth.js endpoints
+│   │   ├── chat/                     # Chat API
+│   │   ├── agents/                   # Agent execution
+│   │   ├── rag/                      # RAG queries
+│   │   └── progress/                 # Progress tracking
+│   └── page.tsx                      # Landing page
+│
+├── content/                          # MDX curriculum content
+│   └── week{1-12}/                   # 51 MDX files
+│       ├── *.mdx                     # Concept files
+│       └── lab-*.mdx                 # Lab exercises
+│
+├── components/                       # React components
+│   ├── ui/                           # shadcn/ui components
+│   ├── dashboard/                    # Dashboard components
+│   └── mdx/                          # MDX components
+│
+├── lib/                              # Core libraries
+│   ├── auth.ts                       # NextAuth config
+│   ├── db.ts                         # Prisma client
+│   ├── mdx.ts                        # MDX loader
+│   ├── redis.ts                      # Redis client
+│   ├── rag/                          # RAG system
+│   ├── agents/                       # AI agents
+│   └── utils.ts                      # Utilities
+│
+├── prisma/                           # Database
+│   ├── schema.prisma                 # Schema definition
+│   ├── migrations/                   # Migrations
+│   └── seed.ts                       # Seed script
+│
+├── e2e/                              # E2E tests (Playwright)
+├── __tests__/                        # Unit tests (Jest)
+│
+├── docker-compose.yml                # Docker services
+├── Dockerfile                        # App container
+└── dev.sh                            # Docker convenience script
+```
+
+---
+
+## 🗄️ Database Schema
+
+Key tables:
+
+```sql
+-- Authentication (NextAuth.js)
+User, Account, Session, VerificationToken
+
+-- Curriculum
+CurriculumWeek, Concept, Lab, WeekProject
+
+-- User Progress
+UserWeekProgress, WeekProjectSubmission
+
+-- AI Features
+Conversation, Message
+Document, DocumentChunk (with vector embeddings)
+AgentExecution, AgentStep
+```
+
+See `prisma/schema.prisma` for full schema.
+
+---
+
+## 🧪 Development Commands
+
+```bash
+# Development
+npm run dev              # Start dev server (port 3000)
+npm run build            # Build for production
+npm run start            # Start production server
+npm run lint             # Run ESLint
+npm run type-check       # TypeScript checking
+
+# Database
+npx prisma studio        # Open Prisma Studio GUI
+npx prisma migrate dev   # Create and apply migration
+npx prisma db seed       # Seed database
+npx prisma generate      # Generate Prisma Client
+
+# Testing
+npm test                 # Run unit tests (Jest)
+npm run test:watch       # Watch mode
+npm run test:e2e         # Run E2E tests (Playwright)
+npm run test:e2e:ui      # Playwright UI mode
+
+# Docker
+./dev.sh up              # Start all containers
+./dev.sh seed            # Seed database in Docker
+./dev.sh logs            # View logs
+```
+
+---
+
+## 📦 Deployment
+
+### Vercel (Recommended)
+
+1. Push code to GitHub
+2. Import project in Vercel
+3. Add environment variables
+4. Deploy
+
+**Database**: Use managed PostgreSQL (Vercel Postgres, Supabase, or Neon)
+**Redis**: Use Upstash Redis (free tier available)
+
+### Docker Production
 
 ```bash
 # Build image
@@ -286,478 +401,79 @@ docker build -t archcelerate .
 docker run -p 3000:3000 \
   -e DATABASE_URL="postgresql://..." \
   -e REDIS_URL="redis://..." \
-  -e NEXTAUTH_SECRET="your-secret" \
-  -e NEXTAUTH_URL="http://localhost:3000" \
+  -e NEXTAUTH_SECRET="..." \
   archcelerate
 ```
 
-### Vercel Deployment
-
-For Vercel deployment:
-
-1. **Connect GitHub Repository** - Import project in Vercel dashboard
-2. **Configure Environment Variables** - Add all variables from `.env.local`
-3. **Set Up Database** - Use Supabase production project and run migrations
-4. **Deploy** - Vercel auto-deploys on push to main, preview deployments for PRs
-
-## Development Commands
-
-```bash
-# Development
-npm run dev              # Start dev server
-npm run build            # Build for production
-npm run start            # Start production server
-npm run lint             # Run ESLint
-npm run type-check       # TypeScript type checking
-
-# Testing
-npm test                 # Run unit tests
-npm run test:watch       # Watch mode
-npm run test:coverage    # Generate coverage report
-npm run test:e2e         # Run E2E tests with Playwright
-npm run test:e2e:ui      # Playwright UI mode
-
-# Database
-supabase start           # Start local Supabase
-supabase stop            # Stop local Supabase
-supabase db push         # Apply migrations
-supabase db reset        # Reset database
-
-# Storybook
-npm run storybook        # Start Storybook dev server
-npm run build-storybook  # Build static Storybook
-
-# Bundle Analysis
-ANALYZE=true npm run build  # Analyze bundle size
-```
-
-## Project Structure
-
-```
-archcelerate/
-├── app/                          # Next.js App Router
-│   ├── (auth)/                   # Auth group
-│   │   ├── login/                # Login page
-│   │   └── signup/               # Signup page
-│   ├── dashboard/                # Main dashboard
-│   │   ├── agents/               # AI Agents interface
-│   │   ├── documents/            # Document management
-│   │   ├── conversations/        # Chat conversations
-│   │   └── playground/           # Component playground
-│   ├── api/                      # API routes
-│   │   ├── auth/                 # Authentication endpoints
-│   │   ├── chat/                 # Chat API
-│   │   ├── documents/            # Document upload/processing
-│   │   ├── agents/               # Agent execution
-│   │   ├── analytics/            # Analytics endpoints
-│   │   └── logs/                 # Logging endpoint
-│   ├── layout.tsx                # Root layout
-│   └── page.tsx                  # Landing page
-│
-├── components/                   # React components
-│   ├── ui/                       # Base UI components (shadcn/ui)
-│   │   ├── button.tsx
-│   │   ├── card.tsx
-│   │   ├── dialog.tsx
-│   │   ├── data-table.tsx
-│   │   └── ...
-│   ├── dashboard/                # Dashboard components
-│   │   ├── agent-execution-trace.tsx
-│   │   └── agent-metrics.tsx
-│   ├── monitoring/               # Monitoring components
-│   │   └── web-vitals-reporter.tsx
-│   ├── lazy/                     # Lazy-loaded components
-│   └── error-boundary.tsx        # Error boundary
-│
-├── lib/                          # Core libraries
-│   ├── supabase/                 # Supabase clients
-│   │   ├── client.ts
-│   │   └── server.ts
-│   ├── rag/                      # RAG system
-│   │   ├── chunking.ts           # Document chunking strategies
-│   │   ├── embeddings.ts         # Embedding generation
-│   │   ├── search.ts             # Vector search
-│   │   ├── citations.ts          # Citation tracking
-│   │   └── synthesis.ts          # Multi-document synthesis
-│   ├── memory/                   # Memory architecture
-│   │   ├── memory-manager.ts     # Memory manager
-│   │   └── types.ts
-│   ├── agents/                   # AI Agents framework
-│   │   ├── agent-executor.ts     # ReAct loop executor
-│   │   ├── tools.ts              # Tool registry
-│   │   ├── agent-memory.ts       # Agent memory
-│   │   └── patterns/             # Agent patterns
-│   │       ├── research-agent.ts
-│   │       ├── code-review-agent.ts
-│   │       ├── data-pipeline-agent.ts
-│   │       └── meeting-assistant-agent.ts
-│   ├── cache/                    # Caching layer
-│   │   ├── redis-cache.ts
-│   │   └── query-cache.ts
-│   ├── monitoring/               # Monitoring & analytics
-│   │   ├── web-vitals.ts
-│   │   ├── analytics.ts
-│   │   └── performance-metrics.ts
-│   ├── logging/                  # Logging infrastructure
-│   │   ├── logger.ts             # Pino logger
-│   │   ├── error-handler.ts
-│   │   └── client-logger.ts
-│   ├── design-system/            # Design tokens
-│   │   ├── tokens.ts
-│   │   └── theme-provider.tsx
-│   └── utils.ts                  # Utility functions
-│
-├── supabase/                     # Supabase configuration
-│   └── migrations/               # Database migrations
-│       ├── 20260202_week1_foundation.sql
-│       ├── 20260202_week2_documents.sql
-│       ├── 20260202_week3_rag_memory.sql
-│       ├── 20260202_week4_advanced_rag.sql
-│       ├── 20260204_week5_agents.sql
-│       ├── 20260205_week6_agent_memory.sql
-│       └── 20260206_week9_indexes.sql
-│
-├── docs/                         # Documentation
-│   ├── plans/                    # Implementation plans
-│   │   ├── week1-platform-implementation.md
-│   │   ├── week2-platform-implementation.md
-│   │   └── ...
-│   ├── SPRINT-*-GUIDE.md         # Sprint guides
-│   └── TESTING-CHECKLIST.md
-│
-├── e2e/                          # E2E tests
-│   ├── auth.spec.ts
-│   ├── document-qa.spec.ts
-│   └── agent-execution.spec.ts
-│
-├── mocks/                        # MSW mocks
-│   ├── handlers.ts
-│   └── server.ts
-│
-├── .storybook/                   # Storybook config
-├── .github/workflows/            # CI/CD workflows
-│   ├── test.yml
-│   ├── lighthouse.yml
-│   └── bundle-analysis.yml
-│
-├── tailwind.config.ts            # Tailwind configuration
-├── jest.config.js                # Jest configuration
-├── playwright.config.ts          # Playwright configuration
-└── lighthouserc.json             # Lighthouse CI config
-```
-
-## Curriculum Content Status
-
-### ✅ Enhanced Weeks (Production-Grade Detail)
-
-**Week 1: LLM Fundamentals**
-- 3 guided practical exercises with runnable code
-- Token counting with multiple text types
-- Cost calculation for real scenarios
-- Model comparison across 4 models
-- **400+ lines** of enhanced content
-
-**Week 7: Architecture Design**
-- Complete architecture patterns with metrics
-- 3 patterns: Simple Chatbot, RAG, Agent System
-- 4 scaling strategies with cost analysis
-- Real performance numbers (latency, cost, cache hit rates)
-- **600+ lines** of production patterns
-
-**Week 11: Multi-Agent Systems**
-- 3 orchestration patterns (sequential, parallel, hierarchical)
-- Intelligent routing and task decomposition
-- 4 conflict resolution strategies
-- **1,800+ lines** of multi-agent implementations
-
-**Week 12: Enterprise Production**
-- Multi-tenant isolation strategies
-- GDPR/SOC 2 compliance with code
-- Load balancing, auto-scaling, disaster recovery
-- **2,100+ lines** of enterprise patterns
-
-### ✅ Complete Weeks (Good Quality, Ready to Use)
-
-**Weeks 2-6, 8-10**: All have 3-4 concept MDX files with:
-- Clear explanations and code examples
-- Production-ready TypeScript implementations
-- Best practices and common pitfalls
-- Resource links for deeper learning
-
-**Total Statistics**:
-- 38 MDX content files
-- 60+ complete code examples
-- 4,000+ lines of enhanced content
-- All 12 weeks production-ready
-
-## Database Schema
-
-### Core Tables
-
-```sql
--- Users (managed by Supabase Auth)
-users (id, email, created_at, metadata)
-
--- Documents
-documents (id, user_id, title, content, file_path, created_at, processing_status)
-document_chunks (id, document_id, chunk_index, content, embedding, token_count)
-
--- Conversations
-conversations (id, user_id, title, created_at, updated_at)
-messages (id, conversation_id, role, content, created_at)
-
--- Memory Systems
-memory_episodic (id, user_id, conversation_id, summary, embedding, importance_score)
-memory_semantic (id, user_id, fact, categories, embedding, access_count)
-memory_procedural (id, user_id, key, value, created_at)
-
--- RAG & Citations
-rag_queries (id, user_id, query, embedding, created_at)
-rag_citations (id, query_id, chunk_id, page_number, relevance_score)
-
--- AI Agents
-agent_definitions (id, name, slug, description, system_prompt, tools, max_iterations)
-agent_executions (id, user_id, agent_definition_id, input, output, status, iterations, cost)
-agent_steps (id, execution_id, step_number, thought, action, action_input, observation)
-
--- Agent Memory
-agent_short_term_memory (id, execution_id, key, value)
-agent_long_term_memory (id, user_id, agent_id, summary, embedding, importance_score)
-```
-
-## Curriculum Overview
-
-| Week | Topic | Content Files | Enhancement | Key Features |
-|------|-------|---------------|-------------|--------------|
-| 1 | LLM Fundamentals | 4 files | ⭐ Enhanced | 3 hands-on exercises, runnable code |
-| 2 | Advanced Chat | 3 files | ✅ Complete | Chat architecture, state management |
-| 3 | RAG Systems | 3 files | ✅ Complete | Vector search, chunking, memory |
-| 4 | Code Review AI | 3 files | ✅ Complete | Automated reviews, CI/CD |
-| 5 | AI Agents | 3 files | ✅ Complete | ReAct architecture, tool use |
-| 6 | Production Monitoring | 4 files | ✅ Complete | Observability, optimization |
-| 7 | Architecture Design | 3 files | ⭐ Enhanced | 600+ lines of production patterns |
-| 8 | Product Launch | 3 files | ✅ Complete | Portfolio, marketing, launch |
-| 9 | Advanced RAG | 3 files | ✅ Complete | Hybrid search, reranking |
-| 10 | Fine-tuning | 3 files | ✅ Complete | Dataset prep, evaluation |
-| 11 | Multi-Agent Systems | 3 files | ⭐ Enhanced | 1,800+ lines of coordination code |
-| 12 | Enterprise Production | 3 files | ⭐ Enhanced | 2,100+ lines of enterprise patterns |
-
-**Total**: 38 MDX files · 4 enhanced weeks · 4,000+ lines of detailed content
-
-## Testing
-
-### Running Tests
-
-```bash
-# Unit tests
-npm test
-
-# Watch mode
-npm run test:watch
-
-# Coverage report
-npm run test:coverage
-
-# E2E tests
-npm run test:e2e
-
-# E2E tests in UI mode (debug)
-npm run test:e2e:ui
-
-# Run specific test file
-npm test path/to/test.test.ts
-```
-
-### Test Coverage Goals
-
-- **Utilities**: 80%+ coverage
-- **Services**: 75%+ coverage
-- **Components**: 70%+ coverage
-- **API Routes**: 70%+ coverage
-- **Overall**: 70%+ coverage
-
-## Performance Budgets
-
-### Lighthouse Scores (Minimum)
-
-- Performance: 90+
-- Accessibility: 90+
-- Best Practices: 90+
-- SEO: 90+
-
-### Bundle Sizes
-
-- Client-side bundle: < 200 KB
-- Initial CSS: < 50 KB
-- First Contentful Paint: < 1.5s
-- Time to Interactive: < 3.5s
-
-## Monitoring & Observability
-
-### Web Vitals
-
-- Automatic tracking via Vercel Analytics
-- Custom endpoint: `/api/analytics/web-vitals`
-- Metrics stored in Redis for aggregation
-
-### Error Tracking
-
-- Sentry integration for production errors
-- Session replay on errors
-- Error boundaries for graceful degradation
-
-### Logging
-
-- Structured logs with Pino
-- Request ID tracing
-- Client-side and server-side logging
-- Log levels: trace, debug, info, warn, error
-
-### Performance Metrics
-
-- Custom metrics tracked in Redis
-- Statistical aggregation (avg, p50, p95, p99)
-- Query performance monitoring
-- Agent execution tracking
-
-## API Documentation
-
-### Authentication
-
-```typescript
-// Client-side
-import { createClient } from '@/lib/supabase/client'
-const supabase = createClient()
-const { data: { user } } = await supabase.auth.getUser()
-
-// Server-side
-import { createClient } from '@/lib/supabase/server'
-const supabase = createClient()
-const { data: { user } } = await supabase.auth.getUser()
-```
-
-### Document Upload
-
-```typescript
-POST /api/documents/upload
-Content-Type: multipart/form-data
-
-Body: { file: File }
-
-Response: {
-  documentId: string
-  title: string
-  status: 'processing' | 'completed'
-}
-```
-
-### Chat API
-
-```typescript
-POST /api/chat
-Content-Type: application/json
-
-Body: {
-  conversationId: string
-  message: string
-  documentIds?: string[]
-}
-
-Response: Streaming JSON
-```
-
-### Agent Execution
-
-```typescript
-POST /api/agents/execute
-Content-Type: application/json
-
-Body: {
-  agentId: string
-  input: string
-}
-
-Response: {
-  executionId: string
-  status: 'running' | 'completed' | 'failed'
-  output?: string
-  steps: Step[]
-}
-```
-
-## Contributing
-
-### Code Style
-
-- **TypeScript**: Strict mode enabled
-- **ESLint**: Follow airbnb-typescript config
-- **Prettier**: Auto-format on save
-- **Commits**: Conventional commits format
-
-### Pull Request Process
-
-1. Create feature branch from `main`
-2. Write tests for new features
-3. Ensure all tests pass
-4. Update documentation
-5. Submit PR with clear description
-6. Address review feedback
-
-## Troubleshooting
-
-### Common Issues
-
-**Supabase Connection Errors**
-```bash
-# Check Supabase status
-supabase status
-
-# Restart Supabase
-supabase stop && supabase start
-```
-
-**Node Version Issues**
-```bash
-# Use correct Node version
-nvm use 20
-
-# Or install correct version
-nvm install 20
-```
-
-**Database Migration Errors**
-```bash
-# Reset local database
-supabase db reset
-
-# Or manually apply migration
-supabase db push
-```
-
-**Build Errors**
-```bash
-# Clear Next.js cache
-rm -rf .next
-
-# Clear node_modules
-rm -rf node_modules && npm install
-```
-
-## Resources
+---
+
+## 🎯 Features
+
+### For Students
+
+- ✅ **12-week structured curriculum** with 51 MDX lessons
+- ✅ **Interactive exercises** with runnable code
+- ✅ **Progress tracking** across weeks and projects
+- ✅ **AI Mentor** for personalized guidance
+- ✅ **RAG-powered Q&A** with curriculum content
+- ✅ **Portfolio builder** for showcasing projects
+- ✅ **Interview prep** materials and system design frameworks
+
+### For Instructors
+
+- ✅ **MDX-based content** - easy to update and version
+- ✅ **Automated seeding** - quick database setup
+- ✅ **Progress analytics** - track student engagement
+- ✅ **Extensible architecture** - add new weeks/concepts easily
+
+---
+
+## 📊 Content Statistics
+
+- **Weeks**: 12 complete curriculum weeks
+- **Concepts**: 51 MDX concept files
+- **Labs**: 12 hands-on lab exercises
+- **Projects**: 12 week-end projects
+- **Code Examples**: 60+ production-ready TypeScript examples
+- **Enhanced Content**: 4,000+ lines across 4 enhanced weeks
+- **Total Lines**: ~50,000 lines of curriculum content
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'feat: add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open Pull Request
+
+---
+
+## 📝 License
+
+MIT License - see LICENSE file for details
+
+---
+
+## 🆘 Support
+
+- **GitHub Issues**: [Report bugs or request features](https://github.com/mandadapu/archcelerate/issues)
+- **Documentation**: Check `CLAUDE.md` and `VISION.md` for detailed docs
+- **Quick Reference**: See `QUICK_REFERENCE.md` for common commands
+
+---
+
+## 📚 Resources
 
 - [Next.js Documentation](https://nextjs.org/docs)
-- [Supabase Documentation](https://supabase.com/docs)
+- [Prisma Documentation](https://www.prisma.io/docs)
 - [Anthropic Claude API](https://docs.anthropic.com/)
 - [shadcn/ui Components](https://ui.shadcn.com/)
-- [Playwright Testing](https://playwright.dev/)
-- [Vercel Deployment](https://vercel.com/docs)
+- [NextAuth.js Documentation](https://next-auth.js.org/)
 
-## License
+---
 
-MIT
+**Built with ❤️ using Next.js, Prisma, and Claude AI**
 
-## Support
-
-For issues and questions:
-- GitHub Issues: [Repository Issues](https://github.com/yourusername/archcelerate/issues)
-- Documentation: [Wiki](https://github.com/yourusername/archcelerate/wiki)
+*Last Updated: February 2026*
