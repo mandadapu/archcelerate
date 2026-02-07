@@ -2,13 +2,14 @@
 title: "LLM-as-a-Judge: Automated Evaluation Pipelines"
 week: 7
 concept: 3
-description: "Build automated evaluation systems using stronger models to grade weaker models at scale with cross-model hierarchies, negative sampling, and artifact manifests"
-estimatedMinutes: 55
+description: "Build automated evaluation systems using stronger models to grade weaker models at scale with cross-model hierarchies, negative sampling, artifact manifests, and uncertainty-triggered human escalation"
+estimatedMinutes: 60
 objectives:
   - Understand the LLM-as-a-Judge pattern with cross-model evaluation hierarchies
   - Build eval pipelines with reasoning-layer judges for frontier model validation
   - Implement artifact manifests and differential testing for reproducible AI deployments
   - Create living golden datasets with automated negative sampling from production failures
+  - Build logprob-based escalation for uncertainty-triggered human-in-the-loop routing
 ---
 
 # LLM-as-a-Judge (Automated Eval)
@@ -1482,6 +1483,463 @@ await deployToProduction(newPromptVersion)
 
 ---
 
+## Uncertainty-Triggered Human-in-the-Loop: Architecture by Exception
+
+Most HITL systems route to humans based on **static categories** (e.g., "all refund requests over $500 go to a human"). An Architect builds **self-aware systems** that escalate based on the model's own **confidence signals**.
+
+### The Problem with Static Escalation
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│         STATIC vs DYNAMIC ESCALATION                        │
+│                                                             │
+│  STATIC ESCALATION (Current):                               │
+│  ─────────────────────────────                              │
+│  if (topic === 'refund' && amount > 500) → HUMAN            │
+│  if (topic === 'legal') → HUMAN                             │
+│  else → AI handles it                                       │
+│                                                             │
+│  Problem: AI confidently handles a $50 refund question      │
+│  it doesn't know the answer to. No escalation triggered.    │
+│                                                             │
+│  DYNAMIC ESCALATION (Hardened):                             │
+│  ──────────────────────────────                             │
+│  if (model.confidence < threshold) → HUMAN                  │
+│  if (judge.disagrees_with_generator) → HUMAN                │
+│  if (perplexity > anomaly_threshold) → HUMAN                │
+│  else → AI handles it                                       │
+│                                                             │
+│  The AI admits: "I'm not sure about this one."              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Logprob-Based Confidence Scoring
+
+When an LLM generates tokens, each token has a **log probability** — the model's confidence that this is the right next token. Low logprobs (high perplexity) mean the model is "guessing," not "knowing."
+
+```typescript
+// src/week7/evals/logprob-escalation.ts
+import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
+
+/**
+ * Logprob-Based Escalation: "Architecture by Exception"
+ *
+ * Only use expensive human labor when the AI admits it's confused.
+ * Three escalation signals:
+ * 1. Low token-level confidence (high perplexity)
+ * 2. Cross-model disagreement (judge vs generator)
+ * 3. Hedging language detection (linguistic uncertainty markers)
+ */
+
+interface ConfidenceAssessment {
+  overallConfidence: number      // 0-1, aggregated confidence score
+  tokenPerplexity: number        // Average perplexity across output tokens
+  hedgingScore: number           // 0-1, how much hedging language detected
+  crossModelAgreement: number    // 0-1, agreement between judge and generator
+  escalationRequired: boolean
+  escalationReason?: string
+  escalationPriority: 'none' | 'low' | 'medium' | 'high' | 'critical'
+}
+
+/**
+ * Signal 1: Token-level confidence from logprobs
+ *
+ * OpenAI API exposes logprobs directly. For Anthropic, we use
+ * a proxy approach with hedging language detection.
+ */
+async function getTokenConfidence(
+  query: string,
+  context: string,
+  systemPrompt: string
+): Promise<{
+  response: string
+  avgLogprob: number
+  minLogprob: number
+  perplexity: number
+  lowConfidenceSpans: { text: string; logprob: number }[]
+}> {
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Context: ${context}\n\nQuestion: ${query}` }
+    ],
+    max_tokens: 512,
+    logprobs: true,
+    top_logprobs: 3
+  })
+
+  const choice = completion.choices[0]
+  const logprobData = choice.logprobs?.content || []
+
+  // Calculate token-level statistics
+  const logprobs = logprobData.map(t => t.logprob)
+  const avgLogprob = logprobs.reduce((a, b) => a + b, 0) / logprobs.length
+  const minLogprob = Math.min(...logprobs)
+
+  // Perplexity = exp(-average_logprob)
+  const perplexity = Math.exp(-avgLogprob)
+
+  // Find low-confidence spans (tokens where model is uncertain)
+  const lowConfidenceSpans: { text: string; logprob: number }[] = []
+  for (const token of logprobData) {
+    if (token.logprob &lt; -2.0) {  // Less than ~13% confidence
+      lowConfidenceSpans.push({
+        text: token.token,
+        logprob: token.logprob
+      })
+    }
+  }
+
+  return {
+    response: choice.message.content || '',
+    avgLogprob,
+    minLogprob,
+    perplexity,
+    lowConfidenceSpans
+  }
+}
+
+/**
+ * Signal 2: Cross-model disagreement detection
+ *
+ * Run the same query through both the generator (student) and
+ * a judge (teacher). If they produce meaningfully different
+ * answers, the system should escalate.
+ */
+async function detectCrossModelDisagreement(
+  query: string,
+  context: string,
+  generatorResponse: string
+): Promise<{
+  agreement: number        // 0-1, semantic agreement
+  disagreementType?: 'factual' | 'interpretation' | 'completeness'
+  judgeResponse: string
+  explanation: string
+}> {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+  // Step 1: Get independent judge response
+  const judgeCompletion = await anthropic.messages.create({
+    model: 'claude-sonnet-4-5-20250514',
+    max_tokens: 512,
+    temperature: 0.0,
+    messages: [{
+      role: 'user',
+      content: `Answer this question using ONLY the provided context.
+
+Context: ${context}
+
+Question: ${query}
+
+If the context doesn't contain enough information, say "INSUFFICIENT_CONTEXT".`
+    }]
+  })
+
+  const judgeResponse = judgeCompletion.content[0].type === 'text'
+    ? judgeCompletion.content[0].text
+    : ''
+
+  // Step 2: Compare generator and judge responses
+  const comparisonResult = await anthropic.messages.create({
+    model: 'claude-sonnet-4-5-20250514',
+    max_tokens: 512,
+    temperature: 0.0,
+    messages: [{
+      role: 'user',
+      content: `Compare these two responses to the same question. Do they agree on the key facts?
+
+Question: ${query}
+Context: ${context}
+
+Response A (Generator): ${generatorResponse}
+Response B (Judge): ${judgeResponse}
+
+Rate agreement 0.0-1.0 and classify any disagreement.
+
+Output JSON:
+{
+  "agreement": 0.0-1.0,
+  "disagreementType": "factual" | "interpretation" | "completeness" | null,
+  "explanation": "Brief explanation"
+}`
+    }]
+  })
+
+  const text = comparisonResult.content[0].type === 'text'
+    ? comparisonResult.content[0].text
+    : '{}'
+  const result = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || '{"agreement": 1.0}')
+
+  return {
+    agreement: result.agreement,
+    disagreementType: result.disagreementType,
+    judgeResponse,
+    explanation: result.explanation || ''
+  }
+}
+
+/**
+ * Signal 3: Hedging language detection
+ *
+ * When the model is uncertain, it uses hedging phrases.
+ * This works as a proxy for logprobs when the API doesn't expose them.
+ */
+function detectHedgingLanguage(response: string): {
+  hedgingScore: number
+  hedgingPhrases: string[]
+} {
+  const HEDGING_PATTERNS = [
+    { pattern: /I('m| am) not (entirely |completely )?sure/i, weight: 0.9 },
+    { pattern: /I think/i, weight: 0.3 },
+    { pattern: /I believe/i, weight: 0.4 },
+    { pattern: /it('s| is) possible that/i, weight: 0.5 },
+    { pattern: /might be/i, weight: 0.4 },
+    { pattern: /could be/i, weight: 0.3 },
+    { pattern: /may (or may not|not)/i, weight: 0.6 },
+    { pattern: /if I('m| am) not mistaken/i, weight: 0.7 },
+    { pattern: /to the best of my knowledge/i, weight: 0.5 },
+    { pattern: /approximately|roughly|around/i, weight: 0.2 },
+    { pattern: /it seems (like|that)/i, weight: 0.4 },
+    { pattern: /I('d| would) recommend (checking|verifying|confirming)/i, weight: 0.6 },
+    { pattern: /please (verify|confirm|check) (with|this)/i, weight: 0.7 },
+    { pattern: /I don('t| do not) have (enough|sufficient) (information|context|data)/i, weight: 0.9 },
+  ]
+
+  const hedgingPhrases: string[] = []
+  let totalWeight = 0
+
+  for (const { pattern, weight } of HEDGING_PATTERNS) {
+    const match = response.match(pattern)
+    if (match) {
+      hedgingPhrases.push(match[0])
+      totalWeight += weight
+    }
+  }
+
+  // Normalize to 0-1 (cap at 1.0 if many hedging phrases)
+  const hedgingScore = Math.min(totalWeight / 2.0, 1.0)
+
+  return { hedgingScore, hedgingPhrases }
+}
+
+/**
+ * Complete Confidence Assessment Pipeline
+ *
+ * Combines all three signals into a single escalation decision.
+ */
+async function assessConfidence(
+  query: string,
+  context: string,
+  generatorResponse: string,
+  options: {
+    enableLogprobs?: boolean
+    enableCrossModel?: boolean
+    perplexityThreshold?: number
+    agreementThreshold?: number
+    hedgingThreshold?: number
+  } = {}
+): Promise<ConfidenceAssessment> {
+  const {
+    enableLogprobs = true,
+    enableCrossModel = true,
+    perplexityThreshold = 15.0,   // Perplexity above this = uncertain
+    agreementThreshold = 0.7,     // Agreement below this = disagreement
+    hedgingThreshold = 0.5        // Hedging above this = uncertain
+  } = options
+
+  // Signal 1: Hedging language (always available, free)
+  const hedging = detectHedgingLanguage(generatorResponse)
+
+  // Signal 2: Token confidence (requires OpenAI for logprobs)
+  let tokenPerplexity = 1.0
+  if (enableLogprobs) {
+    try {
+      const tokenResult = await getTokenConfidence(query, context, '')
+      tokenPerplexity = tokenResult.perplexity
+    } catch {
+      // Logprobs not available, rely on other signals
+      tokenPerplexity = 1.0
+    }
+  }
+
+  // Signal 3: Cross-model disagreement (expensive, use selectively)
+  let crossModelAgreement = 1.0
+  if (enableCrossModel && (hedging.hedgingScore > 0.3 || tokenPerplexity > 10.0)) {
+    // Only run cross-model check if other signals suggest uncertainty
+    const disagreement = await detectCrossModelDisagreement(
+      query, context, generatorResponse
+    )
+    crossModelAgreement = disagreement.agreement
+  }
+
+  // Aggregate confidence (weighted combination)
+  const overallConfidence = (
+    (1.0 - hedging.hedgingScore) * 0.3 +                              // Hedging signal
+    Math.min(1.0, 5.0 / tokenPerplexity) * 0.3 +                      // Perplexity signal
+    crossModelAgreement * 0.4                                           // Cross-model signal
+  )
+
+  // Determine escalation
+  let escalationRequired = false
+  let escalationReason: string | undefined
+  let escalationPriority: ConfidenceAssessment['escalationPriority'] = 'none'
+
+  if (crossModelAgreement &lt; agreementThreshold) {
+    escalationRequired = true
+    escalationReason = `Cross-model disagreement: generator and judge agree only ${(crossModelAgreement * 100).toFixed(0)}%`
+    escalationPriority = crossModelAgreement &lt; 0.4 ? 'high' : 'medium'
+  } else if (tokenPerplexity > perplexityThreshold) {
+    escalationRequired = true
+    escalationReason = `High perplexity: ${tokenPerplexity.toFixed(1)} (threshold: ${perplexityThreshold})`
+    escalationPriority = tokenPerplexity > perplexityThreshold * 2 ? 'high' : 'medium'
+  } else if (hedging.hedgingScore > hedgingThreshold) {
+    escalationRequired = true
+    escalationReason = `Hedging language detected: "${hedging.hedgingPhrases.join('", "')}"`
+    escalationPriority = 'low'
+  }
+
+  return {
+    overallConfidence,
+    tokenPerplexity,
+    hedgingScore: hedging.hedgingScore,
+    crossModelAgreement,
+    escalationRequired,
+    escalationReason,
+    escalationPriority
+  }
+}
+
+/**
+ * Production integration: Route responses based on confidence
+ */
+async function confidenceAwareResponse(
+  query: string,
+  context: string
+): Promise<{
+  response: string
+  routed: 'ai' | 'human_review' | 'human_immediate'
+  confidence: ConfidenceAssessment
+}> {
+  // Generate initial response
+  const response = await generateResponse(query, context)
+
+  // Assess confidence
+  const confidence = await assessConfidence(query, context, response, {
+    enableLogprobs: true,
+    enableCrossModel: true
+  })
+
+  if (!confidence.escalationRequired) {
+    // High confidence — serve directly
+    return { response, routed: 'ai', confidence }
+  }
+
+  if (confidence.escalationPriority === 'high' || confidence.escalationPriority === 'critical') {
+    // Low confidence — pause and escalate immediately
+    await createHumanReviewTicket({
+      query,
+      context,
+      aiResponse: response,
+      reason: confidence.escalationReason!,
+      priority: confidence.escalationPriority,
+      confidenceScore: confidence.overallConfidence
+    })
+
+    return {
+      response: 'I want to make sure I give you the most accurate answer. ' +
+        'I\'ve flagged this for our team to review, and you\'ll hear back shortly.',
+      routed: 'human_immediate',
+      confidence
+    }
+  }
+
+  // Medium/low confidence — serve response but queue async review
+  await createHumanReviewTicket({
+    query,
+    context,
+    aiResponse: response,
+    reason: confidence.escalationReason!,
+    priority: confidence.escalationPriority,
+    confidenceScore: confidence.overallConfidence
+  })
+
+  return { response, routed: 'human_review', confidence }
+}
+
+async function createHumanReviewTicket(ticket: {
+  query: string
+  context: string
+  aiResponse: string
+  reason: string
+  priority: string
+  confidenceScore: number
+}) {
+  await prisma.humanReviewQueue.create({
+    data: {
+      query: ticket.query,
+      context: ticket.context,
+      aiResponse: ticket.aiResponse,
+      escalationReason: ticket.reason,
+      priority: ticket.priority,
+      confidenceScore: ticket.confidenceScore,
+      status: 'pending',
+      createdAt: new Date()
+    }
+  })
+
+  console.log(`🧑‍💼 Escalated to human review:`)
+  console.log(`   Priority: ${ticket.priority}`)
+  console.log(`   Confidence: ${(ticket.confidenceScore * 100).toFixed(0)}%`)
+  console.log(`   Reason: ${ticket.reason}`)
+}
+```
+
+### Escalation Signal Matrix
+
+| Signal | Source | Cost | Latency | Best For |
+|--------|--------|------|---------|----------|
+| **Hedging Detection** | Regex on response text | Free | &lt;1ms | Quick proxy for uncertainty |
+| **Token Perplexity** | OpenAI logprobs API | Included in generation | 0ms (piggybacked) | Token-level confidence |
+| **Cross-Model Disagreement** | Second model call | ~$0.003/query | ~500ms | Catching confident hallucinations |
+
+### Production Routing Decision Tree
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│         CONFIDENCE-BASED ROUTING                            │
+│                                                             │
+│  Query → Generate Response → Assess Confidence              │
+│                                   │                         │
+│                    ┌──────────────┼──────────────┐          │
+│                    │              │              │           │
+│              Confidence       Confidence    Confidence      │
+│               > 0.8           0.5 - 0.8      < 0.5         │
+│                    │              │              │           │
+│                    ▼              ▼              ▼           │
+│              ┌─────────┐  ┌───────────┐  ┌────────────┐    │
+│              │ Serve    │  │ Serve +   │  │ Pause +    │    │
+│              │ directly │  │ async     │  │ escalate   │    │
+│              │          │  │ human     │  │ to human   │    │
+│              │ Cost: $0 │  │ review    │  │ immediately│    │
+│              │          │  │           │  │            │    │
+│              │ 85% of   │  │ 12% of   │  │ 3% of     │    │
+│              │ queries  │  │ queries   │  │ queries    │    │
+│              └─────────┘  └───────────┘  └────────────┘    │
+│                                                             │
+│  Result: 97% of queries handled by AI.                      │
+│  Only 3% require immediate human intervention.              │
+│  12% get async quality review (no user delay).              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+> **Architect's Tip**: "An Architect builds 'Self-Aware' systems. If the model's output tokens have high Perplexity (low confidence), or if your 'Teacher' and 'Student' models disagree during an async check, the system should automatically 'Pause' the thread and flag it for human review. This is 'Architecture by Exception' — you only use expensive human labor when the AI admits it's confused."
+
+---
+
 ## The Continuous Eval Loop
 
 ```typescript
@@ -2335,7 +2793,8 @@ function shouldDeploy(oldManifest: ArtifactManifest, newManifest: ArtifactManife
 4. **Differential Testing**: Compare version A vs B on the same golden dataset to identify specific regressions before deploying
 5. **Faithfulness Floor**: Never sacrifice grounding/faithfulness for style or relevance — polite hallucinations are more dangerous than blunt correct answers
 6. **Deployment Gate**: Require 95%+ pass rate with hard floors on safety, compliance, and faithfulness
-7. **Continuous Eval**: Sample production traffic hourly to detect drift before it becomes a crisis
+7. **Uncertainty-Triggered HITL**: Use logprob perplexity, hedging detection, and cross-model disagreement to auto-escalate low-confidence outputs to human review
+8. **Continuous Eval**: Sample production traffic hourly to detect drift before it becomes a crisis
 
 ---
 
