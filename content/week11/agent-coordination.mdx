@@ -102,6 +102,90 @@ const coder: Agent = {
 - **Stateless vs Stateful**: Stateless agents are easier to scale, stateful remember context
 - **Cost**: Each agent call costs separately - plan carefully!
 
+**Architect's Tip — Supervisor vs. Choreography (The Orchestration Decision)**: "Every multi-agent system faces the same architectural fork: **Supervisor** (Hub-and-Spoke) or **Choreography** (Event-Driven). A Supervisor has one coordinator that dispatches tasks and collects results — it's easy to reason about but creates a single point of failure and a bottleneck. Choreography has agents react to events from each other — it scales better but is harder to debug because there's no central log of 'who did what.' An Architect picks Supervisor for **transactional workflows** where you need rollback capability (refund processing, compliance audits), and Choreography for **streaming pipelines** where throughput matters more than consistency (content generation, monitoring)."
+
+```typescript
+/**
+ * Supervisor vs. Choreography: The Orchestration Decision
+ *
+ * SUPERVISOR (Hub-and-Spoke):
+ * ✅ Central control — easy to debug, audit, and rollback
+ * ✅ Single orchestrator knows full workflow state
+ * ✅ Natural fit for transactional workflows
+ * ❌ Single point of failure (supervisor crash = full stop)
+ * ❌ Bottleneck at high concurrency (all agents report to one node)
+ *
+ * CHOREOGRAPHY (Event-Driven):
+ * ✅ No single point of failure — agents react independently
+ * ✅ Scales horizontally (add agents without changing coordinator)
+ * ✅ Natural fit for streaming/pipeline workloads
+ * ❌ Hard to debug (no central "who did what" log)
+ * ❌ Circular event loops can emerge silently
+ *
+ * Interview Defense: "We use Supervisor for compliance-sensitive
+ * workflows where we need audit trails and rollback. We use
+ * Choreography for content pipelines where throughput matters
+ * more than transactional guarantees."
+ */
+
+type OrchestrationModel = 'supervisor' | 'choreography'
+
+interface OrchestrationDecision {
+  workflow: string
+  needsRollback: boolean
+  needsAuditTrail: boolean
+  agentCount: number
+  throughputCritical: boolean
+  concurrentUsers: number
+}
+
+function selectOrchestrationModel(
+  config: OrchestrationDecision
+): { model: OrchestrationModel; reasoning: string } {
+  // Rule 1: Transactional workflows always use Supervisor
+  if (config.needsRollback || config.needsAuditTrail) {
+    return {
+      model: 'supervisor',
+      reasoning: `Workflow "${config.workflow}" requires ${
+        config.needsRollback ? 'rollback' : 'audit trail'
+      } — Supervisor provides central state tracking`
+    }
+  }
+
+  // Rule 2: High concurrency + throughput → Choreography
+  if (config.throughputCritical && config.concurrentUsers > 100) {
+    return {
+      model: 'choreography',
+      reasoning: `${config.concurrentUsers} concurrent users with throughput priority — Choreography avoids supervisor bottleneck`
+    }
+  }
+
+  // Rule 3: Small agent count → Supervisor (simpler)
+  if (config.agentCount <= 4) {
+    return {
+      model: 'supervisor',
+      reasoning: `Only ${config.agentCount} agents — Supervisor overhead is minimal, debugging is easier`
+    }
+  }
+
+  // Default: Choreography for large, non-transactional systems
+  return {
+    model: 'choreography',
+    reasoning: `${config.agentCount} agents without transactional requirements — Choreography scales better`
+  }
+}
+
+// Decision matrix:
+//
+// | Workflow              | Rollback? | Audit? | Agents | Model         |
+// |-----------------------|-----------|--------|--------|---------------|
+// | Refund processing     | Yes       | Yes    | 3      | Supervisor    |
+// | Content generation    | No        | No     | 6      | Choreography  |
+// | Compliance audit      | No        | Yes    | 4      | Supervisor    |
+// | Real-time monitoring  | No        | No     | 8      | Choreography  |
+// | Invoice approval      | Yes       | Yes    | 3      | Supervisor    |
+```
+
 ## Orchestration Patterns
 
 ### Pattern 1: Sequential Workflow (Pipeline)
@@ -465,6 +549,109 @@ bus.subscribe('research_complete', async (data) => {
 await bus.publish('research_complete', researchResults)
 ```
 
+**Architect's Tip — Selective Context Summarization (The Egress Hand-off)**: "The #1 hidden cost in multi-agent systems is **context bloat**. When Agent A passes its full 8,000-token output to Agent B, and Agent B passes its 10,000-token output to Agent C, you're paying for 18,000 tokens of context that Agent C doesn't need. An Architect enforces an **Egress Hand-off** — each agent summarizes its output into a **500-token structured handoff** before passing to the next agent. This cuts inter-agent token costs by 87% and actually improves downstream quality because the receiving agent isn't distracted by irrelevant details."
+
+```typescript
+/**
+ * Selective Context Summarization (Egress Hand-off)
+ *
+ * Problem: Agent A produces 8,000 tokens. Agent B receives all 8,000
+ * plus its own prompt (2,000 tokens). Agent C receives A's 8,000 +
+ * B's 10,000 + its own prompt. By Agent D, you're at 35,000+ tokens
+ * of context — most of which is irrelevant noise.
+ *
+ * Cost: At $0.003/1K input tokens, a 4-agent chain costs $0.174
+ * per request in context alone. At 100K requests/month = $17,400.
+ *
+ * Solution: Each agent produces a structured 500-token "Egress Summary"
+ * before handing off. Downstream agents receive ONLY the summary,
+ * not the full working context.
+ *
+ * Result: 4-agent chain drops from 58,000 to 7,500 input tokens.
+ * Monthly cost: $2,250 (87% reduction). Quality improves because
+ * downstream agents focus on relevant signals.
+ *
+ * Interview Defense: "We enforce Egress Hand-offs between agents.
+ * Each agent summarizes its output into 500 tokens before passing
+ * downstream. This cut our inter-agent token costs by 87% and
+ * actually improved task accuracy by 12% because downstream
+ * agents weren't distracted by irrelevant context."
+ */
+
+interface EgressSummary {
+  agentId: string
+  taskCompleted: string        // What this agent did (1 sentence)
+  keyFindings: string[]        // Top 3-5 findings (bullet points)
+  confidence: number           // 0-1 confidence score
+  handoffContext: string       // Structured context for next agent
+  tokenCount: number           // Must be <= 500
+  warnings: string[]           // Issues the next agent should know about
+}
+
+async function createEgressSummary(
+  agentId: string,
+  fullOutput: string,
+  nextAgentRole: string
+): Promise<EgressSummary> {
+  const response = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',  // Cheap model for summarization
+    max_tokens: 600,
+    messages: [{
+      role: 'user',
+      content: `You are creating a handoff summary for the "${nextAgentRole}" agent.
+
+Summarize the following output in EXACTLY this JSON format:
+{
+  "taskCompleted": "one sentence of what was done",
+  "keyFindings": ["finding 1", "finding 2", "finding 3"],
+  "confidence": 0.0-1.0,
+  "handoffContext": "structured context the next agent needs (max 300 tokens)",
+  "warnings": ["any issues or gaps"]
+}
+
+RULES:
+- Total output must be under 500 tokens
+- Include ONLY information relevant to "${nextAgentRole}"
+- Omit internal reasoning and intermediate steps
+
+Output to summarize:
+${fullOutput}`
+    }]
+  })
+
+  const parsed = JSON.parse(response.content[0].text)
+
+  return {
+    agentId,
+    ...parsed,
+    tokenCount: response.usage.output_tokens
+  }
+}
+
+// Cost comparison for a 4-agent chain:
+//
+// WITHOUT Egress Hand-off (full context forwarding):
+//   Agent A output: 8,000 tokens
+//   Agent B input:  8,000 + 2,000 prompt = 10,000 tokens → output: 10,000
+//   Agent C input: 10,000 + 8,000 + 2,000 = 20,000 tokens → output: 6,000
+//   Agent D input:  6,000 + 20,000 + 2,000 = 28,000 tokens
+//   Total input tokens: 10,000 + 20,000 + 28,000 = 58,000
+//   Cost at $0.003/1K: $0.174 per request
+//   Monthly (100K requests): $17,400
+//
+// WITH Egress Hand-off (500-token summaries):
+//   Agent A output: 8,000 tokens → Egress: 500 tokens
+//   Agent B input:  500 + 2,000 = 2,500 tokens → Egress: 500 tokens
+//   Agent C input:  500 + 2,000 = 2,500 tokens → Egress: 500 tokens
+//   Agent D input:  500 + 2,000 = 2,500 tokens
+//   Total input tokens: 2,500 + 2,500 + 2,500 = 7,500
+//   Cost at $0.003/1K: $0.023 per request
+//   Monthly (100K requests): $2,250
+//
+// Savings: $15,150/month (87% reduction)
+// Quality: +12% accuracy (less noise in context)
+```
+
 ## Best Practices
 
 1. **Clear Role Definition**: Each agent should have a specific, well-defined purpose
@@ -482,6 +669,141 @@ await bus.publish('research_complete', researchResults)
 
 2. **Circular Dependencies**: Agent A waits for B, B waits for A
    - **Fix**: Use dependency graphs, validate before execution
+
+**Architect's Tip — DAG-Based Workflow Validation (The Cycle Detector)**: "Never execute a multi-agent workflow without first parsing it into a **Directed Acyclic Graph (DAG)** and validating it. A circular dependency between agents is a **silent deadlock** — Agent A waits for B, B waits for C, C waits for A, and your system hangs forever with no error message. An Architect validates the DAG before the first agent fires. If a cycle is detected, it's a **hard stop** — no execution, immediate error to the developer. This costs 0.1ms and prevents hours of debugging deadlocked production systems."
+
+```typescript
+/**
+ * DAG-Based Workflow Validation
+ *
+ * Problem: Circular dependencies between agents cause silent deadlocks.
+ * Agent A → B → C → A creates an infinite wait with no error.
+ * In production, this manifests as "the system just hangs" with
+ * no logs, no errors, and confused users.
+ *
+ * Solution: Parse agent dependencies into a DAG. Run topological
+ * sort before execution. If a cycle exists, reject the workflow
+ * immediately with a clear error showing the cycle path.
+ *
+ * Interview Defense: "We validate every workflow as a DAG before
+ * execution. Cycle detection costs 0.1ms and prevents silent
+ * deadlocks that would otherwise take hours to debug in production."
+ */
+
+interface WorkflowNode {
+  agentId: string
+  dependsOn: string[]  // Agent IDs this node waits for
+}
+
+interface ValidationResult {
+  valid: boolean
+  executionOrder: string[] | null
+  cycle: string[] | null
+  parallelGroups: string[][] | null
+}
+
+function validateWorkflowDAG(nodes: WorkflowNode[]): ValidationResult {
+  const graph = new Map<string, string[]>()
+  const inDegree = new Map<string, number>()
+
+  // Build adjacency list and in-degree count
+  for (const node of nodes) {
+    if (!graph.has(node.agentId)) graph.set(node.agentId, [])
+    if (!inDegree.has(node.agentId)) inDegree.set(node.agentId, 0)
+
+    for (const dep of node.dependsOn) {
+      if (!graph.has(dep)) graph.set(dep, [])
+      graph.get(dep)!.push(node.agentId)
+      inDegree.set(node.agentId, (inDegree.get(node.agentId) || 0) + 1)
+    }
+  }
+
+  // Kahn's algorithm for topological sort
+  const queue: string[] = []
+  const executionOrder: string[] = []
+  const parallelGroups: string[][] = []
+
+  // Start with nodes that have no dependencies
+  for (const [id, degree] of inDegree) {
+    if (degree === 0) queue.push(id)
+  }
+
+  while (queue.length > 0) {
+    // All nodes in current queue can run in parallel
+    const currentGroup = [...queue]
+    parallelGroups.push(currentGroup)
+
+    const nextQueue: string[] = []
+    for (const current of queue) {
+      executionOrder.push(current)
+      for (const neighbor of graph.get(current) || []) {
+        const newDegree = inDegree.get(neighbor)! - 1
+        inDegree.set(neighbor, newDegree)
+        if (newDegree === 0) nextQueue.push(neighbor)
+      }
+    }
+    queue.length = 0
+    queue.push(...nextQueue)
+  }
+
+  // If not all nodes are in execution order, there's a cycle
+  if (executionOrder.length !== nodes.length) {
+    const cycleNodes = nodes
+      .filter(n => !executionOrder.includes(n.agentId))
+      .map(n => n.agentId)
+    return {
+      valid: false,
+      executionOrder: null,
+      cycle: cycleNodes,
+      parallelGroups: null
+    }
+  }
+
+  return {
+    valid: true,
+    executionOrder,
+    cycle: null,
+    parallelGroups
+  }
+}
+
+// Example: Valid workflow
+//
+// const valid = validateWorkflowDAG([
+//   { agentId: 'researcher',  dependsOn: [] },
+//   { agentId: 'coder',       dependsOn: [] },
+//   { agentId: 'writer',      dependsOn: ['researcher', 'coder'] },
+//   { agentId: 'reviewer',    dependsOn: ['writer'] }
+// ])
+//
+// Result: {
+//   valid: true,
+//   executionOrder: ['researcher', 'coder', 'writer', 'reviewer'],
+//   parallelGroups: [['researcher', 'coder'], ['writer'], ['reviewer']]
+// }
+//
+// → researcher and coder run in parallel (Group 1)
+// → writer runs after both complete (Group 2)
+// → reviewer runs last (Group 3)
+
+// Example: Circular dependency (HARD STOP)
+//
+// const invalid = validateWorkflowDAG([
+//   { agentId: 'researcher',  dependsOn: ['reviewer'] },  // ← cycle!
+//   { agentId: 'writer',      dependsOn: ['researcher'] },
+//   { agentId: 'reviewer',    dependsOn: ['writer'] }
+// ])
+//
+// Result: {
+//   valid: false,
+//   cycle: ['researcher', 'writer', 'reviewer'],
+//   executionOrder: null
+// }
+//
+// → HARD STOP: "Circular dependency detected:
+//     researcher → writer → reviewer → researcher"
+// → Fix the workflow before any agent fires
+```
 
 3. **No Conflict Resolution**: What happens when agents disagree?
    - **Fix**: Implement arbitration (see Week 11, Conflict Resolution)
@@ -516,6 +838,70 @@ async function createTechnicalBlogPost(topic: string) {
 // Total cost: ~$0.40
 // Quality: High (multiple review stages)
 ```
+
+---
+
+## Architect Challenge: The Specialist vs. Generalist Quiz
+
+**You are designing a multi-agent system for an investment firm. The CEO wants an "AI Analyst" that produces weekly investment reports.**
+
+**The Situation:**
+
+Each report requires: (1) **Market Research** — scanning 50+ sources for sector trends, (2) **Financial Modeling** — running DCF valuations on 10 stocks, (3) **Risk Assessment** — evaluating geopolitical and regulatory risks, and (4) **Report Writing** — producing a polished 20-page PDF. The current single-agent approach takes **45 minutes** and costs **$2.80 per report**. The CFO wants to scale from 10 reports/week to 200 reports/week. The current architecture won't survive.
+
+**Your options:**
+
+**A)** Use a **single powerful agent** (Opus) with a massive prompt that includes all instructions for research, modeling, risk, and writing. Give it web search, calculator, and PDF tools. Scale by running 200 sequential requests.
+
+**B)** Deploy a **Supervisor-Specialist Pattern**. One lightweight Supervisor agent (Haiku) decomposes each report request into 4 sub-tasks, dispatches them to 4 specialized agents (Research-Sonnet, Finance-Sonnet, Risk-Haiku, Writer-Sonnet), validates the DAG for dependency cycles, collects results via Egress Hand-offs (500-token summaries), and synthesizes the final report.
+
+**C)** Use **Choreography** with event-driven agents. Each agent listens for events and publishes results. No central coordinator — agents self-organize through a message bus.
+
+**D)** Fine-tune a single model on 500 example reports so it can do everything in one call without multiple agents.
+
+<details>
+<summary><strong>Click to reveal the correct answer</strong></summary>
+
+### Correct Answer: B — Supervisor-Specialist Pattern
+
+An Architect uses **Supervisor-Specialist** for transactional, multi-skill workflows where quality and auditability matter.
+
+**The Math:**
+
+```typescript
+// Current: Single agent (Opus)
+//   Time per report: 45 minutes
+//   Cost per report: $2.80
+//   200 reports/week sequential: 150 hours (impossible)
+//   200 reports/week parallel: 200 × $2.80 = $560/week
+
+// Supervisor-Specialist Pattern:
+//   Supervisor (Haiku): $0.02 per dispatch
+//   Research Agent (Sonnet): $0.35 (parallel, 8 min)
+//   Finance Agent (Sonnet): $0.40 (parallel, 10 min)
+//   Risk Agent (Haiku): $0.08 (parallel, 3 min)
+//   Writer Agent (Sonnet): $0.30 (sequential after others, 5 min)
+//   Egress summaries: 4 × $0.01 = $0.04
+//
+//   Total per report: $1.19
+//   Time per report: max(8, 10, 3) + 5 = 15 minutes (67% faster)
+//   200 reports/week: 200 × $1.19 = $238/week (58% cheaper)
+//   Annual savings: (560 - 238) × 52 = $16,744
+```
+
+**Why other answers fail:**
+
+- **A) Single powerful agent** — Opus at $2.80/report × 200 = $560/week. No parallelism within each report (45 min each). At 200 reports, you need 150 hours of sequential processing per week. Even with parallel instances, you're paying 2.4x more than the Specialist pattern and getting no quality improvement from specialization.
+
+- **C) Choreography** — Investment reports are **transactional workflows** that need audit trails. The CFO needs to know exactly which agent produced which section for compliance. Choreography makes this nearly impossible to trace. When the Risk Agent produces a wrong assessment, you need the Supervisor's central log to identify and fix it. Choreography is for streaming pipelines, not auditable financial documents.
+
+- **D) Fine-tune a single model** — Violates the **Behavior vs. Memory** rule. Market data changes daily. A fine-tuned model would confidently report last month's stock prices. Fine-tuning teaches behavior (format, tone), not facts (market data). The report would look polished but contain stale, hallucinated numbers — the worst possible outcome for an investment firm.
+
+**The Architect's Principle:** "Supervisor-Specialist is the default for **business-critical, multi-skill workflows**. The Supervisor provides auditability (every sub-task is logged), rollback (re-run just the failed agent), and cost control (use cheap models for simple sub-tasks, expensive models only where quality demands it). The 500-token Egress Hand-off between agents prevents context bloat. The DAG validation prevents deadlocks. This is not just a pattern — it's an **operating system for AI workflows**."
+
+</details>
+
+---
 
 ## Resources
 - [Multi-Agent Systems](https://lilianweng.github.io/posts/2023-06-23-agent/)
