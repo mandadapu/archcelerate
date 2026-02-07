@@ -22,6 +22,152 @@ estimatedMinutes: 40
 - **Week 2**: Goes viral → 10,000 users → API rate limits hit → $5,000/day → System crashes
 - **Need**: Scalable architecture that handles growth without manual intervention
 
+**Architect's Tip — Asynchronous Streaming + Optimistic State (The Latency Decoupler)**: "To handle 1 million users, you cannot hold an open HTTP connection for 10 seconds while the LLM generates a response. An Architect uses **Server-Sent Events (SSE)** to stream tokens as they're generated, and an **Event-Driven Architecture** to decouple API latency from LLM generation time. When the user sends a message, write it to your State Store immediately and return an ACK to the UI. The LLM processing happens in a background worker. This uncouples your web server from the LLM bottleneck, allowing it to handle **10x more concurrent users** with the same infrastructure."
+
+```typescript
+/**
+ * Asynchronous Streaming + Optimistic State Updates
+ *
+ * Problem: A synchronous request/response model holds an HTTP
+ * connection open for 2-10 seconds while the LLM generates.
+ * At 10,000 concurrent users × 5 seconds each = 50,000 open
+ * connections. Most web servers cap at 10,000 connections.
+ *
+ * Solution: Decouple the request lifecycle into 3 phases:
+ * 1. ACK Phase (< 50ms): Accept message, store in state, return ACK
+ * 2. Processing Phase (background): LLM generates in a worker
+ * 3. Streaming Phase (SSE): Push tokens to the client as they arrive
+ *
+ * Result: Web server handles ACK in 50ms (not 5,000ms),
+ * freeing the connection for other users. 10x throughput.
+ *
+ * Interview Defense: "We decouple API latency from LLM generation
+ * time using SSE and background workers. Our web servers return
+ * an ACK in 50ms while the LLM processes asynchronously. This
+ * lets us handle 100K concurrent users on infrastructure that
+ * would only support 10K with synchronous requests."
+ */
+
+import { Redis } from 'ioredis'
+
+const redis = new Redis(process.env.REDIS_URL!)
+
+interface ConversationMessage {
+  id: string
+  conversationId: string
+  role: 'user' | 'assistant'
+  content: string
+  status: 'pending' | 'streaming' | 'complete' | 'failed'
+  timestamp: number
+}
+
+// Phase 1: Optimistic State Update (< 50ms)
+async function handleUserMessage(
+  conversationId: string,
+  userMessage: string
+): Promise<{ messageId: string; status: 'accepted' }> {
+  const messageId = crypto.randomUUID()
+
+  // Write user message to state store immediately
+  await redis.rpush(
+    `conversation:${conversationId}`,
+    JSON.stringify({
+      id: messageId,
+      conversationId,
+      role: 'user',
+      content: userMessage,
+      status: 'complete',
+      timestamp: Date.now()
+    })
+  )
+
+  // Create placeholder for assistant response
+  const assistantMessageId = crypto.randomUUID()
+  await redis.rpush(
+    `conversation:${conversationId}`,
+    JSON.stringify({
+      id: assistantMessageId,
+      conversationId,
+      role: 'assistant',
+      content: '',
+      status: 'pending',
+      timestamp: Date.now()
+    })
+  )
+
+  // Enqueue LLM processing (background worker picks this up)
+  await redis.lpush('llm:queue', JSON.stringify({
+    conversationId,
+    userMessageId: messageId,
+    assistantMessageId,
+    userMessage
+  }))
+
+  // Return ACK immediately (< 50ms total)
+  return { messageId: assistantMessageId, status: 'accepted' }
+}
+
+// Phase 2 + 3: Background Worker with SSE Streaming
+async function processLLMQueue() {
+  while (true) {
+    // Block until a job is available
+    const job = await redis.brpop('llm:queue', 0)
+    if (!job) continue
+
+    const task = JSON.parse(job[1])
+
+    // Stream tokens via SSE channel
+    const stream = await anthropic.messages.stream({
+      model: 'claude-sonnet-4-5-20250929',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: task.userMessage }]
+    })
+
+    let fullContent = ''
+
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta') {
+        fullContent += chunk.delta.text
+
+        // Publish each token to SSE channel
+        await redis.publish(
+          `sse:${task.conversationId}`,
+          JSON.stringify({
+            messageId: task.assistantMessageId,
+            delta: chunk.delta.text,
+            status: 'streaming'
+          })
+        )
+      }
+    }
+
+    // Mark message as complete in state store
+    await redis.set(
+      `message:${task.assistantMessageId}`,
+      JSON.stringify({ content: fullContent, status: 'complete' })
+    )
+  }
+}
+
+// Throughput comparison:
+//
+// SYNCHRONOUS (hold connection open):
+//   Request duration: 5,000ms (LLM generation)
+//   Max connections: 10,000
+//   Max concurrent users: 10,000
+//   Throughput: 2,000 req/s (10K connections / 5s)
+//
+// ASYNC + SSE (decouple with background worker):
+//   ACK duration: 50ms
+//   Max connections: 10,000 (same infrastructure)
+//   Max concurrent users: 100,000+ (ACK frees connection)
+//   Throughput: 200,000 req/s (10K connections / 0.05s)
+//
+// Same infrastructure, 100x more throughput for the ACK phase
+// LLM generation still takes 5s, but it's in a background worker
+// Users see tokens streaming in real-time via SSE
+```
+
 ## Load Balancing
 
 **Simple Explanation**: Don't put all your eggs in one basket. Use multiple LLM providers and distribute requests across them.
@@ -240,6 +386,168 @@ console.log(llm.getProviderStats())
 - **Rate Limit Avoidance**: Distribute load across multiple rate limits
 - **Cost Optimization**: Route to cheaper providers when possible
 - **Performance**: Route to faster providers for time-sensitive requests
+
+**Architect's Tip — Dynamic Provider Switching (The Tiered Failover Strategy)**: "Never rely on a single LLM provider for a production-critical feature. An Architect implements a **Tiered Provider Strategy**: if your primary model (e.g., Claude Sonnet) returns a **429 (Rate Limit)** or **503 (Overloaded)**, your load balancer should instantly failover to an equivalent secondary model (e.g., GPT-4o), or a faster, cheaper **Safe Fallback** (e.g., Claude Haiku). This ensures **99.99% availability** even when a major AI provider suffers a regional outage. The key is that the failover is **automatic and invisible to the user** — they never see an error, just a slightly different model behind the scenes."
+
+```typescript
+/**
+ * Dynamic Provider Switching with Tiered Failover
+ *
+ * Problem: Single-provider architectures fail catastrophically.
+ * When OpenAI has a 2-hour outage (happens ~monthly), your
+ * entire product goes down. When you hit rate limits during
+ * a traffic spike, users see errors.
+ *
+ * Solution: Tiered failover with automatic 429/503 detection.
+ * Primary → Secondary → Safe Fallback → Cached Response.
+ * Each tier is pre-configured and tested, so failover is instant.
+ *
+ * Interview Defense: "We maintain a 3-tier provider strategy.
+ * If our primary returns a 429 or 503, we failover to the
+ * secondary in under 100ms. If both are down, we serve from
+ * our safe fallback tier. Our users have never seen a
+ * provider outage because the failover is invisible."
+ */
+
+interface ProviderTier {
+  name: string
+  model: string
+  priority: number          // 1 = primary, 2 = secondary, 3 = fallback
+  costPer1KTokens: number
+  avgLatencyMs: number
+  isHealthy: boolean
+  consecutiveFailures: number
+  lastFailure: number
+}
+
+class TieredProviderRouter {
+  private tiers: ProviderTier[] = [
+    {
+      name: 'primary',
+      model: 'claude-sonnet-4-5-20250929',
+      priority: 1,
+      costPer1KTokens: 0.003,
+      avgLatencyMs: 1200,
+      isHealthy: true,
+      consecutiveFailures: 0,
+      lastFailure: 0
+    },
+    {
+      name: 'secondary',
+      model: 'gpt-4o',
+      priority: 2,
+      costPer1KTokens: 0.005,
+      avgLatencyMs: 1500,
+      isHealthy: true,
+      consecutiveFailures: 0,
+      lastFailure: 0
+    },
+    {
+      name: 'safe-fallback',
+      model: 'claude-haiku-4-5-20251001',
+      priority: 3,
+      costPer1KTokens: 0.0008,
+      avgLatencyMs: 400,
+      isHealthy: true,
+      consecutiveFailures: 0,
+      lastFailure: 0
+    }
+  ]
+
+  async route(prompt: string): Promise<{
+    response: string
+    provider: string
+    failoverUsed: boolean
+  }> {
+    // Sort by priority, filter to healthy providers
+    const available = this.tiers
+      .filter(t => t.isHealthy)
+      .sort((a, b) => a.priority - b.priority)
+
+    for (const tier of available) {
+      try {
+        const response = await this.callProvider(tier, prompt)
+
+        // Reset failure count on success
+        tier.consecutiveFailures = 0
+
+        return {
+          response,
+          provider: tier.name,
+          failoverUsed: tier.priority > 1
+        }
+      } catch (error: any) {
+        const statusCode = error?.status || error?.statusCode
+
+        // 429 = Rate Limited, 503 = Overloaded, 529 = Overloaded
+        if ([429, 503, 529].includes(statusCode)) {
+          tier.consecutiveFailures++
+
+          // Mark unhealthy after 3 consecutive failures
+          if (tier.consecutiveFailures >= 3) {
+            tier.isHealthy = false
+            tier.lastFailure = Date.now()
+
+            // Schedule health check recovery (try again in 60s)
+            setTimeout(() => {
+              tier.isHealthy = true
+              tier.consecutiveFailures = 0
+            }, 60_000)
+          }
+
+          // Continue to next tier (automatic failover)
+          continue
+        }
+
+        // Non-retryable error — still try next tier
+        continue
+      }
+    }
+
+    // All providers failed — serve from cache as last resort
+    throw new Error('All provider tiers exhausted')
+  }
+
+  private async callProvider(
+    tier: ProviderTier,
+    prompt: string
+  ): Promise<string> {
+    // Provider-specific API calls
+    // (Implementation depends on provider SDK)
+    throw new Error('Provider call implementation')
+  }
+
+  getStatus(): { tier: string; healthy: boolean; failures: number }[] {
+    return this.tiers.map(t => ({
+      tier: t.name,
+      healthy: t.isHealthy,
+      failures: t.consecutiveFailures
+    }))
+  }
+}
+
+// Failover scenario (real-world):
+//
+// 10:00 AM — Normal traffic
+//   All requests → Primary (Claude Sonnet) ✅
+//
+// 10:15 AM — Traffic spike, Claude returns 429
+//   Request 1 → Primary (429) → Secondary (GPT-4o) ✅
+//   Request 2 → Primary (429) → Secondary (GPT-4o) ✅
+//   Request 3 → Primary (429) → Primary marked UNHEALTHY
+//   Request 4 → Secondary (GPT-4o) ✅ (Primary skipped)
+//
+// 10:20 AM — GPT-4o also rate-limited
+//   Request 5 → Secondary (429) → Safe Fallback (Haiku) ✅
+//   Request 6 → Safe Fallback (Haiku) ✅
+//   // Users get slightly less capable responses, but ZERO errors
+//
+// 10:16 AM — Primary health check passes
+//   Request 7 → Primary (Claude Sonnet) ✅ (recovered)
+//
+// User impact: ZERO errors. Response quality degraded for ~5 min.
+// Without tiered failover: 100% of requests fail for ~5 min.
+```
 
 ## Auto-Scaling
 
@@ -734,6 +1042,159 @@ export async function POST(req: Request) {
 }
 ```
 
+**Architect's Tip — Token-Aware Circuit Breaker (The Budget Shield)**: "A user sending 100 simple questions costs you $1, but a user sending 100 large PDFs for summarization costs you $50. Request-count rate limiting is blind to this 50x cost difference. An Architect sets limits based on **Estimated Token Impact**, not request count. If a tenant exceeds their monthly Token Budget, the system triggers a **Circuit Breaker** that switches them to a smaller model or enforces a strict delay. This prevents a single 'malicious' or 'inefficient' user from bankrupting your project in a single afternoon."
+
+```typescript
+/**
+ * Token-Aware Circuit Breaker
+ *
+ * Problem: Request-count rate limiting treats all requests equally.
+ * A 10-token "What time is it?" and a 50,000-token PDF summary
+ * both count as 1 request. A user who uploads 100 PDFs can spend
+ * $500 in a single session while staying under the request limit.
+ *
+ * Solution: Track ESTIMATED token usage per tenant, not just
+ * request count. When a tenant approaches their token budget,
+ * trigger progressive degradation:
+ *   80% budget → Warn + switch to smaller model
+ *   95% budget → Hard limit + delay enforcement
+ *   100% budget → Circuit breaker OPEN (block until reset)
+ *
+ * Interview Defense: "Our rate limiter is token-aware. We estimate
+ * input tokens before calling the LLM and track cumulative spend
+ * per tenant. When a tenant hits 80% of their budget, we
+ * automatically switch them to Haiku. At 95%, we enforce delays.
+ * This saved us from a $12,000 bill when a single enterprise
+ * tenant ran a bulk extraction job without warning."
+ */
+
+interface TenantBudget {
+  tenantId: string
+  tier: 'free' | 'pro' | 'enterprise'
+  monthlyTokenBudget: number     // Max tokens per billing period
+  tokensUsed: number             // Cumulative tokens this period
+  estimatedCostUsed: number      // Dollar cost this period
+  circuitState: 'closed' | 'degraded' | 'open'
+}
+
+const TIER_BUDGETS = {
+  free:       { tokens: 100_000,     costCap: 1.00 },
+  pro:        { tokens: 5_000_000,   costCap: 50.00 },
+  enterprise: { tokens: 100_000_000, costCap: 1000.00 }
+}
+
+class TokenAwareCircuitBreaker {
+  private redis: Redis
+
+  constructor(redis: Redis) {
+    this.redis = redis
+  }
+
+  async evaluateRequest(
+    tenantId: string,
+    tier: 'free' | 'pro' | 'enterprise',
+    estimatedInputTokens: number
+  ): Promise<{
+    allowed: boolean
+    model: string
+    delay: number            // Enforced delay in ms (0 = no delay)
+    budgetRemaining: number  // Percentage remaining
+    action: string
+  }> {
+    const budget = TIER_BUDGETS[tier]
+    const key = `budget:${tenantId}:${this.getCurrentPeriod()}`
+
+    // Get current usage
+    const used = parseInt(await this.redis.get(key) || '0')
+    const projectedUsage = used + estimatedInputTokens
+    const utilizationPercent = (projectedUsage / budget.tokens) * 100
+
+    // Circuit breaker logic
+    if (utilizationPercent >= 100) {
+      // OPEN — hard block
+      return {
+        allowed: false,
+        model: 'none',
+        delay: 0,
+        budgetRemaining: 0,
+        action: 'CIRCUIT_OPEN: Token budget exhausted. Resets next billing period.'
+      }
+    }
+
+    if (utilizationPercent >= 95) {
+      // DEGRADED + DELAY — allow but throttle aggressively
+      await this.redis.incrby(key, estimatedInputTokens)
+      return {
+        allowed: true,
+        model: 'claude-haiku-4-5-20251001',  // Force cheapest model
+        delay: 5000,                          // 5-second enforced delay
+        budgetRemaining: Math.round(100 - utilizationPercent),
+        action: 'DEGRADED: Forced to Haiku + 5s delay. Budget nearly exhausted.'
+      }
+    }
+
+    if (utilizationPercent >= 80) {
+      // DEGRADED — switch to cheaper model, no delay
+      await this.redis.incrby(key, estimatedInputTokens)
+      return {
+        allowed: true,
+        model: 'claude-haiku-4-5-20251001',  // Switch to cheaper model
+        delay: 0,
+        budgetRemaining: Math.round(100 - utilizationPercent),
+        action: 'DEGRADED: Switched to Haiku to preserve budget.'
+      }
+    }
+
+    // CLOSED — normal operation
+    await this.redis.incrby(key, estimatedInputTokens)
+    return {
+      allowed: true,
+      model: 'claude-sonnet-4-5-20250929',   // Full-power model
+      delay: 0,
+      budgetRemaining: Math.round(100 - utilizationPercent),
+      action: 'NORMAL: Full model access.'
+    }
+  }
+
+  // Estimate tokens before calling LLM (cheap, fast)
+  estimateTokens(input: string): number {
+    // Rough estimate: 1 token ≈ 4 characters for English text
+    return Math.ceil(input.length / 4)
+  }
+
+  private getCurrentPeriod(): string {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  }
+}
+
+// Real-world scenario:
+//
+// Tenant "AcmeCorp" (Pro tier, 5M token budget):
+//
+// Day 1-20: Normal usage, 3.2M tokens used (64%)
+//   → All requests use Sonnet, no restrictions
+//
+// Day 21: Intern runs bulk PDF extraction (500 PDFs)
+//   → Estimated: 200K tokens per PDF = 100M tokens total
+//   → After 9 PDFs (1.8M tokens): Budget hits 100% (5M)
+//   → Circuit breaker OPENS on PDF #10
+//   → Intern gets: "Token budget exhausted. Contact admin."
+//   → Total damage: $50 (budget cap), NOT $5,000 (uncapped)
+//
+// Without token-aware limiting:
+//   → 500 PDFs × $10 each = $5,000 in a single afternoon
+//   → Request-count limiter saw only 500 requests (under 1K/hour limit)
+//   → The bill arrives 30 days later. Surprise.
+//
+// | Scenario              | Request Limiter | Token-Aware Limiter |
+// |-----------------------|-----------------|---------------------|
+// | 100 simple questions  | 100 requests ✅  | 10K tokens ✅        |
+// | 100 PDF summaries     | 100 requests ✅  | 5M tokens → BLOCKED |
+// | Bulk extraction job   | 500 requests ✅  | 100M tokens → OPEN  |
+// | Cost exposure         | Unlimited       | Capped at tier max  |
+```
+
 ## Best Practices
 
 1. **Monitor Everything**: Track latency, costs, errors, cache hit rates
@@ -742,6 +1203,85 @@ export async function POST(req: Request) {
 4. **Implement Graceful Degradation**: Serve cached/partial results when backends are slow
 5. **Load Test Before Launch**: Know your breaking points
 6. **Set Cost Alerts**: Get notified if costs spike unexpectedly
+
+---
+
+## Architect Challenge: The "Scale-or-Die" CTO Crisis
+
+**Your AI platform just went viral on social media. Traffic has increased 50x in one hour.**
+
+**The Situation:**
+
+Your product was featured by a major tech influencer. Before the video, you handled **2,000 requests/hour**. Now you're getting **100,000 requests/hour** and climbing. Your OpenAI rate limits are maxed out at 10,000 requests/minute. Your cloud bill is spiking vertically — you've already burned through $4,000 in the last hour alone. Your CEO is on a live stream demo in 30 minutes. If the platform goes down on camera, the viral moment becomes a viral disaster.
+
+**Your options:**
+
+**A)** Manually contact OpenAI support to request a higher rate limit and hope they respond within 30 minutes.
+
+**B)** Activate **"Economic Mode" and Provider Failover**. Your system automatically detects the 429 errors from OpenAI and routes new traffic to a **fine-tuned Llama-3-70B instance** you keep on standby for exactly this scenario. For non-premium users, you temporarily switch to a **Cache-First Strategy** — serving only cached results for the 500 most common queries (which cover 60% of traffic during viral spikes). Premium users continue to get live LLM responses via your secondary provider. This saves the system from crashing and protects your margins during the viral peak.
+
+**C)** Shut down the registration page to stop new users from signing up until the traffic subsides.
+
+**D)** Increase subscription prices to slow down the flood of new users.
+
+<details>
+<summary><strong>Click to reveal the correct answer</strong></summary>
+
+### Correct Answer: B — Economic Mode + Provider Failover
+
+An Architect designs **"Elastic Degradation"** — the system survives success by gracefully trading quality for availability during traffic spikes.
+
+**The Math:**
+
+```typescript
+// Before viral spike (2,000 req/hour):
+//   Primary: OpenAI GPT-4o (100% of traffic)
+//   Cost: 2,000 × $0.05 = $100/hour
+//   Latency: 1,500ms average
+//   Status: All systems nominal
+
+// During viral spike (100,000 req/hour):
+//
+// WITHOUT Elastic Degradation:
+//   OpenAI rate limit: 10,000 req/min → 90,000 requests REJECTED
+//   Error rate: 90% → Platform appears "down"
+//   Cost: $5,000/hour (for the 10K that get through)
+//   User experience: Catastrophic — 9 out of 10 users see errors
+//
+// WITH Elastic Degradation (Option B):
+//   Tier 1 — Premium users (10%): Secondary provider (Claude) → $0.04/req
+//   Tier 2 — Cache hits (60%): Cached responses → $0.001/req
+//   Tier 3 — Remaining (30%): Llama-3-70B standby → $0.008/req
+//
+//   Cost breakdown:
+//     Premium:  10,000 × $0.04  = $400
+//     Cached:   60,000 × $0.001 = $60
+//     Standby:  30,000 × $0.008 = $240
+//     Total:    $700/hour (vs $5,000 without degradation)
+//
+//   Error rate: 0% — every user gets a response
+//   Quality: 60% get cached (instant), 30% get slightly lower quality
+//   Savings: $4,300/hour during spike
+//
+// After spike subsides (6 hours later):
+//   Auto-recovery: Primary provider health check passes
+//   Traffic: Routes back to primary automatically
+//   Total spike cost: $4,200 (vs $30,000 without degradation)
+```
+
+**Why other answers fail:**
+
+- **A) Contact OpenAI for higher limits** — Provider support doesn't respond in 30 minutes during a traffic spike. Even if they did, higher limits mean higher costs with no cost control. You're solving the rate limit problem but not the economics problem. An Architect never designs a system that requires human intervention to survive a predictable failure mode.
+
+- **C) Shut down registration** — You're turning away the exact users who came because of the viral moment. The influencer's audience is watching RIGHT NOW. Every minute the site is closed, you lose thousands of potential users permanently. This is the business equivalent of closing your restaurant during a food critic's visit because "the kitchen is busy."
+
+- **D) Increase prices** — Price changes take days to implement, communicate, and deploy. Even if instant, it penalizes existing users for a temporary spike. It also doesn't solve the technical rate limit problem — you'll still get 429 errors regardless of pricing.
+
+**The Architect's Principle:** "An Architect designs systems that **survive success**. Viral growth is not a crisis — it's a test of your architecture. The system should have a pre-configured 'Economic Mode' that activates automatically when traffic exceeds provider capacity. The degradation is **invisible to the user** — they get a response, just from a different model or cache. The CEO's live demo works perfectly. The viral moment converts users instead of losing them. And the cloud bill stays under control because your circuit breakers enforce budget caps at every tier."
+
+</details>
+
+---
 
 ## Resources
 - [Scaling Strategies](https://aws.amazon.com/architecture/scalability/)
