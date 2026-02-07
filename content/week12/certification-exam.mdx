@@ -1,0 +1,1272 @@
+---
+title: "Certification Exam: The Infrastructure Architect"
+description: "The ultimate cumulative test — synthesize agentic logic, RAG, security, compliance, and enterprise-scale governance into a sovereign AI platform"
+estimatedMinutes: 60
+week: 12
+concept: 5
+difficulty: expert
+objectives:
+  - Design cell-based sovereign infrastructure with regional data isolation
+  - Implement pre-inference PII governance proxies with NER redaction
+  - Build tamper-evident audit logs using cryptographic hash chaining
+  - Deploy priority-aware rate limiting under extreme resource contention
+---
+
+# Archcelerate Certification Exam: The Infrastructure Architect
+
+## The Final Test
+
+This exam is the **capstone of the entire 12-week program**. It requires you to synthesize every pillar — from agentic orchestration and RAG retrieval to multi-tenant governance and sovereign compliance — into a single, coherent architecture.
+
+There are no isolated questions here. Every challenge is interconnected, because in enterprise AI, **every decision has downstream consequences**.
+
+---
+
+## Scenario: SovereignHealth
+
+You are the **Chief Architect** for **SovereignHealth**, an AI platform that provides clinical decision support for hospital networks across North America and Europe.
+
+**The Platform:**
+- **50,000 active doctors** across 340 hospitals in 12 countries
+- **Clinical Decision Support**: Doctors query the system with patient symptoms, lab results, and medical history. The AI returns differential diagnoses, drug interaction warnings, and treatment recommendations
+- **RAG-Powered Knowledge Base**: Each hospital network maintains its own proprietary medical research, clinical protocols, and formulary data in isolated vector stores
+- **Multi-Model Architecture**: Claude Sonnet for complex differential diagnosis, Haiku for triage routing, GPT-4o for radiology image analysis
+- **Regulatory Environment**: HIPAA (US), GDPR (EU), PIPEDA (Canada) — the strictest healthcare data regulations in the world
+
+**The Stakes:**
+- A wrong diagnosis recommendation could harm a patient
+- A data leak between hospitals could expose proprietary research worth millions
+- A compliance violation could result in fines up to 4% of global revenue (GDPR)
+- **99.9% availability SLA** — doctors in emergency rooms cannot tolerate downtime
+
+**Your budget**: $180K/month for AI infrastructure (compute, model APIs, storage, compliance tooling)
+
+---
+
+## Challenge 1: The "Sovereign Cell" (Architecture Patterns)
+
+**The Situation:**
+
+CharitéConnect, a major hospital group in Berlin operating 47 hospitals across Germany, wants to sign a **$2M annual contract**. Their legal team has two non-negotiable requirements:
+
+1. **Data Residency**: All patient data — queries, RAG chunks, model responses, and audit logs — must **never leave German soil**. Not even for processing.
+2. **Logical Isolation**: Their data must **never be stored in a database shared** with US-based or other EU clients. Physical and logical separation.
+
+Your current architecture runs on a single AWS us-east-1 cluster with a shared PostgreSQL database and shared pgvector store. CharitéConnect's legal team has reviewed your architecture and rejected it.
+
+**Question:** Design a **Cell-Based Infrastructure** that satisfies CharitéConnect's requirements without rebuilding your entire platform.
+
+**Your Answer Must Include:**
+1. How you partition infrastructure into **Regionalized Compute Cells**
+2. How a **Global Tenant Router** directs traffic to the correct cell
+3. How you prevent cross-cell data leakage at the network level
+4. The cost implications of cell-based vs shared architecture
+
+<details>
+<summary><strong>Click to reveal the Architect's solution</strong></summary>
+
+### The Sovereign Cell Architecture
+
+An Architect solves data residency through **structural isolation**, not encryption or access controls. The data never leaves the region because the **compute itself lives in the region**.
+
+```typescript
+/**
+ * Cell-Based Sovereign Infrastructure
+ *
+ * Core Principle: Each "Cell" is a fully independent deployment
+ * of the SovereignHealth stack — its own database, vector store,
+ * model endpoint, and audit log. Cells share NOTHING except the
+ * Global Tenant Router, which itself stores no patient data.
+ *
+ * The Global Tenant Router is the ONLY component that knows
+ * which tenant maps to which cell. It is a stateless proxy
+ * that forwards requests based on tenant ID → cell mapping.
+ *
+ * Architecture:
+ *
+ *   [Doctor's Query]
+ *        ↓
+ *   [Global Tenant Router] (Cloudflare Workers — edge, stateless)
+ *        ↓ (tenant-id → cell lookup)
+ *        ├── [Cell: EU-DE] (Frankfurt) — CharitéConnect
+ *        │     ├── PostgreSQL (eu-central-1)
+ *        │     ├── pgvector (eu-central-1)
+ *        │     ├── Redis (eu-central-1)
+ *        │     ├── Claude API (EU endpoint)
+ *        │     └── Audit Log (eu-central-1)
+ *        │
+ *        ├── [Cell: US-EAST] (Virginia) — US hospitals
+ *        │     ├── PostgreSQL (us-east-1)
+ *        │     ├── pgvector (us-east-1)
+ *        │     ├── Redis (us-east-1)
+ *        │     ├── Claude API (US endpoint)
+ *        │     └── Audit Log (us-east-1)
+ *        │
+ *        └── [Cell: CA-CENTRAL] (Montreal) — Canadian hospitals
+ *              ├── PostgreSQL (ca-central-1)
+ *              ├── pgvector (ca-central-1)
+ *              ├── Redis (ca-central-1)
+ *              ├── Claude API (US endpoint)
+ *              └── Audit Log (ca-central-1)
+ */
+
+interface SovereignCell {
+  cellId: string               // e.g., "eu-de-1"
+  region: string               // AWS region: "eu-central-1"
+  country: string              // ISO country code: "DE"
+  jurisdiction: string         // Legal framework: "GDPR"
+  endpoints: {
+    database: string           // PostgreSQL connection string
+    vectorStore: string        // pgvector endpoint
+    cache: string              // Redis endpoint
+    modelApi: string           // Claude/OpenAI regional endpoint
+    auditLog: string           // Immutable audit log endpoint
+  }
+  tenantIds: string[]          // Tenants assigned to this cell
+  networkPolicy: {
+    allowedEgress: string[]    // Only allow traffic within same region
+    blockedRegions: string[]   // Explicitly blocked destinations
+    vpcPeering: string[]       // No cross-cell VPC peering
+  }
+}
+
+interface TenantCellMapping {
+  tenantId: string
+  cellId: string
+  contractTier: 'standard' | 'sovereign' | 'dedicated'
+  dataResidency: string        // Required country: "DE"
+  isolationLevel: 'shared' | 'dedicated-db' | 'dedicated-cell'
+}
+
+class GlobalTenantRouter {
+  // The router is STATELESS — it holds no patient data.
+  // It only maps tenant IDs to cell endpoints.
+  private cellRegistry: Map<string, SovereignCell> = new Map()
+  private tenantMap: Map<string, TenantCellMapping> = new Map()
+
+  async routeRequest(
+    tenantId: string,
+    request: ClinicalQuery
+  ): Promise<CellResponse> {
+    // Step 1: Look up tenant → cell mapping
+    const mapping = this.tenantMap.get(tenantId)
+    if (!mapping) {
+      throw new Error(`Unknown tenant: ${tenantId}`)
+    }
+
+    // Step 2: Get the cell configuration
+    const cell = this.cellRegistry.get(mapping.cellId)
+    if (!cell) {
+      throw new Error(`Cell ${mapping.cellId} not found`)
+    }
+
+    // Step 3: Verify data residency compliance
+    if (mapping.dataResidency && cell.country !== mapping.dataResidency) {
+      throw new Error(
+        `Data residency violation: tenant ${tenantId} requires ` +
+        `${mapping.dataResidency}, but cell ${cell.cellId} is in ${cell.country}`
+      )
+    }
+
+    // Step 4: Forward to the correct cell (NO patient data stored here)
+    console.log(
+      `Routing ${tenantId} → Cell ${cell.cellId} (${cell.region})`
+    )
+
+    const response = await fetch(`${cell.endpoints.modelApi}/v1/clinical`, {
+      method: 'POST',
+      headers: {
+        'X-Tenant-ID': tenantId,
+        'X-Cell-ID': cell.cellId,
+        'X-Data-Residency': mapping.dataResidency
+      },
+      body: JSON.stringify(request)
+    })
+
+    return response.json()
+  }
+
+  registerCell(cell: SovereignCell): void {
+    // Validate network policy: no cross-region egress
+    if (cell.networkPolicy.allowedEgress.some(
+      e => !e.includes(cell.region)
+    )) {
+      throw new Error(
+        `Cell ${cell.cellId} has egress rules outside its region ${cell.region}`
+      )
+    }
+    this.cellRegistry.set(cell.cellId, cell)
+  }
+
+  assignTenant(mapping: TenantCellMapping): void {
+    // Validate: tenant's residency requirement matches cell's country
+    const cell = this.cellRegistry.get(mapping.cellId)
+    if (cell && mapping.dataResidency !== cell.country) {
+      throw new Error(
+        `Cannot assign tenant to cell: residency mismatch ` +
+        `(${mapping.dataResidency} ≠ ${cell.country})`
+      )
+    }
+    this.tenantMap.set(mapping.tenantId, mapping)
+  }
+}
+
+// Cell deployment for CharitéConnect:
+//
+// const germanCell: SovereignCell = {
+//   cellId: 'eu-de-1',
+//   region: 'eu-central-1',
+//   country: 'DE',
+//   jurisdiction: 'GDPR',
+//   endpoints: {
+//     database: 'postgresql://sovereign:***@db.eu-central-1.rds.amazonaws.com/charite',
+//     vectorStore: 'pgvector://vectors.eu-central-1.rds.amazonaws.com/charite_vectors',
+//     cache: 'redis://cache.eu-central-1.elasticache.amazonaws.com:6379',
+//     modelApi: 'https://api.eu.anthropic.com',  // EU-specific endpoint
+//     auditLog: 'https://audit.eu-central-1.sovereignhealth.com'
+//   },
+//   tenantIds: ['charite-connect'],
+//   networkPolicy: {
+//     allowedEgress: ['*.eu-central-1.amazonaws.com', 'api.eu.anthropic.com'],
+//     blockedRegions: ['us-*', 'ap-*', 'sa-*'],  // Block ALL non-EU regions
+//     vpcPeering: []  // NO peering with other cells
+//   }
+// }
+//
+// Cost analysis:
+//
+// | Architecture        | Monthly Cost | Data Residency | Isolation    |
+// |---------------------|-------------|----------------|--------------|
+// | Shared cluster      | $12K        | ❌ Violated     | ❌ Logical only |
+// | Sovereign cell (DE) | $18K        | ✅ Compliant    | ✅ Physical    |
+// | Dedicated hardware  | $45K        | ✅ Compliant    | ✅ Physical    |
+//
+// The sovereign cell costs $6K/month more than shared,
+// but unlocks a $2M/year contract. ROI: 27x.
+//
+// CharitéConnect's $2M contract easily justifies the $72K/year
+// premium for dedicated German infrastructure.
+```
+
+**The Architect's Principle:** "Data residency is not a software problem — it's an **infrastructure topology** problem. No amount of encryption or access controls satisfies 'data never leaves German soil' if your compute runs in Virginia. The only architectural answer is **physical isolation**: the database, the vector store, the model endpoint, and the audit log all live in `eu-central-1`. The Global Tenant Router is a stateless edge proxy that touches zero patient data — it only knows which tenant maps to which cell."
+
+</details>
+
+---
+
+## Challenge 2: The "Compliance Firewall" (Security & Governance)
+
+**The Situation:**
+
+During a quarterly security audit, your compliance team discovers an incident: a doctor at a US hospital accidentally pasted a patient's **unredacted Social Security Number (SSN)**, **home address**, and **phone number** into the clinical query input field. The system processed the query, sending the PII directly to Anthropic's Claude API for summarization.
+
+The compliance officer is furious: "This means a third-party AI provider now has a US patient's SSN in their inference logs. This is a **HIPAA violation** that could cost us $1.5M in fines."
+
+Your CTO demands: "Ensure that **no PII ever reaches a third-party LLM provider**, regardless of what the doctor types."
+
+**Question:** Propose a **Technical Guardrail** that prevents PII from ever reaching the third-party LLM provider.
+
+**Your Answer Must Include:**
+1. Where the guardrail sits in the request pipeline (pre-inference, not post-inference)
+2. How NER (Named Entity Recognition) identifies PII in real-time
+3. How detected PII is redacted before the request leaves your infrastructure
+4. How the original PII is restored in the response sent back to the doctor
+
+<details>
+<summary><strong>Click to reveal the Architect's solution</strong></summary>
+
+### The Pre-Inference Governance Proxy
+
+An Architect intercepts PII **before it leaves the trust boundary**. The PII never reaches the LLM — only redacted placeholders do. The LLM processes anonymized text, and the proxy restores the original values on the way back.
+
+```typescript
+/**
+ * Pre-Inference PII Governance Proxy
+ *
+ * Architecture:
+ *
+ *   [Doctor's Query]
+ *        ↓
+ *   [PII Governance Proxy] ← Runs INSIDE your cell (not at the LLM)
+ *        ├── Step 1: NER Scan (detect PII entities)
+ *        ├── Step 2: Redact (replace PII with tokens)
+ *        ├── Step 3: Store mapping (token → original, encrypted)
+ *        ↓
+ *   [Redacted Query] → [LLM API] (sees "[SSN_1]" not "123-45-6789")
+ *        ↓
+ *   [LLM Response] (contains "[SSN_1]" references)
+ *        ↓
+ *   [PII Governance Proxy]
+ *        ├── Step 4: Restore (replace tokens with original PII)
+ *        ↓
+ *   [Doctor sees full response with original patient data]
+ *
+ * The LLM NEVER sees the real PII. It processes anonymized text.
+ * The mapping lives inside the sovereign cell, encrypted at rest.
+ */
+
+interface PIIEntity {
+  type: 'SSN' | 'PHONE' | 'EMAIL' | 'ADDRESS' | 'DOB' | 'MRN' | 'NAME'
+  value: string          // The actual PII: "123-45-6789"
+  token: string          // The replacement: "[SSN_1]"
+  startIndex: number     // Position in original text
+  endIndex: number
+  confidence: number     // NER confidence (0-1)
+}
+
+interface RedactionResult {
+  redactedText: string           // Text with PII replaced by tokens
+  entities: PIIEntity[]          // All detected PII entities
+  mappingId: string              // ID to retrieve the token → PII mapping
+  piiDetected: boolean           // Were any PII entities found?
+  highRiskEntities: PIIEntity[]  // SSN, MRN — always block, never send
+}
+
+class PIIGovernanceProxy {
+  private mappingStore: Map<string, PIIEntity[]> = new Map()
+  private nerPatterns: Map<string, RegExp>
+
+  constructor() {
+    // Layer 1: Regex-based pattern matching (fast, catches known formats)
+    this.nerPatterns = new Map([
+      ['SSN', /\b\d{3}-\d{2}-\d{4}\b/g],
+      ['PHONE', /\b(\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g],
+      ['EMAIL', /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g],
+      ['DOB', /\b(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/(19|20)\d{2}\b/g],
+      ['MRN', /\bMRN[:\s]?\d{6,10}\b/gi],  // Medical Record Number
+    ])
+  }
+
+  async redact(inputText: string): Promise<RedactionResult> {
+    const entities: PIIEntity[] = []
+    let redactedText = inputText
+    let tokenCounter: Record<string, number> = {}
+
+    // Layer 1: Regex NER (sub-millisecond, catches structured PII)
+    for (const [type, pattern] of this.nerPatterns) {
+      const matches = inputText.matchAll(new RegExp(pattern))
+
+      for (const match of matches) {
+        tokenCounter[type] = (tokenCounter[type] || 0) + 1
+        const token = `[${type}_${tokenCounter[type]}]`
+
+        entities.push({
+          type: type as PIIEntity['type'],
+          value: match[0],
+          token,
+          startIndex: match.index!,
+          endIndex: match.index! + match[0].length,
+          confidence: 0.99  // Regex patterns are high confidence
+        })
+      }
+    }
+
+    // Layer 2: LLM-based NER (catches unstructured PII like addresses)
+    const llmEntities = await this.llmNERScan(inputText)
+    for (const entity of llmEntities) {
+      // Avoid duplicates from regex layer
+      if (!entities.some(e => e.value === entity.value)) {
+        tokenCounter[entity.type] = (tokenCounter[entity.type] || 0) + 1
+        entity.token = `[${entity.type}_${tokenCounter[entity.type]}]`
+        entities.push(entity)
+      }
+    }
+
+    // Sort entities by position (reverse) to replace without offset issues
+    const sortedEntities = [...entities].sort(
+      (a, b) => b.startIndex - a.startIndex
+    )
+
+    // Replace PII with tokens in the text
+    for (const entity of sortedEntities) {
+      redactedText =
+        redactedText.substring(0, entity.startIndex) +
+        entity.token +
+        redactedText.substring(entity.endIndex)
+    }
+
+    // Store the mapping (encrypted, inside the sovereign cell)
+    const mappingId = `pii-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    this.mappingStore.set(mappingId, entities)
+
+    // Identify high-risk entities that should NEVER reach an LLM
+    const highRiskEntities = entities.filter(
+      e => ['SSN', 'MRN'].includes(e.type)
+    )
+
+    if (highRiskEntities.length > 0) {
+      console.log(
+        `🚨 HIGH-RISK PII DETECTED: ${highRiskEntities.length} entities ` +
+        `(${highRiskEntities.map(e => e.type).join(', ')})`
+      )
+    }
+
+    return {
+      redactedText,
+      entities,
+      mappingId,
+      piiDetected: entities.length > 0,
+      highRiskEntities
+    }
+  }
+
+  // Restore PII in the LLM's response before sending to the doctor
+  restore(llmResponse: string, mappingId: string): string {
+    const entities = this.mappingStore.get(mappingId)
+    if (!entities) return llmResponse
+
+    let restoredText = llmResponse
+
+    // Replace tokens with original PII values
+    for (const entity of entities) {
+      restoredText = restoredText.replaceAll(entity.token, entity.value)
+    }
+
+    // Clean up the mapping (PII should not persist longer than the request)
+    this.mappingStore.delete(mappingId)
+
+    return restoredText
+  }
+
+  private async llmNERScan(text: string): Promise<PIIEntity[]> {
+    // Use a LOCAL model or a privacy-safe NER service
+    // This runs INSIDE the sovereign cell — never leaves the region
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',  // Fast, cheap, runs in-region
+      max_tokens: 500,
+      messages: [{
+        role: 'user',
+        content: `Identify ALL personally identifiable information (PII) in this text.
+Look for: names, addresses, phone numbers, SSNs, dates of birth, medical record numbers, email addresses, and any other identifying information.
+
+Text: "${text}"
+
+Return JSON array:
+[
+  {
+    "type": "NAME" | "ADDRESS" | "PHONE" | "SSN" | "DOB" | "MRN" | "EMAIL",
+    "value": "the exact PII text",
+    "startIndex": <position in text>,
+    "endIndex": <end position>,
+    "confidence": <0-1>
+  }
+]
+
+Return [] if no PII found.`
+      }]
+    })
+
+    return JSON.parse(response.content[0].text)
+  }
+}
+
+// Full request flow with PII Governance Proxy:
+//
+// async function processClinicalQuery(
+//   tenantId: string,
+//   doctorQuery: string
+// ): Promise<string> {
+//   const proxy = new PIIGovernanceProxy()
+//
+//   // Step 1: Redact PII (runs INSIDE sovereign cell)
+//   const redaction = await proxy.redact(doctorQuery)
+//
+//   console.log('Original:', doctorQuery)
+//   // "Patient John Smith, SSN 123-45-6789, lives at
+//   //  742 Evergreen Terrace, Springfield. DOB 03/15/1985.
+//   //  Presenting with chest pain and shortness of breath."
+//
+//   console.log('Redacted:', redaction.redactedText)
+//   // "Patient [NAME_1], SSN [SSN_1], lives at
+//   //  [ADDRESS_1]. DOB [DOB_1].
+//   //  Presenting with chest pain and shortness of breath."
+//
+//   // Step 2: Send REDACTED query to LLM (safe — no PII leaves the cell)
+//   const llmResponse = await anthropic.messages.create({
+//     model: 'claude-sonnet-4-5-20250929',
+//     max_tokens: 1000,
+//     messages: [{
+//       role: 'user',
+//       content: `Clinical decision support for: ${redaction.redactedText}`
+//     }]
+//   })
+//
+//   // LLM response references tokens, not real PII:
+//   // "Based on [NAME_1]'s presentation of chest pain with DOB [DOB_1]
+//   //  (age 40), recommend: 1) 12-lead ECG, 2) Troponin levels..."
+//
+//   // Step 3: Restore PII in response (runs INSIDE sovereign cell)
+//   const restoredResponse = proxy.restore(
+//     llmResponse.content[0].text,
+//     redaction.mappingId
+//   )
+//
+//   // Doctor sees: "Based on John Smith's presentation of chest pain
+//   //  with DOB 03/15/1985 (age 40), recommend: 1) 12-lead ECG..."
+//
+//   return restoredResponse
+// }
+//
+// PII Governance Metrics:
+//
+// | Metric                    | Without Proxy | With Proxy    |
+// |---------------------------|---------------|---------------|
+// | PII reaching LLM provider | 100%          | 0%            |
+// | HIPAA violation risk      | HIGH          | NEAR-ZERO     |
+// | Latency overhead          | 0ms           | 45ms (NER)    |
+// | Cost overhead per query   | $0.00         | $0.002 (Haiku)|
+// | Detection accuracy        | N/A           | 99.7% (2-layer)|
+// | Monthly cost (50K queries)| $0            | $100          |
+```
+
+**The Architect's Principle:** "PII governance is a **network interception** problem, not a policy problem. You cannot rely on doctors to self-redact. You cannot rely on LLM providers to not log inputs. The only safe architecture is a **proxy that strips PII before the request leaves your trust boundary** and restores it after the response returns. The LLM processes anonymized text. The mapping lives encrypted inside your sovereign cell. The PII never crosses the wire."
+
+</details>
+
+---
+
+## Challenge 3: The "Immutable Proof" (Sovereign Audit Log)
+
+**The Situation:**
+
+A regulator from Germany's BfArM (Federal Institute for Drugs and Medical Devices) arrives for an audit. They demand proof of two things:
+
+1. **Cross-Tenant Isolation**: Prove that proprietary medical research from CharitéConnect's RAG system was **never leaked** to query results for any other hospital over the last six months.
+2. **Log Integrity**: Prove that the audit logs themselves haven't been **retroactively altered** by a SovereignHealth administrator to cover up a breach.
+
+Your database administrator has full access to the audit log tables. The regulator knows this and doesn't trust simple database queries. They want **cryptographic proof**.
+
+**Question:** How does your **Sovereign Audit Log** provide immutable, tamper-evident proof?
+
+**Your Answer Must Include:**
+1. What data is captured in each audit log entry
+2. How **Cryptographic Hash Chaining** makes the log tamper-evident
+3. How **Merkle Tree Anchoring** provides periodic proof checkpoints
+4. How the regulator can independently verify log integrity
+
+<details>
+<summary><strong>Click to reveal the Architect's solution</strong></summary>
+
+### The Immutable Sovereign Audit Log
+
+An Architect provides **mathematical proof** of log integrity, not verbal assurance. Each log entry is hash-chained to its predecessor, making any retroactive modification detectable. Periodic Merkle Tree roots are anchored to an external timestamping authority.
+
+```typescript
+/**
+ * Sovereign Audit Log with Cryptographic Hash Chaining
+ *
+ * Core Principle: Each audit entry includes the hash of the
+ * previous entry. Modifying any historical entry changes its
+ * hash, which breaks the chain — making tampering immediately
+ * detectable by any party with the chain's root hash.
+ *
+ * This is the same principle behind blockchain, but applied
+ * to compliance audit logs without the overhead of consensus.
+ *
+ * Architecture:
+ *
+ *   Entry 1 → hash(Entry 1 + "genesis")     = H1
+ *   Entry 2 → hash(Entry 2 + H1)            = H2
+ *   Entry 3 → hash(Entry 3 + H2)            = H3
+ *   ...
+ *   Entry N → hash(Entry N + H(N-1))        = HN
+ *
+ *   If an admin modifies Entry 2:
+ *     H2' ≠ H2 → H3 references H2, not H2' → CHAIN BROKEN
+ *     Every entry after the modification becomes invalid.
+ */
+
+import * as crypto from 'crypto'
+
+interface AuditEntry {
+  entryId: string
+  sequenceNumber: number
+  timestamp: Date
+  cellId: string              // Which sovereign cell
+  tenantId: string            // Which hospital
+  action: string              // "rag_query" | "model_inference" | "data_access"
+  details: {
+    queryHash: string         // Hash of the doctor's query (not the query itself)
+    ragSourceIds: string[]    // Which vector store chunks were retrieved
+    ragSourceTenants: string[] // Which tenants OWN those chunks (cross-tenant check)
+    modelUsed: string
+    responseHash: string      // Hash of the model's response
+    piiDetected: boolean      // Was PII found and redacted?
+    latencyMs: number
+  }
+  previousHash: string        // Hash of the previous entry (chain link)
+  entryHash: string           // Hash of THIS entry (including previousHash)
+}
+
+interface MerkleCheckpoint {
+  checkpointId: string
+  timestamp: Date
+  entryRange: { from: number; to: number }
+  merkleRoot: string          // Root hash of all entries in this range
+  anchoredTo: string          // External timestamping authority
+  anchorProof: string         // Proof from the external authority
+}
+
+class SovereignAuditLog {
+  private entries: AuditEntry[] = []
+  private checkpoints: MerkleCheckpoint[] = []
+  private lastHash: string = 'genesis'  // Genesis block
+  private checkpointInterval = 1000     // Merkle checkpoint every 1000 entries
+
+  async appendEntry(
+    cellId: string,
+    tenantId: string,
+    action: string,
+    details: AuditEntry['details']
+  ): Promise<AuditEntry> {
+    const sequenceNumber = this.entries.length + 1
+
+    // Build the entry (without hash first)
+    const entry: AuditEntry = {
+      entryId: `audit-${cellId}-${sequenceNumber}`,
+      sequenceNumber,
+      timestamp: new Date(),
+      cellId,
+      tenantId,
+      action,
+      details,
+      previousHash: this.lastHash,
+      entryHash: ''  // Computed below
+    }
+
+    // Compute the hash: SHA-256(entry content + previous hash)
+    entry.entryHash = this.computeHash(entry)
+    this.lastHash = entry.entryHash
+
+    // CRITICAL: Check for cross-tenant data leakage
+    const crossTenantAccess = details.ragSourceTenants.filter(
+      t => t !== tenantId
+    )
+    if (crossTenantAccess.length > 0) {
+      console.log(
+        `🚨 CROSS-TENANT ACCESS DETECTED!\n` +
+        `   Tenant ${tenantId} received RAG chunks owned by: ` +
+        `${crossTenantAccess.join(', ')}\n` +
+        `   Entry: ${entry.entryId}`
+      )
+      // This entry is STILL logged — the violation is recorded immutably
+    }
+
+    this.entries.push(entry)
+
+    // Periodic Merkle checkpoint
+    if (sequenceNumber % this.checkpointInterval === 0) {
+      await this.createMerkleCheckpoint(sequenceNumber)
+    }
+
+    return entry
+  }
+
+  private computeHash(entry: AuditEntry): string {
+    const content = JSON.stringify({
+      sequenceNumber: entry.sequenceNumber,
+      timestamp: entry.timestamp.toISOString(),
+      cellId: entry.cellId,
+      tenantId: entry.tenantId,
+      action: entry.action,
+      details: entry.details,
+      previousHash: entry.previousHash
+    })
+
+    return crypto.createHash('sha256').update(content).digest('hex')
+  }
+
+  // Merkle Tree: Aggregate entries into a single root hash
+  private async createMerkleCheckpoint(
+    upToSequence: number
+  ): Promise<MerkleCheckpoint> {
+    const startFrom = this.checkpoints.length > 0
+      ? this.checkpoints[this.checkpoints.length - 1].entryRange.to + 1
+      : 1
+
+    const rangeEntries = this.entries.filter(
+      e => e.sequenceNumber >= startFrom && e.sequenceNumber <= upToSequence
+    )
+
+    // Build Merkle tree from entry hashes
+    const merkleRoot = this.buildMerkleTree(
+      rangeEntries.map(e => e.entryHash)
+    )
+
+    // Anchor to external timestamping authority
+    const anchorProof = await this.anchorToExternalAuthority(merkleRoot)
+
+    const checkpoint: MerkleCheckpoint = {
+      checkpointId: `mck-${upToSequence}`,
+      timestamp: new Date(),
+      entryRange: { from: startFrom, to: upToSequence },
+      merkleRoot,
+      anchoredTo: 'rfc3161-timestamp-authority',
+      anchorProof
+    }
+
+    this.checkpoints.push(checkpoint)
+
+    console.log(
+      `📌 Merkle checkpoint: entries ${startFrom}-${upToSequence} → ` +
+      `root: ${merkleRoot.substring(0, 16)}...`
+    )
+
+    return checkpoint
+  }
+
+  private buildMerkleTree(hashes: string[]): string {
+    if (hashes.length === 0) return ''
+    if (hashes.length === 1) return hashes[0]
+
+    const nextLevel: string[] = []
+
+    for (let i = 0; i < hashes.length; i += 2) {
+      const left = hashes[i]
+      const right = i + 1 < hashes.length ? hashes[i + 1] : left
+      const combined = crypto.createHash('sha256')
+        .update(left + right)
+        .digest('hex')
+      nextLevel.push(combined)
+    }
+
+    return this.buildMerkleTree(nextLevel)
+  }
+
+  private async anchorToExternalAuthority(
+    merkleRoot: string
+  ): Promise<string> {
+    // In production: submit to RFC 3161 Timestamping Authority
+    // or store in a blockchain (Ethereum, Hyperledger)
+    // This provides external, independent proof of the hash at a point in time
+    return `anchor-proof-${merkleRoot.substring(0, 16)}-${Date.now()}`
+  }
+
+  // REGULATOR VERIFICATION: Independent integrity check
+  verifyIntegrity(fromEntry?: number, toEntry?: number): {
+    valid: boolean
+    brokenAt: number | null
+    entriesChecked: number
+    tamperedEntries: string[]
+  } {
+    const start = fromEntry || 1
+    const end = toEntry || this.entries.length
+    const tamperedEntries: string[] = []
+
+    let expectedPreviousHash = start === 1
+      ? 'genesis'
+      : this.entries[start - 2].entryHash
+
+    for (let i = start - 1; i < end; i++) {
+      const entry = this.entries[i]
+
+      // Verify 1: Previous hash chain is intact
+      if (entry.previousHash !== expectedPreviousHash) {
+        return {
+          valid: false,
+          brokenAt: entry.sequenceNumber,
+          entriesChecked: i - (start - 1) + 1,
+          tamperedEntries: [entry.entryId]
+        }
+      }
+
+      // Verify 2: Entry hash matches recomputed hash
+      const recomputedHash = this.computeHash(entry)
+      if (entry.entryHash !== recomputedHash) {
+        tamperedEntries.push(entry.entryId)
+      }
+
+      expectedPreviousHash = entry.entryHash
+    }
+
+    return {
+      valid: tamperedEntries.length === 0,
+      brokenAt: tamperedEntries.length > 0
+        ? this.entries.find(e => e.entryId === tamperedEntries[0])!.sequenceNumber
+        : null,
+      entriesChecked: end - start + 1,
+      tamperedEntries
+    }
+  }
+
+  // REGULATOR QUERY: Prove no cross-tenant leakage
+  proveCrossTenantIsolation(
+    tenantId: string,
+    fromDate: Date,
+    toDate: Date
+  ): {
+    totalQueries: number
+    crossTenantViolations: number
+    violationDetails: Array<{
+      entryId: string
+      timestamp: Date
+      leakedFrom: string[]
+    }>
+    chainIntegrity: boolean
+  } {
+    const relevantEntries = this.entries.filter(
+      e => e.tenantId === tenantId &&
+           e.timestamp >= fromDate &&
+           e.timestamp <= toDate
+    )
+
+    const violations = relevantEntries.filter(e =>
+      e.details.ragSourceTenants.some(t => t !== tenantId)
+    )
+
+    // Also verify the chain integrity for this time period
+    const integrity = this.verifyIntegrity(
+      relevantEntries[0]?.sequenceNumber,
+      relevantEntries[relevantEntries.length - 1]?.sequenceNumber
+    )
+
+    return {
+      totalQueries: relevantEntries.length,
+      crossTenantViolations: violations.length,
+      violationDetails: violations.map(v => ({
+        entryId: v.entryId,
+        timestamp: v.timestamp,
+        leakedFrom: v.details.ragSourceTenants.filter(t => t !== tenantId)
+      })),
+      chainIntegrity: integrity.valid
+    }
+  }
+}
+
+// Regulator Verification Session:
+//
+// const auditLog = new SovereignAuditLog()
+//
+// // Regulator requests: "Prove CharitéConnect's data was isolated for 6 months"
+// const proof = auditLog.proveCrossTenantIsolation(
+//   'charite-connect',
+//   new Date('2025-08-01'),
+//   new Date('2026-02-01')
+// )
+//
+// Result:
+//   Total queries: 847,293
+//   Cross-tenant violations: 0
+//   Chain integrity: ✅ VERIFIED (all 847,293 hashes valid)
+//   Merkle checkpoints: 847 (one per 1,000 entries)
+//   External anchors: 847 RFC 3161 timestamps
+//
+// The regulator can independently:
+//   1. Recompute every hash in the chain
+//   2. Verify the Merkle roots match the external timestamps
+//   3. Confirm zero cross-tenant RAG source IDs
+//
+// If an admin tried to DELETE a violation entry:
+//   Entry N-1 hash → Entry N+1 previousHash → MISMATCH
+//   Chain breaks immediately. Tampering is mathematically detectable.
+```
+
+**The Architect's Principle:** "Trust is not a policy — it's a **mathematical property**. When a regulator asks 'prove this didn't happen,' you don't show them a database query they could doubt. You show them a **hash chain they can independently verify**. Each entry's hash includes the previous entry's hash. Modifying any entry breaks the chain. Merkle Tree checkpoints anchored to external timestamping authorities prove the chain existed at specific points in time. An admin with full database access cannot retroactively alter the log without being mathematically detected."
+
+</details>
+
+---
+
+## Challenge 4: The "Surge & Starvation" (Scaling & Performance)
+
+**The Situation:**
+
+It's January — peak flu season. The US-East sovereign cell experiences a **10x traffic spike** as emergency rooms across the Eastern seaboard flood SovereignHealth with clinical queries.
+
+Simultaneously, your monitoring dashboard shows a critical alert: **"SmallTown Family Clinic"** (a 5-doctor practice) is running an automated batch-processing script that submits 2,000 queries per hour to generate patient discharge summaries. This single clinic is consuming **80% of your Anthropic API rate limits** for the US-East cell.
+
+The result: **"Metro Trauma Center"** — a Level 1 trauma center with 200 ER doctors — is getting `429 Rate Limit Exceeded` errors. Doctors in the emergency room cannot get clinical decision support for patients in critical condition.
+
+Your Anthropic API rate limit for US-East is 10,000 requests per minute.
+
+**Question:** What **Scaling Pattern** do you implement to ensure the trauma center gets priority?
+
+**Your Answer Must Include:**
+1. How **Token-Bucket Rate Limiting per Tenant** prevents any single tenant from monopolizing capacity
+2. How **Priority Queuing** ensures trauma centers are served before batch jobs
+3. How you implement **graceful degradation** for low-priority tenants during surges
+4. The specific numbers: rate limits, priority tiers, and queue behavior
+
+<details>
+<summary><strong>Click to reveal the Architect's solution</strong></summary>
+
+### Token-Bucket Rate Limiting with Priority Queuing
+
+An Architect doesn't just rate-limit — they implement **tiered resource governance** where clinical urgency determines access priority. Batch jobs never compete with emergency room doctors for the same resource pool.
+
+```typescript
+/**
+ * Priority-Aware Rate Limiter with Tenant Tiering
+ *
+ * Architecture:
+ *
+ *   [Incoming Query]
+ *        ↓
+ *   [Priority Classifier] → Assigns priority tier
+ *        ↓
+ *   [Tenant Rate Limiter] → Enforces per-tenant limits
+ *        ↓
+ *   [Priority Queue] → Orders by urgency, not arrival time
+ *        ↓
+ *   [Global Rate Limiter] → Enforces API rate limit
+ *        ↓
+ *   [LLM API]
+ *
+ * Priority Tiers:
+ *   P0 (CRITICAL): Emergency room, ICU, surgical — NEVER throttled
+ *   P1 (HIGH):     Active patient consultations — throttled last
+ *   P2 (NORMAL):   Routine clinical queries — standard limits
+ *   P3 (LOW):      Batch processing, reports, analytics — throttled first
+ */
+
+interface TenantConfig {
+  tenantId: string
+  name: string
+  tier: 'critical' | 'standard' | 'batch'
+  maxRequestsPerMinute: number     // Per-tenant cap
+  maxRequestsPerHour: number       // Hourly burst cap
+  burstAllowance: number           // Extra requests during spikes
+  priority: 0 | 1 | 2 | 3         // Lower = higher priority
+  guaranteedCapacity: number       // Minimum % of global capacity reserved
+}
+
+interface TokenBucket {
+  tokens: number                   // Current tokens available
+  maxTokens: number                // Maximum bucket size
+  refillRate: number               // Tokens added per second
+  lastRefill: Date
+}
+
+interface QueuedRequest {
+  requestId: string
+  tenantId: string
+  priority: number
+  query: string
+  enqueuedAt: Date
+  deadline: Date                   // SLA deadline — drop if exceeded
+}
+
+class PriorityRateLimiter {
+  private tenantConfigs: Map<string, TenantConfig> = new Map()
+  private tenantBuckets: Map<string, TokenBucket> = new Map()
+  private priorityQueue: QueuedRequest[] = []
+  private globalRateLimit: number    // Total API requests/minute
+  private globalTokenBucket: TokenBucket
+
+  constructor(globalRateLimit: number = 10_000) {
+    this.globalRateLimit = globalRateLimit
+    this.globalTokenBucket = {
+      tokens: globalRateLimit,
+      maxTokens: globalRateLimit,
+      refillRate: globalRateLimit / 60,  // Refill per second
+      lastRefill: new Date()
+    }
+  }
+
+  registerTenant(config: TenantConfig): void {
+    this.tenantConfigs.set(config.tenantId, config)
+    this.tenantBuckets.set(config.tenantId, {
+      tokens: config.maxRequestsPerMinute,
+      maxTokens: config.maxRequestsPerMinute + config.burstAllowance,
+      refillRate: config.maxRequestsPerMinute / 60,
+      lastRefill: new Date()
+    })
+  }
+
+  async processRequest(
+    tenantId: string,
+    query: string,
+    requestPriority?: number
+  ): Promise<{ allowed: boolean; queuePosition?: number; waitMs?: number }> {
+    const config = this.tenantConfigs.get(tenantId)
+    if (!config) throw new Error(`Unknown tenant: ${tenantId}`)
+
+    const priority = requestPriority ?? config.priority
+
+    // Step 1: Refill token buckets
+    this.refillBucket(this.tenantBuckets.get(tenantId)!)
+    this.refillBucket(this.globalTokenBucket)
+
+    // Step 2: Check tenant rate limit
+    const tenantBucket = this.tenantBuckets.get(tenantId)!
+    if (tenantBucket.tokens < 1) {
+      // Tenant over their limit — queue or reject based on priority
+      if (priority <= 1) {
+        // P0/P1: Queue with high priority (borrow from global pool)
+        return this.enqueueRequest(tenantId, query, priority)
+      } else {
+        // P2/P3: Reject with retry-after
+        return {
+          allowed: false,
+          waitMs: Math.ceil(1000 / tenantBucket.refillRate)
+        }
+      }
+    }
+
+    // Step 3: Check global rate limit
+    if (this.globalTokenBucket.tokens < 1) {
+      // Global limit hit — only P0 requests bypass
+      if (priority === 0) {
+        // P0 CRITICAL: Use guaranteed capacity (always reserved)
+        console.log(
+          `🚨 P0 BYPASS: ${config.name} using guaranteed capacity`
+        )
+        return { allowed: true }
+      }
+
+      // All others: queue
+      return this.enqueueRequest(tenantId, query, priority)
+    }
+
+    // Step 4: Consume tokens and allow
+    tenantBucket.tokens--
+    this.globalTokenBucket.tokens--
+
+    return { allowed: true }
+  }
+
+  private enqueueRequest(
+    tenantId: string,
+    query: string,
+    priority: number
+  ): { allowed: boolean; queuePosition: number; waitMs: number } {
+    const config = this.tenantConfigs.get(tenantId)!
+
+    // SLA deadlines by priority
+    const deadlineMs: Record<number, number> = {
+      0: 5_000,     // P0: 5 second deadline (ER can't wait)
+      1: 15_000,    // P1: 15 seconds
+      2: 60_000,    // P2: 1 minute
+      3: 300_000    // P3: 5 minutes (batch jobs can wait)
+    }
+
+    const request: QueuedRequest = {
+      requestId: `${tenantId}-${Date.now()}`,
+      tenantId,
+      priority,
+      query,
+      enqueuedAt: new Date(),
+      deadline: new Date(Date.now() + (deadlineMs[priority] || 60_000))
+    }
+
+    // Insert into priority queue (lower priority number = higher urgency)
+    const insertIndex = this.priorityQueue.findIndex(
+      r => r.priority > priority
+    )
+
+    if (insertIndex === -1) {
+      this.priorityQueue.push(request)
+    } else {
+      this.priorityQueue.splice(insertIndex, 0, request)
+    }
+
+    // Estimate wait time
+    const position = insertIndex === -1
+      ? this.priorityQueue.length
+      : insertIndex + 1
+
+    const estimatedWait = position * (1000 / this.globalTokenBucket.refillRate)
+
+    return {
+      allowed: false,
+      queuePosition: position,
+      waitMs: Math.ceil(estimatedWait)
+    }
+  }
+
+  private refillBucket(bucket: TokenBucket): void {
+    const now = new Date()
+    const elapsed = (now.getTime() - bucket.lastRefill.getTime()) / 1000
+    const tokensToAdd = elapsed * bucket.refillRate
+
+    bucket.tokens = Math.min(bucket.maxTokens, bucket.tokens + tokensToAdd)
+    bucket.lastRefill = now
+  }
+
+  // Graceful degradation: reduce batch tenant limits during surges
+  activateSurgeMode(): void {
+    console.log('⚡ SURGE MODE ACTIVATED — throttling batch tenants')
+
+    for (const [tenantId, config] of this.tenantConfigs) {
+      if (config.tier === 'batch') {
+        // Reduce batch tenant capacity by 90%
+        const bucket = this.tenantBuckets.get(tenantId)!
+        bucket.maxTokens = Math.ceil(config.maxRequestsPerMinute * 0.1)
+        bucket.refillRate = config.maxRequestsPerMinute * 0.1 / 60
+
+        console.log(
+          `  ${config.name}: ${config.maxRequestsPerMinute} → ` +
+          `${bucket.maxTokens} req/min (90% reduction)`
+        )
+      } else if (config.tier === 'critical') {
+        // INCREASE critical tenant capacity by 50%
+        const bucket = this.tenantBuckets.get(tenantId)!
+        bucket.maxTokens = Math.ceil(config.maxRequestsPerMinute * 1.5)
+        bucket.refillRate = config.maxRequestsPerMinute * 1.5 / 60
+
+        console.log(
+          `  ${config.name}: ${config.maxRequestsPerMinute} → ` +
+          `${bucket.maxTokens} req/min (50% increase)`
+        )
+      }
+    }
+  }
+
+  // Dashboard metrics
+  getMetrics(): {
+    globalUtilization: number
+    queueDepth: number
+    tenantMetrics: Array<{
+      name: string
+      tier: string
+      tokensRemaining: number
+      queuedRequests: number
+    }>
+  } {
+    return {
+      globalUtilization: 1 - (this.globalTokenBucket.tokens / this.globalTokenBucket.maxTokens),
+      queueDepth: this.priorityQueue.length,
+      tenantMetrics: Array.from(this.tenantConfigs.entries()).map(([id, config]) => ({
+        name: config.name,
+        tier: config.tier,
+        tokensRemaining: Math.floor(this.tenantBuckets.get(id)!.tokens),
+        queuedRequests: this.priorityQueue.filter(r => r.tenantId === id).length
+      }))
+    }
+  }
+}
+
+// Production Configuration:
+//
+// const rateLimiter = new PriorityRateLimiter(10_000) // 10K req/min global
+//
+// rateLimiter.registerTenant({
+//   tenantId: 'metro-trauma',
+//   name: 'Metro Trauma Center',
+//   tier: 'critical',
+//   maxRequestsPerMinute: 3000,    // 30% of global capacity
+//   maxRequestsPerHour: 150_000,
+//   burstAllowance: 1000,          // Extra 1K during spikes
+//   priority: 0,                    // P0: NEVER throttled
+//   guaranteedCapacity: 0.20        // 20% always reserved
+// })
+//
+// rateLimiter.registerTenant({
+//   tenantId: 'smalltown-clinic',
+//   name: 'SmallTown Family Clinic',
+//   tier: 'batch',
+//   maxRequestsPerMinute: 200,     // 2% of global capacity
+//   maxRequestsPerHour: 5_000,
+//   burstAllowance: 0,             // No burst for batch
+//   priority: 3,                    // P3: Throttled first
+//   guaranteedCapacity: 0.01        // 1% minimum
+// })
+//
+// During flu surge:
+//
+//   rateLimiter.activateSurgeMode()
+//
+//   SmallTown Clinic: 200 → 20 req/min (90% reduction)
+//   Metro Trauma:     3000 → 4500 req/min (50% increase)
+//
+//   Result:
+//   - Metro Trauma: 0 rate limit errors (P0 guaranteed capacity)
+//   - SmallTown Clinic: Batch job slowed from 33 req/min to 20 req/min
+//     Discharge summaries take 2 hours instead of 1 hour (acceptable)
+//   - ER doctors: zero disruption
+//
+// | Tenant            | Normal Mode  | Surge Mode   | Priority | SLA Deadline |
+// |-------------------|-------------|-------------|----------|-------------|
+// | Metro Trauma      | 3,000/min   | 4,500/min   | P0       | 5 seconds   |
+// | Regional Hospital | 2,000/min   | 2,000/min   | P1       | 15 seconds  |
+// | General Practice  | 1,000/min   | 1,000/min   | P2       | 60 seconds  |
+// | SmallTown Batch   | 200/min     | 20/min      | P3       | 5 minutes   |
+```
+
+**The Architect's Principle:** "Rate limiting is not about preventing abuse — it's about **resource justice**. In a healthcare system, an ER doctor's query is not equal to a batch job's query. The architect's job is to encode **clinical urgency into infrastructure priority**. Token-bucket rate limiting per tenant prevents monopolization. Priority queuing ensures critical requests are served first. Surge mode dynamically reallocates capacity from batch to critical tenants. The result: zero disruption for the trauma center, graceful degradation for the clinic's batch job."
+
+</details>
+
+---
+
+## Grading Rubric: The CTO's Final Verdict
+
+### Architect Tier (Pass)
+
+The student understands that Enterprise AI is an **Infrastructure and Trust** problem. They demonstrate:
+
+```typescript
+// The Architect's Mental Model:
+//
+// Challenge 1 (Sovereign Cell):
+//   ✅ Physical isolation via regionalized compute cells
+//   ✅ Stateless Global Tenant Router (stores no patient data)
+//   ✅ Network policies blocking cross-region egress
+//   ✅ Cost-benefit analysis ($6K/month premium → $2M/year contract)
+//
+// Challenge 2 (Compliance Firewall):
+//   ✅ Pre-inference proxy intercepts PII BEFORE it leaves trust boundary
+//   ✅ Two-layer NER: regex (fast, structured) + LLM (unstructured)
+//   ✅ Token-based redaction with encrypted mapping inside sovereign cell
+//   ✅ PII restoration on response (doctor sees full data, LLM never did)
+//
+// Challenge 3 (Immutable Proof):
+//   ✅ Hash chaining: each entry includes hash of previous entry
+//   ✅ Merkle Tree checkpoints anchored to external timestamping authority
+//   ✅ Regulator can independently verify chain integrity
+//   ✅ Cross-tenant isolation provable via RAG source tenant IDs
+//
+// Challenge 4 (Surge & Starvation):
+//   ✅ Token-bucket rate limiting per tenant (not just global)
+//   ✅ Priority queuing: P0 (ER) > P1 (active) > P2 (routine) > P3 (batch)
+//   ✅ Surge mode: dynamically reallocates from batch to critical
+//   ✅ Guaranteed capacity reserves for critical tenants
+//
+// The Architect solves compliance through STRUCTURAL ISOLATION,
+// security through INTERCEPTION, integrity through MATHEMATICS,
+// and scaling through TIERED RESOURCE GOVERNANCE.
+```
+
+### Developer Tier (Partial Credit)
+
+The student suggests technically valid but architecturally insufficient solutions:
+
+- **Challenge 1**: "Encrypt the database and add row-level security" — encryption doesn't satisfy "data never leaves German soil" when compute runs in Virginia
+- **Challenge 2**: "Add a disclaimer asking doctors not to include PII" — policy-based solutions fail in practice; 100% of hospitals have accidental PII incidents
+- **Challenge 3**: "Query the audit log database and export it to CSV" — an admin with database access can modify records before export; no cryptographic proof
+- **Challenge 4**: "Increase the API rate limit" or "Add more servers" — doesn't address the **fairness** problem; SmallTown Clinic would still monopolize capacity
+
+### Junior Tier (Fail)
+
+The student fails to account for the fundamental constraints of regulated enterprise systems:
+
+- **Challenge 1**: "Use a VPN" or "Just put it in the cloud" — no understanding of data residency as a physical infrastructure requirement
+- **Challenge 2**: "Manually check logs for PII after the fact" — post-hoc detection doesn't prevent the HIPAA violation; the PII already reached the LLM provider
+- **Challenge 3**: "Trust the admin not to modify logs" — trust is not a compliance strategy; regulators require mathematical proof
+- **Challenge 4**: "Tell the clinic to stop running batch jobs" — operational intervention is not an architectural solution; the system must handle this autonomously
+
+---
+
+## The Archcelerate Final Milestone
+
+With the completion of this exam, you have demonstrated mastery across **every pillar** of the 12-week AI Architect Accelerator:
+
+| Weeks | Pillar | Key Capability |
+|-------|--------|----------------|
+| **1-4** | Advanced Agentic Orchestration & Logic | Prompt engineering, tool use, structured outputs, evaluation |
+| **5-8** | Resilience, Multi-tenancy & Stress-Testing | Guardrails, observability, evaluation suites, production hardening |
+| **9-10** | RAG Specialization & Model Science | Hybrid search, re-ranking, fine-tuning, model evaluation |
+| **11-12** | Multi-Agent Teams & Enterprise Sovereign Infrastructure | Agent coordination, conflict resolution, sovereign cells, compliance |
+
+**You are now an AI Infrastructure Architect.**
+
+The difference between a developer and an architect is this: a developer builds features. An architect builds **systems that remain trustworthy under adversarial conditions, regulatory scrutiny, and 10x traffic spikes** — simultaneously.
+
+---
+
+## Resources
+- [AWS Well-Architected Framework — AI/ML Lens](https://docs.aws.amazon.com/wellarchitected/latest/machine-learning-lens/machine-learning-lens.html)
+- [HIPAA Technical Safeguards](https://www.hhs.gov/hipaa/for-professionals/security/laws-regulations/index.html)
+- [GDPR Data Residency Requirements](https://gdpr-info.eu/)
+- [Merkle Trees for Audit Logs (RFC 6962)](https://tools.ietf.org/html/rfc6962)
+- [Token Bucket Algorithm](https://en.wikipedia.org/wiki/Token_bucket)

@@ -549,6 +549,213 @@ class TieredProviderRouter {
 // Without tiered failover: 100% of requests fail for ~5 min.
 ```
 
+### Cross-Model Fallback Protocol: SLA Compliance During Degradation
+
+**Architect's Tip — Provider Redundancy with SLA Tracking**: "Enterprise availability requires **Provider Redundancy**. Your load balancer should detect a 503 (Provider Down) or 429 (Rate Limit) and instantly reroute traffic to a secondary, equivalent model (e.g., switching from GPT-4o to Claude Sonnet). But failover alone isn't enough — you must **track your SLA compliance in real-time** during degradation. If you've been in fallback mode for more than 5 minutes, page the on-call engineer. If the degradation exceeds 15 minutes, trigger an automated incident report. This **Model Agnostic** fallback layer is the difference between an 'App' and 'Critical Infrastructure.'"
+
+```typescript
+/**
+ * SLA-Aware Failover Manager
+ *
+ * Problem: The TieredProviderRouter handles failover, but it
+ * doesn't track HOW LONG you've been degraded. If your primary
+ * provider is down for 2 hours and nobody notices, you're
+ * serving lower-quality responses while paying higher costs
+ * on the secondary — and potentially breaching your SLA.
+ *
+ * Solution: Wrap the failover router with SLA tracking.
+ * Track degradation duration, alert on thresholds, and
+ * generate incident reports automatically.
+ *
+ * Interview Defense: "Our failover router tracks SLA compliance
+ * in real-time. When we enter degraded mode, a 5-minute timer
+ * starts. At 5 minutes, on-call is paged. At 15 minutes, an
+ * incident report auto-generates. We've maintained 99.97%
+ * availability because degradation is never silent."
+ */
+
+interface SLAConfig {
+  targetAvailability: number    // e.g., 0.999 (99.9%)
+  maxDegradationMinutes: number // Page on-call after this
+  incidentThresholdMinutes: number // Auto-incident after this
+  monthlySLABudgetMinutes: number  // Total allowed downtime/month
+}
+
+interface DegradationEvent {
+  startedAt: Date
+  primaryProvider: string
+  fallbackProvider: string
+  reason: 'rate_limit' | 'outage' | 'latency_spike'
+  requestsServedDegraded: number
+  additionalCost: number        // Cost above normal (fallback premium)
+  resolvedAt?: Date
+}
+
+class SLAAwareFailoverManager {
+  private config: SLAConfig = {
+    targetAvailability: 0.999,
+    maxDegradationMinutes: 5,
+    incidentThresholdMinutes: 15,
+    monthlySLABudgetMinutes: 43.2 // 99.9% of 43,200 min/month
+  }
+
+  private currentDegradation: DegradationEvent | null = null
+  private monthlyDegradationMinutes = 0
+
+  async routeWithSLATracking(
+    prompt: string,
+    router: TieredProviderRouter
+  ): Promise<{
+    response: string
+    provider: string
+    degraded: boolean
+    slaStatus: 'healthy' | 'warning' | 'critical'
+  }> {
+    const result = await router.route(prompt)
+
+    if (result.failoverUsed) {
+      // We're in degraded mode
+      if (!this.currentDegradation) {
+        // Start tracking degradation
+        this.currentDegradation = {
+          startedAt: new Date(),
+          primaryProvider: 'primary',
+          fallbackProvider: result.provider,
+          reason: 'rate_limit',
+          requestsServedDegraded: 0,
+          additionalCost: 0
+        }
+      }
+
+      this.currentDegradation.requestsServedDegraded++
+
+      // Check degradation duration
+      const degradationMinutes =
+        (Date.now() - this.currentDegradation.startedAt.getTime()) / 60000
+
+      if (degradationMinutes >= this.config.incidentThresholdMinutes) {
+        await this.triggerIncidentReport(this.currentDegradation)
+      } else if (degradationMinutes >= this.config.maxDegradationMinutes) {
+        await this.pageOnCall(this.currentDegradation)
+      }
+
+      // Track SLA budget consumption
+      const slaStatus = this.calculateSLAStatus()
+
+      return {
+        response: result.response,
+        provider: result.provider,
+        degraded: true,
+        slaStatus
+      }
+    }
+
+    // Primary is healthy — resolve any active degradation
+    if (this.currentDegradation) {
+      this.currentDegradation.resolvedAt = new Date()
+      const duration =
+        (Date.now() - this.currentDegradation.startedAt.getTime()) / 60000
+
+      this.monthlyDegradationMinutes += duration
+      await this.logDegradationResolved(this.currentDegradation)
+      this.currentDegradation = null
+    }
+
+    return {
+      response: result.response,
+      provider: result.provider,
+      degraded: false,
+      slaStatus: this.calculateSLAStatus()
+    }
+  }
+
+  private calculateSLAStatus(): 'healthy' | 'warning' | 'critical' {
+    const budgetUsed =
+      this.monthlyDegradationMinutes / this.config.monthlySLABudgetMinutes
+
+    if (budgetUsed >= 0.8) return 'critical'  // 80%+ of budget consumed
+    if (budgetUsed >= 0.5) return 'warning'   // 50%+ of budget consumed
+    return 'healthy'
+  }
+
+  private async pageOnCall(event: DegradationEvent): Promise<void> {
+    console.error('[SLA WARNING] Degradation exceeded 5 minutes', {
+      provider: event.primaryProvider,
+      fallback: event.fallbackProvider,
+      duration: `${Math.round(
+        (Date.now() - event.startedAt.getTime()) / 60000
+      )} minutes`,
+      requestsAffected: event.requestsServedDegraded
+    })
+    // → PagerDuty / Slack alert
+  }
+
+  private async triggerIncidentReport(
+    event: DegradationEvent
+  ): Promise<void> {
+    console.error('[SLA INCIDENT] Auto-generating incident report', {
+      provider: event.primaryProvider,
+      fallback: event.fallbackProvider,
+      duration: `${Math.round(
+        (Date.now() - event.startedAt.getTime()) / 60000
+      )} minutes`,
+      requestsAffected: event.requestsServedDegraded,
+      additionalCost: event.additionalCost,
+      slaImpact: `${this.monthlyDegradationMinutes.toFixed(1)} / ` +
+        `${this.config.monthlySLABudgetMinutes} minutes used`
+    })
+    // → Auto-create Jira incident ticket
+    // → Notify VP of Engineering
+  }
+
+  private async logDegradationResolved(
+    event: DegradationEvent
+  ): Promise<void> {
+    const durationMinutes = event.resolvedAt
+      ? (event.resolvedAt.getTime() - event.startedAt.getTime()) / 60000
+      : 0
+
+    console.log('[SLA RECOVERY] Primary provider recovered', {
+      duration: `${durationMinutes.toFixed(1)} minutes`,
+      requestsDegraded: event.requestsServedDegraded,
+      monthlyBudgetRemaining:
+        `${(this.config.monthlySLABudgetMinutes -
+          this.monthlyDegradationMinutes).toFixed(1)} minutes`
+    })
+  }
+}
+
+// SLA tracking during a real outage:
+//
+// 14:00:00 — Primary (Claude Sonnet) returns 503
+//   → Failover to Secondary (GPT-4o) ✅
+//   → Degradation timer starts
+//
+// 14:05:00 — 5 minutes degraded
+//   → On-call engineer paged via PagerDuty
+//   → 312 requests served via fallback
+//
+// 14:15:00 — 15 minutes degraded
+//   → Incident report auto-generated
+//   → VP Engineering notified
+//   → 1,847 requests served via fallback
+//
+// 14:22:00 — Primary health check passes
+//   → Traffic routes back to Primary
+//   → Degradation resolved: 22 minutes
+//   → Monthly SLA budget: 22 / 43.2 minutes used (50.9% → WARNING)
+//
+// 14:23:00 — Incident post-mortem auto-scheduled
+//   → Root cause: Anthropic US-East-1 regional outage
+//   → User impact: Zero errors, slight quality difference for 22 min
+//   → Cost impact: +$74 (GPT-4o premium over Claude pricing)
+//
+// Without SLA tracking:
+//   → Nobody notices for 2 hours
+//   → Monthly SLA budget silently consumed
+//   → First sign of trouble: angry enterprise client email
+```
+
 ## Auto-Scaling
 
 **Simple Explanation**: Automatically add more servers when traffic increases, remove them when traffic decreases. Like a restaurant adding more waiters during rush hour.
