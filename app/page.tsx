@@ -103,7 +103,7 @@ export default function Home() {
                 </button>
 
                 {/* Secondary Action: Watch Architecture Tour */}
-                <Link href="#features">
+                <Link href="/architecture-tour">
                   <button className="px-8 py-3 border-2 border-gray-300 text-gray-700 text-lg font-semibold rounded-full hover:border-purple-500 hover:text-purple-600 transition-all duration-200">
                     Watch Architecture Tour
                   </button>
