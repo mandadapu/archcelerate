@@ -174,6 +174,321 @@ async function parallelDecomposition(complexQuery: string) {
 
 ---
 
+---
+
+### Pattern 3: Decomposition State Machine (DAG-Based Dependency Mapping)
+
+**The Sub-Question Dependency Problem**
+
+Complex questions often have **sequential dependencies**: you cannot answer Step 2 until you have the result from Step 1.
+
+**The Naive Approach: Treat All Sub-Questions as Independent**
+
+```typescript
+// User Query
+const query = "Compare our Q4 revenue to the industry average"
+
+// Naive Decomposition (Parallel Execution):
+const subQuestions = [
+  "What was our Q4 revenue?",
+  "What is the industry average revenue?",
+  "How do they compare?"  ← ❌ PROBLEM: Cannot answer without Step 1 & 2!
+]
+
+// Execute in parallel (WRONG)
+const answers = await Promise.all(
+  subQuestions.map(q => retrieveAndAnswer(q))
+)
+
+// Result:
+// - Q1: "$12.5M" ✅
+// - Q2: "$15M industry average" ✅
+// - Q3: "Unable to determine comparison without specific revenue figures" ❌
+//   → Step 3 didn't have access to answers from Steps 1 & 2!
+```
+
+**Architect's Principle**: "Complex questions often have a sequence. If a user asks, 'Compare our Q4 revenue to the industry average,' you cannot answer the comparison until you have the Q4 revenue. Your Decomposition Agent must identify dependencies and execute them in a **Directed Acyclic Graph (DAG)**. This ensures Step 2 has the data from Step 1 in its context window before it even attempts retrieval."
+
+---
+
+**The Solution: Dependency-Aware Decomposition (DAG Execution)**
+
+Build a **Task Graph** where each sub-question declares its dependencies.
+
+**Implementation: DAG-Based Sub-Question Execution**
+
+```typescript
+interface SubQuestion {
+  id: string
+  question: string
+  dependencies: string[]  // IDs of sub-questions that must complete first
+  context?: string        // Accumulated context from dependencies
+}
+
+interface DAGNode {
+  subQuestion: SubQuestion
+  answer?: string
+  status: 'pending' | 'in_progress' | 'completed'
+}
+
+async function decomposeWithDependencies(
+  complexQuery: string
+): Promise<SubQuestion[]> {
+  const prompt = `Break this complex question into sub-questions with dependencies.
+
+For each sub-question, identify which previous sub-questions (if any) it depends on.
+
+Complex Question: "${complexQuery}"
+
+Return JSON:
+{
+  "sub_questions": [
+    {"id": "q1", "question": "...", "dependencies": []},
+    {"id": "q2", "question": "...", "dependencies": ["q1"]},
+    ...
+  ]
+}`
+
+  const response = await llm.complete(prompt, {
+    temperature: 0.0,
+    response_format: { type: 'json_object' }
+  })
+  
+  return JSON.parse(response).sub_questions
+}
+
+async function executeDAG(subQuestions: SubQuestion[]): Promise<Map<string, string>> {
+  const graph = new Map<string, DAGNode>()
+  const answers = new Map<string, string>()
+  
+  // Initialize graph
+  for (const sq of subQuestions) {
+    graph.set(sq.id, {
+      subQuestion: sq,
+      status: 'pending'
+    })
+  }
+  
+  // Topological sort to determine execution order
+  const executionOrder = topologicalSort(subQuestions)
+  
+  console.log('📊 DAG Execution Order:\n')
+  executionOrder.forEach((id, index) => {
+    const node = graph.get(id)!
+    const deps = node.subQuestion.dependencies.length > 0
+      ? ` (depends on: ${node.subQuestion.dependencies.join(', ')})`
+      : ' (no dependencies)'
+    console.log(`   ${index + 1}. ${id}: ${node.subQuestion.question}${deps}`)
+  })
+  
+  // Execute in dependency order
+  for (const questionId of executionOrder) {
+    const node = graph.get(questionId)!
+    node.status = 'in_progress'
+    
+    // Gather context from dependencies
+    const dependencyContext = node.subQuestion.dependencies
+      .map(depId => {
+        const depAnswer = answers.get(depId)
+        const depQuestion = graph.get(depId)!.subQuestion.question
+        return `${depQuestion}\nAnswer: ${depAnswer}`
+      })
+      .join('\n\n')
+    
+    // Retrieve and answer with dependency context
+    console.log(`\n🔍 Executing: ${node.subQuestion.question}`)
+    if (dependencyContext) {
+      console.log(`   Using context from: ${node.subQuestion.dependencies.join(', ')}`)
+    }
+    
+    const answer = await retrieveAndAnswer(
+      node.subQuestion.question,
+      dependencyContext  // ← KEY: Dependencies in context
+    )
+    
+    answers.set(questionId, answer)
+    node.answer = answer
+    node.status = 'completed'
+    
+    console.log(`   ✅ Answer: ${answer.slice(0, 100)}...`)
+  }
+  
+  return answers
+}
+
+function topologicalSort(subQuestions: SubQuestion[]): string[] {
+  const sorted: string[] = []
+  const visited = new Set<string>()
+  const visiting = new Set<string>()
+  
+  function visit(id: string) {
+    if (visited.has(id)) return
+    if (visiting.has(id)) {
+      throw new Error(`Circular dependency detected: ${id}`)
+    }
+    
+    visiting.add(id)
+    
+    const question = subQuestions.find(q => q.id === id)!
+    for (const depId of question.dependencies) {
+      visit(depId)
+    }
+    
+    visiting.delete(id)
+    visited.add(id)
+    sorted.push(id)
+  }
+  
+  for (const sq of subQuestions) {
+    visit(sq.id)
+  }
+  
+  return sorted
+}
+```
+
+---
+
+**Production Example: Revenue Comparison Query**
+
+```typescript
+// User Query
+const query = "Compare our Q4 2023 revenue to the industry average"
+
+// Decomposition with Dependencies:
+const subQuestions = [
+  {
+    id: 'q1',
+    question: "What was our Q4 2023 revenue?",
+    dependencies: []  // No dependencies
+  },
+  {
+    id: 'q2',
+    question: "What is the industry average revenue for Q4 2023?",
+    dependencies: []  // No dependencies
+  },
+  {
+    id: 'q3',
+    question: "How does our Q4 2023 revenue compare to the industry average?",
+    dependencies: ['q1', 'q2']  // ← DEPENDS on both Q1 and Q2
+  }
+]
+
+// Topological Sort:
+// Execution Order: q1, q2, q3 (or q2, q1, q3)
+
+// DAG Execution:
+
+Step 1: Execute q1 (no dependencies)
+  Question: "What was our Q4 2023 revenue?"
+  Context: (none)
+  Answer: "Our Q4 2023 revenue was $12.5M"
+
+Step 2: Execute q2 (no dependencies)
+  Question: "What is the industry average revenue for Q4 2023?"
+  Context: (none)
+  Answer: "The industry average Q4 2023 revenue was $15M"
+
+Step 3: Execute q3 (depends on q1, q2)
+  Question: "How does our Q4 2023 revenue compare to the industry average?"
+  Context:
+    "What was our Q4 2023 revenue?\n
+     Answer: Our Q4 2023 revenue was $12.5M\n\n
+     What is the industry average revenue for Q4 2023?\n
+     Answer: The industry average Q4 2023 revenue was $15M"
+  
+  Answer: "Our Q4 2023 revenue ($12.5M) was 17% below the industry average ($15M)"
+  ✅ Correct! Step 3 had access to answers from Steps 1 & 2
+```
+
+**Why DAG Execution Works**:
+- **Step 3** receives answers from Steps 1 & 2 in its context
+- No need for retrieval - the comparison is computed from prior answers
+- Dependency order ensures data flows correctly
+
+**Naive Parallel Execution Would Have**:
+- Executed all 3 questions simultaneously
+- Step 3 has no context from Steps 1 & 2
+- Result: "Cannot compare without specific revenue figures" ❌
+
+---
+
+**DAG Visualization**
+
+```
+         q1 (Q4 revenue)
+          ↓
+          ↓
+     q3 (Comparison)
+          ↑
+          ↑
+         q2 (Industry avg)
+
+Execution Order: [q1, q2] → q3
+(q1 and q2 can run in parallel, q3 waits for both)
+```
+
+**Complex Example: Timeline Query with Sequential Dependencies**
+
+```typescript
+// Query: "What were the patient's glucose trends before and after starting metformin?"
+
+const subQuestions = [
+  {
+    id: 'q1',
+    question: "When did the patient start metformin?",
+    dependencies: []
+  },
+  {
+    id: 'q2',
+    question: "What were the patient's glucose values before [metformin start date]?",
+    dependencies: ['q1']  // Needs date from q1
+  },
+  {
+    id: 'q3',
+    question: "What were the patient's glucose values after [metformin start date]?",
+    dependencies: ['q1']  // Needs date from q1
+  },
+  {
+    id: 'q4',
+    question: "Compare the before and after glucose trends",
+    dependencies: ['q2', 'q3']  // Needs both trend analyses
+  }
+]
+
+// DAG:
+//       q1 (Medication start date)
+//      /  \
+//     ↓    ↓
+//    q2    q3 (Before/After glucose)
+//     \  /
+//      ↓↓
+//      q4 (Comparison)
+
+// Execution Order: q1 → [q2, q3] → q4
+```
+
+---
+
+**Production Impact**
+
+| Metric | Naive Parallel | DAG Execution |
+|--------|---------------|---------------|
+| Comparison queries answered | 42% | **94%** ✅ |
+| Timeline queries answered | 31% | **89%** ✅ |
+| Avg sub-questions executed | 3.2 | 3.2 |
+| Execution time | 2.1s (parallel) | 4.8s (sequential) ⚠️ |
+| **Accuracy** | 38% | **91%** ✅ |
+
+**Tradeoff**: 2.3x slower (sequential execution) but **2.4x more accurate** (dependency context)
+
+**Interview Defense**:
+> "I use DAG-based decomposition for complex queries with sequential dependencies. The LLM identifies which sub-questions depend on prior answers, then I execute them in topological order. For 'Compare our Q4 revenue to industry average,' the comparison step receives both revenue figures in its context from the prior steps. This improved comparison query accuracy from 42% to 94%."
+
+**ROI**: $142K/year (53% reduction in manual follow-up queries for comparison/timeline tasks)
+
+
+
 ## 3. HyDE (Hypothetical Document Embeddings)
 
 ### The Pattern
@@ -255,6 +570,211 @@ const realDocs = [
 
 ---
 
+### Pattern 1: HyDE Guardrail - Ground Truth Verification (Hallucination Prevention)
+
+**The Double-Edged Sword of HyDE**
+
+HyDE is powerful for jargon translation, but it has a critical flaw: **the generated hypothetical document can be completely wrong**.
+
+**The Problem: Hallucinated Retrieval**
+
+```typescript
+// User Query (Layperson Language)
+const query = "What medication helps with high blood pressure in pregnant women?"
+
+// HyDE Step 1: LLM generates hypothetical answer
+const fakeAnswer = `
+Lisinopril and enalapril are commonly prescribed ACE inhibitors for
+managing hypertension during pregnancy. These medications are generally
+safe in the first trimester but should be monitored closely...
+`
+
+// ❌ PROBLEM: This is WRONG!
+// ACE inhibitors are CONTRAINDICATED in pregnancy (Category D/X)
+// The fake answer will lead vector search to ACE inhibitor documents
+// → Dangerous hallucinated retrieval
+```
+
+**If the hypothetical answer is factually wrong, it leads the search engine into a "hallucination trap"**:
+1. LLM generates incorrect fake answer (with wrong drug names)
+2. Vector search finds documents about those incorrect drugs
+3. Final answer is based on irrelevant/dangerous information
+
+**Architect's Principle**: "HyDE without verification is reckless in high-stakes domains (medical, legal, financial)."
+
+---
+
+**The Solution: Similarity Threshold Verification**
+
+Before using the hypothetical document for search, verify it has **reasonable similarity** to your actual document corpus.
+
+**Implementation: Ground Truth Check**
+
+```typescript
+interface HyDEConfig {
+  similarityThreshold: number  // Minimum similarity to corpus (0.60-0.75)
+  fallbackToOriginal: boolean  // Use original query if threshold fails
+  maxRetries: number           // Attempts to regenerate hypothesis
+}
+
+async function hydeWithGuardrails(
+  userQuery: string,
+  config: HyDEConfig = {
+    similarityThreshold: 0.65,
+    fallbackToOriginal: true,
+    maxRetries: 2
+  }
+): Promise<{ documents: Document[]; usedHyDE: boolean; reason?: string }> {
+  console.log('🔬 HyDE Step 1: Generate hypothetical document...')
+  
+  // Step 1: Generate hypothetical answer
+  const hypotheticalDoc = await llm.complete(`
+Write a detailed answer to this question as if you were an expert:
+
+Question: "${userQuery}"
+
+Write a paragraph (100-200 words) with specific terminology and structure.
+  `)
+  
+  console.log(`   Generated: ${hypotheticalDoc.slice(0, 100)}...`)
+  
+  // Step 2: Embed the hypothetical document
+  const hypotheticalEmbedding = await embed(hypotheticalDoc)
+  
+  // Step 3: GUARDRAIL - Verify similarity to corpus
+  console.log('\n🛡️  HyDE Step 2: Ground Truth Verification...')
+  
+  // Sample 20 random documents from corpus
+  const corpusSample = await vectorDb.sample({ limit: 20 })
+  
+  // Calculate average similarity to corpus
+  const similarities = await Promise.all(
+    corpusSample.map(async doc => {
+      const corpusEmbedding = doc.embedding
+      return cosineSimilarity(hypotheticalEmbedding, corpusEmbedding)
+    })
+  )
+  
+  const avgSimilarity = similarities.reduce((a, b) => a + b, 0) / similarities.length
+  const maxSimilarity = Math.max(...similarities)
+  
+  console.log(`   Avg similarity to corpus: ${(avgSimilarity * 100).toFixed(1)}%`)
+  console.log(`   Max similarity to corpus: ${(maxSimilarity * 100).toFixed(1)}%`)
+  console.log(`   Threshold: ${(config.similarityThreshold * 100).toFixed(1)}%`)
+  
+  // Step 4: Threshold check
+  if (maxSimilarity < config.similarityThreshold) {
+    console.warn(`   ⚠️  HyDE GUARDRAIL TRIGGERED: Similarity too low!`)
+    console.warn(`   Hypothetical document may be hallucinated/irrelevant`)
+    
+    if (config.fallbackToOriginal) {
+      console.log(`   ↩️  Falling back to original user query\n`)
+      
+      // Fallback: Use original query
+      const originalEmbedding = await embed(userQuery)
+      const docs = await vectorDb.search(originalEmbedding, { limit: 5 })
+      
+      return {
+        documents: docs,
+        usedHyDE: false,
+        reason: `HyDE similarity (${(maxSimilarity * 100).toFixed(1)}%) below threshold (${(config.similarityThreshold * 100).toFixed(1)}%)`
+      }
+    }
+  }
+  
+  // Step 5: Proceed with HyDE (similarity above threshold)
+  console.log(`   ✅ HyDE verified: Proceeding with hypothetical embedding\n`)
+  
+  const docs = await vectorDb.search(hypotheticalEmbedding, { limit: 5 })
+  
+  return {
+    documents: docs,
+    usedHyDE: true
+  }
+}
+```
+
+---
+
+**Production Example: Pregnancy Medication Query**
+
+```typescript
+// User Query
+const query = "What medication helps with high blood pressure in pregnant women?"
+
+// HyDE generates (potentially wrong) hypothetical answer
+const fakeAnswer = "Lisinopril and enalapril (ACE inhibitors)..." // ❌ WRONG
+
+// Similarity Check:
+const hypotheticalEmbedding = await embed(fakeAnswer)
+const corpusSample = await vectorDb.sample({ limit: 20 })
+
+// Calculate similarity to corpus
+const similarities = corpusSample.map(doc => 
+  cosineSimilarity(hypotheticalEmbedding, doc.embedding)
+)
+
+// Result:
+// Avg similarity: 0.42 (42%)
+// Max similarity: 0.58 (58%)
+// Threshold: 0.65 (65%)
+
+// Guardrail triggers: 0.58 < 0.65 ❌
+
+console.log('⚠️  HyDE GUARDRAIL: Similarity too low (58% < 65%)')
+console.log('   Hypothesis may be hallucinated')
+console.log('   Falling back to original query\n')
+
+// Fallback to original query
+const originalEmbedding = await embed(query)
+const correctDocs = await vectorDb.search(originalEmbedding, { limit: 5 })
+
+// Result: Finds documents about SAFE pregnancy medications:
+// - "Methyldopa: First-line for pregnancy hypertension"
+// - "Labetalol: Safe beta-blocker in pregnancy"
+// - "Nifedipine: Calcium channel blocker (Category C)"
+// ✅ No ACE inhibitors (contraindicated)
+```
+
+**Why This Works**:
+- Low similarity to corpus = hypothesis is "out of distribution"
+- Out of distribution = likely hallucinated or irrelevant
+- Fallback to original query prevents dangerous retrieval
+
+---
+
+**Setting the Similarity Threshold**
+
+| Domain | Threshold | Reasoning |
+|--------|-----------|----------|
+| **Medical/Legal** | 0.70-0.75 | High stakes - be conservative |
+| **Technical Docs** | 0.65-0.70 | Moderate - balance precision/recall |
+| **General Q&A** | 0.55-0.65 | Lower risk - allow more creativity |
+| **Creative Writing** | 0.45-0.55 | Low stakes - encourage diversity |
+
+**Calibration Process**:
+1. Run HyDE on 100 test queries
+2. Manually label "good hypothesis" vs "bad hypothesis"
+3. Plot similarity distribution for each group
+4. Set threshold at 95th percentile of "bad hypothesis" group
+
+**Production Impact**:
+- **Before** (HyDE without guardrails): 8% hallucinated retrieval (led to wrong documents)
+- **After** (HyDE with similarity check): 1.2% hallucinated retrieval (-85% reduction)
+- **Fallback rate**: 12% of queries trigger fallback to original query
+- **Precision improvement**: 94% (HyDE) vs 89% (original query) for verified hypotheses
+
+**Interview Defense**:
+> "I use HyDE with a similarity threshold guardrail. Before using the hypothetical document for search, I verify it has >65% similarity to the corpus. If the hypothesis is too dissimilar (out of distribution), it's likely hallucinated, so I fall back to the original query. In medical RAG, this prevented an 8% hallucinated retrieval rate where ACE inhibitors (contraindicated) were retrieved for pregnancy hypertension queries."
+
+**Architect's Tip**: "HyDE is a double-edged sword. If the generated 'fake' answer is completely wrong, it will lead the search engine into a hallucination trap. An Architect implements a **Similarity Threshold Check**: if the generated hypothetical document has a very low similarity score to your actual document corpus, discard it and fallback to the original user query. This prevents 'hallucinated retrieval.'"
+
+**ROI**: $89K/year prevented (estimated 6 medical incidents prevented, avg cost $15K/incident)
+
+
+
+---
+
 ## 4. Combining All Three Patterns
 
 ### The Enterprise Query Router
@@ -272,6 +792,242 @@ async function routeQuery(userQuery: string, options: {
   const analysis = await analyzeQuery(userQuery)
 
   if (analysis.complexity === 'simple') {
+
+### Pattern 2: Rank-Aggregated Expansion (Multi-Query Voting with RRF)
+
+**The Context Dilution Problem**
+
+When you run multi-query expansion (3-5 variations), you retrieve **15-25 chunks** total:
+- Query 1: 5 chunks
+- Query 2: 5 chunks
+- Query 3: 5 chunks
+- **Total: 15 chunks** (3x normal)
+
+**The Problem**: Just appending all results creates **context dilution**:
+```typescript
+// ❌ ANTI-PATTERN: Naive Concatenation
+const allResults = [
+  ...query1Results,  // 5 docs
+  ...query2Results,  // 5 docs
+  ...query3Results   // 5 docs
+] // 15 docs total
+
+// Send all 15 docs to LLM
+const answer = await llm.complete(`Context: ${allResults.join('\n')}\n\nQuestion: ${query}`)
+
+// Problems:
+// 1. "Lost in the Middle" effect (LLM ignores mid-ranked docs)
+// 2. Higher cost (3x context tokens)
+// 3. Slower latency (+200ms)
+// 4. Duplicate docs appear multiple times
+```
+
+**Why Naive Concatenation Fails**:
+- Document that is **#2 in all 3 rankings** gets buried in position 2, 7, 12
+- Document that is **#1 in only one ranking** appears at position 1
+- Result: Inconsistent relevance is rewarded over consensus
+
+---
+
+**The Solution: Reciprocal Rank Fusion (RRF) Voting**
+
+Use RRF to "vote" on the most relevant documents across all query variations.
+
+**Key Insight**: A document that appears **high in multiple rankings** is more relevant than one that is **#1 in only one ranking**.
+
+**Implementation: Multi-Query with RRF Aggregation**
+
+```typescript
+async function multiQueryWithRRF(
+  userQuery: string,
+  config: {
+    numVariations: number
+    docsPerQuery: number
+    finalTopK: number
+    rrfK: number
+  } = {
+    numVariations: 3,
+    docsPerQuery: 10,    // Retrieve 10 per query
+    finalTopK: 5,         // Final top 5 after RRF
+    rrfK: 60
+  }
+): Promise<Document[]> {
+  console.log('📝 Step 1: Generate query variations...')
+  
+  // Step 1: Generate variations
+  const variations = await multiQueryExpansion(userQuery, {
+    count: config.numVariations
+  })
+  
+  console.log(`   Generated ${variations.length} variations:\n`)
+  variations.forEach((v, i) => console.log(`   ${i + 1}. ${v}`))
+  
+  // Step 2: Retrieve for each variation (parallel)
+  console.log(`\n🔍 Step 2: Parallel retrieval (${config.docsPerQuery} docs per query)...`)
+  
+  const retrievalResults = await Promise.all(
+    variations.map(async (query, index) => {
+      const docs = await hybridSearch(query, { limit: config.docsPerQuery })
+      console.log(`   Query ${index + 1}: Retrieved ${docs.length} docs`)
+      return docs
+    })
+  )
+  
+  // Step 3: Apply RRF fusion
+  console.log(`\n🗳️  Step 3: RRF Fusion (voting)...`)
+  
+  const rrfScores = new Map<string, {
+    document: Document
+    rrfScore: number
+    appearances: number
+    ranks: number[]
+  }>()
+  
+  // RRF formula: score(doc) = Σ 1/(k + rank)
+  retrievalResults.forEach((docs, queryIndex) => {
+    docs.forEach((doc, rank) => {
+      const rrfContribution = 1 / (config.rrfK + rank + 1)
+      
+      if (!rrfScores.has(doc.id)) {
+        rrfScores.set(doc.id, {
+          document: doc,
+          rrfScore: 0,
+          appearances: 0,
+          ranks: []
+        })
+      }
+      
+      const entry = rrfScores.get(doc.id)!
+      entry.rrfScore += rrfContribution
+      entry.appearances++
+      entry.ranks.push(rank + 1)
+    })
+  })
+  
+  // Step 4: Sort by RRF score
+  const ranked = Array.from(rrfScores.values())
+    .sort((a, b) => b.rrfScore - a.rrfScore)
+    .slice(0, config.finalTopK)
+  
+  // Step 5: Log results
+  console.log(`\n   Top ${config.finalTopK} documents after RRF fusion:\n`)
+  ranked.forEach((entry, i) => {
+    console.log(`   ${i + 1}. RRF Score: ${entry.rrfScore.toFixed(4)}`)
+    console.log(`      Appeared in ${entry.appearances}/${variations.length} queries`)
+    console.log(`      Ranks: [${entry.ranks.join(', ')}]`)
+    console.log(`      Content: ${entry.document.content.slice(0, 80)}...\n`)
+  })
+  
+  return ranked.map(r => r.document)
+}
+```
+
+---
+
+**Production Example: Medical Symptom Query**
+
+```typescript
+// User Query
+const query = "patient has high fever, severe headache, and stiff neck"
+
+// Query Variations:
+const variations = [
+  "high fever, severe headache, and stiff neck symptoms",
+  "what conditions cause fever, headache, and neck stiffness?",
+  "differential diagnosis for fever headache nuchal rigidity"
+]
+
+// Retrieval Results (top 3 per query):
+
+Query 1 Rankings:
+  1. Doc A: "Meningitis: fever, headache, nuchal rigidity" (rank 1)
+  2. Doc B: "Migraine with aura and fever" (rank 2)
+  3. Doc C: "Influenza symptoms: fever, body aches" (rank 3)
+
+Query 2 Rankings:
+  1. Doc A: "Meningitis: fever, headache, nuchal rigidity" (rank 1)
+  2. Doc D: "Subarachnoid hemorrhage: sudden severe headache" (rank 2)
+  3. Doc B: "Migraine with aura and fever" (rank 3)
+
+Query 3 Rankings:
+  1. Doc A: "Meningitis: fever, headache, nuchal rigidity" (rank 1)
+  2. Doc E: "Encephalitis differential diagnosis" (rank 2)
+  3. Doc D: "Subarachnoid hemorrhage: sudden severe headache" (rank 3)
+
+// RRF Calculation (k=60):
+
+Doc A: Appears at rank 1 in ALL 3 queries
+  RRF = 1/(60+1) + 1/(60+1) + 1/(60+1)
+      = 0.01639 + 0.01639 + 0.01639
+      = 0.04918  ← HIGHEST (consensus winner!)
+
+Doc B: Appears at rank 2 (Query 1), rank 3 (Query 2)
+  RRF = 1/(60+2) + 1/(60+3)
+      = 0.01613 + 0.01587
+      = 0.03200
+
+Doc D: Appears at rank 2 (Query 2), rank 3 (Query 3)
+  RRF = 1/(60+2) + 1/(60+3)
+      = 0.01613 + 0.01587
+      = 0.03200
+
+Doc C: Appears at rank 3 (Query 1) only
+  RRF = 1/(60+3)
+      = 0.01587
+
+Doc E: Appears at rank 2 (Query 3) only
+  RRF = 1/(60+2)
+      = 0.01613
+
+// Final Ranking:
+1. Doc A (RRF: 0.04918) ← Meningitis (appeared in ALL 3 queries)
+2. Doc B (RRF: 0.03200) ← Migraine
+3. Doc D (RRF: 0.03200) ← Subarachnoid hemorrhage
+4. Doc E (RRF: 0.01613) ← Encephalitis
+5. Doc C (RRF: 0.01587) ← Influenza
+```
+
+**Why RRF Wins**:
+- **Doc A** (Meningitis) appeared at **rank #1 in all 3 queries** → RRF score 3x higher
+- **Consensus detection**: All query variations "voted" for meningitis
+- **Signal vs noise**: Documents that only matched one query variation get lower scores
+
+**Naive Concatenation Would Have**:
+- 9 total documents (3 per query)
+- Meningitis doc appears 3 times (positions 1, 4, 7)
+- LLM might ignore positions 4 and 7 ("Lost in the Middle")
+
+**RRF Aggregation**:
+- 5 unique documents (deduplicated)
+- Meningitis doc ranked **#1** with highest consensus score
+- LLM focuses on the most relevant document
+
+---
+
+**Comparison: Concatenation vs RRF Fusion**
+
+| Metric | Naive Concatenation | RRF Fusion |
+|--------|-------------------|------------|
+| Total docs sent to LLM | 15 (3 queries × 5 docs) | 5 (top after fusion) |
+| Duplicate docs | 40% (same doc in multiple queries) | 0% (deduplicated) |
+| "Lost in Middle" risk | High (15 docs = positions 8-10 ignored) | Low (5 docs = all visible) |
+| Context cost | 3x (15 docs) | 1x (5 docs) |
+| Latency | +200ms (large context) | +50ms (small context) |
+| **Precision@5** | 78% | **91%** ✅ |
+
+**Production Impact**:
+- **Before** (concatenation): 15 docs → 78% precision, $0.018/query
+- **After** (RRF fusion): 5 docs → 91% precision, $0.009/query
+- **Improvement**: +17% precision, -50% cost
+
+**Interview Defense**:
+> "I use Reciprocal Rank Fusion (RRF) to aggregate multi-query expansion results. Instead of concatenating all 15 documents (3 queries × 5 docs), I use RRF to 'vote' on the most relevant docs. A document that appears at rank #2 in all 3 queries gets a higher RRF score than one that's #1 in only one query. This eliminates context dilution, reduces cost by 50%, and improves precision by 17%."
+
+**Architect's Tip**: "Don't just append all results together. Use Reciprocal Rank Fusion (RRF) across the results of your expanded queries. This ensures that a document which appears as the #2 result for all three variations is prioritized over a document that is #1 for only one variation. It effectively uses the multiple queries to 'vote' on the most relevant information."
+
+**ROI**: $63K/year saved (50% cost reduction on 700K queries/month at $0.009 savings/query)
+
+
     // Single query with optional HyDE
     return options.useHyDE
       ? await hydeRetrieval(userQuery)
@@ -663,22 +1419,233 @@ async function getCachedStrategy(query: string): Promise<string> {
 
 ---
 
-## Summary
+## Architect Challenge: The Retrieval ROI Quiz
 
-**Query Transformation = Better Retrieval Without Changing Your Vector DB**
+**Scenario**: You are the Lead AI Architect for a legal tech startup building a **"Statute Search"** system. Lawyers use natural language to search for relevant statutes and case law.
 
-1. **Multi-Query Expansion**: Generate 3-5 variations → +15-25% Recall@10
-2. **Decomposition**: Break complex questions into sub-questions → +10-15% Precision@5
-3. **HyDE**: LLM writes fake answer → Search with better embeddings → +8-12% in jargon-heavy domains
+**The Problem**: When a lawyer asks a question using **plain language**, the vector search fails to find the relevant statutes because the **terminology is too different** (legalese vs layperson language).
 
-**Architect's Decision Framework**:
-- **Simple queries** (&lt;10 words, single fact): Standard retrieval
-- **Moderate queries** (broad topics): Multi-Query expansion
-- **Complex queries** (2+ sub-questions): Decomposition
-- **Jargon-heavy domains** (medical, legal, technical): Add HyDE
+**Example**:
 
-In the lab, you'll implement all three patterns and measure their impact on the Medical Records Navigator.
+```typescript
+// Lawyer's Query (Plain Language)
+const query = "Can my landlord kick me out if I haven't paid rent for 2 months?"
+
+// Vector Search Embedding
+const queryEmbedding = await embed(query)
+
+// Problem: Documents in database use legal jargon:
+// - "Unlawful detainer proceedings"
+// - "Notice to pay rent or quit"
+// - "Statutory eviction process"
+// - "Tenant holdover after lease termination"
+
+// Vector search fails: 0.45 similarity (low)
+// Result: No relevant statutes found ❌
+```
+
+**Current System Performance**:
+- Precision@5: 38% (lawyer finds relevant statute in top 5 results)
+- User satisfaction: 51% ("often have to manually search Westlaw")
+- Fallback to manual search: 62% of queries
 
 ---
 
-**Next**: Context Window Management & Optimization
+**Question**: Which transformation pattern solves this most **efficiently**?
+
+---
+
+### Option A: Multi-Query Expansion
+
+**Reasoning**: "Generate multiple plain-language variations of the query. If we try 5 different ways to ask the same question, one of them might match the legal documents."
+
+**Implementation**:
+```typescript
+const variations = [
+  "Can my landlord kick me out if I haven't paid rent for 2 months?",
+  "What are the rules for eviction due to non-payment of rent?",
+  "How long can I not pay rent before getting evicted?",
+  "Tenant eviction process for unpaid rent",
+  "Landlord rights when tenant doesn't pay rent"
+]
+
+// Search all 5 variations
+const results = await Promise.all(variations.map(v => vectorSearch(v)))
+```
+
+**Why This Fails**:
+- ❌ **Still plain language**: All variations are in layperson terms, not legalese
+- ❌ **Terminology gap persists**: "kick me out" vs "unlawful detainer" still no match
+- ❌ **5x retrieval cost**: $0.005 → $0.025/query
+- ❌ **Doesn't bridge semantic gap**: More queries ≠ better terminology
+
+**Production Result**: Precision@5 improves to 47% (+9%) but still poor
+
+---
+
+### Option B: HyDE (Hypothetical Document Embeddings) ✅ **CORRECT ANSWER**
+
+**Reasoning**: "Ask the LLM to write a 'Fake Statute' based on the user's query. The fake statute will use **correct legal jargon** ('unlawful detainer', 'notice to quit'), which will match the actual statutes in the vector database much more accurately than the user's plain language."
+
+**Implementation**:
+```typescript
+async function hydeForLegalSearch(lawyerQuery: string) {
+  // Step 1: Generate hypothetical legal document (fake statute)
+  const hydePrompt = `Write a legal statute or case law excerpt that would answer this question.
+Use proper legal terminology and citation format.
+
+Question: "${lawyerQuery}"
+
+Write 2-3 paragraphs using formal legal language.`
+
+  const fakeStatute = await llm.complete(hydePrompt)
+  // Result:
+  // "Pursuant to state landlord-tenant law, a landlord may initiate
+  // unlawful detainer proceedings when a tenant fails to pay rent for
+  // a period exceeding 30 days. The landlord must first serve a
+  // three-day notice to pay rent or quit. If the tenant fails to
+  // comply within the statutory period, the landlord may file for
+  // eviction in municipal court..."
+  
+  // Step 2: Embed the fake statute (uses legal jargon)
+  const hypotheticalEmbedding = await embed(fakeStatute)
+  
+  // Step 3: Search using fake statute's embedding
+  const realStatutes = await vectorDb.search(hypotheticalEmbedding, { limit: 5 })
+  
+  // Result: Finds actual statutes about unlawful detainer, eviction process
+  // Precision@5: 89% ✅
+  
+  return realStatutes
+}
+```
+
+**Why This Works**:
+- ✅ **Terminology translation**: Plain language → Legal jargon
+- ✅ **Semantic bridge**: LLM knows both languages (layperson + legalese)
+- ✅ **Embedding match**: "unlawful detainer" in fake statute matches real statutes
+- ✅ **Cost efficient**: Single LLM call ($0.003) + 1 embedding ($0.0001)
+
+**Production Result**: Precision@5 improves to **89%** (+51% absolute improvement)
+
+**Before (Plain Language Search)**:
+```
+Query: "Can my landlord kick me out..."
+Embedding similarity to statute about "unlawful detainer": 0.45 (low)
+Result: Statute not in top 5 ❌
+```
+
+**After (HyDE Translation)**:
+```
+Hypothetical Statute: "...unlawful detainer proceedings...notice to quit..."
+Embedding similarity to actual statute about "unlawful detainer": 0.87 (high)
+Result: Statute ranked #1 ✅
+```
+
+---
+
+### Option C: Use a larger embedding model
+
+**Reasoning**: "If we use text-embedding-3-large instead of text-embedding-3-small, it'll better understand the semantic relationship between 'kick me out' and 'unlawful detainer.'"
+
+**Why This Fails**:
+- ❌ **Terminology gap too wide**: No embedding model bridges "kick out" → "unlawful detainer" well
+- ❌ **Higher cost**: text-embedding-3-large costs 5x more ($0.00013 vs $0.00002)
+- ❌ **Marginal improvement**: Precision@5 improves to 44% (only +6%)
+- ❌ **Doesn't solve root cause**: Still searching with layperson language
+
+**Research Evidence**: Larger embeddings improve semantic understanding by ~5-10%, but **terminology translation** (HyDE) improves by 40-50% in jargon-heavy domains.
+
+---
+
+### Option D: Decomposition
+
+**Reasoning**: "Break the plain language question into smaller plain language pieces. This will help the search engine find fragments that match."
+
+**Implementation**:
+```typescript
+const subQuestions = [
+  "What is the eviction process?",
+  "How long can I not pay rent?",
+  "What are landlord rights for non-payment?"
+]
+
+// Problem: Still all plain language (no legal jargon)
+```
+
+**Why This Fails**:
+- ❌ **Terminology gap persists**: Smaller plain language pieces still don't match legalese
+- ❌ **More retrieval calls**: 3 sub-questions = 3x cost
+- ❌ **Doesn't bridge domain gap**: Breaking it up doesn't add legal terminology
+
+**Production Result**: Precision@5 improves to 42% (only +4%)
+
+---
+
+## The Correct Answer: B (HyDE)
+
+**Why HyDE is the 'Translator' Between User-Speak and Expert-Speak**:
+
+| Gap | Solution |
+|-----|----------|
+| Layperson → Legal jargon | HyDE generates legal language |
+| "kick me out" → "unlawful detainer" | LLM knows both vocabularies |
+| Plain language → Technical terminology | Hypothetical doc uses expert terms |
+
+**Production Metrics**:
+
+| Metric | Plain Language | Multi-Query | Larger Embedding | HyDE |
+|--------|---------------|------------|-----------------|------|
+| Precision@5 | 38% | 47% (+9%) | 44% (+6%) | **89%** (+51%) ✅ |
+| Recall@10 | 52% | 61% (+9%) | 56% (+4%) | **91%** (+39%) ✅ |
+| Cost/query | $0.005 | $0.025 (5x) | $0.008 (1.6x) | **$0.008** ✅ |
+| User satisfaction | 51% | 58% | 54% | **92%** ✅ |
+
+**ROI Analysis**:
+- Manual Westlaw searches: 62% of queries → 38% after HyDE (-39%)
+- Lawyer time saved: 15 min/query × 1,000 queries/month × $300/hour × 39% reduction
+- **Annual savings**: $351K/year
+- HyDE cost: $0.003 extra per query × 12K queries/month = $36/month
+- **Net ROI**: $351K - $0.4K = **$350K/year**
+
+---
+
+## Key Takeaways
+
+**1. HyDE is the Terminology Translator**
+- Plain language → Legal jargon
+- Layperson → Expert vocabulary
+- Colloquial → Technical terminology
+
+**2. Embedding Models Have Limits**
+- Larger embeddings improve semantic understanding by 5-10%
+- HyDE improves jargon-heavy domain search by 40-50%
+- Terminology gap > Semantic gap
+
+**3. Multi-Query Expansion ≠ Terminology Translation**
+- More plain language queries ≠ Legal terminology
+- Volume doesn't solve vocabulary mismatch
+
+**4. Domain-Specific RAG Requires Specialized Patterns**
+- Medical: HyDE (layperson → medical terminology)
+- Legal: HyDE (plain language → legalese)
+- Technical: HyDE (business speak → engineering jargon)
+
+**5. Production Decision Framework**:
+- **Terminology gap** (layperson → expert): Use **HyDE**
+- **Perspective gap** (need multiple angles): Use **Multi-Query**
+- **Complexity gap** (multi-part question): Use **Decomposition**
+- **None of the above**: Use **Standard Retrieval**
+
+---
+
+**Interview Defense**:
+> "I use HyDE for legal search because it acts as a translator between plain language and legalese. When a lawyer asks 'Can my landlord kick me out?', HyDE generates a hypothetical statute using terms like 'unlawful detainer' and 'notice to quit.' This fake statute's embedding matches real statutes 87% of the time vs 45% with the original query. In production, this improved precision from 38% to 89% and reduced manual Westlaw searches by 39%, saving $350K/year."
+
+---
+
+**Architect's Principle**: "HyDE is the 'Translator' between user-speak and expert-speak. When your corpus uses specialized jargon (medical, legal, technical) that users don't know, HyDE bridges the vocabulary gap by having the LLM generate a hypothetical expert response, which then matches the actual expert documents."
+
+---
+
+**Next:
