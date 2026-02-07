@@ -224,6 +224,131 @@ async function queryTenantVectors(
 | **Shared index, namespaces** | Logical isolation | Lowest | SaaS with 100+ tenants |
 | **Separate indexes per tenant** | Physical isolation | Highest | Enterprise tenants (HIPAA, SOC2) |
 
+**Architect's Tip — Physical Namespace Separation**: "In high-compliance verticals (FinTech, Government, Healthcare), **logical isolation** (a `WHERE tenantId = X` filter) is a single misconfiguration away from disaster. One developer forgets the filter, and Tenant A retrieves Tenant B's patient records. An Architect implements **Namespaced Indexes**: by creating a physical partition or separate index per tenant in your vector database (like Pinecone Namespaces or Weaviate Tenants), you ensure that a search query **physically cannot reach the memory space of another tenant**, even if your application code logic fails."
+
+```typescript
+/**
+ * Physical Namespace Separation for High-Compliance Verticals
+ *
+ * Problem: Logical isolation (WHERE tenantId = X) relies on developers
+ * NEVER forgetting the filter. In production, this fails ~2% of the time.
+ *
+ * Solution: Create physical infrastructure boundaries where cross-tenant
+ * access is architecturally impossible, not just policy-restricted.
+ *
+ * Interview Defense: "In HIPAA environments, a single cross-tenant leak
+ * is a $50K+ fine. Physical namespace separation means even catastrophic
+ * application bugs cannot violate tenant boundaries."
+ */
+
+interface NamespaceStrategy {
+  tenant_id: string
+  compliance_tier: 'standard' | 'hipaa' | 'finra' | 'fedramp'
+  isolation_level: 'logical' | 'physical'
+  namespace_identifier: string
+}
+
+// Determine isolation level based on compliance requirements
+function determineIsolationLevel(
+  complianceTier: 'standard' | 'hipaa' | 'finra' | 'fedramp'
+): 'logical' | 'physical' {
+  const requiresPhysical = ['hipaa', 'finra', 'fedramp']
+  return requiresPhysical.includes(complianceTier) ? 'physical' : 'logical'
+}
+
+// Create dedicated physical namespace for high-compliance tenants
+async function provisionPhysicalNamespace(
+  tenantContext: TenantContext
+): Promise<NamespaceStrategy> {
+  const isolationLevel = determineIsolationLevel(tenantContext.complianceTier)
+
+  if (isolationLevel === 'physical') {
+    // ✅ PHYSICAL SEPARATION: Create dedicated Pinecone index
+    // Cost: ~$70/month per index vs. $0 for logical namespace
+    // Benefit: Architectural guarantee — no cross-tenant leakage possible
+    const dedicatedIndex = await pinecone.createIndex({
+      name: `tenant-${tenantContext.tenantId}`,
+      dimension: 1536,
+      metric: 'cosine',
+      spec: { serverless: { cloud: 'aws', region: 'us-east-1' } }
+    })
+
+    await redis.hSet(`tenant:${tenantContext.tenantId}:config`, {
+      vector_index: dedicatedIndex.name,
+      isolation: 'physical',
+      created_at: new Date().toISOString()
+    })
+
+    console.log(`✅ Physical index created for ${tenantContext.tenantId} (${tenantContext.complianceTier})`)
+
+    return {
+      tenant_id: tenantContext.tenantId,
+      compliance_tier: tenantContext.complianceTier,
+      isolation_level: 'physical',
+      namespace_identifier: `dedicated:${dedicatedIndex.name}`
+    }
+  }
+
+  // ✅ LOGICAL SEPARATION: Use namespace within shared index (standard tenants)
+  console.log(`✅ Logical namespace for ${tenantContext.tenantId} (standard)`)
+
+  return {
+    tenant_id: tenantContext.tenantId,
+    compliance_tier: tenantContext.complianceTier,
+    isolation_level: 'logical',
+    namespace_identifier: `shared:tenant_${tenantContext.tenantId}`
+  }
+}
+
+// Query with namespace-aware routing
+async function queryWithPhysicalIsolation(
+  tenantContext: TenantContext,
+  query: string,
+  topK: number = 10
+) {
+  const config = await redis.hGetAll(`tenant:${tenantContext.tenantId}:config`)
+  const queryEmbedding = await generateEmbeddings([query])
+
+  if (config.isolation === 'physical') {
+    // Route to dedicated index — NO tenant filter needed
+    // Physical isolation guarantees all results belong to this tenant
+    const dedicatedIndex = pinecone.index(config.vector_index)
+    return (await dedicatedIndex.query({
+      vector: queryEmbedding[0],
+      topK,
+      includeMetadata: true
+    })).matches
+  }
+
+  // Route to shared index with namespace + defense-in-depth filter
+  const sharedIndex = pinecone.index('multi-tenant-index')
+  const results = await sharedIndex.namespace(`tenant_${tenantContext.tenantId}`).query({
+    vector: queryEmbedding[0],
+    topK,
+    includeMetadata: true
+  })
+
+  // ⚠️ DEFENSE IN DEPTH: Even with namespace, verify tenantId in metadata
+  return results.matches.filter(
+    match => match.metadata.tenantId === tenantContext.tenantId
+  )
+}
+
+// Production Metrics: Physical vs. Logical Isolation
+//
+// Scenario: 100 tenants, 10 HIPAA-regulated (physical), 90 standard (logical)
+//
+// | Strategy          | Monthly Cost | Compliance Risk  |
+// |-------------------|-------------|------------------|
+// | 100 logical       | $0          | 2% annual filter failure rate |
+// | 10 physical + 90 logical | $700/month | 0% for regulated tenants |
+// | 100 physical      | $7,000/month | 0% for all tenants |
+//
+// ROI: HIPAA violation fine = $50K per incident
+// Physical isolation cost: $700/month × 12 = $8,400/year
+// A single prevented violation pays for 6 years of dedicated infrastructure
+```
+
 #### Layer 4: Cache Isolation (Redis Keys)
 
 ```typescript
@@ -476,6 +601,212 @@ async function detectFraudulentTransaction(
 }
 ```
 
+### Vertical Context Adapter Pattern
+
+**Architect's Tip — Base + Overlay Prompt Composition**: "The anti-pattern for multi-tenant vertical AI is maintaining 100 separate system prompts for 100 customers — you end up in **prompt-versioning hell** where improving the core AI engine requires 100 synchronized updates. An Architect implements the **Base + Overlay Prompt Pattern**: build a single **Base Architecture Prompt** that handles core logic (reasoning, safety, tool usage). Then inject a **Tenant Personality Overlay** (e.g., 'Follow New York state legal guidelines'). This modular approach lets you update your core AI engine once while maintaining the vertical 'flavor' required for each specific tenant."
+
+```typescript
+/**
+ * Base + Overlay Prompt Composition Pattern
+ *
+ * Problem: 100 separate system prompts for 100 tenants means updating
+ * core AI capabilities is a coordination nightmare.
+ *
+ * Solution: Compose prompts from layered modules:
+ * 1. Base Architecture Prompt (core reasoning, safety, capabilities)
+ * 2. Vertical Overlay (industry context, terminology, compliance)
+ * 3. Tenant Customization (brand voice, specific rules)
+ *
+ * Interview Defense: "I treat prompts like CSS: a base stylesheet for
+ * universal behavior, and overlay selectors for specialization. When we
+ * improved hallucination prevention in the base prompt, all 100 verticals
+ * inherited the fix without touching their overlays."
+ */
+
+interface PromptComposition {
+  base: string              // Universal reasoning & safety
+  vertical: string          // Industry-specific context
+  tenant: string            // Customer-specific customization
+  composed: string          // Final assembled prompt
+  version: {
+    base: string            // "v2.4.0"
+    vertical: string        // "clinical-v1.2"
+    tenant: string          // "acme-hospital-v1.0"
+  }
+}
+
+// Layer 1: Base Architecture Prompt (shared across ALL verticals)
+const BASE_ARCHITECTURE_PROMPT = `You are an AI assistant built on the following architecture:
+
+CORE CAPABILITIES:
+1. Reasoning: Break complex queries into structured sub-questions
+2. Verification: Always cite sources; flag uncertainty with confidence scores
+3. Safety: Refuse requests for harmful, illegal, or unethical actions
+4. Escalation: When uncertain or high-stakes, recommend human expert review
+
+BEHAVIORAL CONSTRAINTS:
+- NEVER fabricate information (hallucination = system failure)
+- ALWAYS acknowledge limitations explicitly
+- PREFER incremental clarification over incorrect assumptions
+
+TOOL USAGE:
+You have access to domain-specific tools (defined in vertical overlay).
+Use tools systematically: validate inputs → execute → verify outputs.
+
+VERSION: base-v2.4.0`
+
+// Layer 2: Vertical Overlay Prompts (industry-specific)
+const VERTICAL_OVERLAYS: Record<string, string> = {
+  clinical: `
+VERTICAL CONTEXT: Healthcare / Clinical Support
+
+DOMAIN EXPERTISE:
+- Medical terminology (ICD-10, CPT codes, pharmaceutical naming)
+- Clinical workflows (triage, diagnosis, treatment planning)
+- Regulatory compliance (HIPAA PHI handling)
+
+CRITICAL RULES:
+1. NEVER provide medical diagnoses or prescriptions
+2. ALWAYS redact PHI (patient names, MRNs, DOBs) in logs
+3. ONLY reference verified medical literature and patient records
+4. If uncertainty is high, escalate to human clinician
+
+AVAILABLE TOOLS:
+- lookup_medication(name): FDA-verified drug information
+- check_drug_interaction(med1, med2): Contraindication database
+- escalate_to_clinician(reason): Human expert handoff
+
+VERSION: clinical-v1.2`,
+
+  legal: `
+VERTICAL CONTEXT: Legal Services / Contract Analysis
+
+DOMAIN EXPERTISE:
+- Legal document structure (contracts, briefs, statutes)
+- Jurisdiction-specific precedents and regulations
+- Attorney-client privilege and work-product doctrine
+
+CRITICAL RULES:
+1. NEVER provide legal advice (you are NOT a licensed attorney)
+2. ALWAYS flag jurisdiction-specific clauses
+3. IDENTIFY risky terms, but let attorney decide remediation
+4. For high-value contracts, recommend attorney review
+
+AVAILABLE TOOLS:
+- extract_legal_terms(document): Key clause identification
+- query_precedents(jurisdiction, topic): Case law search
+- flag_risky_clauses(document): Standard risk assessment
+
+VERSION: legal-v1.1`,
+
+  fintech: `
+VERTICAL CONTEXT: Financial Technology / Fraud Detection
+
+DOMAIN EXPERTISE:
+- Transaction risk modeling and fraud pattern recognition
+- Regulatory compliance (SEC, FINRA, anti-money laundering)
+- Financial terminology (APR, derivatives, liquidity)
+
+CRITICAL RULES:
+1. NEVER approve/block transactions without human review threshold
+2. ALWAYS provide explainable fraud scores (regulatory requirement)
+3. FLAG unusual patterns, defer final decision to compliance team
+4. High-value transactions require multi-factor verification
+
+AVAILABLE TOOLS:
+- calculate_fraud_score(transaction): ML model prediction
+- check_aml_watchlist(entity): Sanctions and PEP screening
+- explain_fraud_decision(score): Regulatory-compliant reasoning
+
+VERSION: fintech-v1.3`
+}
+
+// Layer 3: Tenant Customization (customer-specific)
+interface TenantCustomization {
+  tenant_id: string
+  vertical: 'clinical' | 'legal' | 'fintech'
+  brand_voice: string
+  escalation_threshold: number
+  custom_rules: string[]
+}
+
+const TENANT_CUSTOMIZATIONS: Record<string, TenantCustomization> = {
+  'acme-hospital': {
+    tenant_id: 'acme-hospital',
+    vertical: 'clinical',
+    brand_voice: 'Warm and empathetic. Address patients by name. Use plain language.',
+    escalation_threshold: 0.15,
+    custom_rules: [
+      'Always offer to schedule follow-up appointments',
+      'Mention ACME Hospital 24/7 nurse hotline for urgent concerns'
+    ]
+  },
+  'biglaw-firm': {
+    tenant_id: 'biglaw-firm',
+    vertical: 'legal',
+    brand_voice: 'Formal and precise. Use legal terminology. Cite case law.',
+    escalation_threshold: 0.05,
+    custom_rules: [
+      'For contracts over $1M, always recommend partner attorney review',
+      'Flag any clause that differs from firm standard templates'
+    ]
+  }
+}
+
+// Compose final prompt from base + vertical + tenant layers
+function composePrompt(tenantContext: TenantContext): PromptComposition {
+  const tenant = TENANT_CUSTOMIZATIONS[tenantContext.tenantId]
+  if (!tenant) throw new Error(`No customization for tenant ${tenantContext.tenantId}`)
+
+  const verticalOverlay = VERTICAL_OVERLAYS[tenant.vertical]
+
+  let tenantOverlay = `\nTENANT: ${tenant.tenant_id}`
+  tenantOverlay += `\nBRAND VOICE: ${tenant.brand_voice}`
+  tenantOverlay += `\nESCALATION THRESHOLD: ${tenant.escalation_threshold * 100}% uncertainty`
+  if (tenant.custom_rules.length) {
+    tenantOverlay += `\nCUSTOM RULES:\n${tenant.custom_rules.map(r => `- ${r}`).join('\n')}`
+  }
+
+  const composed = [BASE_ARCHITECTURE_PROMPT, verticalOverlay, tenantOverlay].join('\n\n')
+
+  return {
+    base: BASE_ARCHITECTURE_PROMPT,
+    vertical: verticalOverlay,
+    tenant: tenantOverlay,
+    composed,
+    version: {
+      base: 'base-v2.4.0',
+      vertical: `${tenant.vertical}-v1.2`,
+      tenant: `${tenant.tenant_id}-v1.0`
+    }
+  }
+}
+
+// Real-world example: Improving base prompt across all tenants
+//
+// Before: Base prompt v2.3.0 → 8% hallucination rate across all verticals
+// After:  Base prompt v2.4.0 → 1.2% hallucination rate (85% reduction)
+// Update effort: 1 file changed, 0 tenant overlays touched
+//
+// MONOLITHIC APPROACH (100 separate prompts):
+// - Core AI improvement: Update 100 prompts manually
+// - Coordination time: 5 days (review, test, deploy each)
+// - Maintenance overhead: 40 hours/month
+//
+// BASE + OVERLAY APPROACH:
+// - Core AI improvement: Update 1 base prompt
+// - Coordination time: 4 hours (test base, auto-deploy)
+// - Maintenance overhead: 5 hours/month
+//
+// ROI: 35 hours/month saved × $100/hour = $3,500/month ($42,000/year)
+```
+
+**Interview Defense Template**:
+
+> **Interviewer:** "How do you balance customization with maintainability in a multi-tenant AI platform?"
+>
+> **You:** "I use the Base + Overlay Prompt Pattern. The base prompt handles universal reasoning and safety — capabilities that should improve for ALL customers when we innovate. The vertical overlay injects industry context like HIPAA compliance for healthcare or SEC regulations for fintech. The tenant layer adds brand voice and customer-specific rules. When we improved our hallucination prevention, we updated the base prompt once, and all 100 tenants inherited the improvement without touching their overlays. It saved us 35 hours per month in coordination overhead."
+
 ---
 
 ## Pattern 3: Tenant-Aware Infrastructure
@@ -499,6 +830,155 @@ async function checkRateLimit(tenantContext: TenantContext): Promise<boolean> {
 
   return true
 }
+```
+
+**Architect's Tip — Tenant-Aware Token Buckets**: "Simple per-tenant daily counters don't solve the **'Noisy Neighbor' problem**: one 'whale' tenant burning 90% of your provider's rate limits can starve all other tenants. Your rate limiter must be **Provider-Aware**. If your platform has a 10M token/min limit with Anthropic, you must partition that limit across your tenants. If Tenant A is currently burning 90% of your capacity, your architecture should **throttle Tenant A at the gateway** while keeping the path clear for Tenant B. This prevents 'Noisy Neighbor' syndrome from breaking your SLAs."
+
+```typescript
+/**
+ * Tenant-Aware Token Bucket Rate Limiter
+ *
+ * Problem: Provider-level rate limits (e.g., Anthropic 10M tokens/min) are
+ * shared across ALL tenants. One runaway tenant exhausts the global quota,
+ * causing 429 errors for innocent tenants ("Noisy Neighbor" syndrome).
+ *
+ * Solution: Partition the platform's provider quota into per-tenant buckets.
+ * Each tenant gets a fair share. Throttle overage at the gateway, not the provider.
+ *
+ * Interview Defense: "We treat the LLM provider's rate limit as a scarce
+ * resource to be allocated, not a first-come-first-served free-for-all.
+ * Token bucket partitioning ensures one customer's spike cannot degrade
+ * another customer's experience."
+ */
+
+interface TokenBucket {
+  tenant_id: string
+  capacity: number          // Max tokens per minute for this tenant
+  current_tokens: number    // Tokens currently available
+  refill_rate: number       // Tokens added per second
+  last_refill: number       // Timestamp of last refill
+}
+
+class TenantTokenBucketAllocator {
+  private globalLimit: number
+  private allocatedTokens: number = 0
+
+  constructor(
+    private provider: 'anthropic' | 'openai',
+    globalLimitPerMinute: number,
+    private redis: Redis
+  ) {
+    // Reserve 10% as emergency buffer
+    this.globalLimit = Math.floor(globalLimitPerMinute * 0.9)
+  }
+
+  // Calculate fair-share allocation from plan tier
+  private getAllocation(plan: 'free' | 'pro' | 'enterprise'): number {
+    const allocations = {
+      free: 50_000,         // 50K tokens/min
+      pro: 500_000,         // 500K tokens/min
+      enterprise: 2_000_000 // 2M tokens/min
+    }
+    return allocations[plan]
+  }
+
+  // Provision token bucket for a tenant
+  async allocateBucket(tenantContext: TenantContext): Promise<TokenBucket> {
+    const capacity = this.getAllocation(tenantContext.plan)
+    const available = this.globalLimit - this.allocatedTokens
+
+    if (capacity > available) {
+      throw new Error(
+        `Cannot allocate ${capacity} tokens/min: only ${available} available of ${this.globalLimit}`
+      )
+    }
+
+    const bucket: TokenBucket = {
+      tenant_id: tenantContext.tenantId,
+      capacity,
+      current_tokens: capacity,
+      refill_rate: capacity / 60,
+      last_refill: Date.now()
+    }
+
+    await this.redis.hSet(`token_bucket:${tenantContext.tenantId}`, {
+      capacity: bucket.capacity,
+      current_tokens: bucket.current_tokens,
+      refill_rate: bucket.refill_rate,
+      last_refill: bucket.last_refill
+    })
+
+    this.allocatedTokens += capacity
+    console.log(`✅ Token bucket: ${tenantContext.tenantId} → ${capacity.toLocaleString()} tokens/min`)
+
+    return bucket
+  }
+
+  // Check and consume tokens before sending request to provider
+  async consumeTokens(
+    tenantContext: TenantContext,
+    estimatedTokens: number
+  ): Promise<{ allowed: boolean; wait_seconds?: number }> {
+    const bucketKey = `token_bucket:${tenantContext.tenantId}`
+    const data = await this.redis.hGetAll(bucketKey)
+
+    if (!data.capacity) {
+      throw new Error(`No token bucket for tenant ${tenantContext.tenantId}`)
+    }
+
+    // Refill tokens based on elapsed time
+    const now = Date.now()
+    const elapsed = (now - parseInt(data.last_refill)) / 1000
+    const refillAmount = Math.floor(parseFloat(data.refill_rate) * elapsed)
+    const currentTokens = Math.min(
+      parseInt(data.current_tokens) + refillAmount,
+      parseInt(data.capacity)
+    )
+
+    if (currentTokens >= estimatedTokens) {
+      // ✅ ALLOW: Consume tokens and proceed
+      await this.redis.hSet(bucketKey, {
+        current_tokens: currentTokens - estimatedTokens,
+        last_refill: now
+      })
+      return { allowed: true }
+    }
+
+    // ❌ THROTTLE: Tenant has exceeded their fair share
+    const tokensNeeded = estimatedTokens - currentTokens
+    const waitSeconds = Math.ceil(tokensNeeded / parseFloat(data.refill_rate))
+
+    console.warn(
+      `⚠️ Throttled tenant ${tenantContext.tenantId}: needs ${tokensNeeded} tokens, wait ${waitSeconds}s`
+    )
+
+    return { allowed: false, wait_seconds: waitSeconds }
+  }
+}
+
+// Example: Anthropic 10M tokens/min platform limit
+//
+// Allocation:
+//   Tenant A (free):       50K/min
+//   Tenant B (pro):       500K/min
+//   Tenant C (enterprise): 2M/min
+//   Total allocated:      2.55M/min (74.5% headroom remaining)
+//
+// Scenario: Tenant C attempts 3M tokens in 1 minute
+//   → Result: allowed=false, wait_seconds=30
+//   → Tenant C throttled at gateway
+//   → Tenants A & B experience ZERO degradation
+//   → Provider never sees a 429 error
+//
+// WITHOUT token buckets (first-come-first-served):
+//   → Whale tenant saturates 10M/min limit
+//   → 95% platform error rate for 12 minutes
+//   → 23,000 failed requests across 47 innocent tenants
+//
+// WITH token buckets:
+//   → 1 throttled tenant, 46 unaffected tenants
+//   → Implementation cost: 2 engineer-days ($3,200)
+//   → Prevented incident cost: $50K (SLA credits + support + churn)
 ```
 
 ### Cost Allocation (Tenant-Specific Billing)
@@ -580,18 +1060,97 @@ async function trackTenantUsage(
 **The Architect's Responsibility**:
 You **own** data isolation. If Tenant A retrieves Tenant B's data, **you failed to filter by tenantId**. If PHI leaks in logs, **you skipped redaction**. If fraud detection can't explain its decision, **you violated SEC regulations**.
 
-**Cost Analysis**:
+---
+
+## Architect Challenge: The Multi-Tenant Cache Disaster
+
+**You are the AI Architect on-call. Your Vertical AI platform serves 1,000 enterprise customers.**
+
+**The Alert (3:17 AM):**
+
+A security audit reveals that a `tenant_id` was **hard-coded in a caching layer**, causing one user to see a **Semantic Cache Hit** from a completely different company. Identical queries from different tenants are returning each other's cached responses. Three HIPAA-regulated tenants are potentially affected. The board meeting is in 6 hours.
+
+**Root Cause:**
+
 ```typescript
-// Single-tenant (10 customers)
-- Infrastructure: $5,000/month
-- Support overhead: High (10 separate systems)
-
-// Multi-tenant platform (10 customers)
-- Infrastructure: $1,200/month (shared)
-- Support overhead: Low (1 system)
-- Savings: $3,800/month (76%)
-
-// Break-even: 3 customers make multi-tenancy worth the complexity
+// ❌ THE DISASTER CODE (deployed to production)
+async function getCachedResponse(query: string): Promise<string | null> {
+  // BUG: Cache key uses ONLY query hash — no tenant isolation
+  const cacheKey = `cache:${hashQuery(query)}`
+  return await redis.get(cacheKey)
+}
+// Result: "Show me patient records" returns Tenant B's data to Tenant A
 ```
+
+**How do you re-architect the cache to prevent this permanently?**
+
+**A)** Add a "Please don't share data" note in the system prompt.
+
+**B)** Implement a **Hashed Composite Cache Key**. Generate cache keys using `hash(tenant_id + query_embedding)`. This ensures that even if two tenants ask the exact same question, they are physically mapped to different memory addresses in Redis, making cross-tenant cache leakage mathematically impossible.
+
+**C)** Just disable caching for the platform.
+
+**D)** Use a separate Redis instance for every single tenant.
+
+<details>
+<summary><strong>Click to reveal the correct answer</strong></summary>
+
+### Correct Answer: B — Hashed Composite Cache Key
+
+An Architect uses **Composite Keys** to ensure that security is baked into the **infrastructure**, not just the application logic.
+
+```typescript
+// ✅ THE FIX: Composite Cache Key
+async function getCachedResponse(
+  tenantContext: TenantContext,
+  query: string
+): Promise<string | null> {
+  // Composite key: hash(tenant_id + query_embedding)
+  // Even identical queries from different tenants → different cache keys
+  const queryEmbedding = await embed(query)
+  const compositeInput = `${tenantContext.tenantId}:${JSON.stringify(queryEmbedding)}`
+  const cacheKey = `cache:${hashSHA256(compositeInput)}`
+
+  const cached = await redis.get(cacheKey)
+
+  // Defense in depth: Verify tenant ID in cached metadata
+  if (cached) {
+    const parsed = JSON.parse(cached)
+    if (parsed.tenant_id !== tenantContext.tenantId) {
+      console.error(`⚠️ Cache poisoning detected: key=${cacheKey}`)
+      await redis.del(cacheKey)
+      return null
+    }
+  }
+
+  return cached
+}
+
+// Before (vulnerable):
+// Tenant A: "Show patient records" → cache:abc123
+// Tenant B: "Show patient records" → cache:abc123 (SAME KEY — data leak!)
+//
+// After (secure):
+// Tenant A: "Show patient records" → cache:hash(tenantA + embedding) → cache:def456
+// Tenant B: "Show patient records" → cache:hash(tenantB + embedding) → cache:xyz789
+// → Physically impossible for Tenant B to hit Tenant A's cache entry
+```
+
+**Why other answers fail:**
+
+- **A) System prompt disclaimer** — Prompts cannot prevent infrastructure-level cache collisions. Regulatory auditors will reject this as insufficient control.
+- **C) Disable caching** — Throws away 60% cost savings and 40% latency improvement. Reactive, not corrective — doesn't fix the architecture flaw.
+- **D) Separate Redis per tenant** — Correct isolation, but economically unsustainable at 1,000 tenants ($50K/month in Redis instances). Over-engineering when composite keys solve it for $0.
+
+**Remediation Timeline:**
+1. **0–15 minutes**: Deploy composite key hotfix
+2. **15–60 minutes**: Flush all existing cache entries
+3. **1–2 hours**: Audit logs for evidence of cross-tenant cache hits
+4. **2–6 hours**: Prepare incident report for affected customers
+5. **Board meeting**: Present fix + architectural review of all tenant isolation layers
+
+</details>
+
+---
 
 **Next Concept**: Now that you can architect scalable platforms, Concept 2 covers **Production Stress-Testing** with red-team adversarial attacks and 10x load spike simulations to prove your system survives the real world.
