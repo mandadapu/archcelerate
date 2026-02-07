@@ -2,13 +2,14 @@
 title: "The Three Pillars of AI Observability"
 week: 7
 concept: 1
-description: "Monitor traces, evaluations, and unit economics to prevent silent failures in production AI systems"
-estimatedMinutes: 50
+description: "Monitor traces, evaluations, and unit economics to prevent silent failures, with semantic drift detection via embedding centroid monitoring"
+estimatedMinutes: 55
 objectives:
   - Implement OpenTelemetry tracing for RAG and agent flows
   - Track the three critical observability layers
   - Set up dashboards for latency, accuracy, and cost
   - Detect and prevent silent failures
+  - Monitor semantic drift via embedding centroid analysis to catch provider-side model changes
 ---
 
 # The Three Pillars of AI Observability
@@ -329,6 +330,262 @@ async function detectSemanticRegression(windowHours: number = 24) {
   }
 }
 ```
+
+### Semantic Drift Detection: Embedding Centroid Monitoring
+
+Monitoring "System Health" (uptime, latency, error rates) is necessary but insufficient. You must also monitor **"Model Health"** — the behavioral consistency of your model's outputs over time.
+
+**The Problem**: Cloud LLM providers regularly update models behind the same API endpoint. When Anthropic or OpenAI ships a "minor update," your system stays "up" but the model's **personality, reasoning style, or output distribution** may shift. Users report the AI "feels different" or "got dumber," but your dashboards show green across the board.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│            SEMANTIC DRIFT DETECTION                         │
+│                                                             │
+│  Traditional Monitoring          Semantic Monitoring        │
+│  ────────────────────            ─────────────────────      │
+│  ✅ API is up                    📐 Output embeddings       │
+│  ✅ Latency is normal             are shifting              │
+│  ✅ No errors                                               │
+│  ✅ Tokens are flowing           ⚠️  Centroid moved 0.15    │
+│                                      in 24 hours            │
+│  Status: ALL GREEN               Status: MODEL DRIFTING     │
+│                                                             │
+│  Day 1 Centroid: [0.12, 0.45, 0.78, ...]                  │
+│  Day 2 Centroid: [0.12, 0.44, 0.77, ...]  ← Normal jitter │
+│  Day 3 Centroid: [0.27, 0.31, 0.62, ...]  ← DRIFT 🚨      │
+│                                                             │
+│  The model was silently updated by the provider.            │
+│  Your system is "working" but producing different outputs.  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**How It Works**: Embed every model output over a rolling window. Calculate the **centroid** (average vector) of those embeddings. If the centroid shifts beyond a threshold between windows, the model's output distribution has changed — even if every individual response "looks fine."
+
+```typescript
+// src/week7/observability/semantic-drift.ts
+import { embed } from '@/lib/embeddings'
+
+/**
+ * Embedding Centroid Monitor
+ *
+ * Tracks the "behavioral coordinates" of the model by computing
+ * the centroid of output embeddings over rolling time windows.
+ * A significant centroid shift indicates the model's output
+ * distribution has changed — the only way to catch "Silent
+ * Quality Collapse" before users notice.
+ */
+
+interface CentroidSnapshot {
+  windowStart: Date
+  windowEnd: Date
+  centroid: number[]         // Average embedding vector
+  sampleCount: number
+  stdDevMagnitude: number    // How spread out the outputs are
+}
+
+interface DriftAlert {
+  detected: boolean
+  magnitude: number          // Cosine distance between centroids
+  threshold: number
+  previousWindow: CentroidSnapshot
+  currentWindow: CentroidSnapshot
+  recommendation: string
+}
+
+/**
+ * Calculate the centroid (average embedding) of a set of output texts
+ */
+async function calculateCentroid(outputs: string[]): Promise<{
+  centroid: number[]
+  stdDevMagnitude: number
+}> {
+  // Embed all outputs
+  const embeddings = await Promise.all(
+    outputs.map(text => embed(text))
+  )
+
+  // Calculate centroid (element-wise average)
+  const dimensions = embeddings[0].length
+  const centroid = new Array(dimensions).fill(0)
+
+  for (const embedding of embeddings) {
+    for (let i = 0; i &lt; dimensions; i++) {
+      centroid[i] += embedding[i] / embeddings.length
+    }
+  }
+
+  // Calculate standard deviation of distances from centroid
+  const distances = embeddings.map(emb => cosineSimilarity(emb, centroid))
+  const avgDistance = distances.reduce((a, b) => a + b, 0) / distances.length
+  const stdDevMagnitude = Math.sqrt(
+    distances.reduce((sum, d) => sum + Math.pow(d - avgDistance, 2), 0) / distances.length
+  )
+
+  return { centroid, stdDevMagnitude }
+}
+
+/**
+ * Detect semantic drift between two time windows
+ */
+async function detectSemanticDrift(
+  currentWindow: CentroidSnapshot,
+  previousWindow: CentroidSnapshot,
+  driftThreshold: number = 0.08  // Cosine distance threshold
+): Promise<DriftAlert> {
+  const magnitude = 1 - cosineSimilarity(
+    currentWindow.centroid,
+    previousWindow.centroid
+  )
+
+  const detected = magnitude > driftThreshold
+
+  let recommendation = ''
+  if (magnitude > driftThreshold * 2) {
+    recommendation = 'CRITICAL: Major behavioral shift detected. ' +
+      'Likely cause: provider model update. ' +
+      'Action: Run full regression suite immediately, pause deployments.'
+  } else if (detected) {
+    recommendation = 'WARNING: Moderate drift detected. ' +
+      'Action: Run targeted eval on high-priority test cases. ' +
+      'Check provider changelog for model updates.'
+  } else {
+    recommendation = 'Normal operational variance. No action required.'
+  }
+
+  return {
+    detected,
+    magnitude,
+    threshold: driftThreshold,
+    previousWindow,
+    currentWindow,
+    recommendation
+  }
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dotProduct = 0
+  let normA = 0
+  let normB = 0
+  for (let i = 0; i &lt; a.length; i++) {
+    dotProduct += a[i] * b[i]
+    normA += a[i] * a[i]
+    normB += b[i] * b[i]
+  }
+  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB))
+}
+
+/**
+ * Production monitoring loop: Run every 6 hours
+ * Compares current 24h window against previous 24h window
+ */
+async function semanticDriftMonitor() {
+  // Fetch outputs from current and previous windows
+  const now = new Date()
+  const windowSize = 24 * 60 * 60 * 1000 // 24 hours
+
+  const currentOutputs = await prisma.queryLog.findMany({
+    where: {
+      timestamp: {
+        gte: new Date(now.getTime() - windowSize),
+        lte: now
+      }
+    },
+    select: { response: true },
+    take: 500  // Sample up to 500 outputs per window
+  })
+
+  const previousOutputs = await prisma.queryLog.findMany({
+    where: {
+      timestamp: {
+        gte: new Date(now.getTime() - 2 * windowSize),
+        lt: new Date(now.getTime() - windowSize)
+      }
+    },
+    select: { response: true },
+    take: 500
+  })
+
+  if (currentOutputs.length &lt; 50 || previousOutputs.length &lt; 50) {
+    console.log('⚠️ Insufficient samples for drift detection (need 50+ per window)')
+    return
+  }
+
+  // Calculate centroids
+  const current = await calculateCentroid(currentOutputs.map(o => o.response))
+  const previous = await calculateCentroid(previousOutputs.map(o => o.response))
+
+  const currentSnapshot: CentroidSnapshot = {
+    windowStart: new Date(now.getTime() - windowSize),
+    windowEnd: now,
+    centroid: current.centroid,
+    sampleCount: currentOutputs.length,
+    stdDevMagnitude: current.stdDevMagnitude
+  }
+
+  const previousSnapshot: CentroidSnapshot = {
+    windowStart: new Date(now.getTime() - 2 * windowSize),
+    windowEnd: new Date(now.getTime() - windowSize),
+    centroid: previous.centroid,
+    sampleCount: previousOutputs.length,
+    stdDevMagnitude: previous.stdDevMagnitude
+  }
+
+  // Detect drift
+  const alert = await detectSemanticDrift(currentSnapshot, previousSnapshot)
+
+  // Store for trending
+  await prisma.semanticDriftLog.create({
+    data: {
+      timestamp: now,
+      driftMagnitude: alert.magnitude,
+      threshold: alert.threshold,
+      detected: alert.detected,
+      sampleCountCurrent: currentSnapshot.sampleCount,
+      sampleCountPrevious: previousSnapshot.sampleCount,
+      stdDevCurrent: currentSnapshot.stdDevMagnitude,
+      stdDevPrevious: previousSnapshot.stdDevMagnitude
+    }
+  })
+
+  console.log(`📐 Semantic Drift Check:`)
+  console.log(`   Current window: ${currentSnapshot.sampleCount} samples`)
+  console.log(`   Previous window: ${previousSnapshot.sampleCount} samples`)
+  console.log(`   Drift magnitude: ${alert.magnitude.toFixed(4)} (threshold: ${alert.threshold})`)
+  console.log(`   Status: ${alert.detected ? '🚨 DRIFT DETECTED' : '✅ Stable'}`)
+
+  if (alert.detected) {
+    await alertOpsTeam({
+      severity: alert.magnitude > alert.threshold * 2 ? 'critical' : 'warning',
+      title: 'Semantic Drift Detected',
+      message: alert.recommendation,
+      dashboard: 'semantic-drift',
+      metadata: {
+        magnitude: alert.magnitude,
+        threshold: alert.threshold,
+        currentSamples: currentSnapshot.sampleCount,
+        previousSamples: previousSnapshot.sampleCount
+      }
+    })
+
+    // Auto-trigger regression suite on critical drift
+    if (alert.magnitude > alert.threshold * 2) {
+      console.log('🔬 Auto-triggering full regression suite...')
+      await triggerRegressionSuite('semantic-drift-detected')
+    }
+  }
+}
+```
+
+### Drift Detection Thresholds
+
+| Drift Magnitude | Severity | Likely Cause | Action |
+|-----------------|----------|--------------|--------|
+| &lt; 0.04 | Normal | Day-to-day variance in outputs | None |
+| 0.04 - 0.08 | Low | Topic distribution shift in user queries | Monitor |
+| 0.08 - 0.15 | Warning | Possible provider-side model update | Run targeted evals |
+| &gt; 0.15 | Critical | Confirmed model behavioral shift | Full regression + pause deployments |
+
+> **Architect's Tip**: "Don't just monitor errors; monitor the vector space. Calculate the average embedding of your model's outputs over 24 hours. If the 'Centroid' of those embeddings shifts significantly, your model is drifting. This is the only way to catch a 'Silent Quality Collapse' before users start reporting that the AI feels 'different' or 'dumber'."
 
 ---
 
