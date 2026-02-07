@@ -50,9 +50,9 @@ const weekData = [
       { slug: 'responsible-ai', title: 'Responsible AI: Bias Detection & Self-Correction Patterns', minutes: 60 },
       { slug: 'compliance-patterns', title: 'Domain Compliance & Redaction', minutes: 50 },
       { slug: 'ai-testing-nfrs', title: 'Testing & Non-Functional Requirements', minutes: 55 },
-      { slug: 'architecture-certification', title: 'Week 2 Architecture Certification Exam', minutes: 120 },
       { slug: 'lab-hipaa-gateway', title: 'Lab: HIPAA-Compliant Gateway', minutes: 120 },
-      { slug: 'lab-sovereign-governance', title: 'Lab: PII Redaction & Sovereign Governance', minutes: 180 }
+      { slug: 'lab-sovereign-governance', title: 'Lab: PII Redaction & Sovereign Governance', minutes: 180 },
+      { slug: 'architecture-certification', title: 'Week 2 Architecture Certification Exam', minutes: 120 }
     ],
     lab: {
       slug: 'governance-lab',
@@ -117,8 +117,8 @@ const weekData = [
       { slug: 'structured-output', title: 'Structured Output & JSON Mode', minutes: 40 },
       { slug: 'function-calling', title: 'Function Calling & Tool Use', minutes: 45 },
       { slug: 'schema-design', title: 'Schema Design & API Contracts', minutes: 45 },
-      { slug: 'certification-exam', title: 'Week 4 Certification: The Systems Architect', minutes: 90 },
-      { slug: 'lab-support-ticket-router', title: 'Lab: Support Ticket Router', minutes: 120 }
+      { slug: 'lab-support-ticket-router', title: 'Lab: Support Ticket Router', minutes: 120 },
+      { slug: 'certification-exam', title: 'Week 4 Certification: The Systems Architect', minutes: 90 }
     ],
     lab: {
       slug: 'support-ticket-router',
@@ -155,9 +155,9 @@ const weekData = [
       { slug: 'framework-comparison', title: 'Framework Face-Off: LangGraph vs CrewAI vs AutoGen', minutes: 40 },
       { slug: 'framework-selection', title: 'Framework Selection: LangGraph vs. CrewAI Performance', minutes: 35 },
       { slug: 'technical-standards', title: 'Archcelerate Technical Standards: The Director\'s Reference Guide', minutes: 45 },
-      { slug: 'certification-exam', title: 'Week 5 Certification: The Agentic Architect', minutes: 120 },
       { slug: 'lab-newsletter-team', title: 'Lab: Auto-Research & Newsletter Team', minutes: 180 },
-      { slug: 'lab-research-swarm', title: 'Lab: Autonomous Medical Research Swarm', minutes: 180 }
+      { slug: 'lab-research-swarm', title: 'Lab: Autonomous Medical Research Swarm', minutes: 180 },
+      { slug: 'certification-exam', title: 'Week 5 Certification: The Agentic Architect', minutes: 120 }
     ],
     lab: {
       slug: 'build-research-agent',
@@ -193,8 +193,8 @@ const weekData = [
       { slug: 'query-transformation-patterns', title: 'Query Transformation Patterns', minutes: 40 },
       { slug: 'context-window-optimization', title: 'Context Window Management & Optimization', minutes: 40 },
       { slug: 'enterprise-rag-hardening', title: 'Enterprise RAG Hardening & Evaluation', minutes: 45 },
-      { slug: 'certification-exam', title: 'Week 6 Certification: The RAG Optimizer', minutes: 120 },
-      { slug: 'lab-advanced-rag-system', title: 'Lab: Production-Grade Advanced RAG System', minutes: 180 }
+      { slug: 'lab-advanced-rag-system', title: 'Lab: Production-Grade Advanced RAG System', minutes: 180 },
+      { slug: 'certification-exam', title: 'Week 6 Certification: The RAG Optimizer', minutes: 120 }
     ],
     lab: {
       slug: 'production-rag-lab',
@@ -225,9 +225,9 @@ const weekData = [
       { slug: 'observability-pillars', title: 'The Three Pillars of AI Observability', minutes: 55 },
       { slug: 'automated-evaluation', title: 'LLM-as-a-Judge: Automated Evaluation Pipelines', minutes: 60 },
       { slug: 'guardrails', title: 'Production Guardrails: Defense-in-Depth Architecture', minutes: 70 },
-      { slug: 'certification-exam', title: 'Week 7 Certification: The Production Lead', minutes: 120 },
       { slug: 'lab-llm-judge-pipeline', title: 'Lab: LLM-as-a-Judge for Financial Services Compliance', minutes: 150 },
-      { slug: 'lab-production-dashboard', title: 'Lab: Production Dashboard - Hardening for 24/7 Operations', minutes: 180 }
+      { slug: 'lab-production-dashboard', title: 'Lab: Production Dashboard - Hardening for 24/7 Operations', minutes: 180 },
+      { slug: 'certification-exam', title: 'Week 7 Certification: The Production Lead', minutes: 120 }
     ],
     lab: {
       slug: 'llm-judge-pipeline',
@@ -364,8 +364,8 @@ const weekData = [
       { slug: 'task-delegation', title: 'Task Delegation & Orchestration: Resilient Execution Governance', minutes: 70 },
       { slug: 'conflict-resolution', title: 'Conflict Resolution in Agent Systems', minutes: 55 },
       { slug: 'hierarchical-agent-swarms', title: 'Hierarchical Agent Swarms', minutes: 60 },
-      { slug: 'certification-exam', title: 'Week 11 Certification: The Orchestrator', minutes: 120 },
-      { slug: 'lab-multi-agent-product-launch', title: 'Lab: Multi-Agent Product Launch Swarm', minutes: 240 }
+      { slug: 'lab-multi-agent-product-launch', title: 'Lab: Multi-Agent Product Launch Swarm', minutes: 240 },
+      { slug: 'certification-exam', title: 'Week 11 Certification: The Orchestrator', minutes: 120 }
     ],
     lab: {
       slug: 'multi-agent-system',
@@ -399,8 +399,8 @@ const weekData = [
       { slug: 'global-ai-gateway', title: 'Global AI Gateway: Enterprise AI Infrastructure', minutes: 60 },
       { slug: 'master-playbook', title: 'The Archcelerate Master Architectural Playbook', minutes: 15 },
       { slug: 'technical-impact-summary', title: 'Technical Impact Summary', minutes: 20 },
-      { slug: 'certification-exam', title: 'Certification Exam: The Infrastructure Architect', minutes: 60 },
-      { slug: 'lab-global-ai-gateway', title: 'Lab: Build a Global AI Gateway', minutes: 300 }
+      { slug: 'lab-global-ai-gateway', title: 'Lab: Build a Global AI Gateway', minutes: 300 },
+      { slug: 'certification-exam', title: 'Certification Exam: The Infrastructure Architect', minutes: 60 }
     ],
     lab: {
       slug: 'enterprise-deployment',
