@@ -2,13 +2,13 @@
 title: "LLM-as-a-Judge: Automated Evaluation Pipelines"
 week: 7
 concept: 3
-description: "Build automated evaluation systems using stronger models to grade weaker models at scale"
-estimatedMinutes: 45
+description: "Build automated evaluation systems using stronger models to grade weaker models at scale with cross-model hierarchies, negative sampling, and artifact manifests"
+estimatedMinutes: 55
 objectives:
-  - Understand the LLM-as-a-Judge pattern
-  - Build eval pipelines with Claude 3.5 Sonnet
-  - Implement semantic versioning for AI systems
-  - Create golden datasets for regression testing
+  - Understand the LLM-as-a-Judge pattern with cross-model evaluation hierarchies
+  - Build eval pipelines with reasoning-layer judges for frontier model validation
+  - Implement artifact manifests and differential testing for reproducible AI deployments
+  - Create living golden datasets with automated negative sampling from production failures
 ---
 
 # LLM-as-a-Judge (Automated Eval)
@@ -592,6 +592,189 @@ You can't manually check every chat. Architects build Eval Pipelines that use a 
 
 ---
 
+## The Cross-Model Evaluation Hierarchy
+
+A judge must be **significantly more capable** than the subject. The most common mistake teams make is using the same model tier for both production and evaluation, which produces unreliable scores and false confidence.
+
+### The Capability Gap Principle
+
+```
+┌─────────────────────────────────────────────────────────┐
+│          CROSS-MODEL EVALUATION HIERARCHY               │
+│                                                         │
+│  Production Model          Judge Model                  │
+│  ────────────────          ──────────────               │
+│  Claude Haiku 4.5    →    Claude Sonnet 4.5             │
+│  GPT-4o mini         →    GPT-4o / Claude Sonnet 4.5    │
+│  Claude Sonnet 4.5   →    OpenAI o1 / DeepSeek R1       │
+│  GPT-4o              →    OpenAI o1 / Claude Opus       │
+│                                                         │
+│  ⚠️  INVALID: Same-tier evaluation                      │
+│  Claude Haiku  →  Claude Haiku   ❌ (self-grading)      │
+│  Sonnet 4.5    →  Sonnet 4.5     ❌ (blind spots match) │
+│                                                         │
+│  KEY: Judge must evaluate the LOGIC PATH,               │
+│       not just the final output string.                 │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Why Reasoning Models Matter for Frontier Evaluation
+
+When your production model is already a frontier model (Sonnet 4.5, GPT-4o), a standard model of the same tier **shares the same blind spots**. Your judge must be a **Reasoning Model** (OpenAI o1, DeepSeek R1) because it evaluates the **logic path** of the student, not just the final string.
+
+```typescript
+// src/week7/evals/cross-model-hierarchy.ts
+import Anthropic from '@anthropic-ai/sdk'
+
+/**
+ * Cross-Model Evaluation Hierarchy
+ *
+ * The judge must be AT LEAST one capability tier above the student.
+ * For frontier students, use reasoning models that evaluate logic paths.
+ */
+
+type ModelTier = 'fast' | 'standard' | 'frontier' | 'reasoning'
+
+interface ModelCapability {
+  model: string
+  tier: ModelTier
+  costPer1kTokens: number
+  reasoning: boolean
+}
+
+const MODEL_REGISTRY: Record<string, ModelCapability> = {
+  'claude-haiku-4.5':   { model: 'claude-haiku-4.5',   tier: 'fast',      costPer1kTokens: 0.001, reasoning: false },
+  'gpt-4o-mini':        { model: 'gpt-4o-mini',        tier: 'fast',      costPer1kTokens: 0.0015, reasoning: false },
+  'claude-sonnet-4.5':  { model: 'claude-sonnet-4.5',  tier: 'frontier',  costPer1kTokens: 0.015, reasoning: false },
+  'gpt-4o':             { model: 'gpt-4o',             tier: 'frontier',  costPer1kTokens: 0.015, reasoning: false },
+  'o1':                 { model: 'o1',                  tier: 'reasoning', costPer1kTokens: 0.06,  reasoning: true },
+  'deepseek-r1':        { model: 'deepseek-r1',        tier: 'reasoning', costPer1kTokens: 0.014, reasoning: true },
+  'claude-opus':        { model: 'claude-opus',         tier: 'reasoning', costPer1kTokens: 0.075, reasoning: true },
+}
+
+const TIER_HIERARCHY: Record<ModelTier, number> = {
+  fast: 1,
+  standard: 2,
+  frontier: 3,
+  reasoning: 4,
+}
+
+/**
+ * Select the appropriate judge model for a given production model.
+ * Enforces the capability gap: judge must be at least one tier above.
+ */
+function selectJudgeModel(productionModelId: string): ModelCapability {
+  const student = MODEL_REGISTRY[productionModelId]
+  if (!student) {
+    throw new Error(`Unknown production model: ${productionModelId}`)
+  }
+
+  const studentTierLevel = TIER_HIERARCHY[student.tier]
+
+  // Find the cheapest model that is at least one tier above
+  const candidates = Object.values(MODEL_REGISTRY)
+    .filter(m => TIER_HIERARCHY[m.tier] > studentTierLevel)
+    .sort((a, b) => a.costPer1kTokens - b.costPer1kTokens)
+
+  if (candidates.length === 0) {
+    // Production model is already at the highest tier
+    // Fall back to reasoning model with chain-of-thought enforcement
+    const reasoningModels = Object.values(MODEL_REGISTRY)
+      .filter(m => m.reasoning)
+      .sort((a, b) => a.costPer1kTokens - b.costPer1kTokens)
+
+    if (reasoningModels.length === 0) {
+      throw new Error(
+        `No valid judge for ${productionModelId}. ` +
+        `Cannot self-evaluate — add a reasoning model to the registry.`
+      )
+    }
+    return reasoningModels[0]
+  }
+
+  return candidates[0]
+}
+
+/**
+ * Reasoning-layer evaluation: evaluates the logic path, not just the output.
+ * Used when the production model is already frontier-tier.
+ */
+async function reasoningLayerEval(
+  question: string,
+  context: string,
+  answer: string,
+  judgeModel: string
+): Promise<{
+  logicScore: number
+  faithfulnessScore: number
+  reasoningChain: string[]
+  unsupportedInferences: string[]
+}> {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+  const judgePrompt = `You are a reasoning evaluator. Your task is NOT to check if the answer "sounds right" — it is to trace the LOGICAL CHAIN from context to conclusion.
+
+QUESTION: ${question}
+CONTEXT: ${context}
+ANSWER: ${answer}
+
+EVALUATION STEPS:
+1. Identify every factual claim in the ANSWER
+2. For each claim, trace it back to a specific sentence in the CONTEXT
+3. Flag any claim that requires an INFERENCE not directly supported by context
+4. Score the reasoning chain, not just the final output
+
+A "correct-sounding" answer that reaches the right conclusion through faulty reasoning is a FAIL.
+
+Output JSON:
+{
+  "logicScore": 0.0-1.0,
+  "faithfulnessScore": 0.0-1.0,
+  "reasoningChain": ["Step 1: claim X is supported by context line Y", ...],
+  "unsupportedInferences": ["Claim A has no supporting evidence in context"]
+}`
+
+  const response = await anthropic.messages.create({
+    model: judgeModel,
+    max_tokens: 2048,
+    temperature: 0.0,
+    messages: [{ role: 'user', content: judgePrompt }]
+  })
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : ''
+  return JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || '{}')
+}
+
+// Usage: Automatic judge selection with capability gap enforcement
+const productionModel = 'claude-haiku-4.5'
+const judge = selectJudgeModel(productionModel)
+console.log(`Production: ${productionModel} (${MODEL_REGISTRY[productionModel].tier})`)
+console.log(`Judge: ${judge.model} (${judge.tier})`)
+// Production: claude-haiku-4.5 (fast)
+// Judge: claude-sonnet-4.5 (frontier)
+
+// For frontier production models, reasoning evaluation is required
+const frontierModel = 'claude-sonnet-4.5'
+const frontierJudge = selectJudgeModel(frontierModel)
+console.log(`Production: ${frontierModel} (${MODEL_REGISTRY[frontierModel].tier})`)
+console.log(`Judge: ${frontierJudge.model} (${frontierJudge.tier})`)
+// Production: claude-sonnet-4.5 (frontier)
+// Judge: deepseek-r1 (reasoning)
+```
+
+### Cost-Capability Trade-off Matrix
+
+| Production Model | Judge Model | Judge Cost/Eval | Capability Gap | Use Case |
+|-----------------|-------------|-----------------|----------------|----------|
+| Haiku 4.5 ($0.001/1K) | Sonnet 4.5 ($0.015/1K) | ~$0.003 | Fast → Frontier | High-volume customer support |
+| GPT-4o mini ($0.0015/1K) | GPT-4o ($0.015/1K) | ~$0.005 | Fast → Frontier | Chatbot QA |
+| Sonnet 4.5 ($0.015/1K) | o1 ($0.06/1K) | ~$0.02 | Frontier → Reasoning | RAG for regulated industries |
+| GPT-4o ($0.015/1K) | DeepSeek R1 ($0.014/1K) | ~$0.015 | Frontier → Reasoning | Code generation review |
+
+> **Architect's Tip**: "A judge must be significantly more capable than the subject. If your production model is Haiku, your judge should be Sonnet or GPT-4o. If your production model is already a 'Frontier' model (like Sonnet), your judge must be a Reasoning Model (like OpenAI o1 or DeepSeek R1). This 'Reasoning Layer' is essential because it evaluates the **logic path** of the student, not just the final string."
+
+---
+
 ## When to Use LLM-as-a-Judge
 
 | Evaluation Type | Use LLM-as-a-Judge? | Alternative |
@@ -924,54 +1107,336 @@ console.log(`\n📊 Pass Rate: ${(passRate * 100).toFixed(1)}%`)
 
 ---
 
-## Semantic Versioning for AI Systems
+## Semantic Versioning for AI Systems: The Artifact Manifest
 
-**The Problem**: In traditional software, you version code. In AI, you must version **Prompt + Model + Data**.
+**The Problem**: In traditional software, you version code. In AI, you must version the **Inference Context** — the complete combination of Prompt + Model + Retrieval Configuration that determines system behavior.
 
-### What to Version
+### The Artifact Manifest
+
+Every deployment must be tagged with a manifest that captures the full inference context. This enables **Differential Testing**: comparing version A and version B on the same golden dataset to identify specific regressions.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   ARTIFACT MANIFEST                         │
+│                                                             │
+│   ┌─────────────────┐  ┌─────────────────┐                │
+│   │   Model_ID       │  │ System_Prompt   │                │
+│   │   claude-sonnet  │  │ _Hash           │                │
+│   │   -4.5           │  │ sha256:a1b2c3.. │                │
+│   └────────┬────────┘  └────────┬────────┘                │
+│            │                     │                          │
+│            └──────────┬──────────┘                          │
+│                       │                                     │
+│            ┌──────────▼──────────┐                          │
+│            │ Retrieval_Config_ID │                          │
+│            │ hybrid-search-v2    │                          │
+│            │ chunk_size: 512     │                          │
+│            │ top_k: 5            │                          │
+│            │ reranker: cohere    │                          │
+│            └──────────┬──────────┘                          │
+│                       │                                     │
+│                       ▼                                     │
+│            ┌─────────────────────┐                          │
+│            │  MANIFEST TAG        │                          │
+│            │  v1.2.3              │                          │
+│            │  2025-02-01T14:30Z   │                          │
+│            └─────────────────────┘                          │
+│                                                             │
+│  Differential Test Report:                                  │
+│  "v1.2.3 passed 95% of Golden Dataset,                     │
+│   but FAILED on 3 edge cases where v1.2.2 passed."         │
+│                                                             │
+│  → Director can make informed risk-based deploy decision.   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### What to Version: The Inference Context
 
 ```typescript
-export interface AISystemVersion {
-  version: string         // "1.2.3"
-  model: string          // "claude-3-5-sonnet-20240620"
-  prompt_template_hash: string  // SHA-256 of system prompt
-  rag_strategy: string   // "hybrid-search-v2"
-  eval_results: {
-    faithfulness_avg: number
-    relevance_avg: number
-    cost_per_query: number
-  }
-  deployed_at: Date
+// src/week7/evals/artifact-manifest.ts
+import crypto from 'crypto'
+
+/**
+ * Artifact Manifest: The complete inference context for reproducible AI.
+ *
+ * In traditional software, you version code.
+ * In AI, you version the INFERENCE CONTEXT:
+ *   Model_ID + System_Prompt_Hash + Retrieval_Config_ID
+ */
+
+export interface RetrievalConfig {
+  strategy: string        // "vector-only" | "hybrid-search" | "hyde"
+  chunkSize: number       // 256 | 512 | 1024
+  chunkOverlap: number    // 50 | 100
+  topK: number            // Number of results to retrieve
+  reranker?: string       // "cohere" | "cross-encoder" | null
+  embeddingModel: string  // "text-embedding-3-small"
 }
 
-// Example versions
-const versions: AISystemVersion[] = [
+export interface ArtifactManifest {
+  version: string                    // Semantic version: "1.2.3"
+  modelId: string                    // Exact model identifier
+  systemPromptHash: string           // SHA-256 of the system prompt
+  systemPromptPreview: string        // First 100 chars for quick identification
+  retrievalConfigId: string          // Hash of retrieval configuration
+  retrievalConfig: RetrievalConfig   // Full retrieval configuration
+  goldenDatasetVersion: string       // Version of the golden dataset used
+  evalResults: {
+    faithfulnessAvg: number
+    relevanceAvg: number
+    safetyPassRate: number
+    compliancePassRate: number
+    costPerQuery: number
+    latencyP95Ms: number
+  }
+  parentVersion?: string             // Previous version for diff tracking
+  deployedAt: Date
+  deployedBy: string
+}
+
+/**
+ * Generate a deterministic manifest for an AI system version
+ */
+function generateManifest(
+  version: string,
+  modelId: string,
+  systemPrompt: string,
+  retrievalConfig: RetrievalConfig,
+  evalResults: ArtifactManifest['evalResults'],
+  parentVersion?: string
+): ArtifactManifest {
+  const systemPromptHash = crypto
+    .createHash('sha256')
+    .update(systemPrompt)
+    .digest('hex')
+    .slice(0, 12)
+
+  const retrievalConfigId = crypto
+    .createHash('sha256')
+    .update(JSON.stringify(retrievalConfig))
+    .digest('hex')
+    .slice(0, 12)
+
+  return {
+    version,
+    modelId,
+    systemPromptHash: `sha256:${systemPromptHash}`,
+    systemPromptPreview: systemPrompt.slice(0, 100) + '...',
+    retrievalConfigId: `config:${retrievalConfigId}`,
+    retrievalConfig,
+    goldenDatasetVersion: 'gd-v3.2',
+    evalResults,
+    parentVersion,
+    deployedAt: new Date(),
+    deployedBy: process.env.DEPLOYER || 'ci-pipeline'
+  }
+}
+
+// Example: Two versions of the same system
+const v1_2_2 = generateManifest(
+  '1.2.2',
+  'claude-haiku-4.5',
+  'You are a professional financial services assistant. Always include regulatory disclaimers when discussing investments. Never approximate values.',
   {
-    version: '1.0.0',
-    model: 'claude-3-haiku-20240307',
-    prompt_template_hash: 'a1b2c3...',
-    rag_strategy: 'vector-only',
-    eval_results: {
-      faithfulness_avg: 0.75,
-      relevance_avg: 0.82,
-      cost_per_query: 0.012
-    },
-    deployed_at: new Date('2025-01-01')
+    strategy: 'vector-only',
+    chunkSize: 512,
+    chunkOverlap: 50,
+    topK: 5,
+    embeddingModel: 'text-embedding-3-small'
   },
   {
-    version: '1.1.0',
-    model: 'claude-3-haiku-20240307',
-    prompt_template_hash: 'd4e5f6...',  // ← Changed prompt
-    rag_strategy: 'hybrid-search',       // ← Changed strategy
-    eval_results: {
-      faithfulness_avg: 0.88,  // ✅ Improved
-      relevance_avg: 0.90,     // ✅ Improved
-      cost_per_query: 0.018    // ⚠️ Increased
-    },
-    deployed_at: new Date('2025-02-01')
+    faithfulnessAvg: 0.95,
+    relevanceAvg: 0.88,
+    safetyPassRate: 1.0,
+    compliancePassRate: 1.0,
+    costPerQuery: 0.012,
+    latencyP95Ms: 2400
   }
-]
+)
+
+const v1_2_3 = generateManifest(
+  '1.2.3',
+  'claude-haiku-4.5',
+  'You are a helpful and friendly financial assistant. Provide clear, accurate information about investment products. Be approachable.',
+  {
+    strategy: 'hybrid-search',       // ← Changed strategy
+    chunkSize: 512,
+    chunkOverlap: 100,               // ← Changed overlap
+    topK: 5,
+    reranker: 'cohere',              // ← Added reranker
+    embeddingModel: 'text-embedding-3-small'
+  },
+  {
+    faithfulnessAvg: 0.80,           // ⚠️ DROPPED from 0.95
+    relevanceAvg: 0.92,              // ✅ Improved
+    safetyPassRate: 1.0,
+    compliancePassRate: 0.97,        // ⚠️ DROPPED from 1.0
+    costPerQuery: 0.018,             // ⚠️ Increased
+    latencyP95Ms: 1800               // ✅ Improved
+  },
+  '1.2.2'                            // Parent version for diff
+)
 ```
+
+### Differential Testing: Version A vs Version B
+
+```typescript
+// src/week7/evals/differential-testing.ts
+
+/**
+ * Differential Testing: Compare two versions on the same golden dataset.
+ *
+ * This is NOT just "did the new version pass?"
+ * It's "what SPECIFICALLY changed between versions?"
+ */
+
+interface DifferentialReport {
+  versionA: string
+  versionB: string
+  summary: {
+    totalTests: number
+    bothPassed: number
+    bothFailed: number
+    regressions: number   // A passed, B failed (BAD)
+    improvements: number  // A failed, B passed (GOOD)
+  }
+  regressionDetails: {
+    testId: string
+    query: string
+    versionAScore: number
+    versionBScore: number
+    dimension: string     // Which dimension regressed
+    explanation: string
+  }[]
+  recommendation: 'DEPLOY' | 'BLOCK' | 'REVIEW_REGRESSIONS'
+}
+
+async function differentialTest(
+  manifestA: ArtifactManifest,
+  manifestB: ArtifactManifest,
+  goldenDataset: GoldenExample[]
+): Promise<DifferentialReport> {
+  console.log(`📊 Differential Test: v${manifestA.version} vs v${manifestB.version}`)
+  console.log(`   Model A: ${manifestA.modelId} | Prompt: ${manifestA.systemPromptHash}`)
+  console.log(`   Model B: ${manifestB.modelId} | Prompt: ${manifestB.systemPromptHash}`)
+
+  const resultsA = await runEvalPipeline(manifestA)
+  const resultsB = await runEvalPipeline(manifestB)
+
+  let bothPassed = 0
+  let bothFailed = 0
+  let regressions = 0
+  let improvements = 0
+  const regressionDetails: DifferentialReport['regressionDetails'] = []
+
+  for (let i = 0; i &lt; goldenDataset.length; i++) {
+    const a = resultsA[i]
+    const b = resultsB[i]
+
+    if (a.passed && b.passed) {
+      bothPassed++
+    } else if (!a.passed && !b.passed) {
+      bothFailed++
+    } else if (a.passed && !b.passed) {
+      // REGRESSION: Version A passed but Version B failed
+      regressions++
+
+      // Identify WHICH dimension regressed
+      const dimensions = ['faithfulness', 'relevance', 'safety', 'compliance']
+      for (const dim of dimensions) {
+        const scoreA = a.scores[dim] || 1.0
+        const scoreB = b.scores[dim] || 1.0
+        if (scoreA > scoreB + 0.1) {
+          regressionDetails.push({
+            testId: goldenDataset[i].id,
+            query: goldenDataset[i].query.slice(0, 100),
+            versionAScore: scoreA,
+            versionBScore: scoreB,
+            dimension: dim,
+            explanation: `${dim} dropped from ${scoreA.toFixed(2)} to ${scoreB.toFixed(2)}`
+          })
+        }
+      }
+    } else {
+      improvements++
+    }
+  }
+
+  // Decision logic
+  let recommendation: DifferentialReport['recommendation']
+  if (regressions === 0) {
+    recommendation = 'DEPLOY'
+  } else if (regressionDetails.some(r => r.dimension === 'faithfulness' || r.dimension === 'safety')) {
+    recommendation = 'BLOCK'  // Never regress on faithfulness or safety
+  } else if (regressions &lt;= 3 && improvements > regressions) {
+    recommendation = 'REVIEW_REGRESSIONS'  // Net positive, but review edge cases
+  } else {
+    recommendation = 'BLOCK'
+  }
+
+  const report: DifferentialReport = {
+    versionA: manifestA.version,
+    versionB: manifestB.version,
+    summary: {
+      totalTests: goldenDataset.length,
+      bothPassed,
+      bothFailed,
+      regressions,
+      improvements
+    },
+    regressionDetails,
+    recommendation
+  }
+
+  // Print the report a Director can act on
+  console.log(`\n${'═'.repeat(60)}`)
+  console.log(`  DIFFERENTIAL TEST REPORT`)
+  console.log(`  v${manifestA.version} → v${manifestB.version}`)
+  console.log(`${'═'.repeat(60)}`)
+  console.log(`  Total Tests:   ${report.summary.totalTests}`)
+  console.log(`  Both Passed:   ${report.summary.bothPassed}`)
+  console.log(`  Improvements:  ${report.summary.improvements} ✅`)
+  console.log(`  Regressions:   ${report.summary.regressions} ${regressions > 0 ? '🚨' : '✅'}`)
+  console.log(`${'─'.repeat(60)}`)
+
+  if (regressionDetails.length > 0) {
+    console.log(`  REGRESSION DETAILS:`)
+    for (const detail of regressionDetails) {
+      console.log(`    [${detail.testId}] ${detail.dimension}: ${detail.versionAScore.toFixed(2)} → ${detail.versionBScore.toFixed(2)}`)
+      console.log(`      Query: "${detail.query}"`)
+    }
+    console.log(`${'─'.repeat(60)}`)
+  }
+
+  console.log(`  RECOMMENDATION: ${report.recommendation}`)
+  console.log(`${'═'.repeat(60)}`)
+
+  return report
+}
+
+// Example output:
+// ════════════════════════════════════════════════════════════
+//   DIFFERENTIAL TEST REPORT
+//   v1.2.2 → v1.2.3
+// ════════════════════════════════════════════════════════════
+//   Total Tests:   500
+//   Both Passed:   472
+//   Improvements:  15 ✅
+//   Regressions:   3 🚨
+// ──────────────────────────────────────────────────────────
+//   REGRESSION DETAILS:
+//     [INV-001] faithfulness: 0.95 → 0.70
+//       Query: "Should I invest all my savings in tech stocks?"
+//     [REG-045] compliance: 1.00 → 0.80
+//       Query: "What are the tax implications of selling my mutual fund?"
+//     [BAL-112] faithfulness: 0.98 → 0.65
+//       Query: "What's my account balance?"
+// ──────────────────────────────────────────────────────────
+//   RECOMMENDATION: BLOCK
+// ════════════════════════════════════════════════════════════
+```
+
+> **Architect's Tip**: "In traditional software, you version code. In AI, you version the Inference Context. Every deployment must be tagged with a manifest: `Model_ID + System_Prompt_Hash + Retrieval_Config_ID`. Your evaluation report must explicitly state: 'Version B passed 95% of the Golden Dataset, but failed on 3 edge cases where Version A passed.' This 'Differential Testing' allows a Director to make an informed risk-based decision on whether to promote to production."
 
 ### The Deployment Rule
 
@@ -1399,7 +1864,336 @@ Consider reviewing recent changes to prompts or retrieval logic.`
 }
 ```
 
-### Golden Dataset Maintenance
+### Golden Dataset Lifecycle: The Living Production Feedback Loop
+
+A Golden Dataset that only contains "Happy Path" success cases is a **liability**. An Architect treats the golden dataset not as a static file, but as a **living production feedback loop** that automatically ingests the failures your system is prone to making in the wild.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│           THE GOLDEN DATASET LIFECYCLE                      │
+│                                                             │
+│   PRODUCTION TRAFFIC                                        │
+│        │                                                    │
+│        ▼                                                    │
+│   ┌─────────┐    Thumbs Down    ┌──────────────────┐       │
+│   │ User    │ ──────────────── → │ Negative Signal  │       │
+│   │ Session │    Guardrail Trip  │ Collector        │       │
+│   └─────────┘    Low Eval Score  └────────┬─────────┘       │
+│                                           │                 │
+│                                           ▼                 │
+│                                  ┌──────────────────┐       │
+│                                  │ De-identification │       │
+│                                  │ Pipeline          │       │
+│                                  │ - Strip PII       │       │
+│                                  │ - Hash user IDs   │       │
+│                                  │ - Remove metadata  │       │
+│                                  └────────┬─────────┘       │
+│                                           │                 │
+│                                           ▼                 │
+│                                  ┌──────────────────┐       │
+│                                  │ Human Review      │       │
+│                                  │ Queue             │       │
+│                                  │ - Verify failure  │       │
+│                                  │ - Write expected  │       │
+│                                  │ - Assign category │       │
+│                                  └────────┬─────────┘       │
+│                                           │                 │
+│                                           ▼                 │
+│   ┌──────────────────────────────────────────────────┐     │
+│   │              GOLDEN DATASET                       │     │
+│   │                                                   │     │
+│   │  Happy Path (40%)  │  Negative Samples (35%)      │     │
+│   │  ─────────────────  │  ──────────────────────      │     │
+│   │  Standard queries   │  Thumbs-down interactions    │     │
+│   │  Known good answers │  Guardrail trigger cases     │     │
+│   │                     │  Production hallucinations   │     │
+│   │                     │                              │     │
+│   │  Edge Cases (15%)  │  Adversarial (10%)           │     │
+│   │  ─────────────────  │  ──────────────────────      │     │
+│   │  Empty inputs       │  Prompt injection attempts   │     │
+│   │  Multi-language      │  Boundary-pushing queries   │     │
+│   │  Ambiguous queries  │  Known attack patterns       │     │
+│   └──────────────────────────────────────────────────┘     │
+│                          │                                  │
+│                          ▼                                  │
+│                 [Regression Suite]                           │
+│                 Run on every deployment                      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Automated Negative Sampling from Production
+
+```typescript
+// src/week7/evals/negative-sampling.ts
+
+/**
+ * Negative Sampling Pipeline
+ *
+ * Automatically ingests production failures into the golden dataset.
+ * Every thumbs-down, guardrail trigger, or low eval score becomes
+ * a regression test case — ensuring your "Teacher" model specifically
+ * tests for errors your "Student" model is prone to making.
+ */
+
+interface NegativeSignal {
+  type: 'thumbs_down' | 'guardrail_trigger' | 'low_eval_score' | 'escalation'
+  query: string
+  response: string
+  context: string
+  userId: string
+  metadata: Record<string, unknown>
+  timestamp: Date
+}
+
+interface DeidentifiedSample {
+  query: string
+  response: string
+  context: string
+  signalType: NegativeSignal['type']
+  failureCategory: 'hallucination' | 'tone' | 'safety' | 'relevance' | 'compliance'
+  severity: 'critical' | 'high' | 'medium' | 'low'
+}
+
+/**
+ * Step 1: Collect negative signals from multiple sources
+ */
+async function collectNegativeSignals(): Promise<NegativeSignal[]> {
+  const signals: NegativeSignal[] = []
+
+  // Source 1: User thumbs-down feedback
+  const thumbsDown = await prisma.userFeedback.findMany({
+    where: {
+      rating: 'negative',
+      processedForGoldenDataset: false,
+      createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } // Last 24h
+    },
+    include: { queryLog: true }
+  })
+
+  for (const feedback of thumbsDown) {
+    signals.push({
+      type: 'thumbs_down',
+      query: feedback.queryLog.query,
+      response: feedback.queryLog.response,
+      context: feedback.queryLog.retrievedContext,
+      userId: feedback.userId,
+      metadata: { feedbackId: feedback.id, userComment: feedback.comment },
+      timestamp: feedback.createdAt
+    })
+  }
+
+  // Source 2: Guardrail triggers (blocked outputs)
+  const guardrailTriggers = await prisma.guardrailLog.findMany({
+    where: {
+      triggered: true,
+      processedForGoldenDataset: false,
+      createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+    }
+  })
+
+  for (const trigger of guardrailTriggers) {
+    signals.push({
+      type: 'guardrail_trigger',
+      query: trigger.originalQuery,
+      response: trigger.blockedResponse,
+      context: trigger.retrievedContext,
+      userId: trigger.userId,
+      metadata: { guardrailType: trigger.guardrailType, reason: trigger.blockReason },
+      timestamp: trigger.createdAt
+    })
+  }
+
+  // Source 3: Low continuous eval scores
+  const lowScores = await prisma.continuousEval.findMany({
+    where: {
+      faithfulnessScore: { lt: 0.7 },
+      processedForGoldenDataset: false,
+      createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+    }
+  })
+
+  for (const evalResult of lowScores) {
+    signals.push({
+      type: 'low_eval_score',
+      query: evalResult.query,
+      response: evalResult.response,
+      context: evalResult.context,
+      userId: evalResult.userId,
+      metadata: {
+        faithfulness: evalResult.faithfulnessScore,
+        relevance: evalResult.relevanceScore
+      },
+      timestamp: evalResult.createdAt
+    })
+  }
+
+  return signals
+}
+
+/**
+ * Step 2: De-identify signals (CRITICAL for privacy compliance)
+ */
+function deidentifySignal(signal: NegativeSignal): DeidentifiedSample {
+  // Strip PII from query and response
+  const piiPatterns = [
+    /\b[A-Z][a-z]+ [A-Z][a-z]+\b/g,           // Names
+    /\b\d{3}-\d{2}-\d{4}\b/g,                   // SSN
+    /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, // Email
+    /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g,  // Credit card
+    /\b\d{10,}\b/g,                              // Phone/Account numbers
+  ]
+
+  let cleanQuery = signal.query
+  let cleanResponse = signal.response
+  let cleanContext = signal.context
+
+  for (const pattern of piiPatterns) {
+    cleanQuery = cleanQuery.replace(pattern, '[REDACTED]')
+    cleanResponse = cleanResponse.replace(pattern, '[REDACTED]')
+    cleanContext = cleanContext.replace(pattern, '[REDACTED]')
+  }
+
+  // Classify failure category based on signal type and metadata
+  const failureCategory = classifyFailure(signal)
+  const severity = classifySeverity(signal)
+
+  return {
+    query: cleanQuery,
+    response: cleanResponse,
+    context: cleanContext,
+    signalType: signal.type,
+    failureCategory,
+    severity
+  }
+}
+
+function classifyFailure(signal: NegativeSignal): DeidentifiedSample['failureCategory'] {
+  if (signal.type === 'guardrail_trigger') {
+    const reason = signal.metadata.guardrailType as string
+    if (reason === 'pii' || reason === 'toxicity') return 'safety'
+    if (reason === 'compliance') return 'compliance'
+  }
+
+  if (signal.type === 'low_eval_score') {
+    const faithfulness = signal.metadata.faithfulness as number
+    if (faithfulness &lt; 0.5) return 'hallucination'
+  }
+
+  if (signal.type === 'thumbs_down') return 'relevance'
+
+  return 'relevance'
+}
+
+function classifySeverity(signal: NegativeSignal): DeidentifiedSample['severity'] {
+  if (signal.type === 'guardrail_trigger') return 'critical'
+  if (signal.type === 'low_eval_score') {
+    const faithfulness = signal.metadata.faithfulness as number
+    if (faithfulness &lt; 0.3) return 'critical'
+    if (faithfulness &lt; 0.5) return 'high'
+    return 'medium'
+  }
+  return 'medium'
+}
+
+/**
+ * Step 3: Ingest into golden dataset with human review queue
+ */
+async function ingestNegativeSamples(): Promise<{
+  collected: number
+  deidentified: number
+  addedToReviewQueue: number
+  autoAddedToDataset: number
+}> {
+  const signals = await collectNegativeSignals()
+  const deidentified = signals.map(deidentifySignal)
+
+  let addedToReviewQueue = 0
+  let autoAddedToDataset = 0
+
+  for (const sample of deidentified) {
+    // Check for duplicates (semantic similarity, not exact match)
+    const isDuplicate = await checkSemanticDuplicate(sample.query)
+    if (isDuplicate) continue
+
+    if (sample.severity === 'critical') {
+      // Critical failures: auto-add to golden dataset with human review flag
+      await prisma.goldenExample.create({
+        data: {
+          query: sample.query,
+          context: sample.context,
+          badResponse: sample.response,  // Store the BAD response
+          expectedAnswer: null,           // Human must provide correct answer
+          failureCategory: sample.failureCategory,
+          severity: sample.severity,
+          source: 'negative_sampling',
+          needsHumanReview: true,
+          passRateThreshold: 0.95
+        }
+      })
+      autoAddedToDataset++
+    } else {
+      // Non-critical: add to human review queue
+      await prisma.reviewQueue.create({
+        data: {
+          query: sample.query,
+          context: sample.context,
+          badResponse: sample.response,
+          failureCategory: sample.failureCategory,
+          severity: sample.severity,
+          status: 'pending_review'
+        }
+      })
+      addedToReviewQueue++
+    }
+
+    // Mark original signal as processed
+    await markSignalProcessed(sample)
+  }
+
+  console.log(`📊 Negative Sampling Results:`)
+  console.log(`   Collected: ${signals.length} signals`)
+  console.log(`   De-identified: ${deidentified.length} samples`)
+  console.log(`   Auto-added (critical): ${autoAddedToDataset}`)
+  console.log(`   Queued for review: ${addedToReviewQueue}`)
+
+  return {
+    collected: signals.length,
+    deidentified: deidentified.length,
+    addedToReviewQueue,
+    autoAddedToDataset
+  }
+}
+
+// Run daily as a cron job
+// Schedule: 0 2 * * * (2 AM daily)
+async function dailyNegativeSamplingJob() {
+  console.log('🔄 Running daily negative sampling pipeline...')
+  const results = await ingestNegativeSamples()
+
+  // Alert if critical failures are spiking
+  if (results.autoAddedToDataset > 10) {
+    await alertSlack({
+      channel: '#ai-alerts',
+      text: `🚨 ${results.autoAddedToDataset} critical failures auto-added to golden dataset in the last 24h. Review immediately.`
+    })
+  }
+}
+```
+
+### Golden Dataset Composition Targets
+
+| Category | Percentage | Source | Purpose |
+|----------|-----------|--------|---------|
+| **Happy Path** | 40% | Manual curation by domain experts | Baseline correctness |
+| **Negative Samples** | 35% | Production failures (thumbs-down, guardrails) | Prevent known regressions |
+| **Edge Cases** | 15% | QA team + adversarial testing | Boundary conditions |
+| **Adversarial** | 10% | Red team + prompt injection attempts | Security hardening |
+
+> **Architect's Tip**: "A Golden Dataset that only contains 'Happy Path' success cases is a liability. Your evaluation pipeline must automatically ingest Production Failures. Every time a user gives a 'Thumbs Down' or a guardrail triggers, that specific interaction should be de-identified and added to your Regression Suite. This ensures your 'Teacher' model specifically tests for the errors your 'Student' model is prone to making in the wild."
+
+### Legacy Maintenance (Simple Version)
+
+For teams starting out, begin with this simpler approach and evolve to the full lifecycle:
 
 ```typescript
 /**
@@ -1458,22 +2252,98 @@ async function maintainGoldenDataset() {
 
 ---
 
+## Architect Challenge: The Deployment Gate Decision
+
+You are the Chief Product Officer. Your team has improved the system prompt to be more polite to customers. Your Automated Eval shows:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│         DIFFERENTIAL TEST REPORT                        │
+│         v2.3.1 → v2.4.0 (Polite Prompt Update)         │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  Metric          v2.3.1    v2.4.0    Change             │
+│  ──────────────  ────────  ────────  ──────             │
+│  Relevance       0.85      0.92      +0.07  ✅          │
+│  Faithfulness    0.95      0.80      -0.15  🚨          │
+│  Safety          1.00      1.00       0.00  ✅          │
+│  Compliance      1.00      0.98      -0.02  ⚠️          │
+│                                                         │
+│  RECOMMENDATION: ???                                    │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Do you deploy this change?**
+
+**A)** Yes, because the AI is more relevant and polite now.
+
+**B)** No. A drop in Faithfulness means the AI is now "hallucinating" — it's giving polite and relevant-sounding answers that aren't actually supported by the retrieved data. This is a Regression Failure. You must revert and tune the prompt to maintain the 0.95 Faithfulness floor.
+
+**C)** Yes, but only to 10% of users.
+
+**D)** No, because the latency increased slightly.
+
+---
+
+**Correct Answer: B**
+
+An Architect **never** sacrifices "Grounding/Faithfulness" for "Style" in a production RAG system. Here's why:
+
+- **Relevance** measures "did the answer address the question?" — important, but not dangerous when slightly off
+- **Faithfulness** measures "is the answer actually supported by the retrieved data?" — when this drops, the AI is generating **confident, polite hallucinations**
+- A polite hallucination is **more dangerous** than a blunt correct answer, because users trust polite responses more
+- The correct action: revert to v2.3.1, then iterate on the prompt to achieve **both** higher relevance AND maintained faithfulness
+
+```typescript
+// The correct deployment gate logic
+function shouldDeploy(oldManifest: ArtifactManifest, newManifest: ArtifactManifest): boolean {
+  const oldEval = oldManifest.evalResults
+  const newEval = newManifest.evalResults
+
+  // HARD FLOOR: Faithfulness and Safety can NEVER decrease
+  if (newEval.faithfulnessAvg &lt; oldEval.faithfulnessAvg - 0.02) {
+    console.log('🚨 BLOCKED: Faithfulness regression detected')
+    console.log(`   ${oldEval.faithfulnessAvg.toFixed(2)} → ${newEval.faithfulnessAvg.toFixed(2)}`)
+    return false
+  }
+
+  if (newEval.safetyPassRate &lt; oldEval.safetyPassRate) {
+    console.log('🚨 BLOCKED: Safety regression detected')
+    return false
+  }
+
+  if (newEval.compliancePassRate &lt; oldEval.compliancePassRate - 0.01) {
+    console.log('🚨 BLOCKED: Compliance regression detected')
+    return false
+  }
+
+  // SOFT METRICS: Relevance and latency can trade off
+  console.log('✅ Hard floors maintained, checking soft metrics...')
+  return true
+}
+```
+
+> **The Faithfulness Hierarchy**: In production RAG systems, the metric priority is always: **Safety > Compliance > Faithfulness > Relevance > Style**. You can improve lower-priority metrics, but never at the expense of higher-priority ones.
+
+---
+
 ## Key Takeaways
 
-1. **LLM-as-a-Judge**: Use stronger model to evaluate production model
-2. **Golden Dataset**: Curated test cases with known correct answers
-3. **Eval Pipeline**: Automated testing before every deployment
-4. **Semantic Versioning**: Version prompt + model + data, not just code
-5. **Deployment Gate**: Require 90%+ pass rate before production deploy
-6. **Continuous Eval**: Sample production traffic hourly to detect drift
+1. **Cross-Model Evaluation Hierarchy**: The judge must be at least one capability tier above the student — frontier models require reasoning-model judges
+2. **Golden Dataset as Living Feedback Loop**: Automatically ingest production failures (thumbs-down, guardrail triggers) into your regression suite via negative sampling
+3. **Artifact Manifest**: Version the full inference context (Model_ID + System_Prompt_Hash + Retrieval_Config_ID), not just code
+4. **Differential Testing**: Compare version A vs B on the same golden dataset to identify specific regressions before deploying
+5. **Faithfulness Floor**: Never sacrifice grounding/faithfulness for style or relevance — polite hallucinations are more dangerous than blunt correct answers
+6. **Deployment Gate**: Require 95%+ pass rate with hard floors on safety, compliance, and faithfulness
+7. **Continuous Eval**: Sample production traffic hourly to detect drift before it becomes a crisis
 
 ---
 
 ## Next Steps
 
 - **Week 7 Lab**: Build Production Dashboard with all three pillars
-- **Capstone Project**: Implement eval pipeline with 100% faithfulness requirement
-- **Production**: Set up continuous eval loop with alerting
+- **Capstone Project**: Implement eval pipeline with cross-model hierarchy and differential testing
+- **Production**: Set up negative sampling pipeline with daily golden dataset ingestion
 
 ---
 
