@@ -21,6 +21,133 @@ Fine-tuning adapts a pre-trained model to your specific use case.
 - Limited training data (&lt;100 examples)
 - Requirements change frequently
 
+**Architect's Tip — Token-Density Evaluation (The Graduation Signal)**: "If your system prompt is 2,000+ tokens of few-shot examples and formatting rules, you are paying a **Context Tax** on every single request. An Architect calculates the **Break-even Point**: if fine-tuning a smaller model can achieve the same accuracy with a 100-token prompt, the reduction in inference latency and token cost will pay for the training run within the first 10,000 queries. That's your signal to graduate from prompting to training."
+
+```typescript
+/**
+ * Token-Density Evaluation: Should You Fine-Tune?
+ *
+ * Problem: Long system prompts are an invisible cost multiplier.
+ * A 2,000-token prompt adds ~$0.006 per request with Sonnet.
+ * At 100K requests/month, that's $600/month in "Context Tax."
+ *
+ * Solution: Calculate whether fine-tuning a smaller model would
+ * eliminate the prompt overhead and pay for itself.
+ *
+ * Interview Defense: "We calculate the break-even point before
+ * any fine-tuning project. If the training cost won't be recovered
+ * within 30 days of inference savings, we keep prompting."
+ */
+
+interface FineTuningROI {
+  currentPromptTokens: number       // System prompt size (tokens)
+  postFineTunePromptTokens: number  // Prompt after fine-tuning (~50-100)
+  queriesPerMonth: number
+  currentModelCostPer1KTokens: number  // e.g., $0.003 for Sonnet input
+  fineTunedModelCostPer1KTokens: number // e.g., $0.0004 for Haiku input
+  trainingCost: number              // One-time fine-tuning cost
+}
+
+function calculateFineTuningROI(config: FineTuningROI): {
+  monthlyCurrentCost: number
+  monthlyFineTunedCost: number
+  monthlySavings: number
+  breakEvenQueries: number
+  breakEvenMonths: number
+  recommendation: 'fine-tune' | 'keep-prompting'
+} {
+  // Current cost: prompt tokens × queries × cost
+  const currentPromptCost =
+    (config.currentPromptTokens / 1000) *
+    config.currentModelCostPer1KTokens *
+    config.queriesPerMonth
+
+  // Fine-tuned cost: reduced prompt × queries × cheaper model
+  const fineTunedPromptCost =
+    (config.postFineTunePromptTokens / 1000) *
+    config.fineTunedModelCostPer1KTokens *
+    config.queriesPerMonth
+
+  const monthlySavings = currentPromptCost - fineTunedPromptCost
+  const breakEvenMonths = monthlySavings > 0
+    ? config.trainingCost / monthlySavings
+    : Infinity
+
+  return {
+    monthlyCurrentCost: currentPromptCost,
+    monthlyFineTunedCost: fineTunedPromptCost,
+    monthlySavings,
+    breakEvenQueries: Math.ceil(config.trainingCost / (monthlySavings / config.queriesPerMonth)),
+    breakEvenMonths: Math.ceil(breakEvenMonths),
+    recommendation: breakEvenMonths <= 3 ? 'fine-tune' : 'keep-prompting'
+  }
+}
+
+// Example: Customer support agent with 2,000-token prompt
+//
+// const roi = calculateFineTuningROI({
+//   currentPromptTokens: 2000,
+//   postFineTunePromptTokens: 100,
+//   queriesPerMonth: 100_000,
+//   currentModelCostPer1KTokens: 0.003,   // Sonnet input
+//   fineTunedModelCostPer1KTokens: 0.0004, // Haiku input
+//   trainingCost: 50                        // Fine-tuning ~500 examples
+// })
+//
+// Result:
+//   Monthly current cost:     $600.00  (2K tokens × 100K queries × $0.003)
+//   Monthly fine-tuned cost:   $4.00   (100 tokens × 100K queries × $0.0004)
+//   Monthly savings:         $596.00
+//   Break-even:              84 queries (< 1 day!)
+//   Recommendation:          FINE-TUNE ✅
+//
+// ROI: Training costs $50, saves $596/month → 11,920% annual ROI
+```
+
+**Architect's Tip — Behavior vs. Memory Guardrail**: "Fine-tuning is for **Behavior**, not **Memory**. Use fine-tuning to teach the model a specific 'Medical Scribe' tone, a strict JSON schema output format, or a particular classification rubric. **Never** use it to teach the model new facts like the latest pharmaceutical prices — facts go stale, and the model will hallucinate outdated information with high confidence. For facts, use **RAG**. A hardened architecture uses a **fine-tuned model as the RAG Processor** — trained to be better at extracting and formatting facts from retrieved chunks without hallucinating."
+
+```typescript
+/**
+ * The Behavior vs. Memory Matrix
+ *
+ * FINE-TUNING (Behavior — baked into weights):
+ * ✅ Output format: "Always return valid JSON with this schema"
+ * ✅ Tone/style: "Write like a concise medical scribe"
+ * ✅ Classification: "Categorize support tickets into 5 buckets"
+ * ✅ Domain terminology: "Use ICD-10 codes, not plain English"
+ *
+ * RAG (Memory — retrieved at query time):
+ * ✅ Current facts: "Latest drug prices as of Q1 2026"
+ * ✅ Company data: "Our refund policy changed last week"
+ * ✅ User-specific: "This patient's medication history"
+ * ✅ Evolving knowledge: "New FDA guidelines published yesterday"
+ *
+ * ANTI-PATTERN:
+ * ❌ Fine-tuning on facts → Model memorizes stale data
+ *    with high confidence → Dangerous hallucinations
+ *
+ * HARDENED PATTERN:
+ * ✅ Fine-tuned model + RAG = Best of both worlds
+ *    Model is trained to FORMAT and EXTRACT from retrieved context
+ *    Model knows HOW to answer, RAG provides WHAT to answer with
+ */
+
+// Example: Fine-tuned RAG Processor
+//
+// Training data format:
+// {
+//   "messages": [
+//     { "role": "system", "content": "You are a medical scribe." },
+//     { "role": "user", "content": "Context: [retrieved patient notes]\nSummarize." },
+//     { "role": "assistant", "content": "ASSESSMENT: ...\nPLAN: ...\nICD-10: ..." }
+//   ]
+// }
+//
+// The model learns the BEHAVIOR (medical scribe format)
+// RAG provides the MEMORY (patient-specific retrieved context)
+// Result: Consistent formatting + current facts = production-safe
+```
+
 ## OpenAI Fine-tuning
 
 ```typescript
