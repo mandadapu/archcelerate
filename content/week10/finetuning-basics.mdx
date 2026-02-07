@@ -186,5 +186,205 @@ const response = await openai.chat.completions.create({
 })
 ```
 
+## Synthetic Data Bootstrapping (Teacher-to-Student Distillation)
+
+**Architect's Tip — High-Fidelity Synthetic Dataset Generation**: "Don't wait for 1,000 human-labeled examples. Use your **Teacher model** (Claude Opus or Sonnet) to generate 500 high-quality synthetic 'Golden Responses' based on your raw data. Then, use those to fine-tune your **Student model** (Haiku or GPT-4o-mini). This allows you to **distill** the intelligence of an expensive frontier model into a cheap, specialized model that runs at 10x the speed and 90% lower cost."
+
+```typescript
+/**
+ * Teacher-to-Student Distillation Pipeline
+ *
+ * Problem: Fine-tuning requires high-quality labeled data.
+ * Human labeling costs $5-15 per example. For 1,000 examples,
+ * that's $5,000-15,000 and 2-4 weeks of waiting.
+ *
+ * Solution: Use a powerful "Teacher" model to generate the
+ * training dataset, then fine-tune a cheap "Student" model
+ * to replicate the Teacher's behavior at 10x lower cost.
+ *
+ * Interview Defense: "We use Opus as the Teacher to generate
+ * 500 golden examples for $12. Then we fine-tune Haiku on those
+ * examples for $8. Total cost: $20. The Student model achieves
+ * 94% of Teacher quality at 10% of the inference cost."
+ */
+
+import Anthropic from '@anthropic-ai/sdk'
+import * as fs from 'fs'
+
+const anthropic = new Anthropic()
+
+interface TrainingExample {
+  messages: Array<{
+    role: 'system' | 'user' | 'assistant'
+    content: string
+  }>
+  metadata: {
+    quality_score: number  // Teacher confidence (0-1)
+    domain: string
+    generated_by: string   // "claude-opus-4" (Teacher)
+  }
+}
+
+// Step 1: Prepare raw inputs (your real user queries)
+const rawInputs = [
+  "Review this code: function foo() { var x = 1; return x }",
+  "Review this code: async function getData() { const res = await fetch(url) }",
+  "Review this code: for (let i = 0; i < arr.length; i++) { console.log(arr[i]) }",
+  // ... hundreds more from your production logs
+]
+
+// Step 2: Generate golden responses using Teacher model
+async function generateTeacherDataset(
+  inputs: string[],
+  systemPrompt: string,
+  teacherModel: string = 'claude-opus-4-6'
+): Promise<TrainingExample[]> {
+  const examples: TrainingExample[] = []
+
+  for (const input of inputs) {
+    const response = await anthropic.messages.create({
+      model: teacherModel,
+      max_tokens: 500,
+      messages: [
+        { role: 'user', content: input }
+      ],
+      system: systemPrompt
+    })
+
+    const assistantResponse = response.content[0].text
+
+    examples.push({
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: input },
+        { role: 'assistant', content: assistantResponse }
+      ],
+      metadata: {
+        quality_score: 0.95,  // Teacher assumed high quality
+        domain: 'code-review',
+        generated_by: teacherModel
+      }
+    })
+  }
+
+  return examples
+}
+
+// Step 3: Quality filter — remove low-confidence examples
+function filterByQuality(
+  examples: TrainingExample[],
+  minScore: number = 0.85
+): TrainingExample[] {
+  return examples.filter(e => e.metadata.quality_score >= minScore)
+}
+
+// Step 4: Export as JSONL for fine-tuning
+function exportToJSONL(examples: TrainingExample[], path: string) {
+  const lines = examples.map(e =>
+    JSON.stringify({ messages: e.messages })
+  )
+  fs.writeFileSync(path, lines.join('\n'))
+}
+
+// Full pipeline
+//
+// async function distillationPipeline() {
+//   const systemPrompt = `You are an expert code reviewer. For each code snippet:
+// 1. Identify the most critical issue
+// 2. Explain why it matters
+// 3. Provide the corrected code
+// Keep responses under 100 words.`
+//
+//   // Teacher generates 500 golden examples (~$12 with Opus)
+//   const teacherExamples = await generateTeacherDataset(
+//     rawInputs.slice(0, 500),
+//     systemPrompt,
+//     'claude-opus-4-6'
+//   )
+//
+//   // Filter to highest quality
+//   const filtered = filterByQuality(teacherExamples, 0.90)
+//
+//   // Export for Student fine-tuning (~$8 training cost)
+//   exportToJSONL(filtered, 'training_data.jsonl')
+//
+//   // Total cost: $20 (Teacher $12 + Student training $8)
+//   // vs Human labeling: $5,000-15,000
+//   // Student achieves 94% of Teacher quality at 10% inference cost
+// }
+
+// Distillation ROI:
+//
+// | Metric              | Teacher (Opus) | Student (Fine-tuned Haiku) |
+// |---------------------|----------------|----------------------------|
+// | Cost per query      | $0.05          | $0.005                     |
+// | Latency             | 2,500ms        | 250ms                      |
+// | Accuracy            | 97%            | 94%                        |
+// | Monthly cost (100K) | $5,000         | $500                       |
+//
+// Trade-off: 3% accuracy loss for 90% cost reduction and 10x speed
+// At scale, the Student saves $54,000/year
+```
+
+---
+
+## Architect Challenge: The Fine-Tuning ROI Quiz
+
+**You are presenting to the CFO. Your Customer Support agent is perfect — but expensive.**
+
+**The Situation:**
+
+Your agent uses a **3,000-token system prompt** packed with few-shot examples, formatting rules, and tone guidelines. It costs **$0.05 per query** using Sonnet. The CFO wants to scale to **1 million users**. At current rates, that's **$50,000/month** in inference costs alone. The CFO asks: "How do you protect our margins without degrading quality?"
+
+**Your options:**
+
+**A)** Keep using the expensive model — it's safer and quality is proven.
+
+**B)** Perform **Model Distillation**. Use the 3,000-token prompt results to create a Training Set of 500 golden examples. Fine-tune a smaller, cheaper model (Haiku) to mimic those exact responses. By **baking the instructions into the model's weights**, you reduce the prompt from 3,000 tokens to 50 tokens, cutting cost-per-query by 90% while maintaining the same quality level.
+
+**C)** Ask users to write shorter questions to reduce token usage.
+
+**D)** Fine-tune the model on your entire company website content to make it "know everything."
+
+<details>
+<summary><strong>Click to reveal the correct answer</strong></summary>
+
+### Correct Answer: B — Model Distillation
+
+An Architect uses fine-tuning to **compress intelligence** into more efficient, specialized assets.
+
+**The Math:**
+
+```typescript
+// Current architecture (3,000-token prompt + Sonnet):
+//   Cost per query: $0.05
+//   Monthly (1M queries): $50,000
+//   Annual: $600,000
+
+// Distilled architecture (50-token prompt + Fine-tuned Haiku):
+//   Training cost: $20 (one-time: $12 Teacher + $8 fine-tuning)
+//   Cost per query: $0.005
+//   Monthly (1M queries): $5,000
+//   Annual: $60,000
+
+// Savings: $540,000/year (90% reduction)
+// Quality retention: 94% of original (acceptable for support)
+// Latency improvement: 2,500ms → 250ms (10x faster)
+// Break-even: 400 queries (< 1 hour of production traffic)
+```
+
+**Why other answers fail:**
+
+- **A) Keep expensive model** — $600K/year in inference costs is not sustainable at scale. The CFO will find an engineer who can optimize it.
+- **C) Shorter user questions** — Shifts burden to users, damages UX. Token cost is dominated by the 3,000-token system prompt, not user input.
+- **D) Fine-tune on website content** — Violates the **Behavior vs. Memory** rule. Fine-tuning on facts creates stale knowledge that hallucinate confidently. Company policies change; fine-tuned weights don't update automatically.
+
+**The Architect's Principle:** "Fine-tuning is **compression**. You're taking expensive, verbose instructions and compressing them into cheap, fast model weights. The 3,000-token prompt IS your training data — it already describes the exact behavior you want. Distill it, deploy it, and reinvest the savings."
+
+</details>
+
+---
+
 ## Resources
+- [OpenAI Fine-tuning Guide](https://platform.openai.com/docs/guides/fine-tuning)
 - [OpenAI Fine-tuning Guide](https://platform.openai.com/docs/guides/fine-tuning)
