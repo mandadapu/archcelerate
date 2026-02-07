@@ -16,10 +16,10 @@ Moving beyond "next token prediction" to understand the architectural constraint
 
 ## 🏥 Real-World Challenge: The Multi-Tier Health Triage
 
-**The Problem**: A global telehealth platform receives 50,000 patient queries daily. Using Opus 4.5 for every request costs **$225,000/month**—financially unsustainable. But downgrading all queries to Haiku risks missing critical medical symptoms that require deep reasoning.
+**The Problem**: A global telehealth platform receives 50,000 patient queries daily. Using Opus 4.5 for every request (~1K input + 500 output tokens per query, 1.5M queries/month) costs **$78,750/month**—financially unsustainable. But downgrading all queries to Haiku risks missing critical medical symptoms that require deep reasoning.
 
 **Business Constraints**:
-- **Budget**: Must reduce monthly AI costs to under $30,000 (80% reduction)
+- **Budget**: Must reduce monthly AI costs to under $15,000 (80% reduction)
 - **Safety**: Cannot compromise on medical accuracy—100% precision on critical queries
 - **Latency**: Must maintain &lt;3s P95 response time for good UX
 - **Compliance**: HIPAA-compliant audit trail for all medical decisions
@@ -52,7 +52,7 @@ async function routeQuery(query: string, classification: Classification) {
   }
 
   // Complex medical reasoning → High-quality model
-  return await callOpusWithFallback(query)  // $0.15/query
+  return await callOpusWithFallback(query)  // ~$0.05/query
 }
 
 // Fallback Pattern: Haiku fails → Sonnet → Opus → Human
@@ -114,15 +114,138 @@ const CONFIDENCE_THRESHOLDS = {
 ```
 
 **Production Impact**:
-- **Cost**: $225K → $28K/month (87.5% reduction)
-- **Latency**: 4.2s → 1.8s P95 (57% faster) by routing 70% to Haiku
+- **Cost**: $78.7K → ~$5.4K/month (93% reduction)
+- **Latency**: 4.2s → 1.8s P95 (57% faster) by routing 85% to Haiku
 - **Safety**: 100% of critical queries escalated to human review (zero missed emergencies)
-- **ROI**: 3-month implementation, $197K/month savings = **22-day payback period**
+- **ROI**: 3-month implementation, $73K/month savings = **payback in days**
 
-**Routing Distribution** (50K queries/day):
-- 70% → Haiku (administrative, simple questions): **$35K savings**
-- 25% → Opus (medical reasoning, drug interactions): **$162K spend**
-- 5% → Human review (emergencies, uncertain cases): **$0 AI cost**
+---
+
+### Medical Routing & Confidence Logic
+
+This is the technical heart of the cost-saving strategy. It ensures you only pay the "Opus Tax" when the complexity of the case absolutely demands it.
+
+**The Router Agent Architecture:** The Router is a dedicated, fine-tuned "Student" model (e.g., Haiku or Llama-3-8B) that does **not** answer the medical question. Its only job is to perform a High-Speed Triage on the incoming prompt to determine its destination.
+
+#### Step 1: Confidence-Based Routing Logic
+
+The following logic implements a confidence-weighted gateway that triggers escalation based on both model certainty and clinical risk keywords.
+
+```typescript
+const CONFIDENCE_FLOOR = 0.92
+const HIGH_RISK_KEYWORDS = ['chest pain', 'shortness of breath', 'severe bleeding', 'suicidal']
+
+async function routePatientQuery(query: string): Promise&lt;MedicalResponse&gt; {
+  // 1. Intent & Confidence Analysis (low-cost router model)
+  const analysis = await routerModel.analyze({
+    prompt: `Analyze this patient query for intent, clinical risk, and urgency: ${query}`,
+    responseFormat: 'json'
+  })
+
+  // 2. Decision Logic
+  const isHighRisk = HIGH_RISK_KEYWORDS.some(kw =&gt; query.toLowerCase().includes(kw))
+
+  if (analysis.confidence &lt; CONFIDENCE_FLOOR || isHighRisk || analysis.intent === 'emergency') {
+    // ESCALATE: Deep reasoning required for safety
+    return await processWithOpus(query, { priority: 'high' })
+  }
+
+  if (analysis.confidence &gt;= CONFIDENCE_FLOOR && analysis.intent === 'administrative') {
+    // OPTIMIZE: High-speed, low-cost response
+    return await processWithHaiku(query)
+  }
+
+  // DEFAULT: Standard clinical inquiry
+  return await processWithSonnet(query)
+}
+```
+
+#### Step 2: The Shadow Guardian (Security Layer)
+
+To meet Safety and HIPAA constraints, the router also acts as a security sentinel, performing **Sanitization-in-Flight** before the query hits the reasoning models.
+
+```typescript
+interface SanitizedQuery {
+  cleanText: string
+  redactions: Array&lt;{ type: string; token: string }&gt;
+  injectionDetected: boolean
+}
+
+function sanitizeInFlight(query: string): SanitizedQuery {
+  // Redaction Proxy: Replace PII with unique tokens
+  const redactions: SanitizedQuery['redactions'] = []
+  let cleanText = query
+
+  // SSN, names, addresses → [PATIENT_ID_A], [PATIENT_ID_B], etc.
+  const piiPatterns = {
+    SSN: /\b\d{3}-\d{2}-\d{4}\b/g,
+    PHONE: /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g,
+  }
+
+  let tokenIndex = 0
+  for (const [type, regex] of Object.entries(piiPatterns)) {
+    cleanText = cleanText.replace(regex, () =&gt; {
+      const token = `[PATIENT_ID_${String.fromCharCode(65 + tokenIndex++)}]`
+      redactions.push({ type, token })
+      return token
+    })
+  }
+
+  // Prompt Injection Filter: Scan for adversarial patterns
+  const injectionPatterns = [
+    /ignore\s+(all\s+)?previous\s+instructions/i,
+    /you\s+are\s+now\s+a/i,
+    /system\s*:\s*/i,
+  ]
+  const injectionDetected = injectionPatterns.some(p =&gt; p.test(query))
+
+  return { cleanText, redactions, injectionDetected }
+}
+```
+
+#### Step 3: Multi-Path Validation (The Safety Veto)
+
+For queries routed to the Haiku path, you can still ensure 100% precision without paying for Opus. Implement an **Asymmetric Reviewer**:
+
+```typescript
+async function processWithHaikuAndGuardrail(query: string): Promise&lt;MedicalResponse&gt; {
+  // 1. Haiku generates the answer (~$0.000875/query)
+  const haikuResponse = await callHaiku(query)
+
+  // 2. Safety model performs a 100-token check (~$0.0001/query)
+  const safetyCheck = await safetyModel.evaluate({
+    query,
+    response: haikuResponse.text,
+    maxTokens: 100,
+    checkFor: ['medical_contradiction', 'safety_risk', 'hallucination']
+  })
+
+  // 3. If flagged → discard Haiku output, re-route to Opus
+  if (safetyCheck.flagged) {
+    console.warn(`Safety veto on Haiku response: ${safetyCheck.reason}`)
+    return await processWithOpus(query, { priority: 'high' })
+  }
+
+  return haikuResponse
+}
+```
+
+> **Architect's Insight:** The Asymmetric Reviewer costs &lt;$0.0001 per query but catches the 2-3% of Haiku responses that contain medical inaccuracies. The cost of a missed safety flag in healthcare: incalculable.
+
+#### Economic Impact
+
+With this routing logic, token consumption shifts from a flat, high-cost line to a **Power Law Distribution**:
+
+| Tier | Volume | Model | Per-Query Cost | Monthly Cost |
+|------|--------|-------|---------------|-------------|
+| Simple (85%) | 1,275,000 | Haiku + Guardrail | ~$0.001 | **$1,275** |
+| Standard (12%) | 180,000 | Sonnet | ~$0.0105 | **$1,890** |
+| Complex (3%) | 45,000 | Opus | ~$0.0525 | **$2,363** |
+| **Total** | **1,500,000** | | | **~$5,528/month** |
+
+> Monthly spend: **$78,750 → ~$5,500** (93% reduction) — well under the $15,000 target.
+
+---
 
 **How This Connects to LLM Fundamentals**:
 - **Tokenization Physics** → Understanding that Haiku uses the same tokenizer as Opus enables seamless cascade without prompt rewriting
