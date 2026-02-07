@@ -1876,14 +1876,14 @@ class TriageMonitor {
 #### Outcome Metrics
 
 **Before Triage System** (all queries → Opus 4.5):
-- **Cost**: $225,000/month (1.5M queries × 3K avg tokens × $15/MTok)
+- **Cost**: $78,750/month (1.5M queries × ~1K input + 500 output tokens at $15/$75 per MTok)
 - **Latency**: 4.2s p95
 - **Quality**: 98% accuracy
 
 **After Triage System** (intelligent routing):
-- **Cost**: $28,500/month (80% reduction)
-  - 80% simple queries → Haiku ($0.01/query)
-  - 15% complex queries → Opus ($0.15/query)
+- **Cost**: $15,000/month (81% reduction)
+  - 80% simple queries → Haiku (~$0.001/query)
+  - 15% complex queries → Opus (~$0.10/query)
   - 5% critical queries → Human review ($0/direct API cost)
 - **Latency**: 1.8s p95 (57% improvement)
   - Haiku queries: 0.6s avg
@@ -1895,23 +1895,25 @@ class TriageMonitor {
 ```typescript
 // 50,000 queries/day × 30 days = 1,500,000 queries/month
 
-// Simple queries (80% = 1,200,000)
-const simpleCost = 1_200_000 * 0.01 = $12,000
+// Simple queries (80% = 1,200,000) → Haiku
+// ~1K input ($0.25/MTok) + 500 output ($1.25/MTok) = $0.000875/query
+const simpleCost = 1_200_000 * 0.001  // ~$1,200/month
 
-// Complex queries (15% = 225,000)
-const complexCost = 225_000 * 0.15 = $33,750
+// Complex queries (15% = 225,000) → Opus
+// ~2K input ($15/MTok) + 1K output ($75/MTok) = $0.105/query
+const complexCost = 225_000 * 0.105   // ~$23,625/month
 
 // Critical queries (5% = 75,000) - human review
 const criticalCost = 0  // Separate budget
 
-// Total API Cost
-const totalCost = $12,000 + $33,750 = $45,750/month
+// Total API Cost (before optimization)
+const totalCost = 1_200 + 23_625      // ~$24,825/month
 ```
 
 **Actual Results** (after optimization):
-- Implemented caching for FAQs (30% of simple queries): **$3,600/month savings**
+- Implemented caching for FAQs (30% of simple queries): **$360/month savings**
 - Fine-tuned Haiku confidence threshold (0.9 → 0.85): **10% more queries to Haiku**
-- **Final Cost**: **$28,500/month** (87% reduction from original)
+- **Final Cost**: **~$15,000/month** (81% reduction from original)
 
 **Business Impact**:
 - **Gross Margin**: Increased from 30% → 78%
