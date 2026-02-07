@@ -1028,6 +1028,153 @@ const optimized = await batchOptimize([query1, query2, query3])
 // 1 LLM call instead of 3
 ```
 
+### Intent-Linked Semantic Cache Invalidation
+
+When you cache optimized query results, you create **Derived Data** — the cached results are linked to an LLM-expanded query, not the original user intent. If your Knowledge Base updates, you must invalidate not just exact query matches, but all **semantically related** cache entries.
+
+**Architect's Tip**: *"When you use an LLM to expand a query, you are creating 'Derived Data.' If you update your Knowledge Base, you must invalidate not just the exact query, but all Semantically Related cache entries. Use your vector DB to find all cached queries within a 0.9 similarity of the updated document and purge them. This ensures your 'Speed Layer' never serves deprecated facts."*
+
+```typescript
+interface CacheEntry {
+  originalQuery: string
+  expandedQueries: string[]    // LLM-generated expansions
+  queryEmbedding: number[]     // Embedding of original intent
+  results: any[]
+  documentIds: string[]        // Source document IDs used in results
+  cachedAt: number
+  ttlMs: number
+}
+
+class SemanticCacheManager {
+  private cache: Map<string, CacheEntry> = new Map()
+  private queryEmbeddings: Map<string, number[]> = new Map()
+
+  // Standard cache lookup (exact + semantic)
+  async get(
+    query: string,
+    queryEmbedding: number[]
+  ): Promise<CacheEntry | null> {
+    // Fast path: exact match
+    const exactKey = this.hashQuery(query)
+    const exact = this.cache.get(exactKey)
+    if (exact && !this.isExpired(exact)) return exact
+
+    // Semantic path: find similar cached queries
+    for (const [key, entry] of this.cache.entries()) {
+      if (this.isExpired(entry)) continue
+
+      const similarity = cosineSimilarity(queryEmbedding, entry.queryEmbedding)
+      if (similarity > 0.95) {
+        // Close enough to reuse cached results
+        return entry
+      }
+    }
+
+    return null
+  }
+
+  // Cache new results with intent linkage
+  async set(
+    query: string,
+    queryEmbedding: number[],
+    expandedQueries: string[],
+    results: any[],
+    documentIds: string[],
+    ttlMs: number = 3600000  // 1 hour default
+  ): void {
+    const key = this.hashQuery(query)
+    this.cache.set(key, {
+      originalQuery: query,
+      expandedQueries,
+      queryEmbedding,
+      results,
+      documentIds,
+      cachedAt: Date.now(),
+      ttlMs
+    })
+    this.queryEmbeddings.set(key, queryEmbedding)
+  }
+
+  // CRITICAL: Invalidate on Knowledge Base update
+  async invalidateForDocumentUpdate(
+    updatedDocId: string,
+    updatedDocEmbedding: number[],
+    similarityThreshold: number = 0.9
+  ): Promise<{ invalidated: number; keys: string[] }> {
+    const invalidatedKeys: string[] = []
+
+    for (const [key, entry] of this.cache.entries()) {
+      // Strategy 1: Direct document ID match
+      if (entry.documentIds.includes(updatedDocId)) {
+        this.cache.delete(key)
+        invalidatedKeys.push(key)
+        continue
+      }
+
+      // Strategy 2: Semantic similarity to updated document
+      // Catches cache entries that DIDN'T use this exact doc
+      // but cover the same topic (and might now be stale)
+      const similarity = cosineSimilarity(
+        entry.queryEmbedding,
+        updatedDocEmbedding
+      )
+
+      if (similarity > similarityThreshold) {
+        this.cache.delete(key)
+        invalidatedKeys.push(key)
+      }
+    }
+
+    console.log(
+      `Cache invalidation: ${invalidatedKeys.length} entries purged ` +
+      `for document update (${updatedDocId})`
+    )
+
+    return { invalidated: invalidatedKeys.length, keys: invalidatedKeys }
+  }
+
+  private hashQuery(query: string): string {
+    // Simple hash for exact matching
+    return query.toLowerCase().trim().replace(/\s+/g, ' ')
+  }
+
+  private isExpired(entry: CacheEntry): boolean {
+    return Date.now() - entry.cachedAt > entry.ttlMs
+  }
+}
+
+// Integration with document ingestion pipeline
+async function onDocumentUpdated(
+  docId: string,
+  newContent: string,
+  cacheManager: SemanticCacheManager
+): Promise<void> {
+  // Step 1: Embed the updated document
+  const docEmbedding = await getEmbedding(newContent)
+
+  // Step 2: Invalidate all semantically related cache entries
+  const result = await cacheManager.invalidateForDocumentUpdate(
+    docId,
+    docEmbedding,
+    0.9  // Purge any cached query within 0.9 similarity
+  )
+
+  console.log(
+    `Document ${docId} updated → ${result.invalidated} cache entries invalidated`
+  )
+}
+```
+
+**Why This Matters**:
+
+| Scenario | Without Semantic Invalidation | With Semantic Invalidation |
+|---|---|---|
+| Doc "HIPAA 2026 rules" updated | Cached "HIPAA compliance" query serves stale 2025 rules | Cache purged → fresh retrieval with 2026 rules |
+| Doc "Drug X recalled" added | Cached "Drug X dosage" query serves pre-recall dosage | Cache purged → retrieval includes recall notice |
+| Doc "API v2 deprecated" updated | Cached "API setup guide" serves deprecated v1 instructions | Cache purged → retrieval returns v3 docs |
+
+**The Cache Coherency Contract**: Every cache entry is linked to its source documents **and** its semantic neighborhood. When the knowledge base changes, the cache manager purges not just exact matches, but all entries whose **intent** overlaps with the updated content. This ensures the "Speed Layer" never serves deprecated facts.
+
 **Architect's Tip — Complexity Classifier**: "Don't run expensive Query Expansion on every request. Use a high-speed, small model (like Haiku) to classify incoming queries into three buckets: **Direct** (ID/exact match lookup), **Semantic** (conceptual search), and **Complex** (multi-part, ambiguous). Only trigger the Query Rewriting pipeline for the 'Complex' and 'Semantic' buckets. This preserves your P95 latency for simple lookups while applying intelligence only where it's needed."
 
 ```typescript
@@ -1191,7 +1338,7 @@ const results = deduplicate(queries.map(q => retrieve(q))) // 15 unique docs
 - **Weight the original intent**: Relevance-Weighted Fusion preserves precision while Multi-Query improves recall
 - **Guard HyDE against hallucination**: Similarity threshold prevents "ghost chasing" when the hypothetical document misses the corpus
 - **Decompose complex queries**: Break multi-part questions into parallel sub-queries for better coverage
-- **Cache aggressively**: Top 20% of queries handle 80% of traffic at $0 incremental cost
+- **Cache with semantic coherency**: Top 20% of queries handle 80% of traffic at $0 incremental cost — but invalidate semantically related entries when the knowledge base updates to prevent serving deprecated facts
 - **Production target**: +35% accuracy, $0.0004/query (adaptive), 150-400ms latency
 
 ---
