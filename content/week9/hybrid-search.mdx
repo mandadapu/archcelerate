@@ -359,6 +359,37 @@ Where:
 - Σ = sum across all rankings
 ```
 
+### Why k=60 Isn't a "Magic Number" — Score Calibration Independence
+
+The real power of RRF isn't the constant `k=60` — it's that RRF **eliminates the Normalization Nightmare** entirely.
+
+**Architect's Tip**: *"The beauty of RRF isn't just the constant; it's that it eliminates the Normalization Nightmare. Vector scores are distances (0 to 1); BM25 scores are unbounded frequencies (0 to 100+). Trying to 'add' them requires constant weight tuning. RRF ignores the scores entirely and only uses Rank Position, making your system immune to 'Score Drift' when you update your embedding model or add more documents."*
+
+```
+The Normalization Nightmare (what RRF avoids):
+
+Vector scores:  0.89,  0.85,  0.82  (cosine similarity, range 0-1)
+BM25 scores:    15.2,  12.8,   8.4  (term frequency, range 0-∞)
+
+❌ Weighted Sum approach:
+   combined = 0.7 × normalize(vector) + 0.3 × normalize(BM25)
+   Problem 1: How do you normalize BM25? Min-max? Z-score?
+   Problem 2: You add 10K new documents → BM25 scores shift → weights break
+   Problem 3: You upgrade embedding model → vector score distribution changes
+   → Constant weight re-tuning required!
+
+✅ RRF approach:
+   combined = 1/(60+rank_vector) + 1/(60+rank_bm25)
+   Uses ONLY rank position, not scores
+   → Immune to score drift, model upgrades, and corpus changes
+```
+
+| Fusion Method | Needs Weight Tuning | Sensitive to Score Drift | Sensitive to Corpus Size | Production-Safe |
+|---|---|---|---|---|
+| Weighted Sum | ✅ Yes (constant tuning) | ✅ Yes | ✅ Yes | ❌ Fragile |
+| Min-Max Normalization | ⚠️ Less, but still | ✅ Yes | ✅ Yes | ⚠️ Risky |
+| **RRF (k=60)** | ❌ No tuning needed | ❌ Immune | ❌ Immune | ✅ Production-grade |
+
 ## Cross-Encoder Reranking
 
 **After fusion**, refine results with a cross-encoder that scores query-document pairs precisely.
@@ -671,6 +702,100 @@ runPipeline()`}
 - Cache embeddings for common queries (saves 30ms)
 - Use Cohere Rerank instead of LLM (saves 100ms)
 
+### Asynchronous Fan-Out with Timeout Budget
+
+Running searches in parallel with `Promise.all` is the starting point — but a production orchestrator needs a **Strict Timeout Budget** with a hedge strategy. If your vector search hangs at 500ms while BM25 returned in 15ms, you must not let a single slow microservice kill the user experience.
+
+**Architect's Tip**: *"Don't just run them in parallel; run them with a Strict Timeout Budget. If your Keyword Search (BM25) takes 15ms but your Vector Search hangs at 500ms, your orchestrator should have a 'Hedge' that returns the keyword-only results to maintain your 300ms SLA. This ensures that a single slow microservice doesn't kill the entire user experience."*
+
+```typescript
+interface FanOutConfig {
+  vectorTimeoutMs: number    // e.g., 200ms (budget for vector search)
+  bm25TimeoutMs: number      // e.g., 50ms (budget for keyword search)
+  totalBudgetMs: number      // e.g., 250ms (total Stage 1 budget)
+  minSources: number         // Minimum sources required (1 = allow partial)
+}
+
+async function fanOutRetrieval(
+  query: string,
+  config: FanOutConfig
+): Promise<{
+  vectorResults: SearchResult[]
+  bm25Results: SearchResult[]
+  degraded: boolean           // True if we returned partial results
+  latency: number
+}> {
+  const start = Date.now()
+
+  // Wrap each search with its own timeout
+  const vectorPromise = withTimeout(
+    vectorSearch(query, 20),
+    config.vectorTimeoutMs,
+    'vector_search'
+  )
+
+  const bm25Promise = withTimeout(
+    bm25Search(query, 20),
+    config.bm25TimeoutMs,
+    'bm25_search'
+  )
+
+  // Fan-out with hedge: return whatever completes within budget
+  const results = await Promise.allSettled([vectorPromise, bm25Promise])
+
+  const vectorResults = results[0].status === 'fulfilled'
+    ? results[0].value
+    : []
+  const bm25Results = results[1].status === 'fulfilled'
+    ? results[1].value
+    : []
+
+  const sourcesReturned =
+    (vectorResults.length > 0 ? 1 : 0) +
+    (bm25Results.length > 0 ? 1 : 0)
+
+  const degraded = sourcesReturned < 2
+
+  if (degraded) {
+    console.warn(
+      `⚠️ Degraded retrieval: only ${sourcesReturned} source(s) responded. ` +
+      `Vector: ${results[0].status}, BM25: ${results[1].status}`
+    )
+  }
+
+  return {
+    vectorResults,
+    bm25Results,
+    degraded,
+    latency: Date.now() - start
+  }
+}
+
+// Timeout wrapper with source identification
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  source: string
+): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`${source} exceeded ${timeoutMs}ms budget`)),
+        timeoutMs
+      )
+    )
+  ])
+}
+```
+
+| Scenario | Vector | BM25 | Action | User Impact |
+|---|---|---|---|---|
+| Both fast (&lt;200ms) | ✅ 120ms | ✅ 15ms | Full hybrid RRF | None — best quality |
+| Vector slow (&gt;200ms) | ❌ Timeout | ✅ 15ms | BM25-only results | Degraded semantic recall, exact matches preserved |
+| BM25 slow (&gt;50ms) | ✅ 120ms | ❌ Timeout | Vector-only results | Degraded exact match, semantic results preserved |
+| Both slow | ❌ Timeout | ❌ Timeout | Return cached or error | SLA protected, user sees fallback |
+
 ### Cost Analysis (10,000 Queries/Month)
 
 ```typescript
@@ -750,6 +875,74 @@ const toRerank = fused.slice(0, 10) // Not 50!
 const reranked = await rerank(query, toRerank)
 ```
 
+### 2b. The "Re-ranker Tax" — Score-Based Re-ranking Skip
+
+Re-ranking is the most expensive step (160ms, 53% of pipeline). But you don't always need it. If your Stage 1 hybrid search returns a Top-1 result with a **massive lead** over #2, the re-ranker will almost certainly keep it at #1 anyway — so skip it.
+
+**Architect's Tip**: *"Re-ranking is your most expensive step (160ms). To optimize ROI, implement Score-Based Re-ranking. If your Stage 1 Hybrid search returns a Top-1 result with a massive lead (e.g., a similarity delta &gt; 0.4), skip the re-ranker entirely. You only pay the 'Re-ranker Tax' when the initial results are ambiguous, preserving your token budget and cutting latency for 'easy' queries by 50%."*
+
+```typescript
+interface RerankerGateConfig {
+  confidenceDelta: number    // e.g., 0.4 — gap between #1 and #2 RRF scores
+  minCandidates: number      // e.g., 3 — minimum candidates to even consider reranking
+}
+
+function shouldRerank(
+  fusedResults: SearchResult[],
+  config: RerankerGateConfig = { confidenceDelta: 0.4, minCandidates: 3 }
+): { rerank: boolean; reason: string } {
+  // Not enough candidates to justify reranking cost
+  if (fusedResults.length < config.minCandidates) {
+    return { rerank: false, reason: 'Too few candidates' }
+  }
+
+  // Calculate relative gap between #1 and #2
+  const top1Score = fusedResults[0].score
+  const top2Score = fusedResults[1]?.score || 0
+
+  // Relative delta: how much does #1 lead over #2?
+  const relativeDelta = (top1Score - top2Score) / top1Score
+
+  if (relativeDelta > config.confidenceDelta) {
+    return {
+      rerank: false,
+      reason: `High confidence: #1 leads by ${(relativeDelta * 100).toFixed(1)}% — skipping reranker`
+    }
+  }
+
+  return {
+    rerank: true,
+    reason: `Ambiguous: #1 leads by only ${(relativeDelta * 100).toFixed(1)}% — reranking needed`
+  }
+}
+
+// Integrate into pipeline
+async function smartRetrieve(query: string): Promise<SearchResult[]> {
+  const fused = await hybridSearchWithRRF(query)
+  const gate = shouldRerank(fused)
+
+  console.log(`Reranker gate: ${gate.reason}`)
+
+  if (!gate.rerank) {
+    // Skip reranker — save 160ms and reranker cost
+    return fused.slice(0, 5)
+  }
+
+  // Ambiguous results — pay the reranker tax
+  return await rerank(query, fused.slice(0, 10))
+}
+```
+
+**Production Impact of Score-Based Skipping**:
+
+| Query Type | RRF Delta (#1 vs #2) | Rerank? | Latency | Savings |
+|---|---|---|---|---|
+| "RFC 6585" (exact match) | 85% gap (BM25 dominates) | ❌ Skip | 140ms | -160ms (53% faster) |
+| "rate limiting best practices" (ambiguous) | 12% gap (tight ranking) | ✅ Rerank | 300ms | None — quality matters |
+| "Python 3.11.2 bug fix" (exact + semantic) | 60% gap (clear winner) | ❌ Skip | 140ms | -160ms (53% faster) |
+
+In production, ~40-60% of queries have a clear top-1 winner and can skip the re-ranker, saving both latency and cost.
+
 ### 3. Ignoring BM25 for Semantic Queries
 **Problem**: BM25 can hurt on pure semantic queries
 ```typescript
@@ -777,6 +970,38 @@ await redis.set(cacheKey, JSON.stringify(results), { EX: 3600 })
 return results
 ```
 
+## Search Systems Engineering Challenge
+
+**Scenario**: A user searches for "Project X-14 Safety Manual." Vector search (Stage 1) finds 50 documents about general safety. BM25 search (Stage 1) finds the exact "X-14" document at rank #1. However, because you have 50 vector results and only 1 keyword result, the RRF merge places the "X-14" document at rank #5. The LLM then misses the key safety detail. How do you fix this?
+
+**A)** Increase the weight of the keyword search.
+
+**B)** Implement a **Cross-Encoder Re-ranker** in Stage 2. A re-ranker ignores the initial rank positions and looks at the actual text of the 51 candidates. It will instantly see that "X-14" is the only document that truly matches the specific query and move it to Rank #1 before it reaches the LLM.
+
+**C)** Delete the 50 general safety documents.
+
+**D)** Use a larger vector embedding model.
+
+<details>
+<summary>Answer</summary>
+
+**B) Cross-Encoder Re-ranker in Stage 2** is the architect-level answer.
+
+- **Why not A?** "Increase keyword weight" means switching from RRF (rank-based, tuning-free) to a weighted sum (score-based, requires constant tuning). You'd lose RRF's score calibration independence — the exact property that makes it production-safe. You'd also hurt semantic queries where BM25 is the weaker signal.
+- **Why not C?** Deleting documents is never an acceptable retrieval strategy. Those 50 safety documents are relevant for other queries. The problem isn't the corpus — it's the ranking pipeline.
+- **Why not D?** A larger embedding model might improve semantic understanding, but it won't fix the fundamental issue: vector search doesn't preserve exact identifiers like "X-14." The problem is architectural, not model-quality.
+- **Why B?** The Cross-Encoder Re-ranker is the architectural solution:
+  1. It operates on the **actual text** of each candidate, not on rank position or embedding distance
+  2. It scores the pair ("Project X-14 Safety Manual", document_text) directly — and "X-14" in the document title is an obvious match
+  3. It corrects the **mathematical noise** introduced by Stage 1 retrieval, where the volume of vector results (50) diluted the signal from the single keyword match
+  4. This is exactly why the pipeline is two stages: Stage 1 for recall (get all possible candidates), Stage 2 for precision (find the right one)
+
+**The Architect's Insight**: Stage 1 (Hybrid + RRF) optimizes for **recall** — getting the right document into the candidate set. Stage 2 (Re-ranker) optimizes for **precision** — putting the right document at the top. Never try to solve a precision problem at the recall stage.
+
+</details>
+
+---
+
 ## Key Takeaways
 
 ### When to Use Hybrid Search
@@ -787,20 +1012,20 @@ return results
 - ❌ Ultra-high volume with tight latency (BM25-only cheaper)
 
 ### Architecture Decisions
-- **Retrieval**: 20-50 candidates from each method (vector + BM25)
-- **Fusion**: RRF with k=60 (proven optimal)
-- **Reranking**: Top 10-15 documents only (cost/accuracy sweet spot)
+- **Retrieval**: 20-50 candidates from each method (vector + BM25) with **asynchronous fan-out and per-source timeout budgets**
+- **Fusion**: RRF with k=60 — chosen for **score calibration independence**, not just empirical performance. Immune to score drift from model upgrades and corpus changes.
+- **Reranking**: Top 10-15 documents, but **gate on confidence delta** — skip the re-ranker when Top-1 has &gt;40% lead (saves 160ms on ~50% of queries)
 - **Models**: Cohere Rerank v3 (best speed/accuracy/cost balance)
 
 ### Production Metrics
-- **Latency**: 300ms average (120ms vector, 15ms BM25, 160ms rerank)
-- **Cost**: $0.0002 per query ($200 per 1M queries)
+- **Latency**: 300ms average (120ms vector, 15ms BM25, 160ms rerank) — with score-based skip, ~180ms on easy queries
+- **Cost**: $0.0002 per query ($200 per 1M queries) — ~40% cheaper with re-ranker gating
 - **Accuracy**: 89% MRR@10 (vs 68% vector-only, +31% improvement)
 
 ### Best Practices
-- Run vector and BM25 in parallel (saves 120ms)
-- Use RRF k=60 (empirically proven optimal)
-- Rerank only top 10-15 documents (cost/benefit tradeoff)
+- **Fan-out with timeout budget**: Don't let a slow vector search kill your SLA — hedge with keyword-only results if needed
+- Use RRF k=60 — it's production-safe because it uses **rank position, not scores**, eliminating the normalization nightmare
+- **Gate the re-ranker**: Only pay the 160ms tax when Stage 1 results are ambiguous (confidence delta &lt;40%)
 - Cache results for common queries (60% of traffic)
 - Monitor accuracy with golden test set (100+ queries)
 
