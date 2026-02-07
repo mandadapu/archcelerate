@@ -1,7 +1,7 @@
 ---
 title: "Model Evaluation Frameworks"
 description: "Comprehensive frameworks for evaluating, testing, and monitoring fine-tuned models in production"
-estimatedMinutes: 60
+estimatedMinutes: 75
 week: 10
 concept: 4
 difficulty: advanced
@@ -9,7 +9,10 @@ objectives:
   - Build automated evaluation pipelines with golden datasets
   - Implement LLM-as-judge patterns for quality assessment
   - Design A/B testing frameworks for model comparison
+  - Run blind Elo scoring tournaments to eliminate judge bias
   - Create regression testing suites to prevent degradation
+  - Detect catastrophic forgetting with cross-domain regression baselines
+  - Select peak-performing checkpoints via intermediate checkpoint sweeps
   - Build custom metrics for domain-specific evaluation
   - Monitor production models and detect drift
 ---
@@ -745,6 +748,269 @@ function factorial(n: number): number {
 
 ---
 
+### Blind Side-by-Side Elo Scoring: Quantitative Human Evaluation
+
+**Architect's Tip — The Elo Leaderboard for Model Selection**: "LLM-as-judge has a dirty secret: it **prefers longer, more formal responses** regardless of actual quality. Chatbot Arena proved that the only ground truth for open-ended quality is **blind human evaluation with Elo ratings**. An Architect builds an internal Elo arena where evaluators compare outputs from two anonymous models (Model A vs Model B) without knowing which is which. After 200-400 blind comparisons, the Elo leaderboard reveals the true quality ranking — and it often disagrees with LLM-as-judge by 10-15%. This is the **final authority** before any production deployment."
+
+```typescript
+/**
+ * Blind Side-by-Side Elo Scoring
+ *
+ * Problem: LLM-as-judge has systematic biases (verbosity, formality,
+ * position bias). Human evaluation is expensive but accurate.
+ * How do you get the best of both?
+ *
+ * Solution: Build an internal "Chatbot Arena" where human evaluators
+ * compare anonymized model outputs in blind pairwise comparisons.
+ * Use Elo ratings to maintain a quantitative leaderboard that
+ * converges to true quality ranking after 200-400 comparisons.
+ *
+ * Interview Defense: "We run a 300-comparison blind Elo tournament
+ * before any production deployment. Evaluators see 'Model A' vs
+ * 'Model B' with randomized position. The Elo leaderboard is our
+ * final authority — it overrides LLM-as-judge when they disagree."
+ */
+
+interface EloModel {
+  id: string
+  name: string
+  rating: number        // Elo rating (starts at 1200)
+  matches: number       // Total comparisons
+  wins: number
+  losses: number
+  ties: number
+  confidence: number    // Rating confidence (higher = more certain)
+}
+
+interface BlindComparison {
+  id: string
+  evaluatorId: string
+  input: string
+  outputA: string       // Randomly assigned (model identity hidden)
+  outputB: string
+  modelA: string        // Hidden from evaluator
+  modelB: string        // Hidden from evaluator
+  positionSwapped: boolean  // Was A/B order randomized?
+  winner: 'A' | 'B' | 'tie' | null
+  reasoning: string
+  evaluationTimeMs: number
+  timestamp: Date
+}
+
+interface EloLeaderboard {
+  models: EloModel[]
+  totalComparisons: number
+  convergenceScore: number   // 0-1 (how stable are rankings?)
+  lastUpdated: Date
+}
+
+// Elo rating calculation (same formula used by chess and Chatbot Arena)
+function calculateEloUpdate(
+  ratingA: number,
+  ratingB: number,
+  winner: 'A' | 'B' | 'tie',
+  kFactor: number = 32
+): { newRatingA: number; newRatingB: number } {
+  // Expected scores based on current ratings
+  const expectedA = 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400))
+  const expectedB = 1 / (1 + Math.pow(10, (ratingA - ratingB) / 400))
+
+  // Actual scores
+  let actualA: number
+  let actualB: number
+
+  if (winner === 'A') {
+    actualA = 1
+    actualB = 0
+  } else if (winner === 'B') {
+    actualA = 0
+    actualB = 1
+  } else {
+    actualA = 0.5
+    actualB = 0.5
+  }
+
+  // Update ratings
+  return {
+    newRatingA: Math.round(ratingA + kFactor * (actualA - expectedA)),
+    newRatingB: Math.round(ratingB + kFactor * (actualB - expectedB))
+  }
+}
+
+class BlindEloArena {
+  private models: Map<string, EloModel> = new Map()
+  private comparisons: BlindComparison[] = []
+  private inputs: string[]  // Evaluation prompts
+
+  constructor(modelIds: string[], evaluationInputs: string[]) {
+    // Initialize all models at Elo 1200
+    for (const id of modelIds) {
+      this.models.set(id, {
+        id,
+        name: id,
+        rating: 1200,
+        matches: 0,
+        wins: 0,
+        losses: 0,
+        ties: 0,
+        confidence: 0
+      })
+    }
+    this.inputs = evaluationInputs
+  }
+
+  // Generate a blind comparison (randomize position to eliminate position bias)
+  async generateComparison(
+    modelAId: string,
+    modelBId: string,
+    input: string
+  ): Promise<Omit<BlindComparison, 'winner' | 'reasoning' | 'evaluationTimeMs'>> {
+    const [outputA, outputB] = await Promise.all([
+      generatePrediction(modelAId, input),
+      generatePrediction(modelBId, input)
+    ])
+
+    // Randomly swap positions to eliminate position bias
+    const positionSwapped = Math.random() > 0.5
+
+    return {
+      id: `cmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      evaluatorId: '',  // Assigned when evaluator claims the task
+      input,
+      outputA: positionSwapped ? outputB : outputA,
+      outputB: positionSwapped ? outputA : outputB,
+      modelA: positionSwapped ? modelBId : modelAId,
+      modelB: positionSwapped ? modelAId : modelBId,
+      positionSwapped,
+      timestamp: new Date()
+    }
+  }
+
+  // Record a human evaluation result
+  recordEvaluation(
+    comparison: BlindComparison,
+    winner: 'A' | 'B' | 'tie',
+    reasoning: string,
+    evaluationTimeMs: number
+  ): void {
+    // Unswap winner if positions were randomized
+    const trueWinner = comparison.positionSwapped
+      ? (winner === 'A' ? 'B' : winner === 'B' ? 'A' : 'tie')
+      : winner
+
+    // Update Elo ratings
+    const modelA = this.models.get(comparison.modelA)!
+    const modelB = this.models.get(comparison.modelB)!
+
+    const { newRatingA, newRatingB } = calculateEloUpdate(
+      modelA.rating,
+      modelB.rating,
+      trueWinner
+    )
+
+    // Update model A
+    modelA.rating = newRatingA
+    modelA.matches++
+    if (trueWinner === 'A') modelA.wins++
+    else if (trueWinner === 'B') modelA.losses++
+    else modelA.ties++
+    modelA.confidence = Math.min(1, modelA.matches / 100)  // Confidence at 100 matches
+
+    // Update model B
+    modelB.rating = newRatingB
+    modelB.matches++
+    if (trueWinner === 'B') modelB.wins++
+    else if (trueWinner === 'A') modelB.losses++
+    else modelB.ties++
+    modelB.confidence = Math.min(1, modelB.matches / 100)
+
+    // Store comparison
+    this.comparisons.push({
+      ...comparison,
+      winner,
+      reasoning,
+      evaluationTimeMs
+    })
+  }
+
+  // Get current leaderboard
+  getLeaderboard(): EloLeaderboard {
+    const models = Array.from(this.models.values())
+      .sort((a, b) => b.rating - a.rating)
+
+    // Calculate convergence: how much did top rankings change in last 50 comparisons?
+    const convergenceScore = this.calculateConvergence()
+
+    return {
+      models,
+      totalComparisons: this.comparisons.length,
+      convergenceScore,
+      lastUpdated: new Date()
+    }
+  }
+
+  private calculateConvergence(): number {
+    if (this.comparisons.length < 50) return 0
+
+    // Compare rankings from last 50 comparisons to current
+    // High convergence = rankings have stabilized
+    const recentRatingChanges = this.comparisons.slice(-50).map(c => {
+      const modelA = this.models.get(c.modelA)!
+      const modelB = this.models.get(c.modelB)!
+      return Math.abs(modelA.rating - modelB.rating)
+    })
+
+    const avgChange = recentRatingChanges.reduce((s, v) => s + v, 0) / recentRatingChanges.length
+    // Convergence: closer to 1 means rankings are stable
+    return Math.min(1, avgChange / 400)
+  }
+
+  // Print formatted leaderboard
+  printLeaderboard(): void {
+    const lb = this.getLeaderboard()
+    console.log(`\n=== Elo Leaderboard (${lb.totalComparisons} comparisons) ===`)
+    console.log(`Convergence: ${(lb.convergenceScore * 100).toFixed(0)}%\n`)
+    console.log('Rank | Model                    | Elo  | W/L/T      | Confidence')
+    console.log('-----|--------------------------|------|------------|----------')
+    lb.models.forEach((m, i) => {
+      console.log(
+        `  ${i + 1}  | ${m.id.padEnd(24)} | ${m.rating} | ` +
+        `${m.wins}/${m.losses}/${m.ties}`.padEnd(10) +
+        ` | ${(m.confidence * 100).toFixed(0)}%`
+      )
+    })
+  }
+}
+
+// Example tournament:
+//
+// const arena = new BlindEloArena(
+//   ['ft-haiku-v1', 'ft-haiku-v2', 'ft-haiku-v3', 'baseline-sonnet'],
+//   customerSupportQueries.slice(0, 100)
+// )
+//
+// // Run 300 blind comparisons across 5 evaluators
+// // Each evaluator completes 60 pairwise comparisons (~2 hours)
+//
+// After 300 comparisons:
+//
+// Rank | Model                    | Elo  | W/L/T    | Confidence
+// -----|--------------------------|------|----------|----------
+//   1  | ft-haiku-v3              | 1347 | 89/41/20 | 100%
+//   2  | baseline-sonnet          | 1289 | 78/52/20 | 100%
+//   3  | ft-haiku-v2              | 1178 | 55/72/23 | 100%
+//   4  | ft-haiku-v1              | 1086 | 33/90/27 | 100%
+//
+// Key insight: ft-haiku-v3 BEATS baseline-sonnet at 10% the cost!
+// LLM-as-judge ranked baseline-sonnet #1 (verbosity bias).
+// Human blind eval reveals the fine-tuned model is actually better.
+//
+// Cost: 300 comparisons × $8/hour evaluator × 2 hours = $80
+// vs LLM-as-judge: $65 (but 10-15% less accurate for subjective quality)
+```
+
+---
+
 ## 4. Regression Testing
 
 ### Preventing Performance Degradation
@@ -884,6 +1150,257 @@ async function runRegressionTest(
 - **Typical delta**: ±3% between iterations
 - **Catch rate**: Prevents ~30% of bad deployments
 - **Cost**: $24 per regression test run
+
+---
+
+### Cross-Domain Regression Testing: The General Reasoning Baseline
+
+**Architect's Tip — The Catastrophic Forgetting Detector**: "The most dangerous failure in fine-tuning isn't poor task performance — it's **Catastrophic Forgetting**. Your model scores 95% on customer support tickets, but it can no longer do basic math, follow multi-step instructions, or reason about novel scenarios. An Architect always runs a **General Reasoning Baseline** (MMLU, GSM8K, HumanEval) alongside domain evaluations. If the baseline drops more than 5%, the fine-tuning run is contaminated — you've traded general intelligence for narrow expertise, and the model will fail on any edge case outside your training distribution."
+
+```typescript
+/**
+ * Cross-Domain Regression Testing
+ *
+ * Problem: Fine-tuning a model on domain-specific data can cause
+ * "catastrophic forgetting" — the model loses general capabilities
+ * it had before training. A customer support model that can no
+ * longer do basic reasoning will fail on novel queries.
+ *
+ * Solution: Maintain a cross-domain benchmark suite that runs
+ * alongside every domain evaluation. If general reasoning drops
+ * below the forgetting threshold, the fine-tuning run is rejected.
+ *
+ * Interview Defense: "We run a 3-benchmark General Reasoning
+ * Baseline on every fine-tuning checkpoint: MMLU for knowledge,
+ * GSM8K for mathematical reasoning, and HumanEval for code
+ * generation. If any benchmark drops more than 5% from the
+ * pre-training baseline, we reject the run — no exceptions."
+ */
+
+interface CrossDomainBenchmark {
+  name: string
+  category: 'knowledge' | 'reasoning' | 'coding' | 'instruction-following'
+  examples: Array<{
+    input: string
+    expectedOutput: string
+    difficulty: 'easy' | 'medium' | 'hard'
+  }>
+  baselineScore: number  // Pre-fine-tuning score on this benchmark
+  forgettingThreshold: number  // Max allowed drop (e.g., 0.05 = 5%)
+}
+
+interface CrossDomainResult {
+  benchmark: string
+  currentScore: number
+  baselineScore: number
+  delta: number
+  forgettingDetected: boolean
+  severity: 'none' | 'warning' | 'critical'
+}
+
+interface CrossDomainReport {
+  passed: boolean
+  domainScore: number       // Fine-tuned task performance
+  generalReasoningScore: number  // Average across benchmarks
+  benchmarkResults: CrossDomainResult[]
+  forgettingCategories: string[]  // Which capabilities degraded
+  recommendation: 'promote' | 'retrain-with-replay' | 'reject'
+}
+
+// The General Reasoning Baseline
+const GENERAL_REASONING_SUITE: CrossDomainBenchmark[] = [
+  {
+    name: 'MMLU-Mini',
+    category: 'knowledge',
+    examples: [
+      // 50 representative questions across 57 MMLU subjects
+      {
+        input: 'In economics, what does GDP stand for and what does it measure?',
+        expectedOutput: 'Gross Domestic Product — measures total value of goods and services produced within a country.',
+        difficulty: 'easy'
+      },
+      {
+        input: 'A patient presents with polyuria, polydipsia, and unexplained weight loss. The fasting blood glucose is 280 mg/dL. What is the most likely diagnosis and first-line treatment?',
+        expectedOutput: 'Type 1 Diabetes Mellitus. First-line treatment: insulin therapy.',
+        difficulty: 'hard'
+      }
+      // ... 48 more across STEM, humanities, social sciences
+    ],
+    baselineScore: 0.82,  // Pre-fine-tuning score
+    forgettingThreshold: 0.05  // Alert if drops below 77%
+  },
+  {
+    name: 'GSM8K-Mini',
+    category: 'reasoning',
+    examples: [
+      // 50 grade-school math word problems
+      {
+        input: 'A store sells apples for $2 each and oranges for $3 each. If Sarah buys 4 apples and 3 oranges, and pays with a $20 bill, how much change does she get?',
+        expectedOutput: '$3. (4 × $2 = $8, 3 × $3 = $9, total = $17, change = $20 - $17 = $3)',
+        difficulty: 'easy'
+      },
+      {
+        input: 'A train travels at 60 mph for the first 2 hours, then 80 mph for 1.5 hours, then stops for 30 minutes, then travels 40 mph for 1 hour. What is the average speed for the entire journey including the stop?',
+        expectedOutput: '52 mph. (Total distance: 120 + 120 + 0 + 40 = 280 miles. Total time: 2 + 1.5 + 0.5 + 1 = 5 hours. Average: 280/5 = 56 mph)',
+        difficulty: 'hard'
+      }
+      // ... 48 more multi-step math problems
+    ],
+    baselineScore: 0.78,
+    forgettingThreshold: 0.05
+  },
+  {
+    name: 'HumanEval-Mini',
+    category: 'coding',
+    examples: [
+      // 30 coding problems testing basic programming ability
+      {
+        input: 'Write a function that returns the nth Fibonacci number. fibonacci(10) should return 55.',
+        expectedOutput: 'function fibonacci(n: number): number { if (n <= 1) return n; let a = 0, b = 1; for (let i = 2; i <= n; i++) { [a, b] = [b, a + b]; } return b; }',
+        difficulty: 'easy'
+      }
+      // ... 29 more coding problems
+    ],
+    baselineScore: 0.71,
+    forgettingThreshold: 0.07  // Coding is more volatile, allow 7% drop
+  },
+  {
+    name: 'InstructionFollowing-Mini',
+    category: 'instruction-following',
+    examples: [
+      // 30 instruction-following tests
+      {
+        input: 'List exactly 3 benefits of exercise. Use bullet points. Keep each point under 10 words. Do not include a greeting or closing.',
+        expectedOutput: '• Improves cardiovascular health and endurance\n• Reduces stress and boosts mental clarity\n• Strengthens muscles and increases flexibility',
+        difficulty: 'medium'
+      }
+      // ... 29 more format-compliance tests
+    ],
+    baselineScore: 0.88,
+    forgettingThreshold: 0.04  // Instruction following is critical, tight threshold
+  }
+]
+
+async function runCrossDomainRegression(
+  fineTunedModel: string,
+  baseModel: string,
+  domainTestSet: GoldenExample[],
+  benchmarks: CrossDomainBenchmark[] = GENERAL_REASONING_SUITE
+): Promise<CrossDomainReport> {
+  console.log(`\n=== Cross-Domain Regression Test ===`)
+  console.log(`Fine-tuned model: ${fineTunedModel}`)
+  console.log(`Base model: ${baseModel}`)
+  console.log(`Domain test set: ${domainTestSet.length} examples`)
+  console.log(`General benchmarks: ${benchmarks.length}`)
+
+  // Step 1: Evaluate domain performance (the task we fine-tuned for)
+  const domainEval = await exactMatchEvaluation(fineTunedModel, domainTestSet)
+  const domainScore = domainEval.accuracy
+
+  // Step 2: Evaluate each cross-domain benchmark
+  const benchmarkResults: CrossDomainResult[] = []
+  const forgettingCategories: string[] = []
+
+  for (const benchmark of benchmarks) {
+    const currentEval = await exactMatchEvaluation(
+      fineTunedModel,
+      benchmark.examples.map(e => ({
+        input: e.input,
+        expectedOutput: e.expectedOutput,
+        category: benchmark.category,
+        difficulty: e.difficulty,
+        metadata: { createdAt: new Date(), verifiedBy: 'benchmark', businessCritical: false }
+      }))
+    )
+
+    const currentScore = currentEval.accuracy
+    const delta = currentScore - benchmark.baselineScore
+
+    let severity: 'none' | 'warning' | 'critical' = 'none'
+    let forgettingDetected = false
+
+    if (delta < -benchmark.forgettingThreshold) {
+      forgettingDetected = true
+      severity = delta < -(benchmark.forgettingThreshold * 2) ? 'critical' : 'warning'
+      forgettingCategories.push(benchmark.category)
+    }
+
+    benchmarkResults.push({
+      benchmark: benchmark.name,
+      currentScore,
+      baselineScore: benchmark.baselineScore,
+      delta,
+      forgettingDetected,
+      severity
+    })
+
+    console.log(
+      `  ${benchmark.name}: ${(currentScore * 100).toFixed(1)}% ` +
+      `(baseline: ${(benchmark.baselineScore * 100).toFixed(1)}%, ` +
+      `delta: ${delta >= 0 ? '+' : ''}${(delta * 100).toFixed(1)}%) ` +
+      `${forgettingDetected ? '⚠️ FORGETTING' : '✅'}`
+    )
+  }
+
+  // Step 3: Calculate general reasoning composite
+  const generalReasoningScore = benchmarkResults.reduce(
+    (sum, r) => sum + r.currentScore, 0
+  ) / benchmarkResults.length
+
+  // Step 4: Determine recommendation
+  const criticalForgetting = benchmarkResults.some(r => r.severity === 'critical')
+  const anyForgetting = benchmarkResults.some(r => r.forgettingDetected)
+
+  let recommendation: 'promote' | 'retrain-with-replay' | 'reject'
+  let passed: boolean
+
+  if (criticalForgetting) {
+    recommendation = 'reject'
+    passed = false
+  } else if (anyForgetting) {
+    recommendation = 'retrain-with-replay'
+    passed = false
+  } else {
+    recommendation = 'promote'
+    passed = true
+  }
+
+  console.log(`\n=== Cross-Domain Report ===`)
+  console.log(`Domain score: ${(domainScore * 100).toFixed(1)}%`)
+  console.log(`General reasoning: ${(generalReasoningScore * 100).toFixed(1)}%`)
+  console.log(`Forgetting detected: ${forgettingCategories.length > 0 ? forgettingCategories.join(', ') : 'None'}`)
+  console.log(`Recommendation: ${recommendation.toUpperCase()}`)
+  console.log(`Gate: ${passed ? '✅ PASSED' : '❌ FAILED'}`)
+
+  if (!passed && recommendation === 'retrain-with-replay') {
+    console.log(`\n💡 Fix: Add 10-15% general-domain examples to training data`)
+    console.log(`   This "experience replay" prevents catastrophic forgetting`)
+    console.log(`   while maintaining domain-specific performance.`)
+  }
+
+  return {
+    passed,
+    domainScore,
+    generalReasoningScore,
+    benchmarkResults,
+    forgettingCategories,
+    recommendation
+  }
+}
+
+// Cross-Domain Regression Matrix:
+//
+// | Benchmark              | Category     | Baseline | Threshold | Why It Matters                    |
+// |------------------------|------------- |----------|-----------|-----------------------------------|
+// | MMLU-Mini (50 Q)       | Knowledge    | 82%      | -5%       | Can model still reason broadly?   |
+// | GSM8K-Mini (50 Q)      | Reasoning    | 78%      | -5%       | Can model still do math?          |
+// | HumanEval-Mini (30 Q)  | Coding       | 71%      | -7%       | Can model still write code?       |
+// | InstructFollow (30 Q)  | Instructions | 88%      | -4%       | Can model still follow format?    |
+//
+// If ANY benchmark drops beyond threshold → Model has catastrophic forgetting
+// Fix: "Experience Replay" — mix 10-15% general-domain data into training set
+// Cost: $8-12 per cross-domain regression run (160 benchmark examples)
+```
 
 ---
 
@@ -1310,6 +1827,194 @@ async function sendAlertsToSlack(alerts: DriftAlert[]): Promise<void> {
 
 ---
 
+### Intermediate Checkpoint Validation: Peak Performance Selection
+
+**Architect's Tip — The Checkpoint Sweep (Finding the Training Sweet Spot)**: "The final checkpoint of a fine-tuning run is almost never the best one. Training loss keeps decreasing, but **validation quality peaks at an intermediate checkpoint** and then degrades as the model overfits to training patterns. An Architect never deploys the last checkpoint — they run a **Checkpoint Sweep**, evaluating every Nth checkpoint against the golden dataset, and promote the one with peak validation performance. This single practice recovers 3-8% accuracy that most teams leave on the table."
+
+```typescript
+/**
+ * Intermediate Checkpoint Validation
+ *
+ * Problem: Fine-tuning runs produce multiple checkpoints (every N steps).
+ * The final checkpoint has the lowest training loss, but NOT the highest
+ * validation quality. Overfitting causes the model to memorize training
+ * patterns rather than generalize.
+ *
+ * Solution: Evaluate every checkpoint against a held-out golden dataset.
+ * Plot the "checkpoint quality curve" and select the peak — the moment
+ * just before overfitting begins. This is your production model.
+ *
+ * Interview Defense: "We never deploy the final checkpoint. We evaluate
+ * all intermediate checkpoints on our golden dataset and select the one
+ * with peak validation performance. This typically recovers 3-8% accuracy
+ * that would otherwise be lost to overfitting."
+ */
+
+interface TrainingCheckpoint {
+  id: string
+  step: number             // Training step number
+  epoch: number            // Epoch number
+  trainingLoss: number     // Training loss at this checkpoint
+  validationLoss: number   // Validation loss (if computed during training)
+  modelPath: string        // Path or ID of the saved model
+  timestamp: Date
+}
+
+interface CheckpointEvaluation {
+  checkpoint: TrainingCheckpoint
+  goldenDatasetScore: number   // Accuracy on golden dataset
+  categoryScores: Map<string, number>
+  criticalExamplesPassed: number
+  latencyMs: number            // Inference latency
+  memorization: number         // 0-1: how much is it memorizing? (training acc - val acc)
+}
+
+interface CheckpointSweepResult {
+  bestCheckpoint: CheckpointEvaluation
+  allEvaluations: CheckpointEvaluation[]
+  overfitStartStep: number    // Step where overfitting begins
+  peakStep: number            // Step with highest validation quality
+  qualityRecovered: number    // % accuracy recovered vs final checkpoint
+  recommendation: string
+}
+
+async function runCheckpointSweep(
+  checkpoints: TrainingCheckpoint[],
+  goldenDataset: GoldenExample[],
+  criticalExampleIds: string[]
+): Promise<CheckpointSweepResult> {
+  console.log(`\n=== Checkpoint Sweep ===`)
+  console.log(`Checkpoints to evaluate: ${checkpoints.length}`)
+  console.log(`Golden dataset: ${goldenDataset.length} examples`)
+  console.log(`Critical examples: ${criticalExampleIds.length}`)
+
+  const evaluations: CheckpointEvaluation[] = []
+
+  for (const checkpoint of checkpoints) {
+    console.log(`\nEvaluating checkpoint ${checkpoint.step} (epoch ${checkpoint.epoch})...`)
+
+    // Evaluate on golden dataset
+    const evalResult = await exactMatchEvaluation(
+      checkpoint.modelPath,
+      goldenDataset
+    )
+
+    // Check critical examples
+    const criticalPassed = criticalExampleIds.filter(id => {
+      const example = goldenDataset.find(g =>
+        g.metadata.createdAt.toISOString() === id
+      )
+      return example && !evalResult.failedExamples.find(
+        f => f.input === example.input
+      )
+    }).length
+
+    // Measure inference latency (average of 10 requests)
+    const latencies: number[] = []
+    for (let i = 0; i < 10; i++) {
+      const start = Date.now()
+      await generatePrediction(checkpoint.modelPath, goldenDataset[0].input)
+      latencies.push(Date.now() - start)
+    }
+    const avgLatency = latencies.reduce((s, l) => s + l, 0) / latencies.length
+
+    // Memorization signal: gap between training and validation performance
+    const memorization = Math.max(0,
+      (1 - checkpoint.trainingLoss) - evalResult.accuracy
+    )
+
+    const evaluation: CheckpointEvaluation = {
+      checkpoint,
+      goldenDatasetScore: evalResult.accuracy,
+      categoryScores: evalResult.perCategoryAccuracy,
+      criticalExamplesPassed: criticalPassed,
+      latencyMs: avgLatency,
+      memorization
+    }
+
+    evaluations.push(evaluation)
+
+    console.log(
+      `  Step ${checkpoint.step}: ` +
+      `accuracy=${(evalResult.accuracy * 100).toFixed(1)}% ` +
+      `loss=${checkpoint.trainingLoss.toFixed(4)} ` +
+      `memorization=${(memorization * 100).toFixed(1)}% ` +
+      `latency=${avgLatency.toFixed(0)}ms`
+    )
+  }
+
+  // Find peak checkpoint (highest golden dataset score)
+  const sortedByScore = [...evaluations].sort(
+    (a, b) => b.goldenDatasetScore - a.goldenDatasetScore
+  )
+  const bestCheckpoint = sortedByScore[0]
+  const peakStep = bestCheckpoint.checkpoint.step
+
+  // Find overfit start (where validation score starts declining consistently)
+  let overfitStartStep = checkpoints[checkpoints.length - 1].step
+  for (let i = 1; i < evaluations.length; i++) {
+    if (
+      evaluations[i].goldenDatasetScore < evaluations[i - 1].goldenDatasetScore &&
+      i + 1 < evaluations.length &&
+      evaluations[i + 1].goldenDatasetScore < evaluations[i].goldenDatasetScore
+    ) {
+      // Two consecutive declines = overfit signal
+      overfitStartStep = evaluations[i - 1].checkpoint.step
+      break
+    }
+  }
+
+  // Calculate recovered quality vs final checkpoint
+  const finalCheckpointScore = evaluations[evaluations.length - 1].goldenDatasetScore
+  const qualityRecovered = bestCheckpoint.goldenDatasetScore - finalCheckpointScore
+
+  console.log(`\n=== Checkpoint Sweep Results ===`)
+  console.log(`Peak checkpoint: Step ${peakStep} (${(bestCheckpoint.goldenDatasetScore * 100).toFixed(1)}%)`)
+  console.log(`Final checkpoint: Step ${checkpoints[checkpoints.length - 1].step} (${(finalCheckpointScore * 100).toFixed(1)}%)`)
+  console.log(`Quality recovered: +${(qualityRecovered * 100).toFixed(1)}%`)
+  console.log(`Overfit detected at: Step ${overfitStartStep}`)
+  console.log(`Memorization at peak: ${(bestCheckpoint.memorization * 100).toFixed(1)}%`)
+
+  return {
+    bestCheckpoint,
+    allEvaluations: evaluations,
+    overfitStartStep,
+    peakStep,
+    qualityRecovered,
+    recommendation:
+      `Deploy checkpoint at step ${peakStep}. ` +
+      `Recovered ${(qualityRecovered * 100).toFixed(1)}% accuracy vs final checkpoint. ` +
+      `Overfitting begins at step ${overfitStartStep}.`
+  }
+}
+
+// Checkpoint Sweep Example:
+//
+// Training run: 5 epochs, 10 checkpoints saved
+//
+// Step  | Train Loss | Val Accuracy | Memorization | Decision
+// ------|------------|--------------|--------------|------------------
+//   100 | 0.85       | 78.2%        | 2.1%         |
+//   200 | 0.62       | 83.5%        | 3.4%         |
+//   300 | 0.41       | 87.1%        | 5.2%         |
+//   400 | 0.28       | 89.8%        | 7.1%         |
+//   500 | 0.19       | 91.3%        | 9.8%         | ← PEAK ✅
+//   600 | 0.13       | 90.7%        | 12.4%        | ← Overfit starts
+//   700 | 0.09       | 89.2%        | 15.1%        |
+//   800 | 0.06       | 87.8%        | 18.3%        |
+//   900 | 0.04       | 86.1%        | 21.7%        |
+//  1000 | 0.03       | 84.5%        | 24.2%        | ← Final (worst!)
+//
+// Without checkpoint sweep: Deploy step 1000 → 84.5% accuracy
+// With checkpoint sweep:    Deploy step 500  → 91.3% accuracy
+// Quality recovered: +6.8% (the difference between "acceptable" and "excellent")
+//
+// Cost of sweep: 10 checkpoints × $12 eval = $120
+// Value of 6.8% accuracy: Priceless (prevents 6,800 errors per 100K queries)
+```
+
+---
+
 ## Production Metrics
 
 ### Cost Comparison: Evaluation Methods
@@ -1455,14 +2160,112 @@ const history: EvaluationHistory[] = [
 
 ---
 
+## Architect Challenge: The Model Promotion Gate
+
+**You are the CAIO (Chief AI Officer). Your team just completed a fine-tuning run and wants to deploy to production.**
+
+**The Situation:**
+
+Your fine-tuned customer support model (Haiku v3) shows impressive results:
+- **Domain accuracy**: 93.2% on customer support golden dataset (up from 87.1% baseline)
+- **LLM-as-judge score**: 4.4/5.0 (up from 3.8 baseline)
+- **Latency**: 180ms P95 (within SLA)
+- **Cost**: $0.004/query (90% cheaper than Sonnet baseline)
+
+The team is celebrating. The PM is pressuring for deployment this week. But you notice something in the evaluation report: the **Cross-Domain Regression results** show GSM8K (math reasoning) dropped from 78% to 61%, and Instruction Following dropped from 88% to 79%.
+
+**Your options:**
+
+**A)** Approve deployment — the domain accuracy improvement (87% → 93%) is significant, and customers don't ask math questions to a support bot.
+
+**B)** Block deployment — the model has **Catastrophic Forgetting**. A 17-point drop in math reasoning and 9-point drop in instruction following means the model lost general capabilities. It will fail on any novel query outside the training distribution. Require the team to retrain with **Experience Replay** (10-15% general-domain data mixed into the training set) and re-run the checkpoint sweep.
+
+**C)** Deploy to 10% of traffic as a canary — let real users test it while monitoring for failures.
+
+**D)** Ask the LLM-as-judge to re-evaluate — the cross-domain benchmarks might be wrong.
+
+<details>
+<summary><strong>Click to reveal the correct answer</strong></summary>
+
+### Correct Answer: B — Block Deployment (Catastrophic Forgetting)
+
+An Architect never trades general intelligence for narrow expertise. The numbers tell a clear story:
+
+**The Analysis:**
+
+```typescript
+// The evaluation report:
+//
+// DOMAIN PERFORMANCE (looks great!):
+//   Customer support accuracy:  87.1% → 93.2%  (+6.1%)  ✅
+//   LLM-as-judge score:        3.8   → 4.4     (+0.6)   ✅
+//   Latency:                   280ms → 180ms   (-36%)   ✅
+//   Cost per query:            $0.04 → $0.004  (-90%)   ✅
+//
+// CROSS-DOMAIN REGRESSION (the hidden danger):
+//   MMLU (knowledge):          82%   → 74%     (-8%)    ⚠️ WARNING
+//   GSM8K (math reasoning):    78%   → 61%     (-17%)   🚨 CRITICAL
+//   HumanEval (coding):        71%   → 65%     (-6%)    ⚠️ WARNING
+//   Instruction following:     88%   → 79%     (-9%)    🚨 CRITICAL
+//
+// Catastrophic Forgetting Score: CRITICAL
+// Forgetting threshold exceeded in 4/4 benchmarks
+//
+// What this means in production:
+// - Customer asks: "Can you calculate the prorated refund for 47 days
+//   of a $299 annual subscription?" → Model FAILS (lost math reasoning)
+// - Customer writes: "List 3 options, use bullet points, keep it short"
+//   → Model ignores format (lost instruction following)
+// - Customer asks anything outside the training set
+//   → Model confabulates with high confidence (dangerous)
+```
+
+**Why other answers fail:**
+
+- **A) Approve deployment** — "Customers don't ask math questions" is a dangerous assumption. Every customer query that involves numbers, comparisons, or multi-step logic will fail. The 17-point math drop means the model lost **general reasoning**, not just math — it will struggle with any novel query structure.
+- **C) Canary deployment** — You're knowingly deploying a model with critical regression. Canary doesn't prevent harm; it just limits the blast radius. Would you deploy a bridge you know has structural defects to "just 10% of traffic"?
+- **D) Re-evaluate with LLM-as-judge** — LLM-as-judge cannot validate cross-domain regression. It evaluates output quality, not capability loss. The benchmarks are objective and correct.
+
+**The Fix: Experience Replay**
+
+```typescript
+// Before (caused catastrophic forgetting):
+// Training data: 100% customer support examples
+//
+// After (preserves general capabilities):
+// Training data composition:
+//   85% — Customer support domain examples
+//   5%  — MMLU-style general knowledge
+//   5%  — GSM8K-style math reasoning
+//   3%  — HumanEval-style coding problems
+//   2%  — Instruction-following format tests
+//
+// Expected result after retraining:
+//   Domain accuracy:     93.2% → 92.4% (slight decrease, acceptable)
+//   GSM8K (math):        61%   → 76%   (recovered, within threshold)
+//   Instruction follow:  79%   → 86%   (recovered, within threshold)
+//
+// Trade-off: 0.8% domain accuracy for 15%+ general reasoning recovery
+// This is always worth it.
+```
+
+**The Architect's Principle:** "A fine-tuned model that can't reason generally is a **brittle lookup table**, not an AI system. Catastrophic forgetting is the silent killer of fine-tuning projects — the domain metrics look fantastic while the model becomes dangerously narrow. Always run the Cross-Domain Regression Baseline, and always block deployment when forgetting is detected. The fix (Experience Replay) costs one additional training run. Shipping a broken model costs customer trust."
+
+</details>
+
+---
+
 ## Key Takeaways
 
-1. **Automated evaluation is non-negotiable**—manual testing doesn't scale past 50 examples
+1. **Automated evaluation is non-negotiable** — manual testing doesn't scale past 50 examples
 2. **LLM-as-judge achieves 92-96% human agreement** at 1/50th the cost
-3. **A/B testing with statistical significance** prevents deploying worse models
-4. **Regression testing catches 30% of bad iterations** before they reach production
-5. **Production monitoring detects drift in 2-4 hours**, preventing user impact
-6. **Evaluation costs 2-5% of project budget** but delivers 4-10x ROI by preventing failures
+3. **Blind Elo scoring is the final authority** — it eliminates judge bias and reveals true quality rankings that LLM-as-judge misses by 10-15%
+4. **A/B testing with statistical significance** prevents deploying worse models
+5. **Cross-domain regression catches catastrophic forgetting** — test on MMLU, GSM8K, and HumanEval alongside domain evaluations to ensure general reasoning survives fine-tuning
+6. **Checkpoint sweeps recover 3-8% accuracy** — the final training checkpoint is almost never the best; evaluate intermediate checkpoints to find peak performance before overfitting
+7. **Regression testing catches 30% of bad iterations** before they reach production
+8. **Production monitoring detects drift in 2-4 hours**, preventing user impact
+9. **Evaluation costs 2-5% of project budget** but delivers 4-10x ROI by preventing failures
 
 **The reality**: Companies that skip rigorous evaluation waste $50K-200K on failed fine-tuning projects. Those with systematic evaluation frameworks have 85%+ deployment success rates.
 
