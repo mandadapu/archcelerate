@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { LearningObjectives } from './components/LearningObjectives'
 
 export const metadata: Metadata = {
   title: 'Week 11: Observability + Production',
@@ -87,22 +88,8 @@ export default async function Week11Page() {
           </p>
         </div>
 
-        {/* Technical Milestones */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Technical Milestones</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-2">
-              {objectives.map((objective, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
-                  <span>{objective}</span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
+        {/* Technical Milestones - Premium Collapsible */}
+        <LearningObjectives objectives={objectives} />
 
         {/* Progress Overview */}
         {progress && (
