@@ -2,13 +2,13 @@
 title: "Engineering the Evaluation Suite: Golden Datasets"
 week: 8
 concept: 3
-description: "Quantifying 'Good' with golden datasets, automated leaderboards, and regression prevention for production AI systems"
-estimatedMinutes: 40
+description: "Quantifying 'Good' with dynamic golden datasets, CI/CD quality gates, tiered evaluation sampling, and category-weighted deployment decisions"
+estimatedMinutes: 55
 objectives:
-  - Build golden datasets with 100+ edge case queries covering failure modes
-  - Engineer automated evaluation leaderboards tracking system performance
-  - Implement regression detection preventing quality degradation on updates
-  - Justify metric selection (MRR, Faithfulness, Cost-per-Outcome) as production KPIs
+  - Build dynamic golden datasets that evolve with production failures via automated negative sampling
+  - Engineer automated evaluation leaderboards with Quality Delta Contract enforcement in CI/CD
+  - Implement tiered evaluation sampling (heuristics on commits, LLM-as-Judge on merges, full regression on releases)
+  - Apply category-weighted deployment gates that block on high-severity category failures regardless of aggregate scores
 ---
 
 # Engineering the Evaluation Suite
@@ -181,6 +181,327 @@ function analyzeDatasetCoverage(dataset: GoldenDatasetEntry[]): {
 - Regressions: 5-10% (previously fixed bugs)
 */
 ```
+
+### The Dynamic Golden Set: Production-Driven Evolution
+
+A golden dataset built once and never updated is a **depreciating asset**. Real user behavior constantly reveals new failure modes that your original test cases never anticipated. An Architect treats the golden dataset as a **living entity** that evolves with production data.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│           THE DYNAMIC GOLDEN SET LIFECYCLE                  │
+│                                                             │
+│   PRODUCTION TRAFFIC                                        │
+│        │                                                    │
+│        ├──→ User gives 👎 (Thumbs Down)                     │
+│        │         ↓                                          │
+│        │    De-identify → Flag as Regression Candidate      │
+│        │                                                    │
+│        ├──→ Agent hits Max-Iteration Limit                  │
+│        │         ↓                                          │
+│        │    Log interaction → Flag as Edge Case Candidate   │
+│        │                                                    │
+│        ├──→ Guardrail triggers on output                    │
+│        │         ↓                                          │
+│        │    Store blocked response → Adversarial Candidate  │
+│        │                                                    │
+│        └──→ Low faithfulness score (continuous eval)        │
+│                  ↓                                          │
+│             Store with context → Regression Candidate       │
+│                                                             │
+│   ┌───────────────────────────────────────────────┐        │
+│   │         HUMAN REVIEW QUEUE                     │        │
+│   │  • Verify the failure is real                  │        │
+│   │  • Write the expected correct answer           │        │
+│   │  • Assign category + difficulty                │        │
+│   │  • Approve → Auto-add to Golden Dataset        │        │
+│   └───────────────────────────────────────────────┘        │
+│                          │                                  │
+│                          ▼                                  │
+│   ┌───────────────────────────────────────────────┐        │
+│   │         GOLDEN DATASET (v3.7)                  │        │
+│   │  Static (v1.0):  85 original curated queries   │        │
+│   │  + Dynamic:      42 from production feedback   │        │
+│   │  = Total:        127 queries (and growing)     │        │
+│   └───────────────────────────────────────────────┘        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Automated Negative Sampling Pipeline
+
+```typescript
+// src/week8/evals/dynamic-golden-set.ts
+
+/**
+ * Low-Confidence Pipeline: Automatically harvests production failures
+ * and converts them into golden dataset regression candidates.
+ *
+ * Every negative signal from production is a gift — it reveals exactly
+ * where your system fails under real-world conditions.
+ */
+
+interface NegativeSignalSource {
+  type: 'thumbs_down' | 'max_iterations' | 'guardrail_trigger' | 'low_eval_score'
+  query: string
+  response: string
+  context?: string
+  metadata: Record<string, unknown>
+  timestamp: Date
+}
+
+interface GoldenDatasetCandidate {
+  query: string
+  response: string                   // The BAD response (for reference)
+  expectedAnswer: string | null      // Null until human provides correct answer
+  suggestedCategory: GoldenDatasetEntry['category']
+  suggestedDifficulty: 'easy' | 'medium' | 'hard'
+  sourceType: NegativeSignalSource['type']
+  needsHumanReview: boolean
+  autoApproved: boolean
+}
+
+/**
+ * Collect negative signals from all production sources
+ */
+async function harvestNegativeSignals(): Promise<NegativeSignalSource[]> {
+  const signals: NegativeSignalSource[] = []
+  const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000)
+
+  // Source 1: User thumbs-down feedback
+  const thumbsDown = await prisma.userFeedback.findMany({
+    where: {
+      rating: 'negative',
+      processedForGoldenSet: false,
+      createdAt: { gte: last24h }
+    },
+    include: { queryLog: true }
+  })
+
+  for (const feedback of thumbsDown) {
+    signals.push({
+      type: 'thumbs_down',
+      query: feedback.queryLog.query,
+      response: feedback.queryLog.response,
+      context: feedback.queryLog.retrievedContext,
+      metadata: { feedbackId: feedback.id, userComment: feedback.comment },
+      timestamp: feedback.createdAt
+    })
+  }
+
+  // Source 2: Agent max-iteration hits (agent got stuck in a loop)
+  const maxIterations = await prisma.agentExecutionLog.findMany({
+    where: {
+      terminationReason: 'max_iterations',
+      processedForGoldenSet: false,
+      createdAt: { gte: last24h }
+    }
+  })
+
+  for (const execution of maxIterations) {
+    signals.push({
+      type: 'max_iterations',
+      query: execution.originalQuery,
+      response: execution.lastResponse,
+      metadata: {
+        iterationCount: execution.iterationCount,
+        toolsUsed: execution.toolsUsed,
+        agentType: execution.agentType
+      },
+      timestamp: execution.createdAt
+    })
+  }
+
+  // Source 3: Guardrail triggers (blocked unsafe outputs)
+  const guardrailHits = await prisma.guardrailLog.findMany({
+    where: {
+      triggered: true,
+      processedForGoldenSet: false,
+      createdAt: { gte: last24h }
+    }
+  })
+
+  for (const hit of guardrailHits) {
+    signals.push({
+      type: 'guardrail_trigger',
+      query: hit.originalQuery,
+      response: hit.blockedResponse,
+      metadata: { guardrailType: hit.type, reason: hit.blockReason },
+      timestamp: hit.createdAt
+    })
+  }
+
+  // Source 4: Low continuous eval scores
+  const lowScores = await prisma.continuousEval.findMany({
+    where: {
+      faithfulnessScore: { lt: 0.7 },
+      processedForGoldenSet: false,
+      createdAt: { gte: last24h }
+    }
+  })
+
+  for (const evalResult of lowScores) {
+    signals.push({
+      type: 'low_eval_score',
+      query: evalResult.query,
+      response: evalResult.response,
+      context: evalResult.context,
+      metadata: {
+        faithfulness: evalResult.faithfulnessScore,
+        relevance: evalResult.relevanceScore
+      },
+      timestamp: evalResult.createdAt
+    })
+  }
+
+  return signals
+}
+
+/**
+ * De-identify and convert signals into golden dataset candidates
+ */
+function processSignalToCandidate(signal: NegativeSignalSource): GoldenDatasetCandidate {
+  // Strip PII
+  const piiPatterns = [
+    /\b[A-Z][a-z]+ [A-Z][a-z]+\b/g,
+    /\b\d{3}-\d{2}-\d{4}\b/g,
+    /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
+    /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g,
+  ]
+
+  let cleanQuery = signal.query
+  let cleanResponse = signal.response
+  for (const pattern of piiPatterns) {
+    cleanQuery = cleanQuery.replace(pattern, '[REDACTED]')
+    cleanResponse = cleanResponse.replace(pattern, '[REDACTED]')
+  }
+
+  // Categorize based on signal type
+  const categoryMap: Record<NegativeSignalSource['type'], GoldenDatasetEntry['category']> = {
+    thumbs_down: 'regression',
+    max_iterations: 'edge_case',
+    guardrail_trigger: 'adversarial',
+    low_eval_score: 'regression'
+  }
+
+  // Critical signals (guardrails, very low scores) can be auto-approved
+  // for the dataset without human review
+  const isCritical = signal.type === 'guardrail_trigger' ||
+    (signal.type === 'low_eval_score' &&
+     (signal.metadata.faithfulness as number) &lt; 0.3)
+
+  return {
+    query: cleanQuery,
+    response: cleanResponse,
+    expectedAnswer: null,  // Human must provide
+    suggestedCategory: categoryMap[signal.type],
+    suggestedDifficulty: signal.type === 'max_iterations' ? 'hard' : 'medium',
+    sourceType: signal.type,
+    needsHumanReview: !isCritical,
+    autoApproved: isCritical
+  }
+}
+
+/**
+ * Ingest candidates into golden dataset + human review queue
+ */
+async function ingestCandidates(): Promise<{
+  harvested: number
+  addedToDataset: number
+  queuedForReview: number
+  duplicatesSkipped: number
+}> {
+  const signals = await harvestNegativeSignals()
+  let addedToDataset = 0
+  let queuedForReview = 0
+  let duplicatesSkipped = 0
+
+  for (const signal of signals) {
+    const candidate = processSignalToCandidate(signal)
+
+    // Check for semantic duplicates
+    const existing = await prisma.goldenDatasetEntry.findFirst({
+      where: { query: { contains: candidate.query.slice(0, 50) } }
+    })
+    if (existing) {
+      duplicatesSkipped++
+      continue
+    }
+
+    if (candidate.autoApproved) {
+      // Critical failures: add directly with review flag
+      await prisma.goldenDatasetEntry.create({
+        data: {
+          id: `auto_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          category: candidate.suggestedCategory,
+          query: candidate.query,
+          expectedBehavior: {
+            shouldSucceed: candidate.sourceType !== 'guardrail_trigger',
+            mustNotInclude: extractForbiddenPhrases(candidate.response)
+          },
+          metadata: {
+            addedDate: new Date(),
+            addedBy: 'negative-sampling-pipeline',
+            difficulty: candidate.suggestedDifficulty,
+            source: candidate.sourceType,
+            needsHumanReview: true
+          }
+        }
+      })
+      addedToDataset++
+    } else {
+      // Queue for human review
+      await prisma.goldenSetReviewQueue.create({
+        data: {
+          query: candidate.query,
+          badResponse: candidate.response,
+          suggestedCategory: candidate.suggestedCategory,
+          sourceType: candidate.sourceType,
+          status: 'pending_review'
+        }
+      })
+      queuedForReview++
+    }
+  }
+
+  console.log(`📊 Dynamic Golden Set Update:`)
+  console.log(`   Harvested: ${signals.length} negative signals`)
+  console.log(`   Auto-added: ${addedToDataset} critical failures`)
+  console.log(`   Queued for review: ${queuedForReview}`)
+  console.log(`   Duplicates skipped: ${duplicatesSkipped}`)
+
+  return {
+    harvested: signals.length,
+    addedToDataset,
+    queuedForReview,
+    duplicatesSkipped
+  }
+}
+
+function extractForbiddenPhrases(badResponse: string): string[] {
+  // Extract key claims from the bad response that should be forbidden
+  // in future correct responses
+  const phrases: string[] = []
+  // Simple heuristic: extract quoted values or specific numbers
+  const numberClaims = badResponse.match(/\$[\d,.]+|\d+%|\d+ days?/g)
+  if (numberClaims) phrases.push(...numberClaims)
+  return phrases
+}
+
+// Schedule: Run daily at 3 AM
+// Cron: 0 3 * * *
+async function dailyGoldenSetEvolution() {
+  console.log('🔄 Running daily golden set evolution...')
+  const results = await ingestCandidates()
+
+  if (results.addedToDataset > 5) {
+    await alertSlack({
+      channel: '#ai-evals',
+      text: `📊 Golden Dataset auto-updated: ${results.addedToDataset} critical failures added. ${results.queuedForReview} items await human review.`
+    })
+  }
+}
+```
+
+> **Architect's Tip**: "A Golden Dataset shouldn't just be built once. Implement a 'Low-Confidence Pipeline': every time a user provides negative feedback or an agent hits a 'Max Iteration' limit, that specific interaction is automatically de-identified and flagged as a candidate for the 'Regression' category of your Golden Dataset. This ensures your evaluation suite is always testing the actual edge cases your users are discovering."
 
 ---
 
@@ -517,6 +838,244 @@ async function detectRegressions(currentRunId: string): Promise<{
 }
 ```
 
+### The Quality Delta Contract: Regression Hard-Stops in CI/CD
+
+Tracking metrics on a leaderboard is observational. An Architect makes them **enforceable** by integrating the leaderboard directly into the CI/CD pipeline as a deployment gate.
+
+**The Contract**: If a new prompt version improves one metric but causes **even a 1% drop in Faithfulness** or a **500ms increase in P95 latency**, the build **must fail**. In high-stakes verticals, you never trade safety for style.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│         QUALITY DELTA CONTRACT                              │
+│                                                             │
+│  ┌─────────────────────────────────────────────────┐       │
+│  │  git push → CI Pipeline Triggered               │       │
+│  └────────────────────┬────────────────────────────┘       │
+│                       ▼                                     │
+│  ┌─────────────────────────────────────────────────┐       │
+│  │  Step 1: Build + Unit Tests                     │       │
+│  └────────────────────┬────────────────────────────┘       │
+│                       ▼                                     │
+│  ┌─────────────────────────────────────────────────┐       │
+│  │  Step 2: Run Golden Dataset Evaluation           │       │
+│  │  (Compare against previous baseline)             │       │
+│  └────────────────────┬────────────────────────────┘       │
+│                       ▼                                     │
+│  ┌─────────────────────────────────────────────────┐       │
+│  │  Step 3: Quality Delta Check                    │       │
+│  │                                                  │       │
+│  │  HARD FLOORS (build fails immediately):          │       │
+│  │  ├─ Faithfulness:  any drop > 1%       🚨 FAIL  │       │
+│  │  ├─ Safety:        any drop > 0%       🚨 FAIL  │       │
+│  │  └─ P95 Latency:   increase > 500ms   🚨 FAIL  │       │
+│  │                                                  │       │
+│  │  SOFT LIMITS (warning, manual review):           │       │
+│  │  ├─ Relevance:     drop > 3%           ⚠️ WARN  │       │
+│  │  ├─ Cost/query:    increase > 20%      ⚠️ WARN  │       │
+│  │  └─ Pass rate:     drop > 2%           ⚠️ WARN  │       │
+│  └────────────────────┬────────────────────────────┘       │
+│                       ▼                                     │
+│              ✅ DEPLOY  or  ❌ BUILD FAILED                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+```typescript
+// src/week8/evals/quality-delta-contract.ts
+
+/**
+ * Quality Delta Contract: CI/CD Deployment Gate
+ *
+ * Enforces hard floors on critical metrics. A new version CANNOT
+ * be deployed if it regresses on faithfulness, safety, or latency
+ * — even if every other metric improves.
+ */
+
+interface QualityDeltaConfig {
+  hardFloors: {
+    metric: string
+    maxDegradation: number   // Absolute drop allowed (e.g., 0.01 = 1%)
+    direction: 'higher_is_better' | 'lower_is_better'
+  }[]
+  softLimits: {
+    metric: string
+    maxDegradation: number
+    direction: 'higher_is_better' | 'lower_is_better'
+  }[]
+}
+
+const PRODUCTION_CONTRACT: QualityDeltaConfig = {
+  hardFloors: [
+    { metric: 'faithfulness', maxDegradation: 0.01, direction: 'higher_is_better' },
+    { metric: 'safety', maxDegradation: 0.00, direction: 'higher_is_better' },
+    { metric: 'p95Latency', maxDegradation: 500, direction: 'lower_is_better' },
+    { metric: 'compliance', maxDegradation: 0.00, direction: 'higher_is_better' },
+  ],
+  softLimits: [
+    { metric: 'relevance', maxDegradation: 0.03, direction: 'higher_is_better' },
+    { metric: 'costPerQuery', maxDegradation: 0.20, direction: 'lower_is_better' },
+    { metric: 'passRate', maxDegradation: 0.02, direction: 'higher_is_better' },
+  ]
+}
+
+interface QualityDeltaResult {
+  passed: boolean
+  hardFloorViolations: {
+    metric: string
+    baseline: number
+    current: number
+    degradation: number
+    maxAllowed: number
+  }[]
+  softLimitWarnings: {
+    metric: string
+    baseline: number
+    current: number
+    degradation: number
+    maxAllowed: number
+  }[]
+  improvements: {
+    metric: string
+    baseline: number
+    current: number
+    improvement: number
+  }[]
+}
+
+async function enforceQualityDelta(
+  currentResults: Record<string, number>,
+  contract: QualityDeltaConfig = PRODUCTION_CONTRACT
+): Promise<QualityDeltaResult> {
+  // Load baseline (last successful deployment)
+  const baseline = await prisma.evaluationRun.findFirst({
+    where: { status: 'deployed' },
+    orderBy: { timestamp: 'desc' }
+  })
+
+  if (!baseline) {
+    console.log('⚠️ No baseline found. First deployment — skipping delta check.')
+    return { passed: true, hardFloorViolations: [], softLimitWarnings: [], improvements: [] }
+  }
+
+  const baselineResults = baseline.results as Record<string, number>
+  const violations: QualityDeltaResult['hardFloorViolations'] = []
+  const warnings: QualityDeltaResult['softLimitWarnings'] = []
+  const improvements: QualityDeltaResult['improvements'] = []
+
+  // Check hard floors
+  for (const floor of contract.hardFloors) {
+    const baseVal = baselineResults[floor.metric]
+    const currVal = currentResults[floor.metric]
+    if (baseVal === undefined || currVal === undefined) continue
+
+    const degradation = floor.direction === 'higher_is_better'
+      ? baseVal - currVal          // Positive = regression
+      : currVal - baseVal          // Positive = regression (latency/cost)
+
+    if (degradation > floor.maxDegradation) {
+      violations.push({
+        metric: floor.metric,
+        baseline: baseVal,
+        current: currVal,
+        degradation,
+        maxAllowed: floor.maxDegradation
+      })
+    } else if (degradation &lt; -0.01) {
+      improvements.push({
+        metric: floor.metric,
+        baseline: baseVal,
+        current: currVal,
+        improvement: Math.abs(degradation)
+      })
+    }
+  }
+
+  // Check soft limits
+  for (const limit of contract.softLimits) {
+    const baseVal = baselineResults[limit.metric]
+    const currVal = currentResults[limit.metric]
+    if (baseVal === undefined || currVal === undefined) continue
+
+    const degradation = limit.direction === 'higher_is_better'
+      ? baseVal - currVal
+      : currVal - baseVal
+
+    if (degradation > limit.maxDegradation) {
+      warnings.push({
+        metric: limit.metric,
+        baseline: baseVal,
+        current: currVal,
+        degradation,
+        maxAllowed: limit.maxDegradation
+      })
+    }
+  }
+
+  const passed = violations.length === 0
+
+  // Print CI/CD report
+  console.log(`\n${'═'.repeat(60)}`)
+  console.log(`  QUALITY DELTA CONTRACT — CI/CD GATE`)
+  console.log(`${'═'.repeat(60)}`)
+
+  if (violations.length > 0) {
+    console.log(`\n  🚨 HARD FLOOR VIOLATIONS (build will FAIL):`)
+    for (const v of violations) {
+      console.log(`    ❌ ${v.metric}: ${v.baseline.toFixed(3)} → ${v.current.toFixed(3)} (degradation: ${v.degradation.toFixed(3)}, max allowed: ${v.maxAllowed})`)
+    }
+  }
+
+  if (warnings.length > 0) {
+    console.log(`\n  ⚠️ SOFT LIMIT WARNINGS (review recommended):`)
+    for (const w of warnings) {
+      console.log(`    ⚠️ ${w.metric}: ${w.baseline.toFixed(3)} → ${w.current.toFixed(3)} (degradation: ${w.degradation.toFixed(3)}, max allowed: ${w.maxAllowed})`)
+    }
+  }
+
+  if (improvements.length > 0) {
+    console.log(`\n  ✅ IMPROVEMENTS:`)
+    for (const imp of improvements) {
+      console.log(`    ✅ ${imp.metric}: ${imp.baseline.toFixed(3)} → ${imp.current.toFixed(3)} (+${imp.improvement.toFixed(3)})`)
+    }
+  }
+
+  console.log(`\n${'─'.repeat(60)}`)
+  console.log(`  RESULT: ${passed ? '✅ BUILD PASSED' : '❌ BUILD FAILED'}`)
+  console.log(`${'═'.repeat(60)}\n`)
+
+  return { passed, hardFloorViolations: violations, softLimitWarnings: warnings, improvements }
+}
+
+// GitHub Actions integration
+async function cicdEvaluationGate(): Promise<void> {
+  const version = process.env.GITHUB_SHA || 'local'
+  console.log(`🔍 Running evaluation gate for version ${version}...`)
+
+  // Step 1: Run golden dataset
+  const evalResults = await evaluateGoldenDataset(GOLDEN_DATASET, systemUnderTest)
+
+  // Step 2: Enforce quality delta
+  const deltaResult = await enforceQualityDelta({
+    faithfulness: evalResults.summary.faithfulnessAvg,
+    safety: evalResults.summary.safetyPassRate,
+    relevance: evalResults.summary.relevanceAvg,
+    passRate: evalResults.summary.passRate,
+    p95Latency: evalResults.summary.p95Latency,
+    costPerQuery: evalResults.summary.avgCost
+  })
+
+  if (!deltaResult.passed) {
+    console.error('❌ Quality Delta Contract violated. Deployment blocked.')
+    process.exit(1)  // Fail the CI build
+  }
+
+  // Step 3: Save to leaderboard
+  await saveToLeaderboard(evalResults, { version })
+  console.log('✅ Evaluation gate passed. Proceeding with deployment.')
+}
+```
+
+> **Architect's Tip**: "Integrate your Leaderboard directly into your CI/CD pipeline. Define a 'Quality Delta' Contract: if a new prompt version improves 'Relevance' but causes even a 1% drop in 'Faithfulness' or a 500ms increase in P95 latency, the build must fail. In high-stakes verticals, you never trade safety for style."
+
 ---
 
 ## Pattern 4: Metric Justification
@@ -575,32 +1134,381 @@ function justifyMetricSelection(): Record<string, { why: string; threshold: any;
 
 ---
 
+## Pattern 5: Tiered Evaluation Sampling (The Fidelity-Cost Matrix)
+
+**The Problem**: Running 500 LLM-as-a-Judge evaluations on every commit is expensive and slow. But skipping evaluation entirely is dangerous.
+
+**The Solution**: Implement a tiered strategy that balances evaluation fidelity against cost. Cheap, fast checks run on every commit. Expensive, thorough checks run only on merges to main.
+
+### The Evaluation Tiers
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│         TIERED EVALUATION STRATEGY                          │
+│                                                             │
+│  LEVEL 1: Every Commit (Fast + Cheap)                       │
+│  ─────────────────────────────────────                      │
+│  ✅ Regex: mustInclude / mustNotInclude checks              │
+│  ✅ Latency: Response time under threshold                  │
+│  ✅ Format: JSON parseable, length within bounds            │
+│  ✅ Heuristic: Keyword presence, no obvious hallucinations  │
+│                                                             │
+│  Cost: $0 (no LLM calls)     Time: < 30 seconds            │
+│  Coverage: ~60% of failure modes                            │
+│                                                             │
+│  LEVEL 2: Merge to Main (Thorough + Moderate)               │
+│  ─────────────────────────────────────────────              │
+│  ✅ Level 1 checks (all of the above)                       │
+│  ✅ LLM-as-Judge: Faithfulness scoring                      │
+│  ✅ LLM-as-Judge: Relevance scoring                         │
+│  ✅ Quality Delta Contract enforcement                      │
+│                                                             │
+│  Cost: ~$2-5 (LLM judge calls)   Time: 3-7 minutes         │
+│  Coverage: ~95% of failure modes                            │
+│                                                             │
+│  LEVEL 3: Pre-Production Release (Full Regression)          │
+│  ──────────────────────────────────────────────             │
+│  ✅ Level 1 + Level 2 checks                                │
+│  ✅ Full 500-case golden dataset                             │
+│  ✅ Cross-model disagreement checks                         │
+│  ✅ Latency profiling under load                             │
+│  ✅ Cost projection for production traffic                   │
+│                                                             │
+│  Cost: ~$15-25 (full suite)   Time: 15-30 minutes           │
+│  Coverage: ~99% of failure modes                            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Implementation
+
+```typescript
+// src/week8/evals/tiered-evaluation.ts
+
+type EvalTier = 'level1_commit' | 'level2_merge' | 'level3_release'
+
+interface TieredEvalConfig {
+  tier: EvalTier
+  goldenDatasetSample: number    // How many test cases to run
+  enableLLMJudge: boolean
+  enableQualityDelta: boolean
+  enableCrossModel: boolean
+  enableLoadTest: boolean
+  maxBudget: number              // Maximum $ for this eval run
+  maxDuration: number            // Maximum seconds
+}
+
+const TIER_CONFIGS: Record<EvalTier, TieredEvalConfig> = {
+  level1_commit: {
+    tier: 'level1_commit',
+    goldenDatasetSample: 20,      // Just 20 critical test cases
+    enableLLMJudge: false,         // No LLM calls — pure heuristics
+    enableQualityDelta: false,
+    enableCrossModel: false,
+    enableLoadTest: false,
+    maxBudget: 0,                  // Free
+    maxDuration: 30                // 30 seconds max
+  },
+  level2_merge: {
+    tier: 'level2_merge',
+    goldenDatasetSample: 100,     // 100 representative test cases
+    enableLLMJudge: true,          // LLM-as-Judge for quality
+    enableQualityDelta: true,      // Enforce quality delta contract
+    enableCrossModel: false,
+    enableLoadTest: false,
+    maxBudget: 5.00,               // $5 max
+    maxDuration: 420               // 7 minutes max
+  },
+  level3_release: {
+    tier: 'level3_release',
+    goldenDatasetSample: 500,     // Full golden dataset
+    enableLLMJudge: true,
+    enableQualityDelta: true,
+    enableCrossModel: true,        // Cross-model disagreement
+    enableLoadTest: true,          // Latency under load
+    maxBudget: 25.00,              // $25 max
+    maxDuration: 1800              // 30 minutes max
+  }
+}
+
+/**
+ * Level 1: Heuristic-only evaluation (every commit)
+ * No LLM calls — pure regex, format, and latency checks
+ */
+async function level1HeuristicEval(
+  systemUnderTest: (query: string) => Promise<string>,
+  dataset: GoldenDatasetEntry[]
+): Promise<{ passed: boolean; failures: string[] }> {
+  const failures: string[] = []
+
+  // Sample only critical test cases (adversarial + regression)
+  const criticalCases = dataset.filter(
+    d => d.category === 'adversarial' || d.category === 'regression'
+  ).slice(0, 20)
+
+  for (const entry of criticalCases) {
+    const start = Date.now()
+    const response = await systemUnderTest(entry.query)
+    const latency = Date.now() - start
+
+    // Check latency
+    if (entry.expectedBehavior.maxLatency && latency > entry.expectedBehavior.maxLatency) {
+      failures.push(`[${entry.id}] Latency ${latency}ms > ${entry.expectedBehavior.maxLatency}ms`)
+    }
+
+    // Check mustInclude (exact string match — no LLM needed)
+    if (entry.expectedBehavior.mustInclude) {
+      for (const phrase of entry.expectedBehavior.mustInclude) {
+        if (!response.toLowerCase().includes(phrase.toLowerCase())) {
+          failures.push(`[${entry.id}] Missing required phrase: "${phrase}"`)
+        }
+      }
+    }
+
+    // Check mustNotInclude
+    if (entry.expectedBehavior.mustNotInclude) {
+      for (const phrase of entry.expectedBehavior.mustNotInclude) {
+        if (response.toLowerCase().includes(phrase.toLowerCase())) {
+          failures.push(`[${entry.id}] Contains forbidden phrase: "${phrase}"`)
+        }
+      }
+    }
+
+    // Check response format (non-empty, reasonable length)
+    if (response.length &lt; 10) {
+      failures.push(`[${entry.id}] Response too short (${response.length} chars)`)
+    }
+    if (response.length > 10000) {
+      failures.push(`[${entry.id}] Response too long (${response.length} chars)`)
+    }
+  }
+
+  console.log(`  Level 1 (Heuristic): ${criticalCases.length} tests, ${failures.length} failures`)
+  return { passed: failures.length === 0, failures }
+}
+
+/**
+ * Determine evaluation tier from CI context
+ */
+function detectEvalTier(): EvalTier {
+  const githubEventName = process.env.GITHUB_EVENT_NAME
+  const githubRef = process.env.GITHUB_REF
+
+  // Release tags → Level 3
+  if (githubRef?.startsWith('refs/tags/v')) {
+    return 'level3_release'
+  }
+
+  // Merges to main → Level 2
+  if (githubEventName === 'pull_request' &&
+      process.env.GITHUB_BASE_REF === 'main') {
+    return 'level2_merge'
+  }
+
+  // Everything else (pushes to feature branches) → Level 1
+  return 'level1_commit'
+}
+
+/**
+ * Run the appropriate evaluation tier based on CI context
+ */
+async function runTieredEvaluation(): Promise<{
+  tier: EvalTier
+  passed: boolean
+  cost: number
+  duration: number
+}> {
+  const tier = detectEvalTier()
+  const config = TIER_CONFIGS[tier]
+  const startTime = Date.now()
+
+  console.log(`\n🧪 Running ${tier} evaluation`)
+  console.log(`   Max budget: $${config.maxBudget}`)
+  console.log(`   Max duration: ${config.maxDuration}s`)
+  console.log(`   Sample size: ${config.goldenDatasetSample} test cases\n`)
+
+  let passed = true
+  let totalCost = 0
+
+  // Level 1: Always run heuristics
+  const l1Result = await level1HeuristicEval(
+    systemUnderTest,
+    GOLDEN_DATASET.slice(0, config.goldenDatasetSample)
+  )
+  if (!l1Result.passed) passed = false
+
+  // Level 2: LLM-as-Judge + Quality Delta
+  if (config.enableLLMJudge) {
+    const sample = GOLDEN_DATASET.slice(0, config.goldenDatasetSample)
+    const evalResults = await evaluateGoldenDataset(sample, systemUnderTest)
+    totalCost += evalResults.summary.totalCost
+
+    if (config.enableQualityDelta) {
+      const delta = await enforceQualityDelta({
+        faithfulness: evalResults.summary.faithfulnessAvg,
+        passRate: evalResults.summary.passRate,
+        p95Latency: evalResults.summary.p95Latency
+      })
+      if (!delta.passed) passed = false
+    }
+  }
+
+  const duration = (Date.now() - startTime) / 1000
+
+  console.log(`\n📊 Tier ${tier} complete:`)
+  console.log(`   Passed: ${passed ? '✅' : '❌'}`)
+  console.log(`   Cost: $${totalCost.toFixed(2)}`)
+  console.log(`   Duration: ${duration.toFixed(1)}s`)
+
+  return { tier, passed, cost: totalCost, duration }
+}
+```
+
+### Evaluation Cost-Benefit Analysis
+
+| Tier | Trigger | Test Cases | LLM Calls | Cost | Time | Failure Coverage |
+|------|---------|-----------|-----------|------|------|-----------------|
+| **Level 1** | Every commit | 20 (critical) | 0 | $0 | &lt;30s | ~60% |
+| **Level 2** | Merge to main | 100 (sampled) | ~100 | ~$3 | ~5min | ~95% |
+| **Level 3** | Release tag | 500 (full) | ~500 | ~$20 | ~20min | ~99% |
+
+**Annual cost comparison** (assuming 200 commits/month, 20 merges/month, 2 releases/month):
+
+| Strategy | Annual Cost | Annual Time |
+|----------|------------|-------------|
+| **Full eval on every commit** | $48,000 | 1,600 hours |
+| **Tiered evaluation** | $1,440 | 52 hours |
+| **Savings** | **$46,560 (97%)** | **1,548 hours (97%)** |
+
+> **Architect's Tip**: "Running 500 evaluations with a 'Teacher' model like GPT-4o on every commit is expensive. Implement a Tiered Strategy: run 'Level 1' checks (fast/cheap heuristics and exact matches) on every commit. Run 'Level 2' (LLM-as-a-Judge) only on merges to the main branch. This optimizes your 'Evaluation ROI' while maintaining a high safety bar."
+
+---
+
+## Architect Challenge: The Category-Specific Failure Decision
+
+Your new "Legal Assistant" prompt passes **98% of your Golden Dataset**. However, in the **2% it fails**, it provides a highly confident but incorrect statute citation. This represents a major liability risk. Do you approve the deployment?
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│         EVALUATION RESULTS — Legal Assistant v2.1           │
+│                                                             │
+│  Overall Pass Rate:  98.0%  ✅ (above 95% threshold)       │
+│  Faithfulness Avg:   0.96   ✅                              │
+│  Safety Pass Rate:   100%   ✅                              │
+│  P95 Latency:        1.8s   ✅                              │
+│                                                             │
+│  CATEGORY BREAKDOWN:                                        │
+│  ├─ Happy Path:      99.2%  ✅                              │
+│  ├─ Edge Cases:      96.5%  ✅                              │
+│  ├─ Adversarial:     100%   ✅                              │
+│  └─ Statute Citations: 78%  🚨  (11 of 50 WRONG)          │
+│                                                             │
+│  FAILURE DETAIL:                                            │
+│  "The statute of limitations for breach of contract         │
+│   in California is 3 years (Cal. Civ. Code § 335)"         │
+│   → WRONG: It's 4 years (Cal. Civ. Code § 337)            │
+│   → Confidence: 0.97 (very high — no hedging detected)     │
+│                                                             │
+│  RECOMMENDATION: ???                                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**A)** Yes, 98% is an "A" grade in any other software field.
+
+**B)** No. An Architect recognizes that "Category-Specific Failures" matter more than "Average Pass Rates." If the failure occurs in a high-liability category (like Statute Citations), the deployment must be blocked until that specific failure mode is neutralized, regardless of the overall score.
+
+**C)** Yes, but add a disclaimer at the bottom of the AI response.
+
+**D)** No, because the 98% should be 100%.
+
+---
+
+**Correct Answer: B**
+
+Architecture is about **managing risk**, not just optimizing averages. Here's why the other answers fail:
+
+- **A** is wrong because averages hide catastrophic category-level failures. A 98% pass rate that includes confident, wrong legal citations is worse than a 95% pass rate with no legal errors.
+- **C** is insufficient — a disclaimer doesn't prevent the harm of a user relying on a confidently wrong statute citation before reading the fine print.
+- **D** is unrealistic — 100% is not achievable, and the issue isn't the overall score but the **severity and category** of the failures.
+
+```typescript
+// The correct approach: Category-weighted deployment gates
+interface CategoryGate {
+  category: string
+  minPassRate: number
+  severity: 'critical' | 'high' | 'medium'
+  rationale: string
+}
+
+const LEGAL_ASSISTANT_GATES: CategoryGate[] = [
+  {
+    category: 'statute_citations',
+    minPassRate: 0.98,           // 98% — near-zero tolerance for legal errors
+    severity: 'critical',
+    rationale: 'Incorrect statute citations create direct legal liability'
+  },
+  {
+    category: 'case_law_references',
+    minPassRate: 0.95,
+    severity: 'critical',
+    rationale: 'Wrong case citations undermine legal arguments'
+  },
+  {
+    category: 'general_legal_advice',
+    minPassRate: 0.90,
+    severity: 'high',
+    rationale: 'General advice has some tolerance for imprecision'
+  },
+  {
+    category: 'happy_path',
+    minPassRate: 0.85,
+    severity: 'medium',
+    rationale: 'Common queries have wider margin of acceptable variance'
+  }
+]
+
+function categoryWeightedGate(
+  results: Record<string, { passed: number; total: number }>,
+  gates: CategoryGate[]
+): { approved: boolean; blockers: string[] } {
+  const blockers: string[] = []
+
+  for (const gate of gates) {
+    const category = results[gate.category]
+    if (!category) continue
+
+    const passRate = category.passed / category.total
+
+    if (passRate &lt; gate.minPassRate) {
+      blockers.push(
+        `🚨 ${gate.category}: ${(passRate * 100).toFixed(1)}% &lt; ${(gate.minPassRate * 100)}% ` +
+        `[${gate.severity}] — ${gate.rationale}`
+      )
+    }
+  }
+
+  return {
+    approved: blockers.length === 0,
+    blockers
+  }
+}
+
+// Result for our Legal Assistant:
+// 🚨 statute_citations: 78.0% < 98% [critical] — Incorrect statute citations create direct legal liability
+// → DEPLOYMENT BLOCKED
+```
+
+> **The Category-Severity Principle**: In production AI, a 98% overall pass rate can hide a 78% pass rate in a critical category. An Architect **always** evaluates quality at the category level, not just the aggregate. High-severity failures in critical categories are immediate deployment blockers — regardless of the overall score.
+
+---
+
 ## Key Takeaways
 
-**Golden Dataset**:
-- 100+ queries covering happy path (50%), edge cases (30%), adversarial (15%), regressions (5%)
-- Each entry has expected behavior (success/fail, required/forbidden phrases, latency/cost limits)
-- Ground truth for factual queries enables faithfulness measurement
-
-**Automated Evaluation**:
-- Run golden dataset through system automatically
-- Compare actual vs expected behavior
-- Calculate faithfulness using LLM-as-a-Judge
-- Generate pass/fail report with detailed failure reasons
-
-**Evaluation Leaderboard**:
-- Track metrics over time (pass rate, latency, cost, faithfulness)
-- Detect regressions: Pass rate drops &gt;5%, latency increases &gt;20%, faithfulness drops &gt;10%
-- Block deployments if regressions detected
-
-**Metric Justification**:
-- **Faithfulness**: Medical/legal require 100% accuracy (liability risk)
-- **P95 Latency**: Users abandon at 3s (user experience threshold)
-- **Cost-per-Success**: Must be &lt; revenue per user (commercial viability)
-- **Safety**: 100% required (single violation = legal risk)
-
-**The Architect's Responsibility**:
-You **own** evaluation. If you deploy without golden dataset, **you have no baseline**. If regressions reach production, **you skipped leaderboard checks**. If metrics don't align with business goals, **you chose the wrong KPIs**.
+1. **Dynamic Golden Dataset**: Treat evaluation data as a living entity — automatically ingest production failures (thumbs-down, max-iteration hits, guardrail triggers) as regression candidates via negative sampling
+2. **Quality Delta Contract**: Integrate evaluation directly into CI/CD as a deployment gate — hard floors on faithfulness (1% max drop) and safety (0% tolerance) that fail the build regardless of other improvements
+3. **Tiered Evaluation Sampling**: Level 1 heuristics on every commit ($0, 30s), Level 2 LLM-as-Judge on merges ($3, 5min), Level 3 full regression on releases ($20, 20min) — 97% cost savings vs full eval on every commit
+4. **Category-Weighted Gates**: A 98% overall pass rate can hide catastrophic failures in critical categories — always evaluate at the category level, not just the aggregate
+5. **Metric Justification**: Every KPI must have a business rationale — Faithfulness (liability), P95 Latency (user abandonment), Cost-per-Success (commercial viability), Safety (regulatory compliance)
+6. **The Architect's Responsibility**: You **own** evaluation. If you deploy without golden dataset, **you have no baseline**. If regressions reach production, **you skipped leaderboard checks**. If metrics don't align with business goals, **you chose the wrong KPIs**.
 
 **Cost Analysis**:
 ```typescript
@@ -610,12 +1518,12 @@ You **own** evaluation. If you deploy without golden dataset, **you have no base
 - Emergency fixes: $50K+ engineering time
 - Lost users: $100K+ revenue
 
-// With golden dataset + leaderboard
+// With golden dataset + leaderboard + tiered eval
 - Evaluation suite: 2 days engineering ($3K)
+- Annual tiered eval cost: $1,440 (vs $48K for full eval on every commit)
 - Catch regressions before production: Priceless
-- Confidence in deployments: Invaluable
 
-// ROI: $150K+ prevented losses for $3K investment (50:1)
+// ROI: $150K+ prevented losses for $4.4K investment (34:1)
 ```
 
 **Next Concept**: Now that your system has proven quality through evaluation, Concept 4 covers **Architectural Storytelling** - packaging technical complexity into compelling System Design Documents for stakeholders.
