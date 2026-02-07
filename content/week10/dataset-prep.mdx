@@ -1,14 +1,40 @@
 ---
 title: "Dataset Preparation & Curation"
-description: "Prepare high-quality training data for fine-tuning"
+description: "Architectural data strategy for fine-tuning: contrasting error pairs, synthetic PII scrubbing, stratified sampling, and diversity balancing"
 estimatedMinutes: 45
+week: 10
+concept: 2
+difficulty: intermediate
+objectives:
+  - Implement contrasting error pairs to teach models failure boundaries
+  - Build LLM-based PII scrubbing that preserves conversational structure
+  - Apply strategic dataset balancing with clustering and stratified sampling
+  - Design production-grade data pipelines that produce elite specialist models
 ---
 
 # Dataset Preparation & Curation
 
-Quality data > Quantity of data
+Quality data &gt; Quantity of data. But **curated** data &gt; quality data.
 
-## Data Collection
+## The Core Challenge
+
+**Your model is only as good as the data it learns from.**
+
+Common failure modes:
+1. **Happy-path bias**: Training only on successes teaches the model nothing about its failure boundaries
+2. **PII leakage**: Production data contains names, emails, and addresses that end up baked into model weights
+3. **Category imbalance**: 80% of data is one topic — the model becomes a one-trick specialist that fails on everything else
+4. **Paraphrase echo chambers**: Naive augmentation creates 10 versions of the same example, overfitting to specific phrasing
+
+**Architect's Mandate**: Treat dataset preparation as an **engineering discipline**, not a data cleaning chore.
+
+---
+
+## Pattern 1: Data Collection with Contrasting Error Pairs
+
+Collecting only high-rated conversations (4+ stars) seems logical, but it creates a model that only knows the "Happy Path." It doesn't know where its boundaries are.
+
+### Standard Collection (Happy Path Only)
 
 ```typescript
 // Collect examples from production
@@ -20,7 +46,7 @@ async function collectTrainingData() {
     },
     include: { messages: true }
   })
-  
+
   return conversations.map(conv => ({
     messages: conv.messages.map(m => ({
       role: m.role,
@@ -30,36 +56,652 @@ async function collectTrainingData() {
 }
 ```
 
-## Data Cleaning
+### Contrasting Error Pairs — Teaching the Model What NOT to Do
+
+**Architect's Tip**: *"A model that only sees success doesn't know where the boundaries are. To harden your model, find your 1-star failures where the model hallucinated or was toxic. Include these in your training set by rewriting them: provide the 'Bad User Query,' the 'Original Bad Response' (labeled as a negative example if the format allows, or simply omitted), and the 'Gold Standard Correction.' Teaching the model what not to do is as important as teaching it what to do."*
 
 ```typescript
-function cleanData(examples: Example[]): Example[] {
-  return examples
-    .filter(ex => ex.messages.length &gt;= 2) // Minimum length
-    .filter(ex => !containsPII(ex)) // Remove PII
-    .filter(ex => isHighQuality(ex)) // Quality check
-    .map(ex => normalizeFormat(ex)) // Consistent format
+interface ContrastingPair {
+  userQuery: string
+  badResponse: string         // The original failure (hallucination, toxicity, etc.)
+  goldCorrection: string      // Expert-written correct response
+  failureCategory: 'hallucination' | 'toxicity' | 'incomplete' | 'off_topic' | 'unsafe'
+  correctionNotes: string     // Why the original was wrong (for documentation)
 }
-```
 
-## Data Augmentation
+async function collectContrastingPairs(): Promise<ContrastingPair[]> {
+  // Step 1: Find 1-star failures
+  const failures = await prisma.conversation.findMany({
+    where: {
+      rating: { lte: 2 },     // Low-rated conversations
+      flagged: true            // Human-flagged as problematic
+    },
+    include: {
+      messages: true,
+      feedback: true           // Includes reason for low rating
+    }
+  })
 
-```typescript
-async function augmentData(examples: Example[]): Promise<Example[]> {
-  const augmented = []
-  
-  for (const example of examples) {
-    // Original
-    augmented.push(example)
-    
-    // Paraphrased version
-    const paraphrased = await paraphrase(example)
-    augmented.push(paraphrased)
+  // Step 2: Expert review and correction
+  const pairs: ContrastingPair[] = []
+
+  for (const failure of failures) {
+    const userMessage = failure.messages.find(m => m.role === 'user')
+    const assistantMessage = failure.messages.find(m => m.role === 'assistant')
+
+    if (!userMessage || !assistantMessage) continue
+
+    // Classify the failure type
+    const category = classifyFailure(
+      assistantMessage.content,
+      failure.feedback?.reason
+    )
+
+    // Generate gold standard correction (expert-reviewed)
+    const correction = await generateGoldCorrection(
+      userMessage.content,
+      assistantMessage.content,
+      category
+    )
+
+    pairs.push({
+      userQuery: userMessage.content,
+      badResponse: assistantMessage.content,
+      goldCorrection: correction,
+      failureCategory: category,
+      correctionNotes: failure.feedback?.reason || 'Unspecified failure'
+    })
   }
-  
-  return augmented
+
+  return pairs
+}
+
+// Convert contrasting pairs to training format
+function contrastingPairsToTrainingFormat(
+  pairs: ContrastingPair[]
+): TrainingExample[] {
+  return pairs.map(pair => ({
+    messages: [
+      {
+        role: 'system',
+        content: 'You are a helpful assistant. If you are unsure about ' +
+          'something, say so rather than guessing. Never fabricate information.'
+      },
+      {
+        role: 'user',
+        content: pair.userQuery
+      },
+      {
+        // Train on the CORRECTED response, not the bad one
+        role: 'assistant',
+        content: pair.goldCorrection
+      }
+    ]
+  }))
+}
+
+async function generateGoldCorrection(
+  query: string,
+  badResponse: string,
+  failureType: string
+): Promise<string> {
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-5-20250929',
+    max_tokens: 500,
+    messages: [{
+      role: 'user',
+      content: `A user asked: "${query}"
+
+The model responded: "${badResponse}"
+
+This response was flagged as: ${failureType}
+
+Write a CORRECT response that:
+1. Answers the user's question accurately
+2. Explicitly avoids the failure pattern (${failureType})
+3. If unsure, acknowledges uncertainty rather than guessing
+4. Maintains a helpful, professional tone
+
+Correct response:`
+    }]
+  })
+
+  return response.content[0].text
 }
 ```
+
+**Why Contrasting Pairs Matter**:
+
+| Training Data | Model Behavior | Risk |
+|---|---|---|
+| Happy path only (4+ stars) | Confident on everything, including wrong answers | High hallucination rate on edge cases |
+| Happy path + contrasting pairs | Confident on known topics, hedges on uncertain ones | **Model knows its own boundaries** |
+| Contrasting pairs only | Overly cautious, refuses to answer simple questions | Over-correction |
+
+**Recommended Ratio**: 80% happy-path examples + 20% contrasting error pairs. This teaches the model to be helpful on common queries while knowing when to say "I'm not sure."
+
+---
+
+## Pattern 2: The De-identification Pipeline
+
+A simple `!containsPII(ex)` filter isn't enough to pass a security audit. Deleting examples with PII destroys valuable conversational structure. The solution is **Synthetic Scrubbing** — replacing PII with realistic placeholders that preserve the data's linguistic patterns.
+
+**Architect's Tip**: *"Never just delete PII; you'll destroy the natural flow of the conversation. Use an LLM-based Scrubber to replace 'John Doe' with '[USER_1]' and 'New York' with '[CITY_A]'. This preserves the Syntactic Structure of the data — which is what the model needs to learn — while ensuring that sensitive production data never ends up in the model's weights where it could be exfiltrated via a prompt attack."*
+
+```typescript
+interface PIIEntity {
+  text: string
+  type: 'name' | 'email' | 'phone' | 'address' | 'ssn' | 'medical_id' | 'date_of_birth'
+  startIndex: number
+  endIndex: number
+  replacement: string
+}
+
+interface ScrubResult {
+  originalText: string
+  scrubbedText: string
+  entitiesFound: PIIEntity[]
+  scrubConfidence: number  // 0-1: how confident the scrubber is
+}
+
+class SyntheticPIIScrubber {
+  private entityCounters: Map<string, number> = new Map()
+
+  // Replacement templates that preserve linguistic structure
+  private replacements: Record<string, (index: number) => string> = {
+    name: (i) => `[PERSON_${i}]`,
+    email: (i) => `[EMAIL_${i}]@example.com`,
+    phone: (i) => `[PHONE_${i}]`,
+    address: (i) => `[ADDRESS_${i}]`,
+    ssn: (_) => `[SSN_REDACTED]`,
+    medical_id: (i) => `[MRN_${i}]`,
+    date_of_birth: (_) => `[DOB_REDACTED]`
+  }
+
+  async scrub(text: string): Promise<ScrubResult> {
+    // Step 1: LLM-based entity detection (catches context-dependent PII)
+    const entities = await this.detectPII(text)
+
+    // Step 2: Replace entities with consistent placeholders
+    let scrubbedText = text
+    // Process from end to start to preserve indices
+    const sortedEntities = [...entities].sort(
+      (a, b) => b.startIndex - a.startIndex
+    )
+
+    for (const entity of sortedEntities) {
+      const counter = this.getNextCounter(entity.type)
+      entity.replacement = this.replacements[entity.type](counter)
+
+      scrubbedText =
+        scrubbedText.substring(0, entity.startIndex) +
+        entity.replacement +
+        scrubbedText.substring(entity.endIndex)
+    }
+
+    return {
+      originalText: text,
+      scrubbedText,
+      entitiesFound: entities,
+      scrubConfidence: entities.length > 0 ? 0.95 : 1.0
+    }
+  }
+
+  private async detectPII(text: string): Promise<PIIEntity[]> {
+    // Layer 1: Regex patterns (fast, catches obvious PII)
+    const regexEntities = this.regexDetect(text)
+
+    // Layer 2: LLM-based detection (catches contextual PII)
+    const llmEntities = await this.llmDetect(text)
+
+    // Merge and deduplicate (LLM overrides regex on conflicts)
+    return this.mergeEntities(regexEntities, llmEntities)
+  }
+
+  private regexDetect(text: string): PIIEntity[] {
+    const entities: PIIEntity[] = []
+    const patterns: Array<{ type: PIIEntity['type']; regex: RegExp }> = [
+      { type: 'email', regex: /\b[\w.+-]+@[\w-]+\.[\w.]+\b/g },
+      { type: 'phone', regex: /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g },
+      { type: 'ssn', regex: /\b\d{3}-\d{2}-\d{4}\b/g },
+    ]
+
+    for (const { type, regex } of patterns) {
+      let match
+      while ((match = regex.exec(text)) !== null) {
+        entities.push({
+          text: match[0],
+          type,
+          startIndex: match.index,
+          endIndex: match.index + match[0].length,
+          replacement: ''
+        })
+      }
+    }
+
+    return entities
+  }
+
+  private async llmDetect(text: string): Promise<PIIEntity[]> {
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20250929',
+      max_tokens: 500,
+      messages: [{
+        role: 'user',
+        content: `Identify all personally identifiable information (PII) in this text.
+Return JSON array of entities with type, text, startIndex, endIndex.
+
+Types: name, email, phone, address, ssn, medical_id, date_of_birth
+
+Text: "${text}"
+
+Return only JSON array:`
+      }]
+    })
+
+    try {
+      return JSON.parse(response.content[0].text)
+    } catch {
+      return []  // If LLM output isn't valid JSON, rely on regex only
+    }
+  }
+
+  private getNextCounter(type: string): number {
+    const current = this.entityCounters.get(type) || 0
+    this.entityCounters.set(type, current + 1)
+    return current + 1
+  }
+
+  private mergeEntities(
+    regex: PIIEntity[],
+    llm: PIIEntity[]
+  ): PIIEntity[] {
+    // LLM entities take precedence on overlap
+    const merged = [...llm]
+    for (const re of regex) {
+      const overlaps = llm.some(
+        le => re.startIndex >= le.startIndex && re.endIndex <= le.endIndex
+      )
+      if (!overlaps) merged.push(re)
+    }
+    return merged
+  }
+}
+
+/* Example:
+
+Input:  "Hi, I'm John Doe from New York. My email is john@acme.com
+         and my SSN is 123-45-6789. My MRN is MED-2026-4521."
+
+Output: "Hi, I'm [PERSON_1] from [ADDRESS_1]. My email is
+         [EMAIL_1]@example.com and my SSN is [SSN_REDACTED].
+         My MRN is [MRN_1]."
+
+→ Conversational structure preserved
+→ PII eliminated from training data
+→ Model learns the PATTERN, not the personal data
+*/
+```
+
+**Why Synthetic Scrubbing &gt; Deletion**:
+
+| Approach | PII Safety | Data Quality | Training Signal |
+|---|---|---|---|
+| **Delete examples with PII** | ✅ Safe | ❌ Lose 40-60% of data | ❌ Massive signal loss |
+| **Regex-only replacement** | ⚠️ Misses contextual PII | ⚠️ Awkward replacements | ⚠️ Partial |
+| **LLM + Regex scrubbing** | ✅ Safe (dual-layer) | ✅ Preserved structure | ✅ Full signal retained |
+
+---
+
+## Pattern 3: Strategic Dataset Balancing
+
+Naive augmentation via paraphrasing creates echo chambers. And unbalanced category distribution causes the model to "overfit" on the majority class.
+
+**Architect's Tip**: *"Monitor your Category Distribution. If 80% of your training data is 'Reset Password' requests, your fine-tuned model will start trying to 'reset passwords' for every user query. An Architect uses Clustering to identify over-represented topics and 'under-samples' them, while 'over-sampling' rare but critical edge cases. This ensures a balanced model that remains helpful across the entire domain."*
+
+### Step 1: Category Discovery via Clustering
+
+```typescript
+import { embed } from 'ai'
+import { openai } from '@ai-sdk/openai'
+
+interface ClusterAnalysis {
+  clusterId: number
+  label: string
+  count: number
+  percentage: number
+  examples: string[]
+  action: 'keep' | 'undersample' | 'oversample'
+}
+
+async function analyzeDatasetDistribution(
+  examples: TrainingExample[]
+): Promise<ClusterAnalysis[]> {
+  // Step 1: Embed all user queries
+  const embeddings = await Promise.all(
+    examples.map(async (ex) => {
+      const userMsg = ex.messages.find(m => m.role === 'user')
+      const { embedding } = await embed({
+        model: openai.embedding('text-embedding-3-small'),
+        value: userMsg?.content || ''
+      })
+      return { example: ex, embedding }
+    })
+  )
+
+  // Step 2: K-Means clustering to discover categories
+  const clusters = kMeansClustering(
+    embeddings.map(e => e.embedding),
+    10  // Target 10 clusters
+  )
+
+  // Step 3: Label clusters using LLM
+  const analysis: ClusterAnalysis[] = []
+
+  for (let i = 0; i < clusters.length; i++) {
+    const clusterExamples = clusters[i].members.map(
+      idx => examples[idx].messages.find(m => m.role === 'user')?.content || ''
+    )
+
+    // LLM labels the cluster based on sample examples
+    const label = await labelCluster(clusterExamples.slice(0, 5))
+
+    const percentage = (clusters[i].members.length / examples.length) * 100
+
+    // Determine action based on representation
+    let action: 'keep' | 'undersample' | 'oversample'
+    if (percentage > 25) action = 'undersample'      // Over-represented
+    else if (percentage < 5) action = 'oversample'    // Under-represented
+    else action = 'keep'                              // Balanced
+
+    analysis.push({
+      clusterId: i,
+      label,
+      count: clusters[i].members.length,
+      percentage,
+      examples: clusterExamples.slice(0, 3),
+      action
+    })
+  }
+
+  return analysis.sort((a, b) => b.percentage - a.percentage)
+}
+```
+
+### Step 2: Weighted Stratified Sampling
+
+```typescript
+interface BalancingConfig {
+  targetDistribution: 'uniform' | 'weighted'
+  maxPerCategory: number       // Cap over-represented categories
+  minPerCategory: number       // Floor for rare categories
+  oversampleStrategy: 'duplicate' | 'paraphrase' | 'synthetic'
+}
+
+async function balanceDataset(
+  examples: TrainingExample[],
+  clusters: ClusterAnalysis[],
+  config: BalancingConfig = {
+    targetDistribution: 'weighted',
+    maxPerCategory: 500,
+    minPerCategory: 50,
+    oversampleStrategy: 'paraphrase'
+  }
+): Promise<TrainingExample[]> {
+  const balanced: TrainingExample[] = []
+
+  for (const cluster of clusters) {
+    const clusterExamples = getExamplesForCluster(examples, cluster.clusterId)
+
+    if (cluster.action === 'undersample') {
+      // Take a random sample up to the cap
+      const sampled = randomSample(clusterExamples, config.maxPerCategory)
+      balanced.push(...sampled)
+      console.log(
+        `Cluster "${cluster.label}": ${clusterExamples.length} → ` +
+        `${sampled.length} (undersampled)`
+      )
+    } else if (cluster.action === 'oversample') {
+      // Keep all originals + generate synthetic examples
+      balanced.push(...clusterExamples)
+
+      const needed = config.minPerCategory - clusterExamples.length
+      if (needed > 0) {
+        const synthetic = await generateSyntheticExamples(
+          clusterExamples,
+          needed,
+          config.oversampleStrategy
+        )
+        balanced.push(...synthetic)
+        console.log(
+          `Cluster "${cluster.label}": ${clusterExamples.length} → ` +
+          `${clusterExamples.length + synthetic.length} (oversampled +${needed})`
+        )
+      }
+    } else {
+      // Keep as-is
+      balanced.push(...clusterExamples)
+      console.log(
+        `Cluster "${cluster.label}": ${clusterExamples.length} (kept)`
+      )
+    }
+  }
+
+  return shuffleArray(balanced)
+}
+
+async function generateSyntheticExamples(
+  originals: TrainingExample[],
+  count: number,
+  strategy: 'duplicate' | 'paraphrase' | 'synthetic'
+): Promise<TrainingExample[]> {
+  if (strategy === 'duplicate') {
+    // Simple duplication (least effective but cheapest)
+    return Array.from({ length: count }, (_, i) =>
+      originals[i % originals.length]
+    )
+  }
+
+  if (strategy === 'paraphrase') {
+    // LLM-based paraphrasing (moderate cost, good diversity)
+    const synthetic: TrainingExample[] = []
+    for (let i = 0; i < count; i++) {
+      const original = originals[i % originals.length]
+      const paraphrased = await paraphraseExample(original)
+      synthetic.push(paraphrased)
+    }
+    return synthetic
+  }
+
+  // Synthetic: Generate entirely new examples in the same category
+  // Most expensive but highest diversity
+  const synthetic: TrainingExample[] = []
+  const categoryDescription = await describeCategoryFromExamples(originals)
+
+  for (let i = 0; i < count; i++) {
+    const newExample = await generateNewExample(categoryDescription)
+    synthetic.push(newExample)
+  }
+
+  return synthetic
+}
+```
+
+**Example Distribution Before/After Balancing**:
+
+| Category | Before (Raw) | % | After (Balanced) | % | Action |
+|---|---|---|---|---|---|
+| Password Reset | 4,200 | 42% | 500 | 16% | Undersampled |
+| Account Settings | 2,800 | 28% | 500 | 16% | Undersampled |
+| Billing Questions | 1,500 | 15% | 500 | 16% | Undersampled |
+| Technical Troubleshooting | 800 | 8% | 500 | 16% | Kept |
+| Escalation Handling | 400 | 4% | 500 | 16% | Oversampled (+100) |
+| Safety/Compliance | 200 | 2% | 500 | 16% | Oversampled (+300) |
+| **Total** | **10,000** | | **3,000** | | **Balanced** |
+
+**Key Insight**: The balanced dataset is **smaller** (3,000 vs 10,000) but **more effective** — the model sees equal representation of all categories, including rare but critical ones like Safety/Compliance that it would have barely learned from the raw data.
+
+---
+
+## The Complete Data Pipeline
+
+```typescript
+async function prepareProductionDataset(
+  rawExamples: TrainingExample[]
+): Promise<{
+  training: TrainingExample[]
+  validation: TrainingExample[]
+  stats: DatasetStats
+}> {
+  console.log(`Starting with ${rawExamples.length} raw examples\n`)
+
+  // Stage 1: Collect contrasting error pairs
+  const contrastingPairs = await collectContrastingPairs()
+  const contrastingExamples = contrastingPairsToTrainingFormat(contrastingPairs)
+  console.log(`Stage 1: ${contrastingPairs.length} contrasting error pairs collected`)
+
+  // Stage 2: PII scrubbing
+  const scrubber = new SyntheticPIIScrubber()
+  const allExamples = [...rawExamples, ...contrastingExamples]
+  const scrubbed: TrainingExample[] = []
+
+  for (const example of allExamples) {
+    const scrubbedMessages = await Promise.all(
+      example.messages.map(async (msg) => {
+        const result = await scrubber.scrub(msg.content)
+        return { ...msg, content: result.scrubbedText }
+      })
+    )
+    scrubbed.push({ messages: scrubbedMessages })
+  }
+  console.log(`Stage 2: ${scrubbed.length} examples scrubbed of PII`)
+
+  // Stage 3: Quality filtering
+  const cleaned = scrubbed
+    .filter(ex => ex.messages.length >= 2)
+    .filter(ex => isHighQuality(ex))
+    .map(ex => normalizeFormat(ex))
+  console.log(`Stage 3: ${cleaned.length} examples after quality filter`)
+
+  // Stage 4: Distribution analysis and balancing
+  const clusters = await analyzeDatasetDistribution(cleaned)
+
+  console.log('\nCategory Distribution:')
+  clusters.forEach(c => {
+    console.log(`  ${c.label}: ${c.count} (${c.percentage.toFixed(1)}%) → ${c.action}`)
+  })
+
+  const balanced = await balanceDataset(cleaned, clusters)
+  console.log(`\nStage 4: ${balanced.length} examples after balancing`)
+
+  // Stage 5: Train/validation split (90/10, stratified)
+  const splitIndex = Math.floor(balanced.length * 0.9)
+  const shuffled = shuffleArray(balanced)
+
+  const training = shuffled.slice(0, splitIndex)
+  const validation = shuffled.slice(splitIndex)
+
+  console.log(`\nFinal: ${training.length} training, ${validation.length} validation`)
+
+  return {
+    training,
+    validation,
+    stats: {
+      rawCount: rawExamples.length,
+      contrastingPairs: contrastingPairs.length,
+      afterScrubbing: scrubbed.length,
+      afterCleaning: cleaned.length,
+      afterBalancing: balanced.length,
+      categories: clusters.length,
+      trainingCount: training.length,
+      validationCount: validation.length
+    }
+  }
+}
+
+/* Example Output:
+
+Starting with 10,000 raw examples
+
+Stage 1: 250 contrasting error pairs collected
+Stage 2: 10,250 examples scrubbed of PII
+Stage 3: 9,800 examples after quality filter
+
+Category Distribution:
+  Password Reset: 4200 (42.9%) → undersample
+  Account Settings: 2800 (28.6%) → undersample
+  Billing Questions: 1500 (15.3%) → undersample
+  Technical Troubleshooting: 800 (8.2%) → keep
+  Escalation Handling: 400 (4.1%) → oversample
+  Safety/Compliance: 200 (2.0%) → oversample
+
+Stage 4: 3000 examples after balancing
+
+Final: 2700 training, 300 validation
+*/
+```
+
+---
+
+## CDO Triage Challenge
+
+**Scenario**: You have 10,000 logs of customer interactions. 9,000 are standard questions and 1,000 are complex troubleshooting. If you train on all 10,000, the model becomes "lazy" and gives generic answers to the complex questions. What is your Architectural fix?
+
+**A)** Just train on the 1,000 complex ones.
+
+**B)** **Weighted Stratified Sampling**. You must curate a dataset that represents a 50/50 split between "Standard" and "Complex" cases, even though "Standard" cases are more common in reality. By over-weighting the difficult cases in the training set, you force the model to prioritize the high-reasoning logic required for troubleshooting without losing the ability to handle the basics.
+
+**C)** Paraphrase the 9,000 standard questions into 20,000 examples.
+
+**D)** Ask the LLM to "be more detailed" in the system prompt.
+
+<details>
+<summary>Answer</summary>
+
+**B) Weighted Stratified Sampling** is the architect-level answer.
+
+- **Why not A?** Training only on complex examples teaches deep reasoning but destroys the model's ability to handle the 90% of queries that are simple. The model will start over-analyzing "What's my account balance?" with multi-step troubleshooting logic. You need both capabilities.
+- **Why not C?** Paraphrasing 9,000 standard questions into 20,000 makes the imbalance **worse** (20,000 standard vs 1,000 complex = 95/5 split). More data of the same type reinforces the "lazy" pattern. You need diversity, not volume.
+- **Why not D?** System prompts affect inference behavior, not learned weights. A system prompt saying "be detailed" might help at inference time, but the model's underlying capability hasn't improved. It will hallucinate detail rather than reasoning through the problem correctly.
+- **Why B?** Weighted Stratified Sampling solves the root cause:
+  1. **Undersample** the 9,000 standard examples to ~1,000 (random selection preserving diversity within the category)
+  2. **Keep** all 1,000 complex examples
+  3. **Result**: 2,000 examples with a 50/50 split
+  4. The model learns to **switch modes** — fast simple responses for routine queries, deep reasoning for complex troubleshooting
+  5. The smaller but balanced dataset trains faster, costs less, and produces a more capable model
+
+**The Architect's Insight**: An Architect designs the training distribution to favor **capability** over **frequency**. The real world is 90/10, but your training set should be 50/50 — because the 10% complex cases are where your model's value is measured.
+
+</details>
+
+---
+
+## Key Takeaways
+
+**Contrasting Error Pairs**:
+- Don't train on happy-path only — include 20% error pairs with gold corrections
+- Find 1-star failures where the model hallucinated, was toxic, or went off-topic
+- Teach the model what **not** to do, not just what to do
+- The model learns its own boundaries and hedges on uncertain queries
+
+**Synthetic PII Scrubbing**:
+- Never just delete PII — you'll lose 40-60% of your data
+- Use **LLM + Regex dual-layer** detection for comprehensive coverage
+- Replace PII with consistent placeholders (`[PERSON_1]`, `[EMAIL_1]`) that preserve conversational structure
+- The model learns the **pattern**, not the personal data
+
+**Strategic Dataset Balancing**:
+- Use **clustering** to discover category distribution before training
+- **Undersample** over-represented categories (cap at target count)
+- **Oversample** rare but critical categories (paraphrase or synthetic generation)
+- A balanced 3,000-example dataset outperforms an imbalanced 10,000-example dataset
+
+**The Architect's Responsibility**:
+You **own** data quality. If the model hallucinates because you only trained on successes, **you skipped contrasting pairs**. If PII leaks through a prompt attack, **you failed the de-identification pipeline**. If the model gives generic answers to complex questions, **you didn't balance the distribution**.
 
 ## Resources
+
 - [Dataset Preparation Best Practices](https://platform.openai.com/docs/guides/fine-tuning/preparing-your-dataset)
+- [Differential Privacy in Machine Learning](https://arxiv.org/abs/1607.00133)
+- [Data-Centric AI (Andrew Ng)](https://datacentricai.org/)
+- [Stratified Sampling for NLP](https://arxiv.org/abs/2109.04712)
