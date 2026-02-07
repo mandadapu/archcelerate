@@ -326,6 +326,133 @@ function exportToJSONL(examples: TrainingExample[], path: string) {
 // At scale, the Student saves $54,000/year
 ```
 
+## Intelligence Distillation: Baking Instructions Into Weights
+
+**Architect's Tip — The Instruction Compression Pattern**: "Fine-tuning is not 'training a model.' It's **compressing instructions into weights**. Your 3,000-token system prompt — with its formatting rules, few-shot examples, tone guidelines, and edge case handling — is an explicit description of the behavior you want. Every single request pays the **Context Tax** of transmitting those 3,000 tokens. Distillation **bakes** those instructions directly into the model's weights, reducing your prompt to 50 tokens while preserving 94% of the behavior. You're not teaching the model something new — you're making it remember something it already knows how to do."
+
+```typescript
+/**
+ * Intelligence Distillation: Production-Scale Pipeline
+ *
+ * Problem: A 3,000-token system prompt costs $0.045/request with Opus.
+ * At 500K requests/month, that's $22,500/month in "Context Tax"
+ * just for the prompt — before the model even reads the user query.
+ *
+ * Solution: Run 5,000 production queries through the Teacher model
+ * (expensive model + full 3,000-token prompt). Capture the outputs.
+ * Fine-tune a Student model on those outputs. The Student learns
+ * the behavior encoded in the prompt — no prompt needed.
+ *
+ * Interview Defense: "We ran 5,000 production queries through Opus
+ * with our full 3,000-token prompt. Cost: $225. We fine-tuned Haiku
+ * on those outputs for $15. Total: $240 one-time investment. The
+ * Student now produces equivalent output with a 50-token prompt,
+ * saving $22,480/month. Break-even: 8 hours of production traffic."
+ */
+
+interface DistillationPipeline {
+  // Teacher configuration
+  teacher: {
+    model: string               // e.g., 'claude-opus-4-6'
+    systemPrompt: string        // The full 3,000-token prompt
+    promptTokens: number        // 3,000
+    costPer1KInputTokens: number // $0.015 (Opus)
+  }
+  // Student configuration
+  student: {
+    model: string               // e.g., 'claude-haiku-4-5'
+    postTrainingPrompt: string  // Minimal 50-token prompt
+    promptTokens: number        // 50
+    costPer1KInputTokens: number // $0.0008 (Haiku)
+    trainingCost: number        // ~$15 for fine-tuning
+  }
+  // Pipeline parameters
+  productionQueries: number     // 5,000 real queries from logs
+  monthlyVolume: number         // Expected monthly request volume
+}
+
+function calculateDistillationROI(config: DistillationPipeline): {
+  teacherGenerationCost: number
+  studentTrainingCost: number
+  totalInvestment: number
+  monthlyTeacherCost: number
+  monthlyStudentCost: number
+  monthlySavings: number
+  breakEvenHours: number
+  annualSavings: number
+} {
+  // One-time costs: generate training data with Teacher
+  const teacherGenerationCost =
+    (config.teacher.promptTokens / 1000) *
+    config.teacher.costPer1KInputTokens *
+    config.productionQueries
+
+  const totalInvestment =
+    teacherGenerationCost + config.student.trainingCost
+
+  // Monthly operating costs comparison
+  const monthlyTeacherCost =
+    (config.teacher.promptTokens / 1000) *
+    config.teacher.costPer1KInputTokens *
+    config.monthlyVolume
+
+  const monthlyStudentCost =
+    (config.student.promptTokens / 1000) *
+    config.student.costPer1KInputTokens *
+    config.monthlyVolume
+
+  const monthlySavings = monthlyTeacherCost - monthlyStudentCost
+  const breakEvenHours =
+    (totalInvestment / monthlySavings) * 30 * 24
+
+  return {
+    teacherGenerationCost,
+    studentTrainingCost: config.student.trainingCost,
+    totalInvestment,
+    monthlyTeacherCost,
+    monthlyStudentCost,
+    monthlySavings,
+    breakEvenHours: Math.ceil(breakEvenHours),
+    annualSavings: monthlySavings * 12 - totalInvestment
+  }
+}
+
+// Production example: Customer Support Agent Distillation
+//
+// const roi = calculateDistillationROI({
+//   teacher: {
+//     model: 'claude-opus-4-6',
+//     systemPrompt: FULL_3000_TOKEN_PROMPT,
+//     promptTokens: 3000,
+//     costPer1KInputTokens: 0.015
+//   },
+//   student: {
+//     model: 'claude-haiku-4-5',
+//     postTrainingPrompt: 'You are a customer support agent.',
+//     promptTokens: 50,
+//     costPer1KInputTokens: 0.0008,
+//     trainingCost: 15
+//   },
+//   productionQueries: 5000,
+//   monthlyVolume: 500_000
+// })
+//
+// Results:
+//   Teacher generation cost:  $225  (5K queries × 3K tokens × $0.015/1K)
+//   Student training cost:     $15
+//   Total investment:         $240  (one-time)
+//
+//   Monthly Teacher cost:   $22,500  (500K × 3K tokens × $0.015/1K)
+//   Monthly Student cost:       $20  (500K × 50 tokens × $0.0008/1K)
+//   Monthly savings:       $22,480
+//   Break-even:            ~8 hours of production traffic
+//   Annual savings:       $269,520
+//
+// The 3,000-token prompt IS the training data.
+// Distillation bakes instructions into weights.
+// $240 investment → $269K annual savings → 112,200% ROI
+```
+
 ---
 
 ## Architect Challenge: The Fine-Tuning ROI Quiz
