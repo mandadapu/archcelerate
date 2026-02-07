@@ -31,8 +31,17 @@ interface ValidationResult {
 const CONTENT_DIR = path.join(__dirname, '..', 'content')
 const AUTO_FIX = process.argv.includes('--fix')
 
+// Validation pattern configuration
+interface ValidationPattern {
+  pattern: RegExp
+  severity: 'error' | 'warning'
+  message: string
+  suggestion: ((match: string) => string) | null
+  skipIfContains?: string
+}
+
 // Regex patterns for common MDX syntax errors
-const VALIDATION_PATTERNS = {
+const VALIDATION_PATTERNS: Record<string, ValidationPattern> = {
   // Unescaped < followed by digit or $
   unescapedLessThanDigit: {
     pattern: /(?<!&lt;)(?<!&gt;)<([0-9$])/g,
@@ -63,6 +72,24 @@ const VALIDATION_PATTERNS = {
     severity: 'error' as const,
     message: 'Unescaped > in table cell',
     suggestion: (match: string) => match.replace('>', '&gt;')
+  },
+
+  // Keyword followed by < with optional space and digit (e.g., "latency < 5")
+  keywordLessThan: {
+    pattern: /\b(latency|cost|time|tokens|score|value|similarity|relevance|precision|recall)\s+<\s*\d/gi,
+    severity: 'error' as const,
+    message: 'Unescaped < in comparison (keyword < number)',
+    suggestion: (match: string) => match.replace('<', '&lt;'),
+    skipIfContains: '&lt;'
+  },
+
+  // Keyword followed by > with optional space and digit (e.g., "cost > 100")
+  keywordGreaterThan: {
+    pattern: /\b(latency|cost|time|tokens|score|value|similarity|relevance|precision|recall)\s+>\s*\d/gi,
+    severity: 'error' as const,
+    message: 'Unescaped > in comparison (keyword > number)',
+    suggestion: (match: string) => match.replace('>', '&gt;'),
+    skipIfContains: '&gt;'
   },
 
   // Unclosed JSX tags (basic check)
@@ -129,6 +156,11 @@ async function validateMDXFile(filePath: string): Promise<ValidationError[]> {
 
     // Run all validation patterns
     for (const [patternName, config] of Object.entries(VALIDATION_PATTERNS)) {
+      // Skip if line already contains escaped entities (for patterns that have skipIfContains)
+      if ('skipIfContains' in config && config.skipIfContains && line.includes(config.skipIfContains)) {
+        continue
+      }
+
       const matches = [...line.matchAll(config.pattern)]
 
       for (const match of matches) {

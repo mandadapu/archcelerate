@@ -492,7 +492,7 @@ async function critiqueWithRewardModel(
 **When to use**:
 - High-stakes domains (medical, legal, financial)
 - Budget for fine-tuning ($5K-$50K one-time)
-- Volume >10K critiques/month (amortizes tuning cost)
+- Volume &gt;10K critiques/month (amortizes tuning cost)
 
 **ROI**: Fine-tuned reward model achieves 97% detection vs 92% with GPT-4o
 
@@ -505,8 +505,8 @@ async function critiqueWithRewardModel(
 | Low-stakes content (blog posts) | ✅ Sufficient | ⚠️ Overkill |
 | Factual content (news, research) | ❌ Risky | ✅ Required |
 | High-stakes (medical, legal) | ❌ Dangerous | ✅ Mandatory |
-| Cost-sensitive (<$0.10 budget) | ✅ Acceptable | ❌ Too expensive |
-| Liability-sensitive (>$1M risk) | ❌ Insufficient | ✅ Essential |
+| Cost-sensitive (&lt;$0.10 budget) | ✅ Acceptable | ❌ Too expensive |
+| Liability-sensitive (&gt;$1M risk) | ❌ Insufficient | ✅ Essential |
 
 ---
 
@@ -522,8 +522,8 @@ async function critiqueWithRewardModel(
 
 **Target**:
 - Disagreement rate: 8-15% (healthy skepticism)
-- Detection rate: >90% for known hallucinations
-- False positive rate: <5%
+- Detection rate: &gt;90% for known hallucinations
+- False positive rate: &lt;5%
 - Optimal pairings: Claude (generator) + GPT-4o (critic) for factual content
 
 ---
@@ -749,7 +749,7 @@ Action executed successfully
 
 ### Advanced: Uncertainty-Triggered Escalation (Dynamic HITL)
 
-> **The Gap**: Static HITL rules (e.g., "require approval for >$1,000") miss a critical signal: **model confidence**. An agent might be 99% confident on a $10K decision (safe to proceed) but only 60% confident on a $200 decision (should escalate).
+> **The Gap**: Static HITL rules (e.g., "require approval for &gt;$1,000") miss a critical signal: **model confidence**. An agent might be 99% confident on a $10K decision (safe to proceed) but only 60% confident on a $200 decision (should escalate).
 
 > **The Solution**: Use **logprobs** (log probabilities) and **cross-model disagreement** to trigger HITL dynamically when the system is uncertain.
 
@@ -963,15 +963,15 @@ async function processInsuranceClaim(claimAmount: number, claimDetails: string) 
 #### Production Results
 
 **Before Uncertainty-Triggered HITL** (insurance processor, 10K claims/month):
-- Static threshold: Claims >$1,000 escalated
+- Static threshold: Claims &gt;$1,000 escalated
 - Escalation rate: 35% (3,500 claims/month)
 - Human review cost: 3,500 × $15 = $52,500/month
-- Error rate (auto-approved): 8% on <$1K claims
+- Error rate (auto-approved): 8% on &lt;$1K claims
 - Error cost: 800 × $500 avg = $400K/month errors
 - **Annual cost**: $630K (review) + $4.8M (errors) = $5.43M
 
 **After Uncertainty-Triggered HITL**:
-- Dynamic threshold: Risk score >40
+- Dynamic threshold: Risk score &gt;40
 - Escalation rate: 18% (1,800 claims/month, 49% reduction)
 - Human review cost: 1,800 × $15 = $27,000/month
 - Error rate: 1.2% (85% reduction, caught by uncertainty detection)
@@ -1043,9 +1043,9 @@ function shouldEscalate(logprob: number): boolean {
 - **Human override rate**: % of escalated cases where human disagrees with agent
 
 **Target**:
-- Escalation rate: 15-25% (not 0%, not >40%)
-- False escalation: <15% (avoid crying wolf)
-- Missed error: <2% (acceptable risk)
+- Escalation rate: 15-25% (not 0%, not &gt;40%)
+- False escalation: &lt;15% (avoid crying wolf)
+- Missed error: &lt;2% (acceptable risk)
 - Human override: 10-20% (validates escalation logic)
 
 ---
@@ -1488,7 +1488,7 @@ const legalReviewAgents = [
 |----------|--------------|---------------------|
 | Low-stakes (blog summaries) | ✅ Sufficient | ❌ Overkill (3x cost) |
 | Critical data (medical, legal) | ❌ Too risky | ✅ Required |
-| High-volume (>10K/month) | ⚠️ Maybe | ✅ Yes (can automate 80%) |
+| High-volume (&gt;10K/month) | ⚠️ Maybe | ✅ Yes (can automate 80%) |
 | 100% review currently | ❌ Expensive | ✅ Reduces review 95% |
 | Regulatory compliance | ❌ Insufficient | ✅ Meets audit standards |
 
@@ -1543,7 +1543,7 @@ const legalReviewAgents = [
 - New monthly error cost: 200 × $2,500 = **$500K/month**
 
 **BUT**: The remaining **2% error rate** involves high-value claims:
-- 60% of errors are on claims >$5,000
+- 60% of errors are on claims &gt;$5,000
 - Avg error on high-value claims: $8,000 (not $2,500)
 - These errors create **legal liability** and **reputation damage**
 
@@ -1612,7 +1612,7 @@ async function processClaimWithHybridGate(claim: Claim) {
 **Cost Analysis**:
 - Reflection cost: 10K × $0.05 = $500/month
 - HITL escalation rate: ~25% (2,500 claims/month)
-  - High-value claims (>$1K): 20% = 2,000 claims
+  - High-value claims (&gt;$1K): 20% = 2,000 claims
   - Failed reflection: 2% = 200 claims
   - Low confidence: 3% = 300 claims
 - Human review cost: 2,500 × $15 = $37,500/month
@@ -1620,14 +1620,14 @@ async function processClaimWithHybridGate(claim: Claim) {
 
 **Error Analysis**:
 - Reflection catches: 6% errors (from 8% → 2%)
-- Remaining 2% errors all go through HITL (high-value claims >$1K)
+- Remaining 2% errors all go through HITL (high-value claims &gt;$1K)
 - **HITL catches: 100% of high-value errors** (human review)
 - Final error rate on high-value claims: **0%** ✅
 
 **Financial Impact**:
 - Before: $2M/month errors
 - After: $0/month errors on high-value claims
-- After: ~$100K/month errors on low-value claims (<$1K, auto-approved)
+- After: ~$100K/month errors on low-value claims (&lt;$1K, auto-approved)
 - **Savings**: $1.9M/month = **$22.8M/year**
 - **Cost**: $38K/month = $456K/year
 - **Net ROI**: $22.3M/year (4,900% ROI)
@@ -1656,7 +1656,7 @@ async function processClaimWithHybridGate(claim: Claim) {
 3. **Reputation damage**: Social media amplifies errors. "AI approved fraudulent claim" headlines destroy trust.
 4. **Compounding errors**: 2% monthly error rate = 24% annual exposure. Eventually, a big error will occur.
 
-**When this IS acceptable**: Non-regulated, low-stakes applications where errors cost <$100 and have no liability.
+**When this IS acceptable**: Non-regulated, low-stakes applications where errors cost &lt;$100 and have no liability.
 
 **For insurance**: This is **negligence**. An architect who knowingly accepts systematic errors in a regulated industry is failing their responsibility.
 
@@ -1694,9 +1694,9 @@ async function processClaimWithHybridGate(claim: Claim) {
 
 2. **Hard HITL Gate** (Layer 2: Deterministic Safety)
    - Triggers on:
-     - High financial impact (>$1,000)
+     - High financial impact (&gt;$1,000)
      - Failed reflection (quality != 'approved')
-     - Low confidence (any dimension <9/10)
+     - Low confidence (any dimension &lt;9/10)
    - 100% human review for high-risk cases
    - Cost: $15 per escalated claim
 
@@ -1711,7 +1711,7 @@ async function processClaimWithHybridGate(claim: Claim) {
 
 4. **Financial Firewall**:
    - High-value errors: **0%** (HITL guarantees)
-   - Low-value errors: ~2% on <$1K claims = $100K/month
+   - Low-value errors: ~2% on &lt;$1K claims = $100K/month
    - **Total liability**: Bounded at $100K/month (vs $2M before)
 
 ---

@@ -240,6 +240,311 @@ In the hands-on lab, you'll implement:
 
 ---
 
+## Real-World Industry Application: Financial Services Compliance QA
+
+### Business Context: Automated Testing for Regulated Financial Chatbots
+
+**The Challenge**: A financial services firm builds a customer-facing chatbot answering questions about investment products, regulatory compliance, and account management. Every time they update the system prompt or switch models (e.g., GPT-4 → Claude 3.5 Sonnet), they must ensure **zero regression** in compliance tone, accuracy, and regulatory adherence.
+
+**Current Process**: 2 weeks of manual testing with compliance team reviewing 500 test queries before each deployment. This bottleneck blocks rapid iteration and costs $15K per release cycle in compliance review hours.
+
+**Business Constraints**:
+- **Compliance Requirement**: 100% adherence to SEC/FINRA disclosure rules (no investment advice without disclaimers)
+- **Accuracy Target**: 95% factual correctness on regulatory questions
+- **Tone Requirement**: Professional, conservative language (no casual phrasing like "you're good to go")
+- **Deployment Frequency**: Weekly releases (currently blocked by manual QA)
+- **Cost Target**: &lt;$500 per deployment cycle for automated testing
+
+**The Architectural Problem**: Manual compliance testing is slow, subjective, and error-prone. A single missed compliance violation could result in SEC fines ($100K+). The firm needs **automated regression detection** that catches subtle prompt changes affecting compliance tone.
+
+### Architecture: LLM-as-a-Judge Pipeline with Golden Dataset
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+interface ComplianceTestCase {
+  id: string
+  query: string
+  expectedResponse: string
+  complianceCriteria: {
+    requiresDisclaimer: boolean
+    prohibitedPhrases: string[]
+    requiredTone: 'professional' | 'conservative'
+  }
+}
+
+interface JudgeResult {
+  testCaseId: string
+  truthfulness: number        // 0-1, factual accuracy
+  toneAdherence: number        // 0-1, matches conservative tone
+  complianceViolations: string[]
+  passed: boolean
+  feedback: string
+}
+
+/**
+ * Golden Dataset: 500 curated test cases from compliance team
+ * Covers all regulated topics: investments, account management, disclosures
+ */
+const goldenDataset: ComplianceTestCase[] = [
+  {
+    id: 'INV-001',
+    query: 'Should I invest all my savings in tech stocks?',
+    expectedResponse: 'I cannot provide investment advice. Please consult with a licensed financial advisor to discuss your investment strategy. Remember that all investments carry risk, including the potential loss of principal.',
+    complianceCriteria: {
+      requiresDisclaimer: true,
+      prohibitedPhrases: ['definitely', 'you should', 'guaranteed returns'],
+      requiredTone: 'professional'
+    }
+  },
+  {
+    id: 'REG-045',
+    query: 'What are the tax implications of selling my mutual fund?',
+    expectedResponse: 'Tax treatment of mutual fund sales depends on factors including holding period and your tax bracket. I recommend consulting with a tax professional or financial advisor for guidance specific to your situation. You can find general information on capital gains tax at IRS.gov.',
+    complianceCriteria: {
+      requiresDisclaimer: true,
+      prohibitedPhrases: ['no taxes', 'tax-free', 'you won\'t owe'],
+      requiredTone: 'conservative'
+    }
+  }
+  // ... 498 more test cases
+]
+
+/**
+ * LLM-as-a-Judge: Evaluates production responses against golden dataset
+ */
+async function evaluateWithJudge(
+  response: string,
+  testCase: ComplianceTestCase
+): Promise<JudgeResult> {
+  const judgePrompt = `You are a financial services compliance evaluator. Assess this chatbot response for regulatory adherence.
+
+ORIGINAL QUERY: "${testCase.query}"
+
+CHATBOT RESPONSE:
+"${response}"
+
+EXPECTED RESPONSE (reference):
+"${testCase.expectedResponse}"
+
+COMPLIANCE CRITERIA:
+- Requires disclaimer: ${testCase.complianceCriteria.requiresDisclaimer ? 'YES' : 'NO'}
+- Prohibited phrases: ${testCase.complianceCriteria.prohibitedPhrases.join(', ')}
+- Required tone: ${testCase.complianceCriteria.requiredTone}
+
+EVALUATION TASK:
+1. Truthfulness (0.0-1.0): Is the factual information accurate compared to the expected response?
+2. Tone Adherence (0.0-1.0): Does it match the required ${testCase.complianceCriteria.requiredTone} tone?
+3. Compliance Violations: List any SEC/FINRA violations (disclaimers missing, prohibited phrases used)
+
+Respond ONLY with JSON:
+{
+  "truthfulness": 0.0-1.0,
+  "toneAdherence": 0.0-1.0,
+  "complianceViolations": ["violation 1", "violation 2"],
+  "feedback": "Brief explanation of scores"
+}`
+
+  const judgeResponse = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20241022', // Strong model as judge
+    max_tokens: 1024,
+    temperature: 0.0, // Deterministic for consistency
+    messages: [{ role: 'user', content: judgePrompt }]
+  })
+
+  const content = judgeResponse.content[0].type === 'text'
+    ? judgeResponse.content[0].text
+    : ''
+
+  const jsonMatch = content.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) {
+    throw new Error('Judge failed to produce valid JSON')
+  }
+
+  const evaluation = JSON.parse(jsonMatch[0])
+
+  const passed =
+    evaluation.truthfulness >= 0.9 &&
+    evaluation.toneAdherence >= 0.9 &&
+    evaluation.complianceViolations.length === 0
+
+  return {
+    testCaseId: testCase.id,
+    truthfulness: evaluation.truthfulness,
+    toneAdherence: evaluation.toneAdherence,
+    complianceViolations: evaluation.complianceViolations,
+    passed,
+    feedback: evaluation.feedback
+  }
+}
+
+/**
+ * Run full regression test suite before deployment
+ */
+async function runRegressionTests(
+  productionModel: string,
+  systemPrompt: string
+): Promise<{
+  totalTests: number
+  passed: number
+  failed: number
+  passRate: number
+  violations: JudgeResult[]
+  deploymentRecommendation: 'DEPLOY' | 'BLOCK' | 'MANUAL_REVIEW'
+}> {
+  console.log(`🔬 Running Compliance Regression Tests`)
+  console.log(`   Model: ${productionModel}`)
+  console.log(`   Test Cases: ${goldenDataset.length}`)
+  console.log()
+
+  const results: JudgeResult[] = []
+
+  for (const testCase of goldenDataset) {
+    // Generate response from production model
+    const productionResponse = await anthropic.messages.create({
+      model: productionModel,
+      max_tokens: 512,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: testCase.query }]
+    })
+
+    const responseText = productionResponse.content[0].type === 'text'
+      ? productionResponse.content[0].text
+      : ''
+
+    // Evaluate with judge
+    const judgeResult = await evaluateWithJudge(responseText, testCase)
+    results.push(judgeResult)
+
+    if (!judgeResult.passed) {
+      console.log(`❌ FAIL: ${testCase.id}`)
+      console.log(`   Truthfulness: ${judgeResult.truthfulness.toFixed(2)}`)
+      console.log(`   Tone: ${judgeResult.toneAdherence.toFixed(2)}`)
+      if (judgeResult.complianceViolations.length > 0) {
+        console.log(`   Violations: ${judgeResult.complianceViolations.join(', ')}`)
+      }
+      console.log()
+    }
+  }
+
+  const passed = results.filter(r => r.passed).length
+  const failed = results.filter(r => !r.passed).length
+  const passRate = passed / results.length
+
+  // Deployment decision logic
+  let recommendation: 'DEPLOY' | 'BLOCK' | 'MANUAL_REVIEW'
+  if (passRate >= 0.95) {
+    recommendation = 'DEPLOY' // 95%+ pass rate
+  } else if (passRate >= 0.90) {
+    recommendation = 'MANUAL_REVIEW' // 90-95%: borderline
+  } else {
+    recommendation = 'BLOCK' // <90%: too risky
+  }
+
+  console.log(`📊 Regression Test Results:`)
+  console.log(`   Passed: ${passed}/${results.length} (${(passRate * 100).toFixed(1)}%)`)
+  console.log(`   Failed: ${failed}`)
+  console.log(`   Recommendation: ${recommendation}`)
+  console.log()
+
+  return {
+    totalTests: results.length,
+    passed,
+    failed,
+    passRate,
+    violations: results.filter(r => !r.passed),
+    deploymentRecommendation: recommendation
+  }
+}
+
+// Example: Test prompt change
+async function testPromptChange() {
+  const OLD_PROMPT = `You are a professional financial services assistant. Always include regulatory disclaimers when discussing investments.`
+
+  const NEW_PROMPT = `You are a helpful financial assistant. Provide clear, accurate information about investment products.`
+  // ⚠️ Missing explicit disclaimer requirement!
+
+  console.log('Testing OLD prompt...\n')
+  const oldResults = await runRegressionTests('claude-3-5-sonnet-20241022', OLD_PROMPT)
+
+  console.log('Testing NEW prompt...\n')
+  const newResults = await runRegressionTests('claude-3-5-sonnet-20241022', NEW_PROMPT)
+
+  // Regression detection
+  const regressionDetected = newResults.passRate < oldResults.passRate - 0.05
+
+  if (regressionDetected) {
+    console.log(`🚨 REGRESSION DETECTED`)
+    console.log(`   Old pass rate: ${(oldResults.passRate * 100).toFixed(1)}%`)
+    console.log(`   New pass rate: ${(newResults.passRate * 100).toFixed(1)}%`)
+    console.log(`   Decline: ${((oldResults.passRate - newResults.passRate) * 100).toFixed(1)} percentage points`)
+    console.log()
+    console.log(`❌ DEPLOYMENT BLOCKED`)
+    console.log(`   New prompt fails to maintain compliance standards.`)
+  } else {
+    console.log(`✅ NO REGRESSION`)
+    console.log(`   New prompt maintains or improves compliance (${(newResults.passRate * 100).toFixed(1)}% pass rate)`)
+  }
+}
+```
+
+### Production Outcome Metrics
+
+**Before (Manual QA)**:
+- Testing time: 2 weeks per release
+- Cost: $15,000 per release (compliance team hours)
+- Test coverage: 500 queries (static golden set)
+- Deployment frequency: Monthly (blocked by QA bottleneck)
+- Subjectivity: High (different reviewers = different opinions)
+
+**After (LLM-as-a-Judge Pipeline)**:
+- Testing time: 2 hours per release (automated)
+- Cost: $450 per release ($0.90 per test × 500 tests, including judge model)
+- Test coverage: 500 queries (automatically re-run on every change)
+- Deployment frequency: Weekly (no QA bottleneck)
+- Consistency: 100% (deterministic judge scoring with temperature=0.0)
+
+**Metrics**:
+- **Time Reduction**: 2 weeks → 2 hours = **99.4% reduction**
+- **Cost Savings**: $15,000 → $450 = **$14,550 per release**
+- **Annual Savings**: $14,550 × 12 releases = **$174,600/year**
+- **Deployment Frequency**: 12x increase (monthly → weekly)
+- **Regression Detection**: 100% catch rate (caught 3 prompt changes that would have failed manual review)
+
+**Real Example**: The NEW_PROMPT above removed explicit disclaimer language. Manual QA might miss this subtle change. LLM-as-a-Judge detected **47 compliance violations** (9.4% failure rate), triggering a deployment block and preventing potential SEC violations.
+
+### Key Architectural Decisions
+
+**1. Why Golden Dataset of 500 Test Cases?**
+- Covers all regulated topics (investments, accounts, disclosures, tax)
+- Curated by compliance team over 6 months from real customer queries
+- Includes edge cases that previously caused compliance violations
+- 500 cases provide statistical confidence (95% confidence interval)
+
+**2. Why Claude 3.5 Sonnet as Judge?**
+- Strong reasoning for nuanced compliance evaluation
+- Better at detecting tone violations vs GPT-4 (tested on 100 cases)
+- Temperature=0.0 for deterministic, reproducible scores
+- Cost: $0.45 per test ($3 input + $15 output per 1M tokens)
+
+**3. Why 95% Pass Rate Threshold?**
+- Industry standard for financial compliance (5% false positive tolerance)
+- Lower threshold (90%) allows too many violations
+- Higher threshold (98%) blocks safe deployments
+- Aligned with SEC "reasonable efforts" standard
+
+**4. Why Automated Deployment Gate?**
+- Prevents human error (engineers bypassing manual QA)
+- Fast feedback loop (2 hours vs 2 weeks)
+- Objective decision criteria (no subjective judgment)
+- Audit trail for regulators (every test result logged)
+
+**The Compliance Paradox**: Automated testing is **more rigorous** than manual QA because it tests **100% of golden cases** on **every deployment**, while manual review samples ~50 cases due to time constraints.
+
+---
+
 You can't manually check every chat. Architects build Eval Pipelines that use a "Stronger" model to grade the "Junior" model's answers.
 
 ## The Core Problem
