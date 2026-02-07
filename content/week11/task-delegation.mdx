@@ -2,8 +2,14 @@
 title: "Task Delegation & Orchestration: Resilient Execution Governance"
 week: 11
 concept: 2
-description: "Build enterprise orchestration with Dynamic Replanning, DAG Execution Engines, and Queue-Based Load Balancing for self-healing multi-agent systems"
-estimatedMinutes: 65
+description: "Build enterprise orchestration with Dynamic Replanning, DAG Execution Engines, Semantic Loop Detection, and Queue-Based Load Balancing for self-healing multi-agent systems"
+estimatedMinutes: 70
+objectives:
+  - Build intelligent task routers with multi-factor agent scoring
+  - Implement Dynamic Plan Re-evaluation for self-healing workflows
+  - Detect semantic loops using vector similarity to prevent runaway token spend
+  - Design DAG-based dependency engines with automatic tier parallelization
+  - Deploy queue-based load balancers with fair-share tenant scheduling
 ---
 
 # Task Delegation & Orchestration
@@ -257,6 +263,299 @@ Generate focused subtasks that will produce higher-confidence results.`
 > **Interviewer:** "What happens when an agent fails mid-workflow in your orchestration system?"
 >
 > **You:** "We use a Dynamic Replanning Loop. After each agent completes, the planner evaluates the result's confidence score and status. If an agent fails, it follows a cascade: first retry the same agent for transient errors, then delegate to an alternative agent with available capacity, and finally skip with fallback content if all agents are exhausted. If an agent returns a low-confidence result, the planner decomposes that task into smaller, more specific subtasks. Every mutation is logged for audit. This means a single agent failure costs us seconds and a few cents in retry tokens, not a full workflow restart that burns $5 in duplicate processing."
+
+---
+
+### Operational Safeguard: Semantic Cycle Detection (The Token-Bleed Circuit Breaker)
+
+**Architect's Tip — Detecting "Thinking in Circles"**: "Don't just count iterations. A slow agent isn't the only risk — a **Looping Agent** can stay under the timeout while draining your entire budget. It repeatedly fails a task and retries with the same faulty logic, generating slightly different but semantically identical outputs each time. Use **Vector Similarity** to compare an agent's current 'Plan' or 'Thought' with its previous three attempts. If the cosine similarity is &gt;0.98, the agent is stuck in a **semantic loop**. The orchestrator must trigger a **Hard-Stop** and escalate to a higher-reasoning 'Manager' model (like Claude Opus) to break the cycle by providing a new strategy."
+
+```typescript
+/**
+ * Semantic Cycle Detection
+ *
+ * Problem: An agent tasked with "find the CEO's email for Acme Corp"
+ * searches the web, gets no result, rephrases slightly, searches again,
+ * gets no result, rephrases again... Each attempt costs $0.03 and takes
+ * 8 seconds. After 20 attempts, you've spent $0.60 and 160 seconds
+ * with zero progress. The agent stays under the per-request timeout,
+ * so the orchestrator thinks it's "working."
+ *
+ * Solution: Embed each agent attempt's output/plan and compare against
+ * the rolling window of previous attempts using cosine similarity.
+ * If similarity exceeds the loop threshold (0.98), the agent is stuck.
+ * Hard-stop the agent and escalate to a reasoning model that can
+ * diagnose WHY the agent is stuck and provide a new approach.
+ *
+ * Interview Defense: "We embed every agent attempt and compare it
+ * against the last 3 outputs using cosine similarity. If any pair
+ * exceeds 0.98, we trigger a semantic loop circuit breaker — the
+ * agent is stopped immediately and the task is escalated to a
+ * reasoning model that provides a fresh strategy. This prevents
+ * runaway token spend from 'thinking in circles' agents."
+ */
+
+interface AgentAttempt {
+  attemptNumber: number
+  output: string
+  embedding: number[]     // Vector embedding of the output
+  tokenCost: number
+  durationMs: number
+  timestamp: Date
+}
+
+interface LoopDetectionResult {
+  isLooping: boolean
+  maxSimilarity: number       // Highest similarity between recent attempts
+  similarPair: [number, number] | null  // Which attempts are most similar
+  totalTokensWasted: number   // Tokens spent on redundant attempts
+  recommendation: 'continue' | 'hard-stop' | 'escalate'
+}
+
+class SemanticCycleDetector {
+  private attempts: Map<string, AgentAttempt[]> = new Map()
+  private loopThreshold: number
+  private windowSize: number       // How many recent attempts to compare
+  private maxTokenBudget: number   // Hard budget cap per task
+
+  constructor(
+    loopThreshold: number = 0.98,
+    windowSize: number = 3,
+    maxTokenBudget: number = 5000
+  ) {
+    this.loopThreshold = loopThreshold
+    this.windowSize = windowSize
+    this.maxTokenBudget = maxTokenBudget
+  }
+
+  async recordAttempt(
+    taskId: string,
+    output: string,
+    tokenCost: number,
+    durationMs: number
+  ): Promise<LoopDetectionResult> {
+    // Get or create attempt history for this task
+    if (!this.attempts.has(taskId)) {
+      this.attempts.set(taskId, [])
+    }
+    const history = this.attempts.get(taskId)!
+
+    // Embed the current output
+    const embedding = await this.embedText(output)
+
+    const attempt: AgentAttempt = {
+      attemptNumber: history.length + 1,
+      output,
+      embedding,
+      tokenCost,
+      durationMs,
+      timestamp: new Date()
+    }
+    history.push(attempt)
+
+    // Not enough history to detect loops
+    if (history.length < 2) {
+      return {
+        isLooping: false,
+        maxSimilarity: 0,
+        similarPair: null,
+        totalTokensWasted: 0,
+        recommendation: 'continue'
+      }
+    }
+
+    // Compare current attempt against recent window
+    const recentAttempts = history.slice(-this.windowSize)
+    let maxSimilarity = 0
+    let similarPair: [number, number] | null = null
+
+    for (let i = 0; i < recentAttempts.length - 1; i++) {
+      const similarity = this.cosineSimilarity(
+        recentAttempts[i].embedding,
+        attempt.embedding
+      )
+
+      if (similarity > maxSimilarity) {
+        maxSimilarity = similarity
+        similarPair = [recentAttempts[i].attemptNumber, attempt.attemptNumber]
+      }
+    }
+
+    // Check total token spend
+    const totalTokens = history.reduce((sum, a) => sum + a.tokenCost, 0)
+
+    // Determine recommendation
+    const isLooping = maxSimilarity >= this.loopThreshold
+    const overBudget = totalTokens > this.maxTokenBudget
+
+    let recommendation: 'continue' | 'hard-stop' | 'escalate'
+    if (isLooping) {
+      recommendation = 'escalate'  // Agent is stuck — needs fresh strategy
+    } else if (overBudget) {
+      recommendation = 'hard-stop'  // Budget exhausted — stop entirely
+    } else {
+      recommendation = 'continue'
+    }
+
+    if (isLooping) {
+      console.log(
+        `🔄 SEMANTIC LOOP DETECTED on task ${taskId}!\n` +
+        `   Attempts ${similarPair![0]} and ${similarPair![1]} ` +
+        `are ${(maxSimilarity * 100).toFixed(1)}% similar\n` +
+        `   Total tokens wasted: ${totalTokens}\n` +
+        `   Action: ${recommendation.toUpperCase()}`
+      )
+    }
+
+    return {
+      isLooping,
+      maxSimilarity,
+      similarPair: isLooping ? similarPair : null,
+      totalTokensWasted: isLooping ? totalTokens : 0,
+      recommendation
+    }
+  }
+
+  // Escalate to a reasoning model to break the loop
+  async breakLoop(
+    taskId: string,
+    originalTask: string,
+    failedAttempts: AgentAttempt[]
+  ): Promise<{ newStrategy: string; reasoning: string }> {
+    console.log(`🧠 Escalating task ${taskId} to reasoning model...`)
+
+    const attemptsText = failedAttempts.map(a =>
+      `Attempt ${a.attemptNumber}: "${a.output.substring(0, 200)}..."`
+    ).join('\n')
+
+    const response = await anthropic.messages.create({
+      model: 'claude-opus-4-6',  // High-reasoning model
+      max_tokens: 800,
+      messages: [{
+        role: 'user',
+        content: `An AI agent is stuck in a loop on this task. It keeps producing similar outputs without making progress.
+
+TASK: ${originalTask}
+
+FAILED ATTEMPTS (all semantically similar):
+${attemptsText}
+
+Diagnose:
+1. WHY is the agent stuck? What pattern is it repeating?
+2. What FUNDAMENTALLY DIFFERENT approach should it try?
+3. What specific instruction would break the loop?
+
+Respond in JSON:
+{
+  "diagnosis": "why the agent is stuck",
+  "newStrategy": "specific new approach the agent should try",
+  "reasoning": "why this new approach will work"
+}`
+      }]
+    })
+
+    const result = JSON.parse(response.content[0].text)
+
+    console.log(`💡 New strategy: ${result.newStrategy.substring(0, 100)}...`)
+
+    return {
+      newStrategy: result.newStrategy,
+      reasoning: result.reasoning
+    }
+  }
+
+  private async embedText(text: string): Promise<number[]> {
+    // Use OpenAI embeddings (or any embedding model)
+    const response = await openai.embeddings.create({
+      model: 'text-embedding-3-small',
+      input: text.substring(0, 8000)  // Truncate to embedding limit
+    })
+    return response.data[0].embedding
+  }
+
+  private cosineSimilarity(a: number[], b: number[]): number {
+    let dotProduct = 0
+    let normA = 0
+    let normB = 0
+
+    for (let i = 0; i < a.length; i++) {
+      dotProduct += a[i] * b[i]
+      normA += a[i] * a[i]
+      normB += b[i] * b[i]
+    }
+
+    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB))
+  }
+
+  // Get diagnostic metrics for monitoring
+  getMetrics(taskId: string): {
+    attempts: number
+    totalTokens: number
+    totalDuration: number
+    avgSimilarity: number
+  } {
+    const history = this.attempts.get(taskId) || []
+    return {
+      attempts: history.length,
+      totalTokens: history.reduce((s, a) => s + a.tokenCost, 0),
+      totalDuration: history.reduce((s, a) => s + a.durationMs, 0),
+      avgSimilarity: 0  // Computed on demand
+    }
+  }
+}
+
+// Integration with Dynamic Planner:
+//
+// const cycleDetector = new SemanticCycleDetector(
+//   0.98,    // Loop threshold: 98% cosine similarity
+//   3,       // Compare against last 3 attempts
+//   5000     // Hard budget: 5,000 tokens per task
+// )
+//
+// async function executeWithLoopDetection(agent, task) {
+//   for (let attempt = 1; attempt <= 10; attempt++) {
+//     const output = await agent.execute(task)
+//
+//     const detection = await cycleDetector.recordAttempt(
+//       task.id,
+//       output.text,
+//       output.tokenCost,
+//       output.durationMs
+//     )
+//
+//     if (detection.recommendation === 'continue') {
+//       return output  // Success — agent made progress
+//     }
+//
+//     if (detection.recommendation === 'hard-stop') {
+//       throw new Error(`Task ${task.id} exceeded token budget`)
+//     }
+//
+//     if (detection.recommendation === 'escalate') {
+//       // Agent is looping — get a new strategy from reasoning model
+//       const { newStrategy } = await cycleDetector.breakLoop(
+//         task.id,
+//         task.description,
+//         cycleDetector.attempts.get(task.id)!
+//       )
+//
+//       // Retry with the new strategy injected into the prompt
+//       task.description = `${task.description}\n\nIMPORTANT: ${newStrategy}`
+//       // Loop continues with fresh approach
+//     }
+//   }
+// }
+//
+// Semantic Loop Detection Performance:
+//
+// | Metric                      | Without Detection | With Detection |
+// |-----------------------------|-------------------|----------------|
+// | Avg tokens wasted per loop  | 15,000+           | 2,500          |
+// | Avg cost per stuck agent    | $1.20             | $0.20          |
+// | Time before detection       | Timeout (60s+)    | 3 attempts (24s) |
+// | Loop resolution rate        | 0% (just times out)| 85% (new strategy) |
+// | Embedding cost per check    | N/A               | $0.0001        |
+```
 
 ---
 
@@ -1204,9 +1503,10 @@ console.log(`Tenant B: position ${urgentResult.position}`) // Position 1-3 (ahea
 5. **Start Simple**: Don't over-engineer delegation for simple tasks; 3-7 meaningful subtasks is the sweet spot
 6. **Monitor Agent Load**: Distribute work evenly to prevent bottlenecks
 7. **Dynamic Replanning**: Plans must be mutable — agent failures trigger selective retry, delegation to alternatives, or task decomposition, not full restarts
-8. **DAG Execution**: Build dependency graphs with topological sort to maximize concurrent throughput automatically, rather than manually grouping Promise.all batches
-9. **Queue-Based Load Balancing**: Fair-share scheduling with priority penalties prevents power users from monopolizing multi-tenant agent pools
-10. **Granular Resilience**: Design for selective subtask recovery — one agent failure should cost seconds and cents, not minutes and dollars
+8. **Semantic Loop Detection**: Embed agent outputs and compare cosine similarity across attempts — similarity &gt;0.98 means the agent is "thinking in circles" and must be escalated to a reasoning model with a fresh strategy
+9. **DAG Execution**: Build dependency graphs with topological sort to maximize concurrent throughput automatically, rather than manually grouping Promise.all batches
+10. **Queue-Based Load Balancing**: Fair-share scheduling with priority penalties prevents power users from monopolizing multi-tenant agent pools
+11. **Granular Resilience**: Design for selective subtask recovery — one agent failure should cost seconds and cents, not minutes and dollars
 
 ---
 

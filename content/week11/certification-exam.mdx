@@ -1,0 +1,740 @@
+---
+title: "Week 11 Certification: The Orchestrator"
+description: "Strategic multi-agent governance exam covering coordination deadlocks, conflict resolution, context management, and execution governance for production AI systems"
+estimatedMinutes: 120
+---
+
+# Week 11 Certification Exam: The Orchestrator
+
+## Exam Philosophy
+
+This examination tests your ability to transition from **"building agents"** to **"Architecting Agent Organizations."** It moves beyond "wiring up a chain" and into **Orchestration Governance** — the discipline of making multi-agent systems reliable, auditable, and economically sustainable in high-stakes environments. To pass, you must prove you can treat coordination as a **structural problem**, not a prompting problem.
+
+**Grading Standard**: This exam is graded at the **Director/Staff Architect** level. You are expected to treat multi-agent workflows as **governed pipelines** — no agent fires without DAG validation, no conflict resolves without weighted arbitration, no hand-off happens without context isolation, and no loop runs without execution caps. Solutions that rely on "better prompts" or "higher timeouts" will not pass.
+
+**Core Principle**: Multi-agent reliability is a **Governance Problem**, not an intelligence problem. The smartest agents in the world will deadlock, hallucinate consensus, poison each other's context, and burn through budgets if the orchestration layer doesn't enforce structural constraints. Your job is to build the structure.
+
+---
+
+## Scenario: AuditAI Platform
+
+You are the **Principal Architect** for **"AuditAI,"** a platform that performs **real-time financial and legal audits for corporate mergers**. The system must analyze thousands of documents, cross-reference balance sheets with legal contracts, and flag discrepancies. Accuracy is non-negotiable — a single missed conflict can lead to a multi-million dollar lawsuit.
+
+**System Profile**:
+- **200 enterprise clients** (law firms, investment banks)
+- **12,000 audit reports per month** across all clients
+- **Document corpus**: 50,000+ contracts, balance sheets, and regulatory filings per audit
+- **Current architecture**: 3-agent team (Legal Specialist, Financial Analyst, General Auditor)
+- **Accuracy requirement**: 99.5% — errors trigger regulatory liability
+
+**Current Architecture**:
+```typescript
+// Current: Ad-hoc agent coordination (no formal orchestration)
+const agents = {
+  legal: {
+    model: 'claude-sonnet-4-5-20250929',
+    role: 'Analyze contracts, flag legal risks',
+    costPerCall: 0.04
+  },
+  financial: {
+    model: 'claude-sonnet-4-5-20250929',
+    role: 'Analyze balance sheets, compute materiality thresholds',
+    costPerCall: 0.05
+  },
+  auditor: {
+    model: 'claude-sonnet-4-5-20250929',
+    role: 'Cross-reference findings, produce final audit report',
+    costPerCall: 0.06
+  }
+}
+
+// Current cost per audit: ~$18.75 (125 agent calls × $0.15 avg)
+// Current latency: 45 minutes per audit
+// Current failure mode: Agents call each other ad-hoc with no dependency graph
+```
+
+---
+
+## Challenge 1: The "Recursive Deadlock" (Coordination)
+
+### The Problem
+
+You've deployed a team of three agents: a **Legal Specialist**, a **Financial Analyst**, and a **General Auditor**. During a test run, the Financial Analyst refused to finalize a report until the Legal Specialist confirmed a contract clause, but the Legal Specialist was waiting for the Financial Analyst to define the "Materiality Threshold." The system sat idle for 5 minutes, burning through a 60-second timeout with no error message.
+
+**The Deadlock**:
+```typescript
+// What happened:
+// Financial Analyst: "I need the contract clause from Legal before I can proceed"
+// Legal Specialist:  "I need the materiality threshold from Financial before I can proceed"
+//
+// Result: Both agents blocked, system hangs silently
+// Cost: 5 minutes of idle compute + timeout retry = $2.40 wasted
+// Worse: No error was thrown — the system just... stopped
+```
+
+### Question
+
+How do you re-architect the coordination pattern to **prevent this circular dependency**?
+
+### Architect's Requirement
+
+Propose a **Supervisor-led DAG (Directed Acyclic Graph)** architecture. Explain how the Supervisor prevents deadlocks by pre-defining task dependencies before execution begins.
+
+<details>
+<summary><strong>Click to reveal the model answer</strong></summary>
+
+### Solution: Supervisor-Led DAG Validation
+
+The root cause is **ad-hoc agent-to-agent communication** with no structural dependency management. Each agent decides at runtime what it needs from other agents, creating implicit dependency cycles that no one validates.
+
+```typescript
+/**
+ * Supervisor-Led DAG Architecture
+ *
+ * The Supervisor decomposes the audit into a DAG BEFORE any agent fires.
+ * Dependencies are explicit, validated, and cycle-free.
+ *
+ * Key insight: The deadlock happened because agents negotiated
+ * dependencies at RUNTIME. The fix is to define dependencies
+ * at PLANNING TIME and validate them before execution begins.
+ */
+
+interface AuditTask {
+  id: string
+  agent: 'legal' | 'financial' | 'auditor'
+  description: string
+  dependsOn: string[]  // Task IDs this depends on
+}
+
+function planAuditWorkflow(auditId: string): AuditTask[] {
+  return [
+    // Phase 1: Independent tasks (no dependencies — run in parallel)
+    {
+      id: 'legal-contract-scan',
+      agent: 'legal',
+      description: 'Scan all contracts and flag risk clauses',
+      dependsOn: []  // No dependencies — starts immediately
+    },
+    {
+      id: 'financial-balance-sheet',
+      agent: 'financial',
+      description: 'Analyze balance sheets and compute materiality threshold',
+      dependsOn: []  // No dependencies — starts immediately
+    },
+
+    // Phase 2: Cross-reference (depends on Phase 1)
+    {
+      id: 'legal-materiality-review',
+      agent: 'legal',
+      description: 'Review flagged clauses against materiality threshold',
+      dependsOn: ['legal-contract-scan', 'financial-balance-sheet']
+      //           ↑ Now Legal RECEIVES the threshold from Financial
+      //             instead of WAITING for it during execution
+    },
+
+    // Phase 3: Final audit (depends on Phase 2)
+    {
+      id: 'auditor-final-report',
+      agent: 'auditor',
+      description: 'Cross-reference all findings, produce audit report',
+      dependsOn: ['legal-materiality-review']
+    }
+  ]
+}
+
+// DAG Validation (Kahn's Algorithm — runs BEFORE any agent fires)
+function validateDAG(tasks: AuditTask[]): {
+  valid: boolean
+  executionOrder: string[] | null
+  cycle: string[] | null
+} {
+  const inDegree = new Map<string, number>()
+  const graph = new Map<string, string[]>()
+
+  for (const task of tasks) {
+    if (!graph.has(task.id)) graph.set(task.id, [])
+    if (!inDegree.has(task.id)) inDegree.set(task.id, 0)
+    for (const dep of task.dependsOn) {
+      if (!graph.has(dep)) graph.set(dep, [])
+      graph.get(dep)!.push(task.id)
+      inDegree.set(task.id, (inDegree.get(task.id) || 0) + 1)
+    }
+  }
+
+  const queue: string[] = []
+  const order: string[] = []
+
+  for (const [id, degree] of inDegree) {
+    if (degree === 0) queue.push(id)
+  }
+
+  while (queue.length > 0) {
+    const current = queue.shift()!
+    order.push(current)
+    for (const neighbor of graph.get(current) || []) {
+      const newDegree = inDegree.get(neighbor)! - 1
+      inDegree.set(neighbor, newDegree)
+      if (newDegree === 0) queue.push(neighbor)
+    }
+  }
+
+  if (order.length !== tasks.length) {
+    const cycleNodes = tasks
+      .filter(t => !order.includes(t.id))
+      .map(t => t.id)
+    return { valid: false, executionOrder: null, cycle: cycleNodes }
+  }
+
+  return { valid: true, executionOrder: order, cycle: null }
+}
+
+// Execution flow:
+//
+// 1. Supervisor calls planAuditWorkflow() → gets task list
+// 2. Supervisor calls validateDAG() → confirms no cycles (0.1ms)
+// 3. If cycle detected → HARD STOP, error to developer
+// 4. If valid → execute tasks in topological order:
+//    Group 1 (parallel): legal-contract-scan + financial-balance-sheet
+//    Group 2 (sequential): legal-materiality-review
+//    Group 3 (sequential): auditor-final-report
+//
+// The deadlock is STRUCTURALLY IMPOSSIBLE because:
+// - Legal never waits for Financial at runtime
+// - Financial never waits for Legal at runtime
+// - All data flows are pre-defined in the DAG
+// - The Supervisor passes outputs from Phase 1 to Phase 2
+```
+
+### Why This Works
+
+The original deadlock happened because agents **negotiated dependencies at runtime** — each agent decided on its own what it needed from other agents. The Supervisor-DAG pattern moves dependency resolution to **planning time**:
+
+1. **Planning Phase** (0.1ms): Supervisor defines all tasks and dependencies as a DAG
+2. **Validation Phase** (0.1ms): Kahn's algorithm confirms no cycles exist
+3. **Execution Phase**: Supervisor dispatches tasks in topological order, passing outputs from completed tasks to dependent tasks
+
+**The key insight**: The Financial Analyst doesn't "ask" the Legal Specialist for anything. The Supervisor **delivers** the materiality threshold to the legal-materiality-review task as input. Agents are **stateless workers**, not negotiating peers.
+
+**Architect Tier Answer**: Designs a Supervisor-led DAG with explicit task decomposition, implements Kahn's algorithm for cycle detection before execution, and eliminates agent-to-agent runtime negotiation by making the Supervisor the sole mediator of data flow.
+
+</details>
+
+---
+
+## Challenge 2: The "Hallucinated Consensus" (Conflict Resolution)
+
+### The Problem
+
+In a recent audit, the **Researcher Agent** found a document stating a firm had **$50M in debt**, but the **Extraction Agent** (using a cheaper model) misread the OCR and reported **$5M**. The **Synthesis Agent** simply took the average and reported **$27.5M**, which was completely wrong.
+
+**The Failure Chain**:
+```typescript
+// Agent outputs:
+// Researcher (Sonnet, high-fidelity):  "$50M in long-term debt"
+// Extractor (Haiku, cost-optimized):   "$5M in long-term debt" (OCR misread)
+// Synthesis (Sonnet, summarizer):       "Average: $27.5M in debt"
+//
+// Actual answer: $50M
+// Reported answer: $27.5M
+// Error: 45% underreporting of debt
+//
+// Consequence: Client proceeds with merger based on incorrect debt figure
+// Liability: Potential $10M+ regulatory fine
+```
+
+### Question
+
+Design a **Weighted Conflict Resolution** strategy to catch this error.
+
+### Architect's Requirement
+
+Explain why **"Majority Rule"** failed here. Implement a **Domain Authority Weighting** system where the Researcher's factual extraction carries a higher "Veto Power" than the Synthesis Agent's summary.
+
+<details>
+<summary><strong>Click to reveal the model answer</strong></summary>
+
+### Why Majority Rule Failed
+
+With 3 agents, "majority rule" would need 2 agents to agree. But the Synthesis Agent didn't cast an independent "vote" — it **derived** its answer from the other two. So the "vote" was:
+- Researcher: $50M
+- Extractor: $5M
+- Synthesis: $27.5M (average of the other two — not an independent data point)
+
+No two agents agreed. Majority rule produces **no answer**, and the system defaults to... the Synthesis Agent's average. This is **hallucinated consensus** — the appearance of agreement where none exists.
+
+```typescript
+/**
+ * Domain Authority Weighting with Veto Power
+ *
+ * Each agent is assigned a trust weight based on:
+ * 1. Model capability (Sonnet > Haiku for factual extraction)
+ * 2. Data source (primary document > derived summary)
+ * 3. Task type (extraction > synthesis for factual claims)
+ *
+ * When agents disagree on factual claims, the highest-authority
+ * agent's answer is used, NOT an average or majority vote.
+ */
+
+interface AgentClaim {
+  agentId: string
+  claim: string | number
+  confidence: number        // Agent's self-reported confidence (0-1)
+  sourceType: 'primary_document' | 'derived' | 'synthesized'
+  modelTier: 'frontier' | 'standard' | 'economy'
+}
+
+interface AuthorityWeight {
+  sourceWeight: number      // Primary: 1.0, Derived: 0.6, Synthesized: 0.3
+  modelWeight: number       // Frontier: 1.0, Standard: 0.8, Economy: 0.5
+  taskWeight: number        // Extraction: 1.0, Analysis: 0.7, Synthesis: 0.4
+}
+
+function resolveConflict(claims: AgentClaim[]): {
+  resolvedValue: string | number
+  method: 'consensus' | 'authority_override' | 'escalation'
+  reasoning: string
+} {
+  // Step 1: Check for consensus (all agents agree)
+  const uniqueValues = new Set(claims.map(c => String(c.claim)))
+  if (uniqueValues.size === 1) {
+    return {
+      resolvedValue: claims[0].claim,
+      method: 'consensus',
+      reasoning: 'All agents agree'
+    }
+  }
+
+  // Step 2: Calculate authority score for each claim
+  const scored = claims.map(claim => {
+    const weights = calculateWeights(claim)
+    const authorityScore =
+      weights.sourceWeight * 0.5 +   // Source type is most important
+      weights.modelWeight * 0.3 +
+      weights.taskWeight * 0.2
+
+    return { ...claim, authorityScore }
+  })
+
+  // Step 3: Check for high-authority veto
+  const sorted = scored.sort((a, b) => b.authorityScore - a.authorityScore)
+  const topAgent = sorted[0]
+  const secondAgent = sorted[1]
+
+  // If top agent's authority is 2x+ the second, it has veto power
+  if (topAgent.authorityScore >= secondAgent.authorityScore * 1.5) {
+    return {
+      resolvedValue: topAgent.claim,
+      method: 'authority_override',
+      reasoning: `${topAgent.agentId} has authority score ${topAgent.authorityScore.toFixed(2)} ` +
+        `(${(topAgent.authorityScore / secondAgent.authorityScore).toFixed(1)}x higher than ` +
+        `${secondAgent.agentId}). Veto power applied.`
+    }
+  }
+
+  // Step 4: No clear authority → escalate to human reviewer
+  return {
+    resolvedValue: topAgent.claim,
+    method: 'escalation',
+    reasoning: `Authority scores too close (${topAgent.authorityScore.toFixed(2)} vs ` +
+      `${secondAgent.authorityScore.toFixed(2)}). Escalating to human auditor.`
+  }
+}
+
+function calculateWeights(claim: AgentClaim): AuthorityWeight {
+  const sourceWeight =
+    claim.sourceType === 'primary_document' ? 1.0 :
+    claim.sourceType === 'derived' ? 0.6 : 0.3
+
+  const modelWeight =
+    claim.modelTier === 'frontier' ? 1.0 :
+    claim.modelTier === 'standard' ? 0.8 : 0.5
+
+  // Task weight inferred from source type
+  const taskWeight =
+    claim.sourceType === 'primary_document' ? 1.0 :
+    claim.sourceType === 'derived' ? 0.7 : 0.4
+
+  return { sourceWeight, modelWeight, taskWeight }
+}
+
+// Applying to the $50M vs $5M conflict:
+//
+// Researcher: { claim: 50_000_000, sourceType: 'primary_document',
+//               modelTier: 'frontier' }
+//   Authority: (1.0 × 0.5) + (1.0 × 0.3) + (1.0 × 0.2) = 1.00
+//
+// Extractor:  { claim: 5_000_000, sourceType: 'derived',
+//               modelTier: 'economy' }
+//   Authority: (0.6 × 0.5) + (0.5 × 0.3) + (0.7 × 0.2) = 0.59
+//
+// Synthesis:  { claim: 27_500_000, sourceType: 'synthesized',
+//               modelTier: 'standard' }
+//   Authority: (0.3 × 0.5) + (0.8 × 0.3) + (0.4 × 0.2) = 0.47
+//
+// Researcher authority (1.00) is 1.7x Extractor (0.59) → VETO POWER
+// Resolved value: $50,000,000 ✅
+// Method: authority_override
+//
+// The $27.5M average is NEVER considered because averages are
+// mathematically meaningless for factual disputes.
+```
+
+### The Architect's Rule
+
+**Never average conflicting factual claims.** Averaging makes sense for opinions (ratings, preferences) but is catastrophically wrong for facts. Either one agent is right and the others are wrong, or the conflict requires human escalation. An Architect designs the system to identify **which agent to trust**, not to blend wrong answers into a "compromise."
+
+**Architect Tier Answer**: Implements authority weighting based on source type, model tier, and task type. Gives veto power to primary-document extractors. Never averages factual disputes. Escalates to human review when authority scores are close.
+
+</details>
+
+---
+
+## Challenge 3: The "Context Poisoning" (Delegation)
+
+### The Problem
+
+Your **Legal Agent** generated 50 pages of internal "thought process" while analyzing a merger — citing every clause, every precedent, every footnote. When this full output was passed to the **Executive Summary Agent**, the summary became cluttered with technical jargon and minor legal footnotes, missing the "Big Picture" risks entirely.
+
+**The Failure**:
+```typescript
+// Legal Agent output: 12,000 tokens
+// Contains:
+//   - 3 critical merger risks (the important stuff)
+//   - 47 minor footnotes about standard clauses
+//   - 200 lines of internal reasoning chains
+//   - 15 citations to obscure case law
+
+// Executive Summary Agent receives ALL 12,000 tokens
+// Result: Summary focuses on footnotes and citations
+//         (because they dominate the context window)
+//         Misses 2 of 3 critical risks entirely
+
+// Cost: 12,000 tokens × $0.003/1K = $0.036 per hand-off
+//       × 125 hand-offs per audit = $4.50 in context bloat
+//       × 12,000 audits/month = $54,000/month in wasted tokens
+```
+
+### Question
+
+How do you optimize the **Task Hand-off** to improve summary quality and reduce token costs?
+
+### Architect's Requirement
+
+Detail the implementation of **Selective Context Summarization (Egress Hand-offs)**. Explain how isolating the "Internal Monologue" of the specialist agent protects the "Context Window" of the downstream agent.
+
+<details>
+<summary><strong>Click to reveal the model answer</strong></summary>
+
+### Solution: Egress Hand-off Pattern
+
+The principle is simple: **no agent passes its full working context to the next agent.** Each agent produces a structured **Egress Summary** — a 500-token handoff that contains only what the downstream agent needs.
+
+```typescript
+/**
+ * Egress Hand-off Implementation
+ *
+ * Each agent's output is split into two parts:
+ * 1. Internal Working Context (stored for audit, NOT passed downstream)
+ * 2. Egress Summary (structured handoff for the next agent)
+ *
+ * The downstream agent ONLY sees the Egress Summary.
+ * The full context is archived for compliance but never pollutes
+ * another agent's context window.
+ */
+
+interface AgentOutput {
+  // Full working context (archived, not forwarded)
+  internalContext: {
+    reasoning: string         // Chain-of-thought (for audit trail)
+    citations: string[]       // Source references
+    footnotes: string[]       // Minor details
+    tokenCount: number        // Track internal bloat
+  }
+
+  // Egress Summary (forwarded to next agent)
+  egressSummary: {
+    taskCompleted: string     // 1 sentence: what was done
+    criticalFindings: string[]  // Top 3-5 findings ONLY
+    riskLevel: 'critical' | 'high' | 'medium' | 'low'
+    actionRequired: string[]  // What the next agent must act on
+    confidence: number        // 0-1
+    tokenCount: number        // MUST be <= 500
+  }
+}
+
+async function createEgressSummary(
+  agentId: string,
+  fullOutput: string,
+  nextAgentRole: string
+): Promise<AgentOutput['egressSummary']> {
+  const response = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',  // Cheap model for summarization
+    max_tokens: 600,
+    messages: [{
+      role: 'user',
+      content: `You are creating an Egress Summary for the "${nextAgentRole}" agent.
+
+Extract ONLY the critical findings from this specialist output.
+
+RULES:
+- Maximum 500 tokens
+- Include ONLY findings the ${nextAgentRole} needs to act on
+- OMIT: internal reasoning, minor footnotes, standard clauses, citations
+- Rank findings by severity (critical first)
+- If more than 5 findings, include only the top 5
+
+Output JSON format:
+{
+  "taskCompleted": "one sentence",
+  "criticalFindings": ["finding 1", "finding 2", "finding 3"],
+  "riskLevel": "critical|high|medium|low",
+  "actionRequired": ["action 1", "action 2"],
+  "confidence": 0.0-1.0
+}
+
+Full specialist output:
+${fullOutput}`
+    }]
+  })
+
+  return JSON.parse(response.content[0].text)
+}
+
+// Before Egress Hand-off:
+//
+//   Legal Agent → [12,000 tokens] → Executive Summary Agent
+//   Result: Summary cluttered with footnotes, misses 2/3 critical risks
+//   Cost per hand-off: $0.036
+//   Monthly (125 × 12,000 audits): $54,000
+//
+// After Egress Hand-off:
+//
+//   Legal Agent → [500 tokens Egress] → Executive Summary Agent
+//   Result: Summary focuses on 3 critical risks (all captured)
+//   Cost per hand-off: $0.0015 + $0.001 (Haiku summarization)
+//   Monthly (125 × 12,000 audits): $3,750
+//
+// Savings: $50,250/month (93% reduction)
+// Quality: 2/3 critical risks captured → 3/3 (100% improvement)
+//
+// The paradox: LESS context produces BETTER summaries
+// because the downstream agent focuses on signals, not noise
+```
+
+### Why Less Context Produces Better Results
+
+The **"Context Poisoning"** problem is counterintuitive: giving an agent MORE information makes it WORSE at its job. This happens because:
+
+1. **Attention dilution**: The LLM's attention mechanism distributes weight across all tokens. 12,000 tokens of mixed-quality content means the 3 critical findings compete with 47 footnotes for attention.
+
+2. **Recency bias**: LLMs weight recent tokens more heavily. If the footnotes appear at the end of the Legal Agent's output, they dominate the Summary Agent's response.
+
+3. **Context window economics**: Every unnecessary token costs money AND degrades quality. The Egress Hand-off solves both problems simultaneously.
+
+**Architect Tier Answer**: Implements Egress Hand-offs that split agent output into internal context (archived for compliance) and structured summary (forwarded to next agent). Demonstrates that context reduction improves both quality and cost. Archives full context for audit trails without polluting downstream agents.
+
+</details>
+
+---
+
+## Challenge 4: The "Runaway Loop" (Orchestration)
+
+### The Problem
+
+One of your agents got stuck in a **"Self-Correction Loop"** — it found a minor formatting error in an audit table, tried to fix it, evaluated its fix, found another minor issue, fixed that, evaluated again, and repeated this cycle **68 times** before hitting the global token limit.
+
+**The Failure**:
+```typescript
+// Agent behavior log:
+// Iteration 1:  "Table header misaligned. Fixing..." → $0.06
+// Iteration 2:  "Column width inconsistent. Fixing..." → $0.06
+// Iteration 3:  "Header misaligned again after width fix. Fixing..." → $0.06
+// ...
+// Iteration 68: "Table still has minor alignment issues. Fixing..." → $0.06
+//
+// Total cost: 68 × $0.06 = $4.08 on a SINGLE TABLE
+// Total time: 12 minutes on cosmetic formatting
+// Actual task: Verify $200M merger financials ← NOT DONE
+//
+// The agent was "thinking in circles" — each fix created a new
+// minor issue, which triggered another fix, indefinitely
+```
+
+### Question
+
+What is your **Execution Governance** strategy to stop this "Token Bleed"?
+
+### Architect's Requirement
+
+Propose a two-layer defense: **Max Iteration Caps** and **Semantic Loop Detection** (using vector similarity to detect if the agent is "Thinking in Circles").
+
+<details>
+<summary><strong>Click to reveal the model answer</strong></summary>
+
+### Solution: Two-Layer Execution Governance
+
+```typescript
+/**
+ * Two-Layer Loop Defense
+ *
+ * Layer 1: Hard Caps (structural, zero-cost)
+ *   - Max iterations per sub-task
+ *   - Max tokens per sub-task
+ *   - Max wall-clock time per sub-task
+ *
+ * Layer 2: Semantic Loop Detection (intelligent, low-cost)
+ *   - Embed each iteration's output
+ *   - Compare to previous iterations via cosine similarity
+ *   - If similarity exceeds threshold → agent is "thinking in circles"
+ *   - Break the loop and escalate
+ */
+
+interface ExecutionGovernor {
+  maxIterations: number          // Hard cap: max retry attempts
+  maxTokensPerSubtask: number   // Budget cap: max tokens spent
+  maxWallClockMs: number         // Time cap: max duration
+  similarityThreshold: number    // Semantic cap: loop detection (0-1)
+}
+
+const GOVERNANCE_DEFAULTS: ExecutionGovernor = {
+  maxIterations: 5,              // No sub-task retries more than 5 times
+  maxTokensPerSubtask: 5000,     // No sub-task spends more than 5K tokens
+  maxWallClockMs: 60_000,        // No sub-task runs longer than 60 seconds
+  similarityThreshold: 0.92      // If outputs are 92%+ similar → loop detected
+}
+
+async function governedExecution(
+  agent: Agent,
+  task: Task,
+  governor: ExecutionGovernor = GOVERNANCE_DEFAULTS
+): Promise<{ result: any; governance: GovernanceLog }> {
+  const log: GovernanceLog = {
+    iterations: 0,
+    totalTokens: 0,
+    loopDetected: false,
+    terminationReason: 'success'
+  }
+
+  const previousOutputs: number[][] = []  // Embedding vectors
+  const startTime = Date.now()
+
+  for (let i = 0; i < governor.maxIterations; i++) {
+    log.iterations++
+
+    // Layer 1: Check hard caps
+    if (log.totalTokens >= governor.maxTokensPerSubtask) {
+      log.terminationReason = 'token_budget_exceeded'
+      break
+    }
+    if (Date.now() - startTime >= governor.maxWallClockMs) {
+      log.terminationReason = 'wall_clock_exceeded'
+      break
+    }
+
+    // Execute the agent
+    const result = await agent.execute(task)
+    log.totalTokens += result.tokensUsed
+
+    // Layer 2: Semantic loop detection
+    const currentEmbedding = await embed(result.output)
+
+    if (previousOutputs.length > 0) {
+      const maxSimilarity = Math.max(
+        ...previousOutputs.map(prev => cosineSimilarity(prev, currentEmbedding))
+      )
+
+      if (maxSimilarity >= governor.similarityThreshold) {
+        log.loopDetected = true
+        log.terminationReason = 'semantic_loop_detected'
+        // Return the BEST result so far, not the latest
+        break
+      }
+    }
+
+    previousOutputs.push(currentEmbedding)
+
+    // Check if agent considers task complete
+    if (result.status === 'complete') {
+      log.terminationReason = 'success'
+      return { result, governance: log }
+    }
+  }
+
+  // If we exit the loop without success, return best effort + warning
+  return {
+    result: { status: 'governance_terminated', partial: true },
+    governance: log
+  }
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  const dotProduct = a.reduce((sum, val, i) => sum + val * b[i], 0)
+  const magnitudeA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0))
+  const magnitudeB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0))
+  return dotProduct / (magnitudeA * magnitudeB)
+}
+
+// How this would have caught the runaway loop:
+//
+// Iteration 1: "Table header misaligned. Fixing..."    → embed_1
+// Iteration 2: "Column width inconsistent. Fixing..."  → embed_2
+//   Similarity to embed_1: 0.78 (different issue — continue)
+//
+// Iteration 3: "Header misaligned again. Fixing..."    → embed_3
+//   Similarity to embed_1: 0.94 ← LOOP DETECTED (> 0.92 threshold)
+//
+// Governance action: STOP after 3 iterations
+// Cost: 3 × $0.06 = $0.18 (vs $4.08 without governance)
+// Savings: $3.90 per occurrence (96% reduction)
+//
+// At 12,000 audits/month with ~5% loop rate:
+// Without governance: 600 loops × $4.08 = $2,448/month wasted
+// With governance:    600 loops × $0.18 = $108/month
+// Monthly savings: $2,340
+```
+
+### Why Two Layers Are Necessary
+
+**Layer 1 (Hard Caps)** catches **runaway cost** — even if the semantic detection fails, the agent can never spend more than 5,000 tokens or 60 seconds on a single sub-task. This is your safety net.
+
+**Layer 2 (Semantic Detection)** catches **circular reasoning** — the agent is producing subtly different outputs that are semantically identical. Hard caps alone would still allow 5 expensive iterations of circular thinking. Semantic detection catches the loop after 2-3 iterations.
+
+**Together**: Layer 1 prevents catastrophic cost. Layer 2 prevents wasted compute. Neither alone is sufficient.
+
+**Architect Tier Answer**: Implements both hard caps (iterations, tokens, time) and semantic loop detection (embedding similarity). Explains why each layer alone is insufficient. Calculates the economic impact of undetected loops at scale.
+
+</details>
+
+---
+
+## Grading Rubric: The Lead Auditor's Verdict
+
+### Architect Tier (Pass)
+
+The student views multi-agent systems as a **Governance Problem**. They:
+- Design Supervisor-led DAG workflows that prevent deadlocks **structurally** (not with timeouts)
+- Implement weighted conflict resolution with domain authority and veto power (never averaging factual disputes)
+- Enforce Egress Hand-offs to isolate agent context and reduce token costs by 87%+
+- Deploy two-layer execution governance (hard caps + semantic loop detection)
+- Calculate the economic impact of each failure mode at production scale
+
+### Developer Tier (Partial)
+
+The student views multi-agent systems as a **prompting problem**. They:
+- Suggest "better prompts" to prevent deadlocks instead of structural DAG validation
+- Use majority rule or averaging for conflict resolution without authority weighting
+- Pass full agent outputs between agents without context summarization
+- Set higher timeouts to handle loops instead of detecting and breaking them
+- Can wire agents together but lack governance for reliability and cost
+
+### Junior Tier (Fail)
+
+The student:
+- Suggests "running the whole audit again" to fix deadlocks or errors
+- Doesn't recognize the economic cost of context bloat or runaway loops
+- Fails to distinguish between structural solutions and prompt-based workarounds
+- Cannot design a dependency graph or explain why circular dependencies cause deadlocks
+
+---
+
+**The Archcelerate Program — Week 11 Milestone**: By completing the Week 11 Certification, you have demonstrated mastery of **Orchestration Governance** — the ability to coordinate agent teams with structural reliability, weighted conflict resolution, context isolation, and execution cost controls. You are now equipped to architect multi-agent systems for high-stakes production environments where accuracy is non-negotiable and every failure has a dollar cost.
