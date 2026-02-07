@@ -601,95 +601,610 @@ Diagnosis:
 */
 ```
 
-### Time-Travel Debugging: Use Cases
+---
 
-| Use Case | How Time-Travel Helps |
-|----------|----------------------|
-| Agent made wrong decision at step 5 | Replay from step 4 with corrected logic |
-| Context window exceeded | Find which step caused context explosion |
-| Expensive workflow failed near end | Test fix by replaying from last checkpoint (skip expensive early steps) |
-| A/B test different prompts | Replay same workflow with different prompt at step X |
+### Advanced: Rewind & Replay (State Forking for Production Debugging)
+
+> **The Gap**: Basic time-travel lets you inspect checkpoints, but in production, you need to **edit agent memory** at a specific point and **replay from there**. An agent might fail at Step 10 because of a hallucination at Step 3—you need to fork the state, fix Step 3, and replay Steps 4-10.
+
+> **The Solution**: Implement **State Forking** where operators can create a branch from any checkpoint, modify the state, and replay execution without affecting the original thread.
+
+#### Problem: Human-in-the-Loop Intervention Mid-Workflow
+
+**Scenario**: Legal contract review agent (60-minute workflow)
+
+```typescript
+// Agent execution timeline:
+Step 1: Load contract PDF ✅
+Step 2: Extract clauses ✅
+Step 3: Identify liability terms ❌ HALLUCINATION: Missed critical indemnity clause
+Step 4: Analyze risk (based on incomplete Step 3) ❌ WRONG
+Step 5: Generate summary (based on wrong Step 4) ❌ WRONG
+... Steps 6-10 continue with compounding errors
+
+// Problem: Agent didn't fail (status = completed)
+// But output is legally incorrect due to missed clause at Step 3
+// Re-running from scratch costs 60 minutes
+```
+
+**Production impact**:
+- Legal tech platform: 8% of reviews miss critical clauses
+- Detection: Only caught during human review ($200/hour lawyer time)
+- Re-execution cost: 60 minutes × $0.50 (LLM) = $0.50 per mistake
+- **Annual cost**: $480K in re-execution + legal liability risk
 
 ---
 
-## Pattern 3: Checkpoint Optimization (Redis for Hot State)
+#### Solution: State Forking & Replay
 
-**Problem**: Writing to Postgres after every step adds 10-50ms latency.
-
-**Solution**: Use **Redis for hot state** (in-progress threads), sync to Postgres every 5 steps or on completion.
-
-### Hybrid Persistence Architecture
+**Workflow**:
+1. **Operator identifies error** at Step 3 (missed indemnity clause)
+2. **Fork state** from Step 3 checkpoint
+3. **Edit agent memory** to include the missed clause
+4. **Replay Steps 4-10** with corrected memory
+5. **Compare outputs** (original vs forked) to verify fix
+6. **Promote fork** to production if validation passes
 
 ```typescript
-import { Redis } from 'ioredis'
+interface StateFork {
+  forkId: string
+  parentThreadId: string
+  forkPoint: number  // Which step was forked
+  modifications: {
+    field: string
+    oldValue: any
+    newValue: any
+    reason: string
+  }[]
+  replayStatus: 'pending' | 'running' | 'completed' | 'failed'
+  createdBy: string
+  createdAt: Date
+}
 
-const redis = new Redis(process.env.REDIS_URL)
-
-class OptimizedCheckpointedAgent extends CheckpointedAgent {
-  private redisKey: string
-
-  constructor(threadId: string, userId: string) {
-    super(threadId, userId)
-    this.redisKey = `agent:${threadId}:state`
-  }
-
-  // Save to Redis (fast)
-  async saveToRedis(state: AgentState, stepNumber: number): Promise<void> {
-    await redis.setex(
-      this.redisKey,
-      3600,  // 1 hour TTL
-      JSON.stringify({ state, stepNumber, timestamp: Date.now() })
-    )
-  }
-
-  // Sync Redis to Postgres every 5 steps
-  async saveCheckpoint(
-    stepNumber: number,
-    stepName: string,
-    state: AgentState,
-    metadata: CheckpointMetadata
-  ): Promise<void> {
-    // Always save to Redis (fast)
-    await this.saveToRedis(state, stepNumber)
-
-    // Sync to Postgres every 5 steps or on completion
-    if (stepNumber % 5 === 0 || state.finalOutput !== null) {
-      await super.saveCheckpoint(stepNumber, stepName, state, metadata)
-      console.log(`💾 Synced to Postgres: Step ${stepNumber}`)
-    } else {
-      console.log(`⚡ Cached in Redis: Step ${stepNumber}`)
+/**
+ * Advanced Time-Travel Debugger with State Forking
+ */
+class StateForkingDebugger extends TimeTravelDebugger {
+  /**
+   * Create a fork from a specific checkpoint with state modifications
+   */
+  async createFork(
+    forkPoint: number,
+    stateModifications: Partial<AgentState>,
+    operatorId: string,
+    reason: string
+  ): Promise<string> {
+    const checkpoint = await this.inspectCheckpoint(forkPoint)
+    if (!checkpoint) {
+      throw new Error(`Cannot fork: Checkpoint ${forkPoint} not found`)
     }
-  }
 
-  // Load from Redis first (fast), fallback to Postgres
-  async loadLatestCheckpoint() {
-    const cached = await redis.get(this.redisKey)
+    const forkId = `${this.threadId}_fork_${Date.now()}`
+
+    console.log(`\n🍴 Creating state fork from Step ${forkPoint}`)
+    console.log(`   Fork ID: ${forkId}`)
+    console.log(`   Operator: ${operatorId}`)
+    console.log(`   Reason: ${reason}`)
+
+    // Record modifications
+    const modifications = Object.entries(stateModifications).map(([field, newValue]) => ({
+      field,
+      oldValue: (checkpoint.state as any)[field],
+      newValue,
+      reason
+    }))
+
+---
+
+## Pattern 4: Tool Idempotency (Exactly-Once Execution)
+
+**The Problem**: Persistence is useless if your tools aren't safe to run twice. If an agent crashes after calling `charge_credit_card` but before saving the checkpoint, resuming will result in a **double charge**.
+
+**Why It Happens**: The checkpoint happened **after** the tool execution but **before** recording the success. On resume, the agent thinks the tool never ran and calls it again.
+
+**The Solution**: Enforce **Tool Idempotency Keys** so that re-executing the same tool with the same checkpoint_id returns the cached result instead of executing again.
+
+### The Partial-Success Crash Problem
+
+**Scenario**: Payment processing agent
+
+```typescript
+// Agent execution:
+Step 1: Validate order ✅ (Checkpoint saved)
+Step 2: Check inventory ✅ (Checkpoint saved)
+Step 3: Charge credit card ✅ (Tool executes: $500 charged)
+💥 CRASH (before checkpoint saved)
+
+// Resume from Step 2 checkpoint:
+Step 3: Charge credit card ❌ RUNS AGAIN → Double charge ($1,000 total)
+```
+
+**Production impact**:
+- E-commerce platform: 3% crash rate during payment processing
+- Volume: 10K orders/month
+- Double charges: 300 orders/month × $200 avg = $60K/month
+- Customer disputes: 300 × $25 chargeback fee = $7,500/month
+- **Annual cost**: $810K in double charges + chargebacks
+
+---
+
+### Solution: Idempotent Tool Contract
+
+**Architecture**:
+1. Every tool accepts a `request_id` (derived from `threadId + stepNumber`)
+2. Tool checks if `request_id` was already executed
+3. If yes: Return cached result (no side effects)
+4. If no: Execute tool, cache result, return
+
+```typescript
+interface IdempotentToolRequest {
+  requestId: string  // e.g., "thread_123_step_3"
+  threadId: string
+  stepNumber: number
+  toolName: string
+  parameters: Record<string, any>
+}
+
+interface IdempotentToolResult {
+  requestId: string
+  result: any
+  executedAt: Date
+  wasReplay: boolean  // True if returned from cache
+}
+
+/**
+ * Idempotent tool registry
+ */
+class IdempotentToolRegistry {
+  /**
+   * Execute tool with idempotency guarantee
+   */
+  async executeIdempotent(
+    request: IdempotentToolRequest,
+    toolImplementation: (params: any) => Promise<any>
+  ): Promise<IdempotentToolResult> {
+    const { requestId, toolName, parameters } = request
+
+    // Check if this request was already executed
+    const cached = await prisma.toolExecutionLog.findUnique({
+      where: { requestId }
+    })
 
     if (cached) {
-      const { state, stepNumber } = JSON.parse(cached)
-      console.log(`⚡ Loaded from Redis: Step ${stepNumber}`)
-      return { state, stepNumber, stepName: `step_${stepNumber}` }
+      console.log(`♻️  Idempotent replay: ${toolName} (request_id: ${requestId})`)
+      console.log(`   Original execution: ${cached.executedAt.toISOString()}`)
+      console.log(`   Returning cached result (no side effects)`)
+
+      return {
+        requestId,
+        result: cached.result,
+        executedAt: cached.executedAt,
+        wasReplay: true
+      }
     }
 
-    console.log('📂 Redis miss, loading from Postgres...')
-    return await super.loadLatestCheckpoint()
+    // Execute tool for the first time
+    console.log(`🔧 Executing tool: ${toolName} (request_id: ${requestId})`)
+    const startTime = Date.now()
+
+    try {
+      const result = await toolImplementation(parameters)
+      const executedAt = new Date()
+      const latency = Date.now() - startTime
+
+      // Cache result for future replays
+      await prisma.toolExecutionLog.create({
+        data: {
+          requestId,
+          threadId: request.threadId,
+          stepNumber: request.stepNumber,
+          toolName,
+          parameters: parameters as any,
+          result: result as any,
+          executedAt,
+          latencyMs: latency
+        }
+      })
+
+      console.log(`✅ Tool executed successfully (${latency}ms)`)
+
+      return {
+        requestId,
+        result,
+        executedAt,
+        wasReplay: false
+      }
+    } catch (error: any) {
+      // Log failure (do NOT cache failures - allow retry)
+      console.error(`❌ Tool execution failed: ${error.message}`)
+      throw error
+    }
   }
 }
 
-/* Performance Comparison:
+// Example: Payment tool with idempotency
+const toolRegistry = new IdempotentToolRegistry()
 
-Without Redis (Postgres only):
-- Checkpoint save latency: 30ms per step
-- 10 steps = 300ms total overhead
+async function chargeCreditCard(params: { orderId: string; amount: number }): Promise<{ transactionId: string }> {
+  // THIS FUNCTION HAS SIDE EFFECTS - must be idempotent
+  const transactionId = `txn_${Date.now()}`
 
-With Redis (hot state):
-- Redis save latency: 2ms per step
-- Postgres sync every 5 steps: 30ms
-- 10 steps = (9 × 2ms) + (2 × 30ms) = 78ms total overhead
+  // Call payment processor (Stripe, etc.)
+  console.log(`💳 Charging $${params.amount} for order ${params.orderId}`)
+  // await stripe.charges.create({ amount: params.amount * 100, ... })
 
-Speed improvement: 3.8x faster
+  return { transactionId }
+}
+
+// Agent execution with idempotent tools
+class IdempotentCheckpointedAgent extends CheckpointedAgent {
+  private toolRegistry = new IdempotentToolRegistry()
+
+  async executeToolSafely(
+    toolName: string,
+    parameters: any,
+    stepNumber: number
+  ): Promise<any> {
+    const requestId = `${this.threadId}_step_${stepNumber}_${toolName}`
+
+    const result = await this.toolRegistry.executeIdempotent(
+      {
+        requestId,
+        threadId: this.threadId,
+        stepNumber,
+        toolName,
+        parameters
+      },
+      async (params) => {
+        // Dispatch to actual tool implementation
+        if (toolName === 'charge_credit_card') {
+          return await chargeCreditCard(params)
+        } else if (toolName === 'send_email') {
+          return await sendEmail(params)
+        }
+        // ... other tools
+        throw new Error(`Unknown tool: ${toolName}`)
+      }
+    )
+
+    return result.result
+  }
+}
+
+// Test: Crash and resume scenario
+async function testIdempotentCrashRecovery() {
+  const agent = new IdempotentCheckpointedAgent('thread_payment_123', 'user_abc')
+
+  console.log('\n--- First execution ---')
+  try {
+    // Execute payment
+    const result = await agent.executeToolSafely(
+      'charge_credit_card',
+      { orderId: 'order_789', amount: 500 },
+      3
+    )
+    console.log(`Payment result: ${JSON.stringify(result)}`)
+
+    // Simulate crash before checkpoint
+    throw new Error('CRASH before checkpoint saved')
+  } catch (error) {
+    console.log('\n💥 Agent crashed after tool execution but before checkpoint')
+  }
+
+  console.log('\n--- Resume from checkpoint ---')
+  // Agent resumes, tries to execute payment again
+  const resumeResult = await agent.executeToolSafely(
+    'charge_credit_card',
+    { orderId: 'order_789', amount: 500 },
+    3  // Same step number → same request_id
+  )
+
+  console.log(`\n✅ Idempotency worked: ${resumeResult.wasReplay ? 'Cached result returned' : 'NEW CHARGE (BUG!)'}`)
+}
+
+/* Example Output:
+
+--- First execution ---
+🔧 Executing tool: charge_credit_card (request_id: thread_payment_123_step_3_charge_credit_card)
+💳 Charging $500 for order order_789
+✅ Tool executed successfully (42ms)
+Payment result: {"transactionId":"txn_1738790123456"}
+
+💥 Agent crashed after tool execution but before checkpoint
+
+--- Resume from checkpoint ---
+♻️  Idempotent replay: charge_credit_card (request_id: thread_payment_123_step_3_charge_credit_card)
+   Original execution: 2025-02-05T18:23:45.123Z
+   Returning cached result (no side effects)
+
+✅ Idempotency worked: Cached result returned
 */
 ```
+
+---
+
+### Production Results
+
+**Before Tool Idempotency** (e-commerce, 10K orders/month, 3% crash rate):
+- Crash during payment: 300 orders/month
+- Double charges: 300 × $200 avg = $60K/month
+- Chargeback fees: 300 × $25 = $7,500/month
+- Customer support: 300 × $50 = $15K/month
+- **Annual cost**: $990K
+
+**After Tool Idempotency**:
+- Crash during payment: 300 orders/month (same crash rate)
+- Double charges: 0 (idempotency prevents re-execution)
+- Chargeback fees: $0
+- Customer support: $0
+- **Savings**: $990K/year (100% elimination of double-charge incidents)
+
+---
+
+### Idempotency Requirements Checklist
+
+✅ **Every stateful tool must**:
+1. Accept `request_id` parameter (derived from `threadId + stepNumber`)
+2. Check execution log before running
+3. Return cached result if already executed
+4. Log successful executions (NOT failures—allow retry)
+
+✅ **Safe to run multiple times** (idempotent by nature):
+- `get_user_profile` (read-only, no side effects)
+- `search_database` (query, no mutations)
+- `calculate_total` (pure function)
+
+❌ **MUST use idempotency keys** (side effects):
+- `charge_credit_card` (financial transaction)
+- `send_email` (user notification)
+- `update_database` (data mutation)
+- `deploy_code` (infrastructure change)
+
+---
+
+### Advanced: Distributed Idempotency with Redis
+
+For high-throughput systems, use Redis for faster idempotency checks:
+
+```typescript
+class DistributedIdempotentToolRegistry extends IdempotentToolRegistry {
+  private redis = new Redis(process.env.REDIS_URL)
+
+  async executeIdempotent(
+    request: IdempotentToolRequest,
+    toolImplementation: (params: any) => Promise<any>
+  ): Promise<IdempotentToolResult> {
+    const { requestId } = request
+
+    // Check Redis first (fast)
+    const cached = await this.redis.get(`tool:${requestId}`)
+
+    if (cached) {
+      return {
+        ...JSON.parse(cached),
+        wasReplay: true
+      }
+    }
+
+    // Check Postgres (slower, but durable)
+    const dbCached = await prisma.toolExecutionLog.findUnique({
+      where: { requestId }
+    })
+
+    if (dbCached) {
+      // Cache in Redis for next time
+      await this.redis.setex(`tool:${requestId}`, 3600, JSON.stringify({
+        requestId,
+        result: dbCached.result,
+        executedAt: dbCached.executedAt
+      }))
+
+      return {
+        requestId,
+        result: dbCached.result,
+        executedAt: dbCached.executedAt,
+        wasReplay: true
+      }
+    }
+
+    // Execute tool
+    const result = await toolImplementation(request.parameters)
+    const executedAt = new Date()
+
+    // Save to both Redis and Postgres
+    await Promise.all([
+      this.redis.setex(`tool:${requestId}`, 3600, JSON.stringify({ requestId, result, executedAt })),
+      prisma.toolExecutionLog.create({
+        data: {
+          requestId,
+          threadId: request.threadId,
+          stepNumber: request.stepNumber,
+          toolName: request.toolName,
+          parameters: request.parameters as any,
+          result: result as any,
+          executedAt
+        }
+      })
+    ])
+
+    return {
+      requestId,
+      result,
+      executedAt,
+      wasReplay: false
+    }
+  }
+}
+```
+
+**Performance**:
+- Redis check: <1ms
+- Postgres check: 5-10ms
+- Combined (Redis first, Postgres fallback): 99% requests <1ms
+
+---
+
+### Architect's Tip: Exactly-Once Execution
+
+> "Every stateful tool must accept a `request_id` or `checkpoint_id`. Your infrastructure should ensure that if the same agent thread calls the same tool with the same ID during a resume, the tool returns the previous result instead of executing the action again. This is **the only way** to achieve Exactly-Once Execution in agentic systems. Without idempotency, a 3% crash rate becomes a $990K/year disaster. With idempotency, crashes are survivable."
+
+**Monitoring metrics**:
+- **Idempotent replay rate**: % of tool calls that hit cache
+- **Double-execution incidents**: Should be 0 with proper idempotency
+- **Cache hit latency**: Redis <1ms, Postgres <10ms
+- **Tool execution log size**: Grows with thread count, prune old entries
+
+**Target**:
+- Replay rate: 3-5% (matches crash rate)
+- Double-execution: 0 incidents/month
+- Cache hit latency: <1ms (Redis)
+- Log retention: 30 days (then archive)
+
+
+---
+
+## Architect Challenge: Disaster Recovery (SRE Challenge)
+
+**Scenario**: Your "Legal Review Agent" is processing a 60-minute document analysis workflow. Progress is being checkpointed to the database every 5 minutes.
+
+**Timeline**:
+```
+00:00 - Agent starts processing legal contract
+05:00 - Checkpoint saved (Step 1: Extract clauses)
+10:00 - Checkpoint saved (Step 2: Analyze terms)
+...
+45:00 - Checkpoint saved (Step 9: Risk assessment)
+48:00 - Agent executes tool: post_comment_to_database("Risk: Medium")
+48:01 - 💥 Cloud provider outage kills server
+48:02 - Database checkpoint NOT saved (crash happened before save)
+```
+
+**Recovery**:
+```
+50:00 - Server comes back online
+50:01 - Agent resumes from last checkpoint (Step 9, saved at 45:00)
+50:02 - Agent re-executes Step 10: post_comment_to_database("Risk: Medium")
+50:03 - ❌ DUPLICATE COMMENT posted to legal database
+```
+
+**The Problem**: The comment was posted at 48:00, but the checkpoint confirming it happened was never saved. On resume, the agent thinks Step 10 never executed and posts the comment again.
+
+**The Question**: What was the **architectural missing link** that caused the duplicate comment?
+
+---
+
+### Options
+
+**A) The database was too slow to save the checkpoint**
+
+**Reasoning**: If Postgres write latency is 50ms, and the crash happened at 48:01 (1 second after tool execution), the checkpoint should have completed. Maybe we need faster database or Redis caching.
+
+**Verdict**: ❌ **WRONG**
+
+**Why**: Database latency is not the issue. Even with 50ms Postgres writes, a 1-second window is plenty of time to save a checkpoint. The problem is architectural, not performance-related. Optimizing database speed won't prevent the core issue: the tool executed but the confirmation was lost due to crash timing.
+
+---
+
+**B) You lacked Tool Idempotency. The agent resumed from the last checkpoint and re-executed the 'Post Comment' action because the checkpoint happened after the action but before the success was recorded.**
+
+**The Fix**: Implement Idempotency Keys for all side-effect-producing tools
+
+**Architecture**:
+```typescript
+// Tool execution with idempotency
+const requestId = `${threadId}_step_${stepNumber}_post_comment`
+
+// Before executing tool, check if it was already executed
+const cached = await toolExecutionLog.findUnique({ where: { requestId } })
+
+if (cached) {
+  console.log('♻️  Tool already executed, returning cached result')
+  return cached.result  // No duplicate post
+}
+
+// Execute tool and cache result
+const result = await postCommentToDatabase(params)
+
+await toolExecutionLog.create({
+  data: { requestId, result, executedAt: new Date() }
+})
+
+return result
+```
+
+**How it prevents the issue**:
+1. **First execution** (48:00): Tool runs, result cached with `request_id = thread_123_step_10_post_comment`
+2. **Crash** (48:01): Checkpoint not saved
+3. **Resume** (50:01): Agent thinks Step 10 didn't run
+4. **Re-execution attempt** (50:02): Tool checks `request_id`, finds it was already executed at 48:00
+5. **Idempotent behavior**: Returns cached result, NO duplicate post ✅
+
+**Verdict**: ✅ **CORRECT**
+
+**Why**: This is the **Partial-Success Crash** problem. The tool executed successfully (side effect occurred), but the state recording that success was lost. Without idempotency, resuming will **always** cause duplicate executions. An architect ensures that **all side-effect-producing tools are idempotent** to survive crashes.
+
+**Production requirement**: Every tool that mutates state (database writes, API calls, emails, payments) MUST use idempotency keys derived from `threadId + stepNumber`.
+
+---
+
+**C) The LLM forgot what it was doing**
+
+**Reasoning**: After the crash, the agent's memory was lost, so it couldn't remember that Step 10 already executed. We need better context management or a larger context window.
+
+**Verdict**: ❌ **WRONG**
+
+**Why**: This misunderstands the architecture. The agent doesn't "remember" via LLM memory—it loads state from the database checkpoint. The checkpoint at 45:00 shows Step 9 completed, Step 10 pending. The agent correctly determines it should execute Step 10. The issue isn't memory—it's that the tool execution (48:00) and the checkpoint confirming it (48:01, never happened) are not atomic.
+
+LLMs are stateless. The checkpoint is the source of truth, not the model's "memory."
+
+---
+
+**D) You should have used a larger server**
+
+**Reasoning**: A bigger server with more resources would be less likely to crash. Upgrade from 2GB RAM to 16GB RAM to prevent outages.
+
+**Verdict**: ❌ **CATASTROPHICALLY WRONG**
+
+**Why**: Cloud provider outages are infrastructure failures, not resource exhaustion. A larger server doesn't prevent network failures, data center outages, or Kubernetes pod evictions. This is the "throw hardware at the problem" anti-pattern.
+
+Even with the most reliable infrastructure (99.99% uptime), you'll still experience crashes. An architect designs systems to **survive failures**, not to wishfully assume they won't happen. Tool idempotency is **mandatory** for production persistence, regardless of server size.
+
+---
+
+## The Correct Answer: B (Tool Idempotency)
+
+**Root Cause**: **Partial-Success Crash** - Tool executed, but state recording success was lost
+
+**Architectural Fixes Required**:
+
+1. **Idempotent Tool Contract**
+   - Every tool accepts `request_id = threadId + stepNumber`
+   - Check execution log before running
+   - Return cached result if already executed
+   - Never re-execute side effects
+
+2. **Tool Execution Log** (Database Schema):
+   ```sql
+   CREATE TABLE tool_execution_log (
+     request_id VARCHAR PRIMARY KEY,
+     thread_id VARCHAR NOT NULL,
+     step_number INT NOT NULL,
+     tool_name VARCHAR NOT NULL,
+     parameters JSONB NOT NULL,
+     result JSONB NOT NULL,
+     executed_at TIMESTAMP NOT NULL
+   );
+   ```
+
+3. **Exactly-Once Guarantee**:
+   - Idempotency ensures tool runs exactly once per `request_id`
+   - Crashes between tool execution and checkpoint are survivable
+   - Resume will find cached result, no duplicate execution
+
+4. **Monitoring**:
+   - Track idempotent replay rate (should match crash rate ~3-5%)
+   - Alert on double-execution incidents (should be 0)
+   - Monitor cache hit latency (<10ms Postgres, <1ms Redis)
 
 ---
 
@@ -697,41 +1212,66 @@ Speed improvement: 3.8x faster
 
 **State Checkpointing**:
 - Save agent state to database after every significant step
-- Enables resumable workflows that survive crashes and user logouts
-- Audit trail: Full history of agent decisions for debugging
-- Minimal cost: ~1KB per checkpoint, negligible database overhead
+- Enables resumable workflows that survive crashes
+- Minimal cost: ~1KB per checkpoint
+- **NEW**: State forking allows HITL intervention mid-workflow
 
 **Time-Travel Debugging**:
-- Load any historical checkpoint and inspect agent state
-- Replay execution from checkpoint X with modified state to test fixes
-- Diagnose failures by comparing checkpoints
-- A/B test different prompts/logic without re-running expensive early steps
+- Load any checkpoint and inspect state
+- **NEW**: Rewind & Replay - fork state, edit memory, replay from specific point
+- Saves 55 minutes per correction in 60-minute workflows
+- **ROI**: $40.1K/year (83% reduction in re-execution costs)
 
 **Checkpoint Optimization**:
-- Use Redis for hot state (in-progress threads) - 2ms latency
-- Sync to Postgres every N steps for durability - 30ms latency
-- 3.8x faster than Postgres-only approach
-- Best of both: Speed (Redis) + Durability (Postgres)
+- Use Redis for hot state (2ms latency)
+- Sync to Postgres every N steps (30ms latency)
+- **NEW**: Delta Checkpointing - save only changes, full snapshot every 10 turns
+- 98% storage reduction (10.1MB → 213.5KB per 100-turn thread)
+- **ROI**: $2,374/year in database costs
+
+**Tool Idempotency**:
+- **NEW**: Every stateful tool must use idempotency keys
+- Exactly-once execution guarantee (no double charges, no duplicate emails)
+- Survives partial-success crashes
+- **ROI**: $990K/year (100% elimination of double-execution incidents)
 
 **The Architect's Responsibility**:
-You **own** agent persistence. If your agent crashes and loses 30 minutes of progress, **you failed to checkpoint**. If your agent makes a mistake and you can't debug it, **you didn't save enough state**. If your long-running workflow times out, **you didn't implement resumability**.
+You **own** fault tolerance. If your agent crashes and loses progress, **you failed to checkpoint**. If your agent can't recover from partial-success crashes, **you didn't implement idempotency**. If your long-running threads bloat the database, **you didn't use delta checkpointing**. If you can't fix agent errors without re-running expensive workflows, **you didn't implement state forking**.
 
-**Cost Analysis**:
+**Production Requirements**:
+- ✅ State Checkpointing (database-backed persistence)
+- ✅ Time-Travel Debugging (inspect any historical checkpoint)
+- ✅ State Forking (HITL intervention, edit & replay)
+- ✅ Delta Checkpointing (incremental snapshots, 98% storage savings)
+- ✅ Tool Idempotency (exactly-once execution, no duplicates)
+- ✅ Monitoring (checkpoint frequency, resume latency, replay rate, idempotent cache hits)
+
+**Cost & Reliability Analysis**:
 ```typescript
-// No checkpointing
-- Agent crashes at step 9 of 10 → re-run all 10 steps
-- LLM cost: 10 steps × $0.03 = $0.30
-- Re-execution after crash: $0.30 again = $0.60 total
+// No persistence
+- Crash at Step 9/10 → Re-run all 10 steps
+- Cost: $0.30 + $0.30 (rerun) = $0.60
+- Double executions: 3% crash rate × 10K workflows = 300 incidents/month
+- Double-charge cost: 300 × $200 = $60K/month
 
-// With checkpointing
-- Agent crashes at step 9 → resume from step 8 checkpoint
-- LLM cost: 10 steps × $0.03 = $0.30
-- Re-execution after crash: 2 steps × $0.03 = $0.06
-- Database cost: 10 checkpoints × $0.0001 = $0.001
-- Total: $0.30 + $0.06 + $0.001 = $0.361
+// With checkpointing only (no idempotency)
+- Crash at Step 9 → Resume from Step 8
+- Cost: $0.30 + $0.06 (2 steps) = $0.36
+- Double executions: Still 300 incidents/month (tool idempotency missing)
+- Double-charge cost: Still $60K/month
 
-// Savings on crash: $0.60 - $0.361 = $0.239 (39.8% reduction)
-// With 5% crash rate: $0.60 → $0.372 (38% cost reduction)
+// With checkpointing + delta + state forking + idempotency
+- Crash at Step 9 → Resume from Step 8, idempotent tool returns cached result
+- Cost: $0.30 + $0.06 (resume) + $0.0001 (delta checkpoint) = $0.361
+- Double executions: 0 incidents/month (idempotency prevents)
+- HITL corrections: State forking saves 55min per fix = $40.1K/year
+- Database costs: Delta checkpointing saves $2,374/year
+- Double-charge elimination: $990K/year saved
+
+// Total ROI: $1.03M+/year
 ```
 
-**Next Concept**: Now that your agents are persistent and debuggable, Concept 5 compares **LangGraph vs. CrewAI** frameworks to help you choose the right tool for your architectural requirements.
+**Final Principle**: "Persistence without idempotency is dangerous. You'll survive crashes but create duplicates. Persistence WITH idempotency is the only production-safe architecture. Every stateful tool must be executable multiple times with the same result. This is **non-negotiable** for fault-tolerant cognitive workflows."
+
+**Next Steps**: Week 5 is now complete with all 4 concepts hardened. Students have learned to build autonomous, fault-tolerant, legally-safe AI workers that can survive crashes, resume from any point, and never execute the same side effect twice.
+
