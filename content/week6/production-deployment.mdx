@@ -403,6 +403,1150 @@ When things go wrong:
 5. **Resolve** - Fix root cause
 6. **Post-mortem** - Document what happened and how to prevent it
 
+---
+
+## Enterprise Deployment Patterns
+
+The fundamentals above prepare you for launch. Now we elevate to **Mission-Critical Infrastructure**—patterns that ensure your AI system survives provider outages, economic attacks, and the pressures of high-scale operations.
+
+### Pattern 1: Blue-Green Model Orchestration
+
+**The Problem:** Hard cutover from one model version to another creates "behavioral shocks."
+
+```typescript
+// ❌ THE HARD CUTOVER DISASTER
+// Monday: Sonnet 3.0 serving all traffic (stable, 92% Faithfulness)
+// Tuesday: Deploy Sonnet 3.5 to 100% traffic
+// Tuesday 10:15 AM: User reports spike - new model hallucinates on edge cases
+// Tuesday 10:30 AM: 500 support tickets, stock price drops 3%
+// Tuesday 11:00 AM: Frantic rollback, but damage is done
+```
+
+**The Enterprise Pattern:** Weighted traffic splitting with real-time quality monitoring.
+
+```typescript
+/**
+ * Blue-Green Model Orchestration
+ *
+ * Concept: Never perform 100% cutover. Deploy new models to a small percentage
+ * of traffic ("Green"), monitor quality metrics, then gradually increase weight.
+ *
+ * Interview Defense: "We treat model deployments like feature flags. The 5%
+ * canary group takes the risk while we validate quality. If Green shows
+ * degradation, we roll back instantly without affecting 95% of users."
+ */
+interface ModelDeployment {
+  model_id: string           // "claude-3-5-sonnet-20241022"
+  weight: number             // 0.05 = 5% of traffic
+  role: 'blue' | 'green'     // Blue = stable, Green = canary
+  metrics: {
+    faithfulness: number     // RAGAS score
+    latency_p50: number
+    latency_p99: number
+    error_rate: number
+  }
+}
+
+interface TrafficSplitConfig {
+  blue: ModelDeployment
+  green: ModelDeployment | null
+  promotion_threshold: {
+    min_requests: number     // Minimum requests before promotion
+    faithfulness_delta: number // Max acceptable drop from blue
+    latency_delta: number    // Max acceptable latency increase
+  }
+}
+
+// Global configuration (stored in Redis for distributed access)
+const TRAFFIC_SPLIT_KEY = 'deployment:traffic_split'
+
+/**
+ * Route request to appropriate model based on traffic weights
+ */
+async function routeToModel(
+  userId: string,
+  query: string
+): Promise<{ response: string; model_id: string; deployment: 'blue' | 'green' }> {
+  const config = await getTrafficSplitConfig()
+
+  // Determine which deployment to use
+  const deployment = selectDeployment(userId, config)
+
+  const startTime = Date.now()
+
+  try {
+    const response = await anthropic.messages.create({
+      model: deployment.model_id,
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: query }]
+    })
+
+    const latency = Date.now() - startTime
+
+    // Record metrics for this deployment
+    await recordDeploymentMetrics(deployment.role, {
+      latency,
+      success: true,
+      tokens_used: response.usage.input_tokens + response.usage.output_tokens
+    })
+
+    return {
+      response: response.content[0].text,
+      model_id: deployment.model_id,
+      deployment: deployment.role
+    }
+
+  } catch (error) {
+    await recordDeploymentMetrics(deployment.role, {
+      latency: Date.now() - startTime,
+      success: false,
+      error: error.message
+    })
+
+    // On error, fall back to blue (stable) deployment
+    if (deployment.role === 'green' && config.blue) {
+      console.warn(`[BlueGreen] Green deployment failed, falling back to Blue`)
+      return routeToBlue(query, config.blue)
+    }
+
+    throw error
+  }
+}
+
+/**
+ * Consistent routing: same user always gets same deployment (for session consistency)
+ */
+function selectDeployment(
+  userId: string,
+  config: TrafficSplitConfig
+): ModelDeployment {
+  if (!config.green) {
+    return config.blue // No canary, use stable
+  }
+
+  // Hash user ID for consistent routing
+  const hash = hashString(userId)
+  const bucket = hash % 100
+
+  // If bucket < green weight (e.g., < 5), route to green
+  if (bucket < config.green.weight * 100) {
+    return config.green
+  }
+
+  return config.blue
+}
+
+/**
+ * Deploy new model as canary (5% traffic)
+ */
+async function deployCanary(
+  newModelId: string,
+  initialWeight: number = 0.05
+): Promise<void> {
+  const currentConfig = await getTrafficSplitConfig()
+
+  const greenDeployment: ModelDeployment = {
+    model_id: newModelId,
+    weight: initialWeight,
+    role: 'green',
+    metrics: {
+      faithfulness: 0,
+      latency_p50: 0,
+      latency_p99: 0,
+      error_rate: 0
+    }
+  }
+
+  await redis.hSet(TRAFFIC_SPLIT_KEY, {
+    blue: JSON.stringify(currentConfig.blue),
+    green: JSON.stringify(greenDeployment),
+    promotion_threshold: JSON.stringify(currentConfig.promotion_threshold)
+  })
+
+  await notifySlack({
+    channel: '#ai-deployments',
+    text: `🟢 Canary deployed: ${newModelId} at ${initialWeight * 100}% traffic`
+  })
+}
+
+/**
+ * Promote canary to stable (if metrics pass)
+ */
+async function promoteCanary(): Promise<{
+  success: boolean
+  reason?: string
+}> {
+  const config = await getTrafficSplitConfig()
+
+  if (!config.green) {
+    return { success: false, reason: 'No canary deployment active' }
+  }
+
+  // Validate promotion criteria
+  const blueMetrics = config.blue.metrics
+  const greenMetrics = config.green.metrics
+
+  // Check minimum request threshold
+  const greenRequests = await getRequestCount('green', '1h')
+  if (greenRequests < config.promotion_threshold.min_requests) {
+    return {
+      success: false,
+      reason: `Insufficient data: ${greenRequests}/${config.promotion_threshold.min_requests} requests`
+    }
+  }
+
+  // Check faithfulness delta
+  const faithfulnessDelta = blueMetrics.faithfulness - greenMetrics.faithfulness
+  if (faithfulnessDelta > config.promotion_threshold.faithfulness_delta) {
+    return {
+      success: false,
+      reason: `Faithfulness degradation: ${(faithfulnessDelta * 100).toFixed(1)}% > ${(config.promotion_threshold.faithfulness_delta * 100).toFixed(1)}% threshold`
+    }
+  }
+
+  // Check latency delta
+  const latencyDelta = (greenMetrics.latency_p50 - blueMetrics.latency_p50) / blueMetrics.latency_p50
+  if (latencyDelta > config.promotion_threshold.latency_delta) {
+    return {
+      success: false,
+      reason: `Latency regression: ${(latencyDelta * 100).toFixed(1)}% > ${(config.promotion_threshold.latency_delta * 100).toFixed(1)}% threshold`
+    }
+  }
+
+  // All checks passed - promote green to blue
+  const newBlue: ModelDeployment = {
+    ...config.green,
+    role: 'blue',
+    weight: 1.0
+  }
+
+  await redis.hSet(TRAFFIC_SPLIT_KEY, {
+    blue: JSON.stringify(newBlue),
+    green: JSON.stringify(null)
+  })
+
+  await notifySlack({
+    channel: '#ai-deployments',
+    text: `✅ Canary promoted: ${newBlue.model_id} now serving 100% traffic`
+  })
+
+  return { success: true }
+}
+
+/**
+ * Instant rollback - kill green, revert to blue
+ */
+async function rollbackCanary(reason: string): Promise<void> {
+  const config = await getTrafficSplitConfig()
+
+  if (!config.green) {
+    console.warn('[BlueGreen] No canary to rollback')
+    return
+  }
+
+  await redis.hSet(TRAFFIC_SPLIT_KEY, {
+    blue: JSON.stringify(config.blue),
+    green: JSON.stringify(null)
+  })
+
+  await notifySlack({
+    channel: '#ai-deployments',
+    text: `🔴 Canary rolled back: ${config.green.model_id}\nReason: ${reason}`
+  })
+
+  // Log for post-mortem
+  await logDeploymentEvent({
+    type: 'rollback',
+    model_id: config.green.model_id,
+    reason,
+    timestamp: new Date().toISOString()
+  })
+}
+
+// Automated rollback trigger (runs every minute)
+async function checkCanaryHealth(): Promise<void> {
+  const config = await getTrafficSplitConfig()
+
+  if (!config.green) return
+
+  const greenMetrics = await getRealtimeMetrics('green', '5m')
+
+  // Automatic rollback conditions
+  if (greenMetrics.error_rate > 0.05) { // > 5% errors
+    await rollbackCanary(`Error rate exceeded: ${(greenMetrics.error_rate * 100).toFixed(1)}%`)
+  }
+
+  if (greenMetrics.faithfulness < config.blue.metrics.faithfulness - 0.1) { // > 10% faithfulness drop
+    await rollbackCanary(`Faithfulness dropped: ${(greenMetrics.faithfulness * 100).toFixed(1)}% vs ${(config.blue.metrics.faithfulness * 100).toFixed(1)}%`)
+  }
+}
+
+// Production deployment timeline:
+//
+// Hour 0:   Deploy Sonnet 3.5 as Green (5% traffic)
+// Hour 1:   Monitor - Faithfulness 91% (Blue: 92%) ✅ within threshold
+// Hour 2:   Increase Green to 10%
+// Hour 4:   Monitor - Faithfulness stable, latency 5% higher ⚠️ acceptable
+// Hour 6:   Increase Green to 25%
+// Hour 12:  Monitor - All metrics within threshold ✅
+// Hour 24:  Promote Green to Blue (100% traffic)
+//
+// Total deployment time: 24 hours (vs 0 hours for hard cutover)
+// Risk reduction: 95% of users protected during validation
+```
+
+**Interview Defense Template:**
+
+> **Interviewer:** "Isn't a 24-hour deployment cycle too slow?"
+>
+> **You:** "Speed of deployment is not the goal—speed of safe deployment is. A 24-hour canary catches issues that unit tests and staging cannot: production edge cases, real user behavior, and scale-dependent bugs. We can accelerate to 6 hours for urgent patches, but the principle stands: if you can't rollback in 60 seconds, you shouldn't be deploying to 100% of users."
+
+---
+
+### Pattern 2: Token-Bucket Rate Limiting (Economic Protection)
+
+**The Problem:** Standard rate limiting counts requests, not tokens. A single 100K-token request can burn your entire budget.
+
+```typescript
+// ❌ THE ECONOMIC ATTACK
+// Rate limit: 10 requests/minute ✅
+// User sends: 10 requests × 100K tokens each = 1M tokens
+// Cost: $15 in 60 seconds (from a single "power user")
+// Daily burn rate if unchecked: $21,600 😱
+```
+
+**The Enterprise Pattern:** Token-based quotas with cache-awareness and tiered limits.
+
+```typescript
+/**
+ * Token-Bucket Rate Limiter with Economic Protection
+ *
+ * Concept: Limit by tokens consumed, not requests made. This prevents
+ * "Economic Denial of Service" where attackers maximize cost per request.
+ *
+ * Interview Defense: "Request limits protect availability. Token limits
+ * protect economics. We implement both, with token limits being the
+ * primary cost control mechanism."
+ */
+interface TokenBucket {
+  user_id: string
+  tokens_remaining: number
+  last_refill: number
+  tier: 'free' | 'pro' | 'enterprise'
+}
+
+interface RateLimitConfig {
+  free: {
+    tokens_per_minute: number    // 10,000
+    tokens_per_day: number       // 100,000
+    requests_per_minute: number  // 20
+    burst_allowance: number      // 1.5x for occasional spikes
+  }
+  pro: {
+    tokens_per_minute: number    // 100,000
+    tokens_per_day: number       // 1,000,000
+    requests_per_minute: number  // 100
+    burst_allowance: number      // 2x
+  }
+  enterprise: {
+    tokens_per_minute: number    // 1,000,000
+    tokens_per_day: number       // 10,000,000
+    requests_per_minute: number  // 1000
+    burst_allowance: number      // 3x
+  }
+}
+
+const RATE_LIMIT_CONFIG: RateLimitConfig = {
+  free: {
+    tokens_per_minute: 10_000,
+    tokens_per_day: 100_000,
+    requests_per_minute: 20,
+    burst_allowance: 1.5
+  },
+  pro: {
+    tokens_per_minute: 100_000,
+    tokens_per_day: 1_000_000,
+    requests_per_minute: 100,
+    burst_allowance: 2.0
+  },
+  enterprise: {
+    tokens_per_minute: 1_000_000,
+    tokens_per_day: 10_000_000,
+    requests_per_minute: 1000,
+    burst_allowance: 3.0
+  }
+}
+
+/**
+ * Check and consume tokens from user's bucket
+ */
+async function checkTokenLimit(
+  userId: string,
+  estimatedTokens: number,
+  isCacheHit: boolean = false
+): Promise<{
+  allowed: boolean
+  tokens_remaining: number
+  reset_at: Date
+  reason?: string
+}> {
+  const user = await getUser(userId)
+  const tier = user.tier || 'free'
+  const config = RATE_LIMIT_CONFIG[tier]
+
+  // CRITICAL: Cache hits don't count against token quota
+  // This rewards efficient usage and encourages caching
+  if (isCacheHit) {
+    return {
+      allowed: true,
+      tokens_remaining: await getTokensRemaining(userId),
+      reset_at: getNextResetTime()
+    }
+  }
+
+  // Get current bucket state
+  const bucket = await getOrCreateBucket(userId, tier)
+
+  // Refill bucket based on time elapsed
+  const now = Date.now()
+  const elapsed = now - bucket.last_refill
+  const refillAmount = Math.floor((elapsed / 60_000) * config.tokens_per_minute)
+
+  const newTokens = Math.min(
+    bucket.tokens_remaining + refillAmount,
+    config.tokens_per_minute * config.burst_allowance // Cap at burst limit
+  )
+
+  // Check if request would exceed limit
+  if (estimatedTokens > newTokens) {
+    // Calculate when they'll have enough tokens
+    const tokensNeeded = estimatedTokens - newTokens
+    const waitTimeMs = (tokensNeeded / config.tokens_per_minute) * 60_000
+
+    await logRateLimitEvent({
+      user_id: userId,
+      tier,
+      estimated_tokens: estimatedTokens,
+      tokens_available: newTokens,
+      action: 'blocked'
+    })
+
+    return {
+      allowed: false,
+      tokens_remaining: newTokens,
+      reset_at: new Date(now + waitTimeMs),
+      reason: `Token limit exceeded. Need ${estimatedTokens}, have ${Math.floor(newTokens)}`
+    }
+  }
+
+  // Check daily limit
+  const dailyUsage = await getDailyTokenUsage(userId)
+  if (dailyUsage + estimatedTokens > config.tokens_per_day) {
+    return {
+      allowed: false,
+      tokens_remaining: config.tokens_per_day - dailyUsage,
+      reset_at: getEndOfDay(),
+      reason: `Daily token limit exceeded. Used ${dailyUsage}/${config.tokens_per_day}`
+    }
+  }
+
+  // Consume tokens
+  await updateBucket(userId, {
+    tokens_remaining: newTokens - estimatedTokens,
+    last_refill: now
+  })
+
+  return {
+    allowed: true,
+    tokens_remaining: newTokens - estimatedTokens,
+    reset_at: getNextResetTime()
+  }
+}
+
+/**
+ * Estimate tokens before making LLM call
+ */
+function estimateRequestTokens(
+  systemPrompt: string,
+  userMessage: string,
+  maxOutputTokens: number
+): number {
+  // Rough estimation: 4 chars ≈ 1 token for English text
+  const inputTokens = Math.ceil((systemPrompt.length + userMessage.length) / 4)
+  const outputTokens = maxOutputTokens // Worst case
+
+  return inputTokens + outputTokens
+}
+
+/**
+ * Complete token-aware request handler
+ */
+async function handleLLMRequest(
+  userId: string,
+  systemPrompt: string,
+  userMessage: string,
+  maxOutputTokens: number = 1024
+): Promise<{
+  response: string
+  tokens_used: number
+  cached: boolean
+  rate_limit_remaining: number
+}> {
+  // Step 1: Check semantic cache first
+  const cacheResult = await semanticCacheLookup(userMessage)
+
+  if (cacheResult.hit) {
+    // Cache hit - doesn't count against token limit!
+    const limitCheck = await checkTokenLimit(userId, 0, true)
+
+    return {
+      response: cacheResult.response,
+      tokens_used: 0,
+      cached: true,
+      rate_limit_remaining: limitCheck.tokens_remaining
+    }
+  }
+
+  // Step 2: Estimate tokens for this request
+  const estimatedTokens = estimateRequestTokens(
+    systemPrompt,
+    userMessage,
+    maxOutputTokens
+  )
+
+  // Step 3: Check token limit
+  const limitCheck = await checkTokenLimit(userId, estimatedTokens, false)
+
+  if (!limitCheck.allowed) {
+    throw new RateLimitError({
+      message: limitCheck.reason,
+      reset_at: limitCheck.reset_at,
+      tokens_remaining: limitCheck.tokens_remaining
+    })
+  }
+
+  // Step 4: Make LLM call
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-sonnet-20241022',
+    max_tokens: maxOutputTokens,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userMessage }]
+  })
+
+  const actualTokens = response.usage.input_tokens + response.usage.output_tokens
+
+  // Step 5: Reconcile actual vs estimated token usage
+  const tokenDelta = actualTokens - estimatedTokens
+  if (Math.abs(tokenDelta) > estimatedTokens * 0.2) {
+    // Significant difference - adjust bucket
+    await adjustBucketForActualUsage(userId, tokenDelta)
+  }
+
+  // Step 6: Record daily usage
+  await recordDailyTokenUsage(userId, actualTokens)
+
+  // Step 7: Cache the response for future requests
+  await semanticCacheSet(userMessage, response.content[0].text)
+
+  return {
+    response: response.content[0].text,
+    tokens_used: actualTokens,
+    cached: false,
+    rate_limit_remaining: await getTokensRemaining(userId)
+  }
+}
+
+/**
+ * IP-level circuit breaker for attack mitigation
+ */
+async function checkIPLevelLimit(
+  ip: string
+): Promise<{ allowed: boolean; reason?: string }> {
+  const ipUsage = await redis.get(`ip:usage:${ip}`)
+  const usage = ipUsage ? JSON.parse(ipUsage) : { tokens: 0, requests: 0 }
+
+  // Aggressive limits for unknown IPs
+  const IP_TOKEN_LIMIT = 50_000  // 50K tokens/minute per IP
+  const IP_REQUEST_LIMIT = 50   // 50 requests/minute per IP
+
+  if (usage.tokens > IP_TOKEN_LIMIT) {
+    await triggerIPCircuitBreaker(ip, 'token_limit_exceeded')
+    return {
+      allowed: false,
+      reason: `IP token limit exceeded: ${usage.tokens}/${IP_TOKEN_LIMIT}`
+    }
+  }
+
+  if (usage.requests > IP_REQUEST_LIMIT) {
+    await triggerIPCircuitBreaker(ip, 'request_limit_exceeded')
+    return {
+      allowed: false,
+      reason: `IP request limit exceeded: ${usage.requests}/${IP_REQUEST_LIMIT}`
+    }
+  }
+
+  return { allowed: true }
+}
+
+// Rate limit dashboard metrics:
+//
+// | Tier       | Users | Avg Tokens/Day | Limit Hits/Day | Revenue/User |
+// |------------|-------|----------------|----------------|--------------|
+// | Free       | 10K   | 5,000          | 2%             | $0           |
+// | Pro        | 500   | 250,000        | 0.5%           | $49/mo       |
+// | Enterprise | 20    | 2,000,000      | 0.1%           | $999/mo      |
+//
+// Key Insight: Free tier limit hits at 2% is healthy - it drives upgrades
+// Enterprise at 0.1% means limits are too generous - consider tightening
+```
+
+**ROI Calculation:**
+
+```typescript
+// Without token-based limits (request-only):
+// Attack scenario: 100K tokens/request × 10 requests/min = 1M tokens/min
+// Cost: $15/min × 60 × 24 = $21,600/day potential exposure
+
+// With token-based limits (10K tokens/min for free):
+// Attack capped at: 10K tokens/min × 60 × 24 = 14.4M tokens/day
+// Cost: $216/day maximum exposure per user
+
+// Economic protection factor: 100x reduction in attack surface
+```
+
+---
+
+### Pattern 3: Provider-Agnostic Failover (Circuit Breaker Hierarchy)
+
+**The Problem:** When your primary LLM provider goes down, returning 500 errors kills user trust.
+
+```typescript
+// ❌ THE SINGLE POINT OF FAILURE
+// 3:00 AM: Anthropic API returns 529 (Overloaded)
+// 3:01 AM: All requests fail with 500 errors
+// 3:02 AM: On-call engineer paged, still asleep
+// 3:15 AM: User complaints flood social media
+// 3:30 AM: Engineer wakes up, manually switches to OpenAI
+// 4:00 AM: Service restored, but reputation damaged
+```
+
+**The Enterprise Pattern:** Automated provider failover with tiered fallback chain.
+
+```typescript
+/**
+ * Provider-Agnostic Failover with Circuit Breaker
+ *
+ * Concept: Define a hierarchy of providers. When primary fails,
+ * automatically cascade to secondary, then tertiary. Each provider
+ * has its own circuit breaker to prevent cascade failures.
+ *
+ * Interview Defense: "We architect for provider independence. Our core
+ * business logic doesn't know which LLM it's talking to—the orchestration
+ * layer handles failover transparently. This is why we normalize all
+ * responses to a common schema."
+ */
+interface ProviderConfig {
+  id: string
+  name: string
+  priority: number                    // 1 = primary, 2 = secondary, etc.
+  model: string
+  client: AnthropicClient | OpenAIClient | OllamaClient
+  capabilities: string[]              // ['reasoning', 'code', 'vision']
+  cost_per_1k_tokens: number
+  max_latency_ms: number
+  circuit_breaker: {
+    failure_threshold: number         // Failures before opening circuit
+    recovery_timeout_ms: number       // Time before retrying
+    half_open_requests: number        // Requests to test recovery
+  }
+}
+
+interface CircuitBreakerState {
+  status: 'closed' | 'open' | 'half-open'
+  failure_count: number
+  last_failure: number
+  success_count: number               // For half-open state
+}
+
+const PROVIDER_HIERARCHY: ProviderConfig[] = [
+  {
+    id: 'anthropic-primary',
+    name: 'Claude 3.5 Sonnet',
+    priority: 1,
+    model: 'claude-3-5-sonnet-20241022',
+    client: anthropicClient,
+    capabilities: ['reasoning', 'code', 'analysis'],
+    cost_per_1k_tokens: 0.003,
+    max_latency_ms: 5000,
+    circuit_breaker: {
+      failure_threshold: 5,
+      recovery_timeout_ms: 30000,     // 30 seconds
+      half_open_requests: 3
+    }
+  },
+  {
+    id: 'openai-secondary',
+    name: 'GPT-4o',
+    priority: 2,
+    model: 'gpt-4o',
+    client: openaiClient,
+    capabilities: ['reasoning', 'code', 'vision'],
+    cost_per_1k_tokens: 0.005,
+    max_latency_ms: 8000,
+    circuit_breaker: {
+      failure_threshold: 5,
+      recovery_timeout_ms: 30000,
+      half_open_requests: 3
+    }
+  },
+  {
+    id: 'ollama-tertiary',
+    name: 'Llama 3 (Local)',
+    priority: 3,
+    model: 'llama3:70b',
+    client: ollamaClient,
+    capabilities: ['reasoning', 'code'],
+    cost_per_1k_tokens: 0,            // Self-hosted
+    max_latency_ms: 15000,
+    circuit_breaker: {
+      failure_threshold: 3,
+      recovery_timeout_ms: 60000,
+      half_open_requests: 2
+    }
+  }
+]
+
+/**
+ * Get circuit breaker state for a provider
+ */
+async function getCircuitState(providerId: string): Promise<CircuitBreakerState> {
+  const state = await redis.hGetAll(`circuit:${providerId}`)
+
+  if (!state || Object.keys(state).length === 0) {
+    return {
+      status: 'closed',
+      failure_count: 0,
+      last_failure: 0,
+      success_count: 0
+    }
+  }
+
+  return {
+    status: state.status as CircuitBreakerState['status'],
+    failure_count: parseInt(state.failure_count),
+    last_failure: parseInt(state.last_failure),
+    success_count: parseInt(state.success_count)
+  }
+}
+
+/**
+ * Record failure and potentially open circuit
+ */
+async function recordFailure(provider: ProviderConfig): Promise<void> {
+  const state = await getCircuitState(provider.id)
+  const newFailureCount = state.failure_count + 1
+
+  if (newFailureCount >= provider.circuit_breaker.failure_threshold) {
+    // Open the circuit
+    await redis.hSet(`circuit:${provider.id}`, {
+      status: 'open',
+      failure_count: newFailureCount.toString(),
+      last_failure: Date.now().toString(),
+      success_count: '0'
+    })
+
+    await alertOps({
+      severity: 'critical',
+      message: `Circuit OPEN for ${provider.name}: ${newFailureCount} consecutive failures`,
+      provider_id: provider.id
+    })
+  } else {
+    await redis.hSet(`circuit:${provider.id}`, {
+      ...state,
+      failure_count: newFailureCount.toString(),
+      last_failure: Date.now().toString()
+    })
+  }
+}
+
+/**
+ * Check if circuit allows requests
+ */
+async function canUseProvider(provider: ProviderConfig): Promise<boolean> {
+  const state = await getCircuitState(provider.id)
+
+  if (state.status === 'closed') {
+    return true
+  }
+
+  if (state.status === 'open') {
+    // Check if recovery timeout has elapsed
+    const elapsed = Date.now() - state.last_failure
+    if (elapsed >= provider.circuit_breaker.recovery_timeout_ms) {
+      // Transition to half-open
+      await redis.hSet(`circuit:${provider.id}`, {
+        ...state,
+        status: 'half-open',
+        success_count: '0'
+      })
+      return true
+    }
+    return false
+  }
+
+  if (state.status === 'half-open') {
+    // Allow limited requests to test recovery
+    return state.success_count < provider.circuit_breaker.half_open_requests
+  }
+
+  return false
+}
+
+/**
+ * Record success and potentially close circuit
+ */
+async function recordSuccess(provider: ProviderConfig): Promise<void> {
+  const state = await getCircuitState(provider.id)
+
+  if (state.status === 'half-open') {
+    const newSuccessCount = state.success_count + 1
+
+    if (newSuccessCount >= provider.circuit_breaker.half_open_requests) {
+      // Recovery confirmed - close circuit
+      await redis.hSet(`circuit:${provider.id}`, {
+        status: 'closed',
+        failure_count: '0',
+        last_failure: '0',
+        success_count: '0'
+      })
+
+      await alertOps({
+        severity: 'info',
+        message: `Circuit CLOSED for ${provider.name}: Recovery confirmed`,
+        provider_id: provider.id
+      })
+    } else {
+      await redis.hSet(`circuit:${provider.id}`, {
+        ...state,
+        success_count: newSuccessCount.toString()
+      })
+    }
+  } else if (state.status === 'closed' && state.failure_count > 0) {
+    // Reset failure count on success
+    await redis.hSet(`circuit:${provider.id}`, {
+      ...state,
+      failure_count: '0'
+    })
+  }
+}
+
+/**
+ * Execute request with automatic failover
+ */
+async function executeWithFailover(
+  prompt: string,
+  options: {
+    required_capabilities?: string[]
+    max_cost_per_1k?: number
+    timeout_ms?: number
+  } = {}
+): Promise<{
+  response: string
+  provider_used: string
+  fallback_level: number
+  latency_ms: number
+}> {
+  const startTime = Date.now()
+
+  // Filter and sort providers by priority
+  const eligibleProviders = PROVIDER_HIERARCHY
+    .filter(p => {
+      // Check capabilities
+      if (options.required_capabilities) {
+        const hasCapabilities = options.required_capabilities.every(
+          cap => p.capabilities.includes(cap)
+        )
+        if (!hasCapabilities) return false
+      }
+
+      // Check cost constraint
+      if (options.max_cost_per_1k && p.cost_per_1k_tokens > options.max_cost_per_1k) {
+        return false
+      }
+
+      return true
+    })
+    .sort((a, b) => a.priority - b.priority)
+
+  // Try each provider in order
+  for (const provider of eligibleProviders) {
+    // Check circuit breaker
+    if (!(await canUseProvider(provider))) {
+      console.log(`[Failover] Skipping ${provider.name}: Circuit open`)
+      continue
+    }
+
+    try {
+      const response = await callProviderWithTimeout(
+        provider,
+        prompt,
+        options.timeout_ms || provider.max_latency_ms
+      )
+
+      await recordSuccess(provider)
+
+      return {
+        response: response.text,
+        provider_used: provider.name,
+        fallback_level: provider.priority,
+        latency_ms: Date.now() - startTime
+      }
+
+    } catch (error) {
+      console.error(`[Failover] ${provider.name} failed:`, error.message)
+      await recordFailure(provider)
+
+      // Continue to next provider
+    }
+  }
+
+  // All providers failed
+  throw new AllProvidersFailedError({
+    providers_tried: eligibleProviders.map(p => p.name),
+    total_latency_ms: Date.now() - startTime
+  })
+}
+
+/**
+ * Normalize response from different providers
+ */
+async function callProviderWithTimeout(
+  provider: ProviderConfig,
+  prompt: string,
+  timeout_ms: number
+): Promise<{ text: string; usage: { input: number; output: number } }> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeout_ms)
+
+  try {
+    if (provider.id.startsWith('anthropic')) {
+      const response = await anthropicClient.messages.create({
+        model: provider.model,
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: prompt }]
+      }, { signal: controller.signal })
+
+      return {
+        text: response.content[0].text,
+        usage: {
+          input: response.usage.input_tokens,
+          output: response.usage.output_tokens
+        }
+      }
+    }
+
+    if (provider.id.startsWith('openai')) {
+      const response = await openaiClient.chat.completions.create({
+        model: provider.model,
+        messages: [{ role: 'user', content: prompt }]
+      }, { signal: controller.signal })
+
+      return {
+        text: response.choices[0].message.content,
+        usage: {
+          input: response.usage.prompt_tokens,
+          output: response.usage.completion_tokens
+        }
+      }
+    }
+
+    if (provider.id.startsWith('ollama')) {
+      const response = await ollamaClient.generate({
+        model: provider.model,
+        prompt
+      })
+
+      return {
+        text: response.response,
+        usage: {
+          input: response.prompt_eval_count,
+          output: response.eval_count
+        }
+      }
+    }
+
+    throw new Error(`Unknown provider type: ${provider.id}`)
+
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+// Failover metrics from production (30 days):
+//
+// | Event                      | Count | Avg Resolution Time |
+// |----------------------------|-------|---------------------|
+// | Primary (Anthropic) OK     | 2.8M  | -                   |
+// | Failover to OpenAI         | 1,247 | 0ms (automatic)     |
+// | Failover to Local Llama    | 23    | 0ms (automatic)     |
+// | All providers failed       | 0     | -                   |
+//
+// Availability: 99.9992% (vs 99.95% with single provider)
+// User-perceived downtime: 0 minutes
+```
+
+**Interview Defense Template:**
+
+> **Interviewer:** "Isn't running multiple providers expensive?"
+>
+> **You:** "We don't run them in parallel—we fail over sequentially. The secondary provider only activates when the primary circuit opens. In practice, failover events are rare (0.04% of requests), so the cost is negligible. But the 4-nines availability improvement is invaluable for user trust. We also use the local Llama as a zero-cost emergency fallback for truly catastrophic scenarios."
+
+---
+
+## 🎯 The "Go-Live Crisis" Diagnostic Quiz
+
+**Transform generic checklists into incident response mastery.**
+
+### Scenario
+
+You are the on-call AI Architect. It's 10 minutes before a major product launch. Your monitoring dashboard suddenly shows:
+
+- **LLM Provider:** Returning "Rate Limit Exceeded" errors (HTTP 429)
+- **Your Tier Usage:** Only at 15% of your plan limit
+- **Token Spike:** Single IP address consuming 500% more tokens than normal
+- **Error Rate:** 95% of requests failing
+- **User Impact:** VIP demo for potential investor is live
+
+**What is your immediate architectural response?**
+
+<details>
+<summary>Click to reveal diagnosis</summary>
+
+### Diagnosis: Economic Denial of Service (EDoS) Attack
+
+**Root Cause Analysis:**
+1. ✅ "Rate Limit Exceeded" from provider → API-level issue
+2. ⚠️ Only 15% of tier usage → NOT a legitimate scaling problem
+3. 🚨 500% token spike from single IP → **Malicious or runaway client**
+4. 🚨 95% error rate → Attacker consuming YOUR rate limit allocation
+
+**The Problem:** A single IP is performing an Economic Denial of Service attack. They're sending massive token requests that exhaust your provider's rate limit allocation, causing legitimate requests to fail. This is NOT about your code—it's about resource exhaustion.
+
+**The Solution: Layered Defense**
+
+```typescript
+// IMMEDIATE (< 60 seconds)
+// Step 1: Trigger IP-level circuit breaker
+await triggerIPCircuitBreaker(attackerIP, 'edos_attack')
+
+// Step 2: Switch to secondary provider for legitimate traffic
+await forceProviderFailover('openai-secondary')
+
+// Step 3: Enable strict token-bucket limits
+await enableEmergencyRateLimits({
+  global_tokens_per_minute: 100_000,  // Reduced from 1M
+  per_ip_tokens_per_minute: 5_000     // Aggressive per-IP limit
+})
+
+// WITHIN 5 MINUTES
+// Step 4: Analyze attack pattern
+const attackLog = await analyzeIPActivity(attackerIP, '1h')
+// → Identify if it's a compromised API key or external attack
+
+// Step 5: If API key compromised, revoke immediately
+if (attackLog.uses_valid_api_key) {
+  await revokeAPIKey(attackLog.api_key_id)
+  await notifyKeyOwner(attackLog.user_id, 'key_revoked_abuse')
+}
+
+// Step 6: Resume normal operations with attacker blocked
+await redis.sAdd('blocked_ips', attackerIP)
+```
+
+**Why Answer B is Correct:**
+
+The correct response involves:
+1. **Automated IP-Level Circuit Breaker** - Isolate the attacker
+2. **Secondary Provider Switch** - Maintain service for legitimate users
+3. **Token-Bucket Limits** - Prevent future economic attacks
+
+**Why Other Answers Fail:**
+
+- **A) Upgrade plan:** Rewards the attacker with more capacity to abuse
+- **C) Shut down:** Attacker wins, launch fails, investor sees failure
+- **D) Delete account:** Too slow, doesn't stop the immediate attack, legal issues
+
+</details>
+
+### Quiz Questions
+
+**Q1: Launch Crisis Response**
+
+During the scenario above, which metric would you check FIRST to distinguish between a legitimate traffic spike and an attack?
+
+A) Total request count
+B) Average response latency
+C) **Token consumption per IP distribution** (correct)
+D) Provider error codes
+
+**Reasoning:** Request count doesn't show intensity. Latency is a symptom, not a cause. Token consumption per IP immediately reveals if one source is disproportionately consuming resources—the hallmark of EDoS.
+
+---
+
+**Q2: Blue-Green Deployment**
+
+Your canary (Green) deployment shows 2% lower Faithfulness than Blue. Your promotion threshold is 5%. Should you promote?
+
+A) **Yes, 2% is within threshold** (correct)
+B) No, any Faithfulness drop is unacceptable
+C) Increase canary traffic to 25% for more data
+D) Roll back immediately
+
+**Reasoning:** The threshold exists for a reason. 2% < 5% means the canary passed. However, you should monitor for an additional period to confirm stability. Rolling back or refusing promotion based on acceptable variance creates deployment paralysis.
+
+---
+
+**Q3: Circuit Breaker Tuning**
+
+Your primary provider (Anthropic) has a circuit breaker with 5-failure threshold. Yesterday, you had 4 transient failures within 10 seconds, then it recovered. The circuit stayed closed. Was this correct behavior?
+
+A) No, 4 failures should have opened the circuit
+B) **Yes, the threshold prevented unnecessary failover** (correct)
+C) The threshold should be lowered to 3
+D) Circuit breakers shouldn't be used for LLM providers
+
+**Reasoning:** Transient failures happen. A threshold of 5 allows for brief instability without triggering failover. Opening the circuit on 4 failures would have caused unnecessary provider switches, adding latency and cost. The system correctly waited, and the provider recovered.
+
+---
+
+**Q4: Token-Bucket Economics**
+
+A free-tier user sends 50 requests averaging 2,000 tokens each. Your free-tier limit is 10,000 tokens/minute. How many requests will succeed in the first minute?
+
+A) All 50 requests (rate limiting is per-request)
+B) **5 requests (50K tokens requested, 10K allowed)** (correct)
+C) 10 requests (one every 6 seconds)
+D) 0 requests (they exceeded the limit)
+
+**Reasoning:** Token-bucket rate limiting looks at token consumption, not request count. 5 requests × 2,000 tokens = 10,000 tokens, which exhausts the minute's allocation. The remaining 45 requests will be throttled until the bucket refills.
+
+---
+
+## Summary: The Production Deployment Hierarchy
+
+| Layer | Pattern | Purpose | Metric |
+|-------|---------|---------|--------|
+| **Model Deployment** | Blue-Green Orchestration | Safe model updates | 95% user protection |
+| **Economic Protection** | Token-Bucket Limits | Prevent cost attacks | 100x exposure reduction |
+| **Provider Resilience** | Circuit Breaker Failover | Survive outages | 99.999% availability |
+| **Incident Response** | Automated Defense | Handle attacks | < 60s resolution |
+
+**The Director Interview Answer:**
+
+> "Production deployment for AI systems requires three layers of protection: Model-level safety through Blue-Green deployment ensures we never shock users with untested models. Economic protection through token-based rate limiting prevents budget exhaustion attacks. Provider resilience through circuit breakers ensures we survive any single provider outage. When an incident occurs, automated responses isolate attackers while legitimate traffic fails over to healthy providers. The goal is zero user-perceived downtime, regardless of what fails."
+
+---
+
 ## Checklist Before Going Live
 
 - [ ] All environment variables configured
