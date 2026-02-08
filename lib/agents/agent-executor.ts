@@ -328,7 +328,7 @@ export class AgentExecutor {
 
     try {
       const response = await this.anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-4-5-20250929',
         max_tokens: 4096,
         system: this.systemPrompt,
         messages: conversationHistory,
@@ -338,7 +338,7 @@ export class AgentExecutor {
       const latency = Date.now() - startTime
       const tokensUsed = response.usage.input_tokens + response.usage.output_tokens
       const cost = calculateCost(
-        'claude-3-5-sonnet-20241022',
+        'claude-sonnet-4-5-20250929',
         response.usage.input_tokens,
         response.usage.output_tokens
       )

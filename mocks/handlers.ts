@@ -13,7 +13,7 @@ const handlers = [
           text: 'This is a test response from Claude'
         }
       ],
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-sonnet-4-5-20250929',
       usage: {
         input_tokens: 10,
         output_tokens: 20

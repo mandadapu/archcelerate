@@ -40,7 +40,7 @@ Return ONLY a valid JSON array in this exact format:
 Make questions practical and directly related to "${conceptTitle}".`
 
   const message = await anthropic.messages.create({
-    model: 'claude-3-haiku-20240307',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 2048,
     messages: [
       {

@@ -64,7 +64,7 @@ curl -H "Authorization: Bearer YOUR_API_KEY" https://api.example.com/data
   for (const testCase of testCases) {
     try {
       const response = await anthropic.messages.countTokens({
-        model: 'claude-3-haiku-20240307',
+        model: 'claude-haiku-4-5-20251001',
         messages: [{ role: 'user', content: testCase.text }]
       })
 
@@ -145,7 +145,7 @@ async function executeStructuredOutput(): Promise<string> {
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-3-haiku-20240307',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 512,
       messages: [{
         role: 'user',
@@ -182,7 +182,7 @@ async function executePromptCaching(): Promise<string> {
   try {
     const start1 = Date.now()
     const response1 = await anthropic.messages.create({
-      model: 'claude-3-haiku-20240307',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 100,
       system: [
         {
@@ -205,7 +205,7 @@ async function executePromptCaching(): Promise<string> {
 
     const start2 = Date.now()
     const response2 = await anthropic.messages.create({
-      model: 'claude-3-haiku-20240307',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 100,
       system: [
         {
@@ -244,7 +244,7 @@ async function executeContentModeration(): Promise<string> {
   for (const input of testInputs) {
     try {
       const response = await anthropic.messages.create({
-        model: 'claude-3-haiku-20240307',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 200,
         messages: [{
           role: 'user',
@@ -409,7 +409,7 @@ async function executeAccuracyTesting(): Promise<string> {
   for (const testCase of testCases) {
     try {
       const response = await anthropic.messages.create({
-        model: 'claude-3-haiku-20240307',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 200,
         messages: [{
           role: 'user',
@@ -476,8 +476,8 @@ async function executeModelComparison(): Promise<string> {
 
   // Compare Haiku vs Sonnet
   const models = [
-    { name: 'Claude Haiku 4.5', model: 'claude-3-haiku-20240307', inputPrice: 1, outputPrice: 5 },
-    { name: 'Claude Sonnet 4.5', model: 'claude-3-5-sonnet-20240620', inputPrice: 3, outputPrice: 15 }
+    { name: 'Claude Haiku 4.5', model: 'claude-haiku-4-5-20251001', inputPrice: 1, outputPrice: 5 },
+    { name: 'Claude Sonnet 4.5', model: 'claude-sonnet-4-5-20250929', inputPrice: 3, outputPrice: 15 }
   ]
 
   output.push(`Test Prompt: "${testPrompt}"\n`)

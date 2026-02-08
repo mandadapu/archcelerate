@@ -37,7 +37,7 @@ const context = await vectorStore.similaritySearch(question, 5);
 const prompt = \`Context: \${context}\\n\\nQuestion: \${question}\`;
 
 const stream = await anthropic.messages.create({
-  model: "claude-3-5-sonnet-20241022",
+  model: "claude-sonnet-4-5-20250929",
   messages: [{ role: "user", content: prompt }],
   stream: true,
 });`
@@ -75,7 +75,7 @@ const stream = await anthropic.messages.create({
 }];
 
 const response = await anthropic.messages.create({
-  model: "claude-3-5-sonnet-20241022",
+  model: "claude-sonnet-4-5-20250929",
   tools,
   messages: conversationHistory
 });`
@@ -149,7 +149,7 @@ const workflow = graph.compile();`
     codeSnippet: `// Fine-tuning job creation
 const job = await anthropic.fineTuning.create({
   training_file: "file-abc123",
-  model: "claude-3-5-sonnet-20241022",
+  model: "claude-sonnet-4-5-20250929",
   hyperparameters: { n_epochs: 3 }
 });
 
