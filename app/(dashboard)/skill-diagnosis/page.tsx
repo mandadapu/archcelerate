@@ -154,7 +154,7 @@ export default function SkillDiagnosisPage() {
           <div className="p-4 border rounded-lg">
             <p className="text-sm text-muted-foreground mb-1">Domains Mastered (80%+)</p>
             <p className="text-2xl font-bold">
-              {skillData.domains.filter((d) => d.percentage >= 80).length} / 7
+              {skillData.domains.filter((d) => d.percentage >= 80).length} / {skillData.domains.length}
             </p>
           </div>
         </div>
