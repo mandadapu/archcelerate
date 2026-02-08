@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { signOut } from 'next-auth/react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ArchcelerateLogo } from '@/components/brand/ArchcelerateLogo'
 
 interface SignOutDialogProps {
@@ -34,9 +34,9 @@ export function SignOutDialog({ open, onOpenChange }: SignOutDialogProps) {
                 SESSION TERMINATION
               </span>
             </DialogTitle>
-            <p className="font-mono text-[11px] text-slate-500 tracking-widest uppercase">
+            <DialogDescription className="font-mono text-[11px] text-slate-500 tracking-widest uppercase">
               CONFIRM IDENTITY DISCONNECT
-            </p>
+            </DialogDescription>
           </div>
 
           <div className="mx-auto w-20 h-px bg-gradient-to-r from-purple-600/50 to-cyan-500/50" />
