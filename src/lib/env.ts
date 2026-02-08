@@ -27,9 +27,6 @@ const envSchema = z.object({
   NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
   SENTRY_AUTH_TOKEN: z.string().optional(),
 
-  // Analytics (optional)
-  NEXT_PUBLIC_VERCEL_ANALYTICS_ID: z.string().optional(),
-
   // Feature Flags
   NEXT_PUBLIC_ENABLE_AI_AGENTS: z.string().default('false').transform(val => val === 'true'),
   NEXT_PUBLIC_ENABLE_MULTIMODAL: z.string().default('false').transform(val => val === 'true'),

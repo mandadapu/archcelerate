@@ -92,7 +92,7 @@ export default function PrivacyPage() {
               <strong>OpenAI</strong> — Text embeddings for the RAG search system
             </li>
             <li>
-              <strong>Vercel</strong> — Application hosting and analytics
+              <strong>Google Cloud</strong> — Application hosting (Cloud Run)
             </li>
           </ul>
           <p>

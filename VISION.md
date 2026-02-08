@@ -252,7 +252,6 @@ Every concept must include:
 **AI & ML**:
 - Anthropic Claude API (Sonnet 4, Haiku 4)
 - OpenAI API (text-embedding-3-small)
-- Vercel AI SDK (streaming chat)
 - Tavily Search API (agent web search)
 
 **Development & Deployment**:
@@ -261,7 +260,7 @@ Every concept must include:
 - Playwright (E2E tests)
 - ESLint + Prettier
 - GitHub Actions (CI/CD)
-- Vercel (production deployment)
+- Google Cloud Run (production deployment)
 
 ## Roadmap
 
