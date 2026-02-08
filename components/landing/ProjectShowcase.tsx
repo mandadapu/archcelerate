@@ -256,18 +256,18 @@ function getEmojiForProject(projectId: string): string {
 
 function getWeekColor(weekNumber: number): { bg: string; gradient: string } {
   const colorMap: Record<number, { bg: string; gradient: string }> = {
-    1: { bg: 'bg-purple-600', gradient: 'from-purple-600 to-pink-600' },
-    2: { bg: 'bg-green-600', gradient: 'from-green-600 to-emerald-600' },
-    3: { bg: 'bg-blue-600', gradient: 'from-blue-600 to-sky-600' },
-    4: { bg: 'bg-orange-600', gradient: 'from-orange-600 to-amber-600' },
-    5: { bg: 'bg-indigo-600', gradient: 'from-indigo-600 to-blue-600' },
-    6: { bg: 'bg-teal-600', gradient: 'from-teal-600 to-cyan-600' },
-    7: { bg: 'bg-amber-600', gradient: 'from-amber-600 to-yellow-600' },
-    8: { bg: 'bg-pink-600', gradient: 'from-pink-600 to-rose-600' },
-    9: { bg: 'bg-red-600', gradient: 'from-red-600 to-orange-600' },
-    10: { bg: 'bg-sky-600', gradient: 'from-sky-600 to-blue-600' },
-    11: { bg: 'bg-emerald-600', gradient: 'from-emerald-600 to-green-600' },
-    12: { bg: 'bg-slate-600', gradient: 'from-slate-600 to-gray-600' },
+    1: { bg: 'bg-purple-600', gradient: 'from-purple-600 to-violet-600' },
+    2: { bg: 'bg-blue-600', gradient: 'from-blue-600 to-indigo-600' },
+    3: { bg: 'bg-indigo-600', gradient: 'from-indigo-600 to-blue-600' },
+    4: { bg: 'bg-violet-600', gradient: 'from-violet-600 to-purple-600' },
+    5: { bg: 'bg-cyan-600', gradient: 'from-cyan-600 to-blue-600' },
+    6: { bg: 'bg-blue-600', gradient: 'from-blue-600 to-cyan-600' },
+    7: { bg: 'bg-indigo-600', gradient: 'from-indigo-600 to-violet-600' },
+    8: { bg: 'bg-purple-600', gradient: 'from-purple-600 to-blue-600' },
+    9: { bg: 'bg-sky-600', gradient: 'from-sky-600 to-indigo-600' },
+    10: { bg: 'bg-violet-600', gradient: 'from-violet-600 to-blue-600' },
+    11: { bg: 'bg-blue-600', gradient: 'from-blue-600 to-violet-600' },
+    12: { bg: 'bg-slate-600', gradient: 'from-slate-600 to-blue-600' },
   }
   return colorMap[weekNumber] || { bg: 'bg-purple-600', gradient: 'from-purple-600 to-cyan-500' }
 }
