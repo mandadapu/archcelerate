@@ -18,16 +18,26 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { agentType, input } = await request.json()
+    const body = await request.json()
+    const agentType = String(body.agentType ?? '')
+    const input = body.input
 
     // Validate agentType against allowlist
-    if (typeof agentType !== 'string' || !VALID_AGENT_TYPES.includes(agentType as AgentType)) {
+    if (!VALID_AGENT_TYPES.includes(agentType as AgentType)) {
       return Response.json({ error: 'Invalid agent type' }, { status: 400 })
     }
 
     // Validate input is an object
     if (!input || typeof input !== 'object') {
       return Response.json({ error: 'Invalid input' }, { status: 400 })
+    }
+
+    // Limit input string lengths to prevent abuse
+    const MAX_INPUT_LENGTH = 10000
+    for (const value of Object.values(input)) {
+      if (typeof value === 'string' && value.length > MAX_INPUT_LENGTH) {
+        return Response.json({ error: 'Input exceeds maximum length' }, { status: 400 })
+      }
     }
 
     // Check rate limit (3 agent runs per hour)

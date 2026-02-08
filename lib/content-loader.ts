@@ -11,6 +11,16 @@ function isValidPathSegment(segment: string): boolean {
   return SAFE_PATH_SEGMENT.test(segment)
 }
 
+/** Construct a safe path within CONTENT_DIR, rejecting path traversal */
+function safePath(...segments: string[]): string | null {
+  for (const seg of segments) {
+    if (!isValidPathSegment(seg)) return null
+  }
+  const resolved = path.resolve(CONTENT_DIR, ...segments)
+  if (!resolved.startsWith(CONTENT_DIR + path.sep)) return null
+  return resolved
+}
+
 /**
  * Get all available sprints
  */
@@ -44,8 +54,8 @@ export async function getAllSprints(): Promise<SprintMetadata[]> {
  * Get a specific sprint by ID
  */
 export async function getSprintById(sprintId: string): Promise<SprintMetadata | null> {
-  if (!isValidPathSegment(sprintId)) return null
-  const metadataPath = path.join(CONTENT_DIR, 'sprints', sprintId, 'metadata.json')
+  const metadataPath = safePath('sprints', sprintId, 'metadata.json')
+  if (!metadataPath) return null
 
   if (!fs.existsSync(metadataPath)) {
     return null
@@ -75,14 +85,8 @@ export async function getConceptContent(
   sprintId: string,
   conceptId: string
 ): Promise<ConceptContent | null> {
-  if (!isValidPathSegment(sprintId) || !isValidPathSegment(conceptId)) return null
-  const conceptPath = path.join(
-    CONTENT_DIR,
-    'sprints',
-    sprintId,
-    'concepts',
-    `${conceptId}.mdx`
-  )
+  const conceptPath = safePath('sprints', sprintId, 'concepts', `${conceptId}.mdx`)
+  if (!conceptPath) return null
 
   if (!fs.existsSync(conceptPath)) {
     return null
@@ -149,14 +153,8 @@ export async function conceptExists(
   sprintId: string,
   conceptId: string
 ): Promise<boolean> {
-  if (!isValidPathSegment(sprintId) || !isValidPathSegment(conceptId)) return false
-  const conceptPath = path.join(
-    CONTENT_DIR,
-    'sprints',
-    sprintId,
-    'concepts',
-    `${conceptId}.mdx`
-  )
+  const conceptPath = safePath('sprints', sprintId, 'concepts', `${conceptId}.mdx`)
+  if (!conceptPath) return false
 
   return fs.existsSync(conceptPath)
 }
