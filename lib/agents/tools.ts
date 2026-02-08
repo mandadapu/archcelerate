@@ -1,6 +1,38 @@
 // lib/agents/tools.ts
 import { Tool } from './types'
 
+/**
+ * Extract readable text from HTML using indexOf-based approach.
+ * Avoids regex-based HTML filtering to prevent bypass vulnerabilities.
+ */
+function extractTextFromHtml(html: string): string {
+  let result = html
+  // Remove script blocks using indexOf (not regex)
+  let scriptStart: number
+  while ((scriptStart = result.toLowerCase().indexOf('<script')) !== -1) {
+    const scriptEnd = result.toLowerCase().indexOf('</script>', scriptStart)
+    if (scriptEnd === -1) {
+      result = result.substring(0, scriptStart)
+    } else {
+      result = result.substring(0, scriptStart) + result.substring(scriptEnd + 9)
+    }
+  }
+  // Remove style blocks using indexOf
+  let styleStart: number
+  while ((styleStart = result.toLowerCase().indexOf('<style')) !== -1) {
+    const styleEnd = result.toLowerCase().indexOf('</style>', styleStart)
+    if (styleEnd === -1) {
+      result = result.substring(0, styleStart)
+    } else {
+      result = result.substring(0, styleStart) + result.substring(styleEnd + 8)
+    }
+  }
+  // Remove remaining HTML tags
+  result = result.replace(/<[^>]*>/g, ' ')
+  // Collapse whitespace
+  return result.replace(/\s+/g, ' ').trim()
+}
+
 // 1. Web Search Tool
 const webSearchTool: Tool = {
   name: 'web_search',
@@ -82,14 +114,9 @@ const urlFetchTool: Tool = {
       }
 
       const html = await response.text()
-      // Simple text extraction - remove HTML tags
-      const text = html
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .substring(0, 5000) // Limit to 5000 chars
+      // Text extraction - strip HTML tags using indexOf-based approach
+      // to avoid regex-based HTML filtering issues (CodeQL alerts)
+      const text = extractTextFromHtml(html).substring(0, 5000) // Limit to 5000 chars
 
       return text || 'No text content found'
     } catch (error) {
