@@ -99,7 +99,7 @@ export default function Home() {
                 {/* Primary Action: Start Skill Diagnosis */}
                 <button
                   onClick={() => {
-                    setLoginCallbackUrl('/dashboard')
+                    setLoginCallbackUrl('/skill-diagnosis')
                     setShowLoginModal(true)
                   }}
                   className="px-8 py-3 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-lg font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
