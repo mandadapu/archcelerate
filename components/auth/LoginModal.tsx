@@ -17,6 +17,7 @@ export function LoginModal({ open, onOpenChange, callbackUrl = '/dashboard?welco
   const [loadingProvider, setLoadingProvider] = useState<string | null>(null)
   const popupRef = useRef<Window | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const providerRef = useRef<string | null>(null)
 
   const cleanupPopup = useCallback(() => {
     if (pollRef.current) {
@@ -36,7 +37,9 @@ export function LoginModal({ open, onOpenChange, callbackUrl = '/dashboard?welco
       if (event.origin !== window.location.origin) return
       if (event.data?.type === 'auth-success') {
         cleanupPopup()
-        window.location.href = callbackUrl
+        const sep = callbackUrl.includes('?') ? '&' : '?'
+        const providerParam = providerRef.current ? `${sep}provider=${providerRef.current}` : ''
+        window.location.href = callbackUrl + providerParam
       }
     }
     window.addEventListener('message', handleMessage)
@@ -52,6 +55,7 @@ export function LoginModal({ open, onOpenChange, callbackUrl = '/dashboard?welco
 
   const handleSignIn = (provider: string) => {
     setLoadingProvider(provider)
+    providerRef.current = provider
 
     const width = 500
     const height = 600
@@ -67,7 +71,8 @@ export function LoginModal({ open, onOpenChange, callbackUrl = '/dashboard?welco
     if (!popup) {
       // Popup blocked — fall back to full-page redirect
       onOpenChange(false)
-      signIn(provider, { callbackUrl })
+      const sep = callbackUrl.includes('?') ? '&' : '?'
+      signIn(provider, { callbackUrl: `${callbackUrl}${sep}provider=${provider}` })
       return
     }
 

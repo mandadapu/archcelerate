@@ -15,8 +15,11 @@ export function SystemHandshake({ provider, userName }: SystemHandshakeProps) {
   useEffect(() => {
     if (searchParams.get('welcome') !== '1') return
 
-    const providerLabel = provider
-      ? `${provider.toUpperCase()}_OAUTH`
+    const urlProvider = searchParams.get('provider')
+    const activeProvider = urlProvider || provider
+
+    const providerLabel = activeProvider
+      ? `${activeProvider.toUpperCase()}_OAUTH`
       : 'SSO'
 
     const displayName = userName?.split(' ')[0]?.toUpperCase() || 'ARCHITECT'
@@ -47,6 +50,7 @@ export function SystemHandshake({ provider, userName }: SystemHandshakeProps) {
     // Clean the ?welcome=1 from URL
     const url = new URL(window.location.href)
     url.searchParams.delete('welcome')
+    url.searchParams.delete('provider')
     window.history.replaceState({}, '', url.pathname + url.search)
   }, [searchParams, provider, userName])
 
