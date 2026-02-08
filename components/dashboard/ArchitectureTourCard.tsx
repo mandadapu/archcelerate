@@ -11,7 +11,7 @@ interface ArchitectureTourCardProps {
 export function ArchitectureTourCard({ status, tourStartedAt }: ArchitectureTourCardProps) {
   if (status === 'not-started') {
     return (
-      <div className="rounded-2xl bg-gradient-to-br from-indigo-900 to-purple-900 border border-indigo-700 p-8">
+      <div className="rounded-2xl bg-gradient-to-br from-indigo-900 to-purple-900 border border-indigo-700 p-6 flex flex-col h-full">
         <div className="flex items-center gap-3 mb-2">
           <div className="w-10 h-10 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg flex items-center justify-center flex-shrink-0">
             <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -27,10 +27,10 @@ export function ArchitectureTourCard({ status, tourStartedAt }: ArchitectureTour
             </h2>
           </div>
         </div>
-        <p className="text-indigo-200 text-sm mb-6 ml-[52px]">
+        <p className="text-indigo-200 text-sm mb-6 ml-0">
           The executive summary of production AI: see how RAG, Agents, Fine-tuning, and Infrastructure mesh into the 4-layer Sovereign Stack.
         </p>
-        <div className="flex items-center gap-4 ml-[52px]">
+        <div className="flex items-center gap-4 mt-auto">
           <Link href="/architecture-tour">
             <Button className="bg-white hover:bg-indigo-50 text-indigo-900 font-semibold">
               Begin Tour
@@ -49,7 +49,7 @@ export function ArchitectureTourCard({ status, tourStartedAt }: ArchitectureTour
 
   // in-progress state
   return (
-    <div className="rounded-2xl bg-gradient-to-br from-purple-900 to-indigo-900 border border-purple-700 p-8">
+    <div className="rounded-2xl bg-gradient-to-br from-purple-900 to-indigo-900 border border-purple-700 p-6 flex flex-col h-full">
       <div className="flex items-center gap-3 mb-2">
         <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center flex-shrink-0 animate-pulse">
           <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -65,10 +65,10 @@ export function ArchitectureTourCard({ status, tourStartedAt }: ArchitectureTour
           </h2>
         </div>
       </div>
-      <p className="text-purple-200 text-sm mb-6 ml-[52px]">
+      <p className="text-purple-200 text-sm mb-6 ml-0">
         You started this tour{tourStartedAt ? ` ${formatRelativeTime(tourStartedAt)}` : ' recently'}. Continue to complete your understanding of the Sovereign Stack.
       </p>
-      <div className="flex items-center gap-4 ml-[52px]">
+      <div className="flex items-center gap-4 mt-auto">
         <Link href="/architecture-tour">
           <Button className="bg-white hover:bg-purple-50 text-purple-900 font-semibold">
             Continue Tour
