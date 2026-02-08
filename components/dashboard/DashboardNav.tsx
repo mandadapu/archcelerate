@@ -27,7 +27,7 @@ export function DashboardNav({ userEmail }: DashboardNavProps) {
                   Dashboard
                 </Link>
                 <Link href="/skill-diagnosis" className="text-sm text-slate-600 hover:text-slate-900">
-                  Skill Diagnosis
+                  My Progress
                 </Link>
                 <Link href="/mentor/new" className="text-sm text-slate-600 hover:text-slate-900">
                   AI Mentor
