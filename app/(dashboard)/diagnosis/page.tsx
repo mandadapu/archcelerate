@@ -78,10 +78,10 @@ export default function DiagnosisPage() {
       <div className="max-w-7xl mx-auto space-y-6 p-6">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-slate-900 mb-3">
-            Skill Diagnosis Quiz
+            Architectural Skill Diagnosis
           </h1>
           <p className="text-lg text-slate-600">
-            Choose your difficulty level to get a personalized assessment of your AI skills
+            Choose your starting point. High-stakes systems require high-precision skills.
           </p>
         </div>
         <LevelSelector onLevelSelect={handleLevelSelect} onQuickStart={handleQuickStart} />
@@ -171,8 +171,8 @@ export default function DiagnosisPage() {
 
       const result = await response.json()
 
-      // Redirect to results page
-      router.push('/diagnosis/results')
+      // Redirect to personalized dashboard with real-time telemetry
+      router.push('/skill-diagnosis')
     } catch (error) {
       console.error('Error submitting quiz:', error)
       const message = error instanceof Error ? error.message : 'Unknown error'
