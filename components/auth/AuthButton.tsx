@@ -131,7 +131,7 @@ export const AuthButton = React.forwardRef<HTMLButtonElement, AuthButtonProps>(
             className={cn(
               'flex-shrink-0 transition-all duration-300',
               iconSizeClasses[variant],
-              useGhostIcons && 'grayscale brightness-[2] group-hover:grayscale-0 group-hover:brightness-100',
+              useGhostIcons && 'brightness-0 invert opacity-50 group-hover:brightness-100 group-hover:invert-0 group-hover:opacity-100',
             )}
           >
             {providerIcons[provider]}
