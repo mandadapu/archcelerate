@@ -97,9 +97,8 @@ export default function Home() {
                 The <span className="font-semibold text-gray-900">comprehensive roadmap</span> for software engineers to master the <span className="font-semibold text-gray-900">physics of LLMs</span>, build <span className="font-semibold text-gray-900">sovereign security frameworks</span>, and ship a <span className="font-semibold text-gray-900">complete portfolio</span> of production-grade systems.
               </p>
 
-              {/* Dual-Action Buttons */}
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                {/* Primary Action: Skill Diagnosis */}
+              {/* Primary Action */}
+              <div className="flex items-center justify-center">
                 <button
                   onClick={() => {
                     if (session) {
@@ -112,21 +111,6 @@ export default function Home() {
                   className="px-8 py-3 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-lg font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
                 >
                   {session ? 'Continue Your Diagnosis' : 'Start Skill Diagnosis'}
-                </button>
-
-                {/* Secondary Action: Architecture Tour */}
-                <button
-                  onClick={() => {
-                    if (session) {
-                      router.push('/architecture-tour')
-                    } else {
-                      setLoginCallbackUrl('/architecture-tour')
-                      setShowLoginModal(true)
-                    }
-                  }}
-                  className="px-8 py-3 border-2 border-gray-300 text-gray-700 text-lg font-semibold rounded-full hover:border-purple-500 hover:text-purple-600 transition-all duration-200"
-                >
-                  {session ? 'Review System Design' : 'Watch Architecture Tour'}
                 </button>
               </div>
             </div>
@@ -171,14 +155,6 @@ export default function Home() {
             router.push('/skill-diagnosis')
           } else {
             setLoginCallbackUrl('/skill-diagnosis')
-            setShowLoginModal(true)
-          }
-        }}
-        onTourClick={() => {
-          if (session) {
-            router.push('/architecture-tour')
-          } else {
-            setLoginCallbackUrl('/architecture-tour')
             setShowLoginModal(true)
           }
         }}
