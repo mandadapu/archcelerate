@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
+import { useSession } from 'next-auth/react'
 import { Header } from '@/components/landing/Header'
 import { SystemDiagram } from '@/components/landing/SystemDiagram'
 import { ArchitectureTour } from '@/components/landing/ArchitectureTour'
@@ -13,6 +14,8 @@ import { Testimonials } from '@/components/landing/Testimonials'
 import { LoginModal } from '@/components/auth/LoginModal'
 
 export default function Home() {
+  const { data: session } = useSession()
+  const router = useRouter()
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [loginCallbackUrl, setLoginCallbackUrl] = useState('/dashboard')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -96,26 +99,34 @@ export default function Home() {
 
               {/* Dual-Action Buttons */}
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                {/* Primary Action: Start Skill Diagnosis */}
+                {/* Primary Action: Skill Diagnosis */}
                 <button
                   onClick={() => {
-                    setLoginCallbackUrl('/skill-diagnosis')
-                    setShowLoginModal(true)
+                    if (session) {
+                      router.push('/skill-diagnosis')
+                    } else {
+                      setLoginCallbackUrl('/skill-diagnosis')
+                      setShowLoginModal(true)
+                    }
                   }}
                   className="px-8 py-3 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-lg font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
                 >
-                  Start Skill Diagnosis
+                  {session ? 'Continue Your Diagnosis' : 'Start Skill Diagnosis'}
                 </button>
 
-                {/* Secondary Action: Watch Architecture Tour */}
+                {/* Secondary Action: Architecture Tour */}
                 <button
                   onClick={() => {
-                    setLoginCallbackUrl('/architecture-tour')
-                    setShowLoginModal(true)
+                    if (session) {
+                      router.push('/architecture-tour')
+                    } else {
+                      setLoginCallbackUrl('/architecture-tour')
+                      setShowLoginModal(true)
+                    }
                   }}
                   className="px-8 py-3 border-2 border-gray-300 text-gray-700 text-lg font-semibold rounded-full hover:border-purple-500 hover:text-purple-600 transition-all duration-200"
                 >
-                  Watch Architecture Tour
+                  {session ? 'Review System Design' : 'Watch Architecture Tour'}
                 </button>
               </div>
             </div>
@@ -154,13 +165,22 @@ export default function Home() {
 
       {/* Architecture Tour Preview */}
       <ArchitectureTour
+        isAuthenticated={!!session}
         onDiagnosisClick={() => {
-          setLoginCallbackUrl('/skill-diagnosis')
-          setShowLoginModal(true)
+          if (session) {
+            router.push('/skill-diagnosis')
+          } else {
+            setLoginCallbackUrl('/skill-diagnosis')
+            setShowLoginModal(true)
+          }
         }}
         onTourClick={() => {
-          setLoginCallbackUrl('/architecture-tour')
-          setShowLoginModal(true)
+          if (session) {
+            router.push('/architecture-tour')
+          } else {
+            setLoginCallbackUrl('/architecture-tour')
+            setShowLoginModal(true)
+          }
         }}
       />
 

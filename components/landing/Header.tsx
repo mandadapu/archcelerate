@@ -2,13 +2,16 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useSession } from 'next-auth/react'
 import { ArchcelerateLogo } from '@/components/brand/ArchcelerateLogo'
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 
 interface HeaderProps {
   onLoginClick: () => void
 }
 
 export function Header({ onLoginClick }: HeaderProps) {
+  const { data: session } = useSession()
   const [isScrolled, setIsScrolled] = useState(false)
 
   useEffect(() => {
@@ -70,13 +73,27 @@ export function Header({ onLoginClick }: HeaderProps) {
             </button>
           </nav>
 
-          {/* CTA Button */}
-          <button
-            onClick={onLoginClick}
-            className="px-6 py-2 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-sm font-semibold rounded-full hover:shadow-lg transition-all duration-200"
-          >
-            Get Started
-          </button>
+          {/* Auth Area */}
+          {session ? (
+            <Link href="/dashboard" className="flex items-center gap-2 group">
+              <Avatar className="h-8 w-8">
+                <AvatarImage src={session.user?.image || undefined} alt={session.user?.name || 'User'} />
+                <AvatarFallback className="bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-xs font-semibold">
+                  {(session.user?.name || session.user?.email || 'U').charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-sm font-medium text-gray-600 group-hover:text-gray-900 transition-colors">
+                Dashboard
+              </span>
+            </Link>
+          ) : (
+            <button
+              onClick={onLoginClick}
+              className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              Sign In
+            </button>
+          )}
         </div>
       </div>
     </header>
