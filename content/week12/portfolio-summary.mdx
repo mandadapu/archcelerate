@@ -1,0 +1,268 @@
+---
+title: "AI Architect's Portfolio Summary"
+description: "Professional portfolio bridging technical execution and executive-level strategic value as a Sovereign AI Architect"
+estimatedMinutes: 15
+---
+
+# Professional Portfolio: Sovereign AI Architect
+
+**Focus:** Production-Grade Conversational AI | Digital Health | Enterprise Governance
+
+---
+
+## Executive Summary
+
+Expert in architecting high-availability, cost-optimized, and compliant AI systems. Specialized in moving beyond "Model Consumption" to building "Institutional Intelligence" through model distillation, multi-agent orchestration, and cryptographic governance.
+
+---
+
+## Core Architectural Pillars
+
+### 1. The Model Cascade & Economic Strategy
+
+**The Problem:** High operational costs (~$78,750/month using Opus at ~1K input + 500 output tokens per query, 1.5M queries/month) using frontier models for routine tasks.
+
+**The Solution:** Implemented Intelligence Distillation pipelines to train specialized "Student" models (8B-70B parameter) from "Teacher" models.
+
+**Impact:** Reduced monthly inference costs by 80% while maintaining precision via confidence-based routing and automated escalation gates.
+
+```typescript
+// Model Cascade — Confidence-Based Routing
+//
+// The cascade routes queries to the cheapest capable model,
+// escalating only when confidence thresholds aren't met.
+//
+// Cost per query at ~1K input + 500 output tokens:
+//   Haiku:  ~$0.001   (routine queries, 70% of traffic)
+//   Sonnet: ~$0.0105  (complex reasoning, 25% of traffic)
+//   Opus:   ~$0.0525  (critical decisions, 5% of traffic)
+//
+// Blended cost: ~$5,528/month at 1.5M queries
+// vs. Opus-only: ~$78,750/month → 93% reduction
+
+interface CascadeResult {
+  model: string
+  response: string
+  confidence: number
+  costPerQuery: number
+}
+
+async function cascadeRoute(query: string): Promise<CascadeResult> {
+  // Stage 1: Try Haiku (cheapest)
+  const haiku = await callModel('claude-haiku-4-5-20251001', query)
+  if (haiku.confidence >= 0.90) {
+    return { model: 'haiku', ...haiku, costPerQuery: 0.001 }
+  }
+
+  // Stage 2: Escalate to Sonnet
+  const sonnet = await callModel('claude-sonnet-4-5-20250929', query)
+  if (sonnet.confidence >= 0.85) {
+    return { model: 'sonnet', ...sonnet, costPerQuery: 0.0105 }
+  }
+
+  // Stage 3: Escalate to Opus (final authority)
+  const opus = await callModel('claude-opus-4-6', query)
+  return { model: 'opus', ...opus, costPerQuery: 0.0525 }
+}
+```
+
+### 2. Multi-Agent Orchestration & Resilience
+
+**The Pattern:** Developed Supervisor-led DAG (Directed Acyclic Graph) workflows to replace linear chains.
+
+**The Innovation:** Engineered Semantic Circuit Breakers to detect and stop "Reasoning Loops," preventing token-bleed and ensuring system reliability.
+
+**Conflict Resolution:** Established Asymmetric Risk-Weighted Arbitration, allowing safety and compliance agents to veto general consensus in high-stakes (Healthcare/Legal) scenarios.
+
+```typescript
+// Supervisor-Led DAG with Circuit Breakers
+//
+// Agents are stateless workers. The Supervisor delivers data
+// between agents. Agents never call each other directly.
+
+interface AgentTask {
+  id: string
+  agent: 'researcher' | 'coder' | 'auditor' | 'safety'
+  dependsOn: string[]
+  maxRetries: number
+}
+
+interface CircuitBreakerState {
+  failures: number
+  lastFailure: number
+  state: 'closed' | 'open' | 'half-open'
+}
+
+function checkCircuitBreaker(
+  breaker: CircuitBreakerState,
+  threshold: number = 3
+): boolean {
+  if (breaker.state === 'open') {
+    // Check if cooldown period has elapsed (30s)
+    const elapsed = Date.now() - breaker.lastFailure
+    if (elapsed > 30_000) {
+      breaker.state = 'half-open'
+      return true // Allow one test request
+    }
+    return false // Circuit is open — block the request
+  }
+  return true
+}
+
+// Asymmetric Risk-Weighted Arbitration
+// Safety agent has veto power over all other agents
+function resolveConflict(
+  votes: Map<string, { decision: string; confidence: number }>,
+  domain: 'healthcare' | 'legal' | 'general'
+): string {
+  const safetyVote = votes.get('safety')
+
+  // In high-stakes domains, safety agent has absolute veto
+  if (domain !== 'general' && safetyVote?.decision === 'REJECT') {
+    return 'REJECTED_BY_SAFETY'
+  }
+
+  // Otherwise, weighted consensus
+  let totalWeight = 0
+  const scores = new Map<string, number>()
+
+  for (const [agent, vote] of votes) {
+    const weight = agent === 'safety' ? 2.0 : 1.0
+    const current = scores.get(vote.decision) ?? 0
+    scores.set(vote.decision, current + vote.confidence * weight)
+    totalWeight += weight
+  }
+
+  // Return highest-scoring decision
+  return [...scores.entries()]
+    .sort((a, b) => b[1] - a[1])[0][0]
+}
+```
+
+### 3. Sovereign Infrastructure & Compliance
+
+**Data Residency:** Architected Cell-Based Regional Isolation to meet global data sovereignty requirements (GDPR/HIPAA), ensuring PII never leaves authorized jurisdictions.
+
+**Security Gateway:** Implemented a Pre-Inference Governance Proxy for real-time PII redaction and prompt injection defense.
+
+**Immutable Accountability:** Built a Sovereign Audit Log using Cryptographic Hash Chaining (Merkle Trees) to provide tamper-evident proof of every AI decision for regulatory audits.
+
+```typescript
+import { createHash } from 'crypto'
+
+// Sovereign Audit Log — Cryptographic Hash Chaining
+//
+// Each entry's hash includes the previous entry's hash,
+// creating a tamper-evident chain (like a blockchain).
+// If any entry is altered, all subsequent hashes break.
+
+interface AuditEntry {
+  timestamp: string
+  tenantId: string
+  action: string
+  model: string
+  previousHash: string
+  hash: string
+}
+
+function createAuditEntry(
+  action: string,
+  tenantId: string,
+  model: string,
+  previousHash: string
+): AuditEntry {
+  const timestamp = new Date().toISOString()
+
+  const payload = JSON.stringify({
+    timestamp,
+    tenantId,
+    action,
+    model,
+    previousHash,
+  })
+
+  const hash = createHash('sha256').update(payload).digest('hex')
+
+  return { timestamp, tenantId, action, model, previousHash, hash }
+}
+
+// Cell-Based Regional Isolation
+// Tenant data never leaves its regulatory jurisdiction
+interface SovereignCell {
+  region: 'us-east' | 'eu-west' | 'ap-south'
+  tenantId: string
+  vectorStore: string  // Region-specific vector DB endpoint
+  encryptionKey: string
+}
+
+function routeToCell(tenantId: string, dataResidency: string): SovereignCell {
+  const regionMap: Record<string, SovereignCell['region']> = {
+    'US': 'us-east',
+    'EU': 'eu-west',
+    'APAC': 'ap-south',
+  }
+
+  return {
+    region: regionMap[dataResidency] ?? 'us-east',
+    tenantId,
+    vectorStore: `https://${regionMap[dataResidency]}.vectordb.internal`,
+    encryptionKey: `cell-key-${tenantId}`, // Retrieved from KMS in production
+  }
+}
+```
+
+---
+
+## Key Project Success: Digital Health Triage Platform
+
+| Metric | Result |
+|--------|--------|
+| **Scale** | 50,000+ daily queries |
+| **Accuracy** | 100% precision on critical symptom detection using multi-path speculative execution |
+| **Availability** | 99.9% uptime through Multi-Provider Fallback Protocol |
+| **Cost** | ~$5,528/month blended (vs. $78,750 single-model) — 93% reduction |
+
+```typescript
+// Multi-Provider Fallback Protocol
+//
+// Automatically shifts load between providers to maintain
+// 99.9% uptime. No human intervention required.
+
+async function callWithFailover(prompt: string): Promise<string> {
+  const providers = [
+    { name: 'anthropic', model: 'claude-sonnet-4-5-20250929' },
+    { name: 'openai', model: 'gpt-4o' },
+    { name: 'local', model: 'llama-3-70b' },
+  ]
+
+  for (const provider of providers) {
+    try {
+      return await callProvider(provider.name, provider.model, prompt)
+    } catch (error: unknown) {
+      const status = (error as { status?: number }).status
+      if (status === 429 || status === 503) {
+        console.warn(`${provider.name} unavailable, failing over...`)
+        continue
+      }
+      throw error // Non-retryable error
+    }
+  }
+
+  throw new Error('All providers unavailable')
+}
+```
+
+---
+
+## Technical Proficiencies
+
+| Domain | Skills |
+|--------|--------|
+| **Retrieval** | Hybrid Search (Vector + BM25), Reciprocal Rank Fusion, Cross-Encoder Re-ranking |
+| **Training** | Model Distillation, SFT (Supervised Fine-Tuning), Dataset Curation |
+| **DevOps** | Token-Bucket Rate Limiting, Asynchronous SSE Streaming, Cell-Based Routing |
+| **Security** | Red-Teaming, Prompt Injection Defense, PII Vaulting, Cryptographic Audit Logs |
+
+---
+
+> **The Architect's Mandate:** You don't build AI features. You build AI *systems* — systems that defend themselves, heal themselves, and scale themselves. The prompt is the easy part. The architecture is everything.
