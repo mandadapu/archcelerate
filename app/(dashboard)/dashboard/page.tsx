@@ -93,16 +93,6 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Stage 1: Tour Not Started */}
-      {!tourCompleted && !tourStartedAt && (
-        <ArchitectureTourCard status="not-started" />
-      )}
-
-      {/* Stage 2: Tour In Progress */}
-      {!tourCompleted && tourStartedAt && (
-        <ArchitectureTourCard status="in-progress" tourStartedAt={tourStartedAt.toISOString()} />
-      )}
-
       {/* Stage 3: Tour Complete, Diagnosis Pending */}
       {tourCompleted && !diagnosisCompleted && (
         <div className="rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700 p-8">
@@ -192,6 +182,14 @@ export default async function DashboardPage() {
       )}
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+
+        {/* Architecture Tour — same grid slot as week cards */}
+        {!tourCompleted && !tourStartedAt && (
+          <ArchitectureTourCard status="not-started" />
+        )}
+        {!tourCompleted && tourStartedAt && (
+          <ArchitectureTourCard status="in-progress" tourStartedAt={tourStartedAt.toISOString()} />
+        )}
 
         {week1Data?.week && (
           <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent flex flex-col h-full">
