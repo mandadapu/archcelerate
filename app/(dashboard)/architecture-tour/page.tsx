@@ -1,6 +1,7 @@
 import { getServerSession } from 'next-auth'
 import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/db'
 import { serialize } from 'next-mdx-remote/serialize'
 import rehypeHighlight from 'rehype-highlight'
 import remarkGfm from 'remark-gfm'
@@ -16,6 +17,11 @@ export default async function ArchitectureTourPage() {
   if (!session?.user?.email) {
     redirect('/login')
   }
+
+  const user = await prisma.user.findUnique({
+    where: { email: session.user.email },
+    select: { tourCompleted: true, tourStartedAt: true },
+  })
 
   const filePath = path.join(process.cwd(), 'content', 'architecture-tour.mdx')
   const fileContent = fs.readFileSync(filePath, 'utf-8')
@@ -41,15 +47,28 @@ export default async function ArchitectureTourPage() {
 
       {/* Header */}
       <div className="border-b pb-4">
-        <h1 className="text-3xl font-bold text-slate-900">{data.title}</h1>
-        <p className="text-slate-600 mt-2">{data.description}</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">{data.title}</h1>
+            <p className="text-slate-600 mt-2">{data.description}</p>
+          </div>
+          {user?.tourCompleted && (
+            <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
+              Completed
+            </span>
+          )}
+        </div>
         <div className="flex gap-4 mt-4 text-sm text-slate-600">
           <span>⏱️ {data.estimatedMinutes} min</span>
         </div>
       </div>
 
       {/* MDX Content */}
-      <ArchitectureTourContent mdxSource={mdxSource} />
+      <ArchitectureTourContent
+        mdxSource={mdxSource}
+        tourCompleted={user?.tourCompleted || false}
+        tourStartedAt={user?.tourStartedAt?.toISOString() || null}
+      />
     </div>
   )
 }
