@@ -101,9 +101,9 @@ export default function Home() {
                 <button
                   onClick={() => {
                     if (session) {
-                      router.push('/skill-diagnosis')
+                      router.push('/diagnosis')
                     } else {
-                      setLoginCallbackUrl('/skill-diagnosis?welcome=1')
+                      setLoginCallbackUrl('/diagnosis?welcome=1')
                       setShowLoginModal(true)
                     }
                   }}
@@ -146,9 +146,9 @@ export default function Home() {
         isAuthenticated={!!session}
         onDiagnosisClick={() => {
           if (session) {
-            router.push('/skill-diagnosis')
+            router.push('/diagnosis')
           } else {
-            setLoginCallbackUrl('/skill-diagnosis?welcome=1')
+            setLoginCallbackUrl('/diagnosis?welcome=1')
             setShowLoginModal(true)
           }
         }}
