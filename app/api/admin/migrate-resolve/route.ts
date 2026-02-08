@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { exec } from 'child_process'
+import { execFile } from 'child_process'
 import { promisify } from 'util'
 
-const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
+
+const ALLOWED_ACTIONS = ['applied', 'rolled-back'] as const
+
+// Prisma migration names: timestamp + snake_case (e.g. 20260208090233_add_tour_tracking)
+const MIGRATION_NAME_REGEX = /^\d{14}_[a-z0-9_]+$/
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { migration, action } = body // action: 'rollback' or 'applied'
+    const { migration, action } = body
 
     if (!migration || !action) {
       return NextResponse.json(
@@ -16,11 +21,28 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    console.log(`🔧 Resolving migration ${migration} as ${action}...`)
+    // Validate action against allowlist
+    if (!ALLOWED_ACTIONS.includes(action)) {
+      return NextResponse.json(
+        { error: `Invalid action. Must be one of: ${ALLOWED_ACTIONS.join(', ')}` },
+        { status: 400 }
+      )
+    }
 
-    // Run prisma migrate resolve
-    const { stdout, stderr } = await execAsync(
-      `npx prisma migrate resolve --${action} "${migration}"`,
+    // Validate migration name format
+    if (!MIGRATION_NAME_REGEX.test(migration)) {
+      return NextResponse.json(
+        { error: 'Invalid migration name format' },
+        { status: 400 }
+      )
+    }
+
+    console.log(`Resolving migration ${migration} as ${action}...`)
+
+    // Use execFile instead of exec to avoid shell injection
+    const { stdout, stderr } = await execFileAsync(
+      'npx',
+      ['prisma', 'migrate', 'resolve', `--${action}`, migration],
       {
         cwd: process.cwd(),
         env: process.env,
@@ -40,14 +62,14 @@ export async function POST(req: NextRequest) {
       errors: stderr || null
     })
   } catch (error) {
-    console.error('❌ Resolve error:', error)
+    console.error('Resolve error:', error)
 
     return NextResponse.json(
       {
         success: false,
         error: 'Migration resolve failed',
         details: error instanceof Error ? error.message : 'Unknown error',
-        stderr: error instanceof Error && 'stderr' in error ? (error as any).stderr : null
+        stderr: error instanceof Error && 'stderr' in error ? (error as Record<string, unknown>).stderr : null
       },
       { status: 500 }
     )
