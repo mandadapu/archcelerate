@@ -88,7 +88,7 @@ export function ArchitectureTour({ isAuthenticated, onDiagnosisClick }: Architec
             </span>
           </h2>
           <p className="text-lg text-slate-400 max-w-3xl mx-auto">
-            A 30,000-foot view of how RAG, Agents, Fine-tuning, and Infrastructure mesh into a single, cohesive engine.
+            Understand the layers. Then, see how they handle a live production request on the next page.
           </p>
         </div>
 
