@@ -8,9 +8,10 @@ import Link from 'next/link'
 interface LoginModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  callbackUrl?: string
 }
 
-export function LoginModal({ open, onOpenChange }: LoginModalProps) {
+export function LoginModal({ open, onOpenChange, callbackUrl = '/dashboard' }: LoginModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
@@ -42,7 +43,7 @@ export function LoginModal({ open, onOpenChange }: LoginModalProps) {
               provider="google"
               onClick={() => {
                 onOpenChange(false)
-                signIn('google', { callbackUrl: '/dashboard' })
+                signIn('google', { callbackUrl })
               }}
               className="w-full"
             />
@@ -50,7 +51,7 @@ export function LoginModal({ open, onOpenChange }: LoginModalProps) {
               provider="facebook"
               onClick={() => {
                 onOpenChange(false)
-                signIn('facebook', { callbackUrl: '/dashboard' })
+                signIn('facebook', { callbackUrl })
               }}
               className="w-full"
             />

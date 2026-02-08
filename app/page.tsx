@@ -14,6 +14,7 @@ import { LoginModal } from '@/components/auth/LoginModal'
 
 export default function Home() {
   const [showLoginModal, setShowLoginModal] = useState(false)
+  const [loginCallbackUrl, setLoginCallbackUrl] = useState('/dashboard')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const searchParams = useSearchParams()
 
@@ -97,18 +98,25 @@ export default function Home() {
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 {/* Primary Action: Start Skill Diagnosis */}
                 <button
-                  onClick={() => setShowLoginModal(true)}
+                  onClick={() => {
+                    setLoginCallbackUrl('/dashboard')
+                    setShowLoginModal(true)
+                  }}
                   className="px-8 py-3 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-lg font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
                 >
                   Start Skill Diagnosis
                 </button>
 
                 {/* Secondary Action: Watch Architecture Tour */}
-                <Link href="/architecture-tour">
-                  <button className="px-8 py-3 border-2 border-gray-300 text-gray-700 text-lg font-semibold rounded-full hover:border-purple-500 hover:text-purple-600 transition-all duration-200">
-                    Watch Architecture Tour
-                  </button>
-                </Link>
+                <button
+                  onClick={() => {
+                    setLoginCallbackUrl('/architecture-tour')
+                    setShowLoginModal(true)
+                  }}
+                  className="px-8 py-3 border-2 border-gray-300 text-gray-700 text-lg font-semibold rounded-full hover:border-purple-500 hover:text-purple-600 transition-all duration-200"
+                >
+                  Watch Architecture Tour
+                </button>
               </div>
             </div>
           </div>
@@ -683,7 +691,7 @@ export default function Home() {
       </footer>
 
       {/* Login Modal */}
-      <LoginModal open={showLoginModal} onOpenChange={setShowLoginModal} />
+      <LoginModal open={showLoginModal} onOpenChange={setShowLoginModal} callbackUrl={loginCallbackUrl} />
     </div>
   )
 }
