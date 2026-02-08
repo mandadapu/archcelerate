@@ -116,7 +116,7 @@ export default function Home() {
 
       {/* Page 3: The Command Center — Practical Execution */}
       <section id="features" className="py-8 bg-white">
-        <div className="max-w-7xl mx-auto px-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4">
               The Command Center
@@ -252,7 +252,7 @@ export default function Home() {
 
       {/* The 12-Week Production Roadmap - Visual Timeline */}
       <section className="py-8 bg-gradient-to-br from-slate-50 to-slate-100">
-        <div className="max-w-7xl mx-auto px-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4">
               The 12-Week Production Roadmap
@@ -445,7 +445,7 @@ export default function Home() {
 
       {/* Trust & Social Proof: The Hiring Brief */}
       <section className="py-8 bg-gradient-to-br from-slate-50 to-slate-100">
-        <div className="max-w-7xl mx-auto px-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4">
               Don't just get a certificate.{' '}
@@ -636,7 +636,7 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t border-gray-200 py-6 bg-white">
-        <div className="max-w-7xl mx-auto px-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center text-sm text-gray-600">
             <Link href="/terms" className="hover:text-gray-900 transition-colors">
               Terms of Service
