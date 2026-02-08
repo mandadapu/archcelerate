@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { getCertificationStatus } from '@/lib/skill-scoring'
+import { prisma } from '@/lib/db'
+import { getCertificationStatus, getProficiencyLevel } from '@/lib/skill-scoring'
+
+const domainLabels: Record<string, string> = {
+  systematic_prompting: 'Systematic Prompting',
+  sovereign_governance: 'Sovereign Governance',
+  knowledge_architecture: 'Knowledge Architecture',
+  agentic_systems: 'Agentic Systems',
+  context_engineering: 'Context Engineering',
+  production_systems: 'Production Systems',
+  model_selection: 'Model Selection',
+}
 
 /**
  * GET /api/skill-diagnosis/certification
@@ -18,6 +29,58 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Check for quiz-based diagnosis first
+    const diagnosis = await prisma.skillDiagnosis.findUnique({
+      where: { userId: session.user.id },
+    })
+
+    if (diagnosis?.skillScores) {
+      const scores = diagnosis.skillScores as Record<string, number>
+      const domainPcts = Object.keys(domainLabels).map(key => Math.round((scores[key] ?? 0) * 100))
+      const overallProficiency = domainPcts.reduce((s, p) => s + p, 0) / domainPcts.length
+      const domainsAbove70 = domainPcts.filter(p => p >= 70).length
+      const domainsAbove85 = domainPcts.filter(p => p >= 85).length
+      const allDomainsAbove70 = domainsAbove70 === 7
+      const fourDomainsAbove85 = domainsAbove85 >= 4
+      const overallAbove80 = overallProficiency >= 80
+      const isEligible = allDomainsAbove70 && fourDomainsAbove85 && overallAbove80
+
+      let level: 'none' | 'junior' | 'mid' | 'lead' | 'architect' = 'none'
+      if (overallProficiency >= 87 && domainPcts.every(p => p >= 80)) level = 'architect'
+      else if (isEligible) level = 'lead'
+      else if (overallProficiency >= 61) level = 'mid'
+      else if (overallProficiency > 0) level = 'junior'
+
+      const topDomains = Object.entries(domainLabels)
+        .map(([key, name]) => ({ name, pct: Math.round((scores[key] ?? 0) * 100) }))
+        .filter(d => d.pct >= 85)
+        .sort((a, b) => b.pct - a.pct)
+        .slice(0, 2)
+        .map(d => `${d.name} (${d.pct}th percentile)`)
+
+      const verificationSummary = topDomains.length > 0
+        ? `The candidate has demonstrated high proficiency in ${topDomains.join(' and ')}, with proven experience across ${domainsAbove85} advanced domains.`
+        : 'The candidate is building foundational skills across AI architecture domains.'
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          level,
+          isEligible,
+          overallProficiency,
+          domainsAbove70,
+          domainsAbove85,
+          requirements: {
+            allDomainsAbove70,
+            fourDomainsAbove85,
+            overallAbove80,
+          },
+          verificationSummary,
+        }
+      })
+    }
+
+    // Fallback to activity-based
     const certificationStatus = await getCertificationStatus(session.user.id)
 
     return NextResponse.json({
