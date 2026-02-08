@@ -7,10 +7,10 @@ import { SignOutDialog } from '@/components/auth/SignOutDialog'
 import { ArchcelerateLogo } from '@/components/brand/ArchcelerateLogo'
 
 interface DashboardNavProps {
-  userEmail?: string | null
+  userName?: string | null
 }
 
-export function DashboardNav({ userEmail }: DashboardNavProps) {
+export function DashboardNav({ userName }: DashboardNavProps) {
   const [showSignOutDialog, setShowSignOutDialog] = useState(false)
 
   return (
@@ -26,19 +26,19 @@ export function DashboardNav({ userEmail }: DashboardNavProps) {
                 <Link href="/dashboard" className="text-sm text-slate-600 hover:text-slate-900">
                   Dashboard
                 </Link>
-                <Link href="/skill-diagnosis" className="text-sm text-slate-600 hover:text-slate-900">
-                  My Progress
-                </Link>
                 <Link href="/mentor/new" className="text-sm text-slate-600 hover:text-slate-900">
                   AI Mentor
                 </Link>
                 <Link href="/portfolio" className="text-sm text-slate-600 hover:text-slate-900">
                   Portfolio
                 </Link>
+                <Link href="/skill-diagnosis" className="text-sm text-slate-600 hover:text-slate-900">
+                  My Progress
+                </Link>
               </div>
             </div>
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-slate-600">{userEmail}</span>
+              <span className="text-sm text-slate-600">{userName}</span>
               <Button
                 variant="ghost"
                 size="sm"
