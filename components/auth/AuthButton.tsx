@@ -55,19 +55,19 @@ const providerIcons: Record<AuthProvider, React.ReactNode> = {
 }
 
 const providerLabels: Record<AuthProvider, string> = {
-  google: 'Sign in with Google',
-  facebook: 'Sign in with Facebook',
-  linkedin: 'Sign in with LinkedIn',
-  github: 'Sign in with GitHub',
-  email: 'Sign in with email',
+  google: 'AUTHORIZE IDENTITY: GOOGLE',
+  facebook: 'AUTHORIZE IDENTITY: FACEBOOK',
+  linkedin: 'AUTHORIZE IDENTITY: LINKEDIN',
+  github: 'AUTHORIZE IDENTITY: GITHUB',
+  email: 'AUTHORIZE IDENTITY: EMAIL',
 }
 
 const utilityLabels: Record<AuthProvider, string> = {
-  google: 'Continue with Google',
-  facebook: 'Continue with Facebook',
-  linkedin: 'Continue with LinkedIn',
-  github: 'Continue with GitHub',
-  email: 'Continue with email',
+  google: 'CONTINUE VIA: GOOGLE',
+  facebook: 'CONTINUE VIA: FACEBOOK',
+  linkedin: 'CONTINUE VIA: LINKEDIN',
+  github: 'CONTINUE VIA: GITHUB',
+  email: 'CONTINUE VIA: EMAIL',
 }
 
 const iconSizeClasses: Record<AuthButtonVariant, string> = {
@@ -87,21 +87,21 @@ const buttonClasses: Record<AuthButtonVariant, string> = {
   ),
   primary: cn(
     'h-12 px-5',
-    'bg-slate-800 border-[1.5px] border-slate-600 rounded-lg',
-    'text-sm font-semibold tracking-wide text-slate-200',
-    'hover:border-purple-500 hover:shadow-[0_0_16px_rgba(147,51,234,0.25)]',
+    'bg-[#111] border border-[#333] rounded-lg',
+    'font-mono text-[11px] font-medium tracking-widest text-slate-400 uppercase',
+    'hover:border-purple-500/70 hover:text-slate-200 hover:shadow-[0_0_20px_rgba(147,51,234,0.2)]',
   ),
   secondary: cn(
     'h-10 px-4',
-    'bg-slate-800/60 border-[1.5px] border-slate-700 rounded-md',
-    'text-sm font-medium text-slate-300',
-    'hover:border-slate-500 hover:bg-slate-800/80',
+    'bg-[#111]/60 border border-[#333] rounded-md',
+    'font-mono text-[11px] font-medium tracking-widest text-slate-500 uppercase',
+    'hover:border-slate-500 hover:text-slate-300 hover:bg-[#111]/80',
   ),
   utility: cn(
     'h-8 px-3',
     'bg-transparent border-0 rounded',
-    'text-xs text-slate-500',
-    'hover:text-slate-300 hover:underline',
+    'font-mono text-[10px] text-slate-600 uppercase tracking-widest',
+    'hover:text-slate-400',
   ),
 }
 

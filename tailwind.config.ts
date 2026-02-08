@@ -89,6 +89,16 @@ const config: Config = {
         'fade-out': {
           from: { opacity: '1' },
           to: { opacity: '0' }
+        },
+        'pulse-glow': {
+          '0%, 100%': {
+            opacity: '1',
+            filter: 'drop-shadow(0 0 8px rgba(147, 51, 234, 0.4))'
+          },
+          '50%': {
+            opacity: '0.8',
+            filter: 'drop-shadow(0 0 20px rgba(147, 51, 234, 0.6))'
+          }
         }
       },
       animation: {
@@ -97,7 +107,8 @@ const config: Config = {
         'slide-in': 'slide-in-from-right 0.3s ease-out',
         'slide-out': 'slide-out-to-right 0.3s ease-out',
         'fade-in': 'fade-in 0.2s ease-out',
-        'fade-out': 'fade-out 0.2s ease-out'
+        'fade-out': 'fade-out 0.2s ease-out',
+        'pulse-glow': 'pulse-glow 3s ease-in-out infinite'
       }
     }
   },
