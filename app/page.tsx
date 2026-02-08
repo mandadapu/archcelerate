@@ -153,7 +153,10 @@ export default function Home() {
       </section>
 
       {/* Architecture Tour Preview */}
-      <ArchitectureTour />
+      <ArchitectureTour onCTAClick={() => {
+        setLoginCallbackUrl('/architecture-tour')
+        setShowLoginModal(true)
+      }} />
 
       {/* The Command Center - System Modules */}
       <section id="features" className="py-8 bg-white">
