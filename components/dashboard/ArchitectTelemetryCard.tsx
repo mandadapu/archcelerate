@@ -9,14 +9,13 @@ interface ArchitectTelemetryCardProps {
   skillScores: Record<string, number> | undefined
 }
 
-const architecturalDomains = [
-  { key: 'systematic_prompting', label: 'Systematic Prompting' },
-  { key: 'sovereign_governance', label: 'Sovereign Governance' },
-  { key: 'knowledge_architecture', label: 'Knowledge Architecture' },
-  { key: 'agentic_systems', label: 'Agentic Systems' },
-  { key: 'context_engineering', label: 'Context Engineering' },
-  { key: 'production_systems', label: 'Production Systems' },
-  { key: 'model_selection', label: 'Model Selection' },
+const skillDomains = [
+  { key: 'llm_fundamentals', label: 'LLM Fundamentals' },
+  { key: 'prompt_engineering', label: 'Prompt Engineering' },
+  { key: 'rag', label: 'RAG Systems' },
+  { key: 'agents', label: 'AI Agents' },
+  { key: 'multimodal', label: 'Multimodal AI' },
+  { key: 'production_ai', label: 'Production AI' },
 ]
 
 export function ArchitectTelemetryCard({ recommendedPath, skillScores }: ArchitectTelemetryCardProps) {
@@ -43,7 +42,7 @@ export function ArchitectTelemetryCard({ recommendedPath, skillScores }: Archite
         <AccordionContent className="px-8 pb-6">
           {/* 7-Domain Mini Bars */}
           <div className="space-y-3 mb-6">
-            {architecturalDomains.map(({ key, label }) => {
+            {skillDomains.map(({ key, label }) => {
               const score = skillScores?.[key] ?? 0
               const pct = Math.round(score * 100)
               return (
