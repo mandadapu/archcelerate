@@ -73,10 +73,9 @@ const pipelineStages = ['Query', 'Scrub', 'Plan', 'Retrieve', 'Execute', 'Audit'
 interface ArchitectureTourProps {
   isAuthenticated?: boolean
   onDiagnosisClick?: () => void
-  onTourClick?: () => void
 }
 
-export function ArchitectureTour({ isAuthenticated, onDiagnosisClick, onTourClick }: ArchitectureTourProps) {
+export function ArchitectureTour({ isAuthenticated, onDiagnosisClick }: ArchitectureTourProps) {
   return (
     <section className="py-20 bg-gradient-to-br from-slate-900 to-slate-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -177,28 +176,14 @@ export function ArchitectureTour({ isAuthenticated, onDiagnosisClick, onTourClic
           </p>
         </div>
 
-        {/* CTA — Hierarchical Layout */}
-        <div className="text-center space-y-4">
-          {/* Primary Action */}
+        {/* CTA — Single Conversion Goal */}
+        <div className="text-center">
           <button
             onClick={onDiagnosisClick}
             className="inline-flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-lg font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
           >
             {isAuthenticated ? 'Continue Your Diagnosis' : 'Start Skill Diagnosis'}
           </button>
-
-          {/* Supporting Action */}
-          <div>
-            <button
-              onClick={onTourClick}
-              className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-purple-400 transition-colors duration-200"
-            >
-              {isAuthenticated ? 'Review the Sovereign Stack' : 'See how we architect the Sovereign Stack'}
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
         </div>
       </div>
     </section>
