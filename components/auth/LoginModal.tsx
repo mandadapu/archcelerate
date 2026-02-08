@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { AuthButton } from './AuthButton'
 import { signIn } from 'next-auth/react'
@@ -15,17 +15,109 @@ interface LoginModalProps {
 
 export function LoginModal({ open, onOpenChange, callbackUrl = '/dashboard?welcome=1' }: LoginModalProps) {
   const [loadingProvider, setLoadingProvider] = useState<string | null>(null)
+  const popupRef = useRef<Window | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const cleanupPopup = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+    if (popupRef.current && !popupRef.current.closed) {
+      popupRef.current.close()
+    }
+    popupRef.current = null
+    setLoadingProvider(null)
+  }, [])
+
+  // Listen for auth success from popup
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return
+      if (event.data?.type === 'auth-success') {
+        cleanupPopup()
+        window.location.href = callbackUrl
+      }
+    }
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [callbackUrl, cleanupPopup])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
+    }
+  }, [])
 
   const handleSignIn = (provider: string) => {
     setLoadingProvider(provider)
-    setTimeout(() => {
+
+    const width = 500
+    const height = 600
+    const left = window.screenX + (window.outerWidth - width) / 2
+    const top = window.screenY + (window.outerHeight - height) / 2
+
+    const popup = window.open(
+      '',
+      'oauth_popup',
+      `width=${width},height=${height},left=${left},top=${top}`
+    )
+
+    if (!popup) {
+      // Popup blocked — fall back to full-page redirect
       onOpenChange(false)
       signIn(provider, { callbackUrl })
-    }, 1200)
+      return
+    }
+
+    popupRef.current = popup
+
+    // Dark loading page in popup while OAuth provider loads
+    popup.document.write(
+      `<!DOCTYPE html><html><head><title>Archcelerate</title></head>` +
+      `<body style="background:#1e293b;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:ui-monospace,monospace;color:#64748b;font-size:12px;letter-spacing:0.1em;">` +
+      `<p>CONNECTING TO ${provider.toUpperCase()}_OAUTH_GATEWAY...</p>` +
+      `</body></html>`
+    )
+    popup.document.close()
+
+    // Fetch CSRF token and submit OAuth form inside popup
+    fetch('/api/auth/csrf')
+      .then(res => res.json())
+      .then(({ csrfToken }) => {
+        if (!popup || popup.closed) return
+
+        const form = popup.document.createElement('form')
+        form.method = 'POST'
+        form.action = `/api/auth/signin/${provider}`
+
+        const csrfInput = popup.document.createElement('input')
+        csrfInput.type = 'hidden'
+        csrfInput.name = 'csrfToken'
+        csrfInput.value = csrfToken
+        form.appendChild(csrfInput)
+
+        const callbackInput = popup.document.createElement('input')
+        callbackInput.type = 'hidden'
+        callbackInput.name = 'callbackUrl'
+        callbackInput.value = `${window.location.origin}/auth/popup-callback`
+        form.appendChild(callbackInput)
+
+        popup.document.body.appendChild(form)
+        form.submit()
+      })
+
+    // Poll for popup close (user cancelled without completing auth)
+    pollRef.current = setInterval(() => {
+      if (!popup || popup.closed) {
+        cleanupPopup()
+      }
+    }, 500)
   }
 
   const handleOpenChange = (isOpen: boolean) => {
-    if (!isOpen) setLoadingProvider(null)
+    if (!isOpen) cleanupPopup()
     onOpenChange(isOpen)
   }
 
@@ -59,16 +151,16 @@ export function LoginModal({ open, onOpenChange, callbackUrl = '/dashboard?welco
         </DialogHeader>
 
         {loadingProvider ? (
-          /* Loading / Redirect State */
+          /* Loading / Popup Active State */
           <div className="py-10 text-center space-y-3">
             <div className="flex justify-center">
               <div className="w-6 h-6 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin" />
             </div>
             <p className="font-mono text-xs text-green-400 animate-pulse">
-              {'>'} REDIRECTING TO {loadingProvider.toUpperCase()}_OAUTH_GATEWAY...
+              {'>'} AWAITING {loadingProvider.toUpperCase()}_OAUTH RESPONSE...
             </p>
             <p className="font-mono text-[10px] text-slate-600">
-              ESTABLISHING SECURE TUNNEL
+              COMPLETE AUTHENTICATION IN THE POPUP WINDOW
             </p>
           </div>
         ) : (
