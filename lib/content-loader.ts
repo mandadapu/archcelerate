@@ -5,6 +5,12 @@ import { SprintMetadata, ConceptMetadata, ConceptContent } from '@/types/learnin
 
 const CONTENT_DIR = path.join(process.cwd(), 'content')
 
+/** Validate that a path segment contains only safe characters (alphanumeric, hyphens, underscores) */
+const SAFE_PATH_SEGMENT = /^[a-zA-Z0-9_-]+$/
+function isValidPathSegment(segment: string): boolean {
+  return SAFE_PATH_SEGMENT.test(segment)
+}
+
 /**
  * Get all available sprints
  */
@@ -38,6 +44,7 @@ export async function getAllSprints(): Promise<SprintMetadata[]> {
  * Get a specific sprint by ID
  */
 export async function getSprintById(sprintId: string): Promise<SprintMetadata | null> {
+  if (!isValidPathSegment(sprintId)) return null
   const metadataPath = path.join(CONTENT_DIR, 'sprints', sprintId, 'metadata.json')
 
   if (!fs.existsSync(metadataPath)) {
@@ -68,6 +75,7 @@ export async function getConceptContent(
   sprintId: string,
   conceptId: string
 ): Promise<ConceptContent | null> {
+  if (!isValidPathSegment(sprintId) || !isValidPathSegment(conceptId)) return null
   const conceptPath = path.join(
     CONTENT_DIR,
     'sprints',
@@ -141,6 +149,7 @@ export async function conceptExists(
   sprintId: string,
   conceptId: string
 ): Promise<boolean> {
+  if (!isValidPathSegment(sprintId) || !isValidPathSegment(conceptId)) return false
   const conceptPath = path.join(
     CONTENT_DIR,
     'sprints',

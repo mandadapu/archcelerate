@@ -47,7 +47,7 @@ const VALIDATION_PATTERNS: Record<string, ValidationPattern> = {
     pattern: /(?<!&lt;)(?<!&gt;)<([0-9$])/g,
     severity: 'error' as const,
     message: 'Unescaped < followed by digit or $',
-    suggestion: (match: string) => match.replace('<', '&lt;')
+    suggestion: (match: string) => match.replaceAll('<', '&lt;')
   },
 
   // Unescaped > followed by digit or $
@@ -55,7 +55,7 @@ const VALIDATION_PATTERNS: Record<string, ValidationPattern> = {
     pattern: /(?<!&lt;)(?<!&gt;)>([0-9$])/g,
     severity: 'error' as const,
     message: 'Unescaped > followed by digit or $',
-    suggestion: (match: string) => match.replace('>', '&gt;')
+    suggestion: (match: string) => match.replaceAll('>', '&gt;')
   },
 
   // Unescaped < in table cells followed by space and digit/dollar
@@ -63,7 +63,7 @@ const VALIDATION_PATTERNS: Record<string, ValidationPattern> = {
     pattern: /\|\s*<\s+(\$?[\d.])/g,
     severity: 'error' as const,
     message: 'Unescaped < in table cell',
-    suggestion: (match: string) => match.replace('<', '&lt;')
+    suggestion: (match: string) => match.replaceAll('<', '&lt;')
   },
 
   // Unescaped > in table cells followed by space and digit/dollar
@@ -71,7 +71,7 @@ const VALIDATION_PATTERNS: Record<string, ValidationPattern> = {
     pattern: /\|\s*>\s+(\$?[\d.])/g,
     severity: 'error' as const,
     message: 'Unescaped > in table cell',
-    suggestion: (match: string) => match.replace('>', '&gt;')
+    suggestion: (match: string) => match.replaceAll('>', '&gt;')
   },
 
   // Keyword followed by < with optional space and digit (e.g., "latency < 5")
@@ -79,7 +79,7 @@ const VALIDATION_PATTERNS: Record<string, ValidationPattern> = {
     pattern: /\b(latency|cost|time|tokens|score|value|similarity|relevance|precision|recall)\s+<\s*\d/gi,
     severity: 'error' as const,
     message: 'Unescaped < in comparison (keyword < number)',
-    suggestion: (match: string) => match.replace('<', '&lt;'),
+    suggestion: (match: string) => match.replaceAll('<', '&lt;'),
     skipIfContains: '&lt;'
   },
 
@@ -88,7 +88,7 @@ const VALIDATION_PATTERNS: Record<string, ValidationPattern> = {
     pattern: /\b(latency|cost|time|tokens|score|value|similarity|relevance|precision|recall)\s+>\s*\d/gi,
     severity: 'error' as const,
     message: 'Unescaped > in comparison (keyword > number)',
-    suggestion: (match: string) => match.replace('>', '&gt;'),
+    suggestion: (match: string) => match.replaceAll('>', '&gt;'),
     skipIfContains: '&gt;'
   },
 
