@@ -15,7 +15,7 @@ export interface LogRequest {
 }
 
 export async function logLLMRequest(request: LogRequest) {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   await supabase.from('llm_requests').insert({
     user_id: request.userId,
@@ -39,7 +39,7 @@ export async function logAuditEvent(
   metadata?: Record<string, any>,
   request?: Request
 ) {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   await supabase.from('audit_logs').insert({
     user_id: userId,

@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { MemoryManager } from '@/lib/memory/memory-manager'
 
 export async function POST(request: NextRequest) {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   try {
     const { data: { user }, error: authError } = await supabase.auth.getUser()

@@ -10,12 +10,13 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 interface SprintPageProps {
-  params: {
+  params: Promise<{
     sprintId: string
-  }
+  }>
 }
 
 export default async function SprintPage({ params }: SprintPageProps) {
+  const { sprintId } = await params
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.email) {
@@ -30,13 +31,13 @@ export default async function SprintPage({ params }: SprintPageProps) {
     redirect('/auth/signin')
   }
 
-  const sprint = await getSprintById(params.sprintId)
+  const sprint = await getSprintById(sprintId)
 
   if (!sprint) {
     notFound()
   }
 
-  const progress = await getSprintProgress(user.id, params.sprintId)
+  const progress = await getSprintProgress(user.id, sprintId)
 
   if (!progress) {
     notFound()
@@ -151,7 +152,7 @@ export default async function SprintPage({ params }: SprintPageProps) {
                     </div>
 
                     {canAccess ? (
-                      <Link href={`/learn/${params.sprintId}/${concept.id}`}>
+                      <Link href={`/learn/${sprintId}/${concept.id}`}>
                         <Button
                           size="sm"
                           variant={conceptProgress.status === 'not_started' ? 'default' : 'outline'}

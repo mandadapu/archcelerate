@@ -6,7 +6,7 @@ import { validateChatInput } from '@/lib/governance/input-validator'
 import { checkRateLimit } from '@/lib/governance/rate-limiter'
 
 export async function POST(request: NextRequest) {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   try {
     // Authenticate

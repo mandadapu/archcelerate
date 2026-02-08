@@ -11,12 +11,13 @@ import { CheckCircle2, Circle, ArrowLeft } from 'lucide-react'
 import { SkillImpactPreview } from '@/components/lab/SkillImpactPreview'
 
 interface Props {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params
   const lab = await prisma.lab.findUnique({
-    where: { slug: params.slug }
+    where: { slug }
   })
 
   return {
@@ -26,6 +27,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function LabPage({ params }: Props) {
+  const { slug } = await params
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.email) {
@@ -40,7 +42,7 @@ export default async function LabPage({ params }: Props) {
 
   // Fetch lab
   const lab = await prisma.lab.findUnique({
-    where: { slug: params.slug },
+    where: { slug },
     include: { week: true }
   })
 
@@ -137,7 +139,7 @@ export default async function LabPage({ params }: Props) {
       })
     }
 
-    redirect(`/curriculum/week-5/lab/${params.slug}`)
+    redirect(`/curriculum/week-5/lab/${slug}`)
   }
 
   const completedCount = submissions.filter(s => s.completed).length
@@ -164,7 +166,7 @@ export default async function LabPage({ params }: Props) {
 
       {/* Skill Impact Preview */}
       <div className="mb-6">
-        <SkillImpactPreview labSlug={params.slug} />
+        <SkillImpactPreview labSlug={slug} />
       </div>
 
       {/* Progress */}

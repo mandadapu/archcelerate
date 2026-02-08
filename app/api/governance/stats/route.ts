@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getUsageStats, checkBudget } from '@/lib/governance/cost-tracker'
 
 export async function GET(request: NextRequest) {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   // Authenticate
   const { data: { user }, error } = await supabase.auth.getUser()

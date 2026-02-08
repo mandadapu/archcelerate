@@ -9,9 +9,10 @@ import { calculateDomainScore } from '@/lib/skill-scoring'
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { domainId: string } }
+  { params }: { params: Promise<{ domainId: string }> }
 ) {
   try {
+    const { domainId } = await params
     const session = await getServerSession(authOptions)
 
     if (!session?.user?.id) {
@@ -23,7 +24,7 @@ export async function GET(
 
     const domainScore = await calculateDomainScore(
       session.user.id,
-      params.domainId
+      domainId
     )
 
     if (!domainScore) {

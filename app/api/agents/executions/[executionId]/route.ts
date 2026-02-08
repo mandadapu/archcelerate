@@ -3,9 +3,10 @@ import { createClient } from '@/lib/supabase/server'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { executionId: string } }
+  { params }: { params: Promise<{ executionId: string }> }
 ) {
-  const supabase = createClient()
+  const { executionId } = await params
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
@@ -18,7 +19,7 @@ export async function GET(
       *,
       agent_definition:agent_definitions(*)
     `)
-    .eq('id', params.executionId)
+    .eq('id', executionId)
     .eq('user_id', user.id)
     .single()
 
@@ -29,7 +30,7 @@ export async function GET(
   const { data: steps, error: stepsError } = await supabase
     .from('agent_steps')
     .select('*')
-    .eq('execution_id', params.executionId)
+    .eq('execution_id', executionId)
     .order('step_number', { ascending: true })
 
   if (stepsError) {

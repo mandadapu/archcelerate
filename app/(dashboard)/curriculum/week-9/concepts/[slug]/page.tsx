@@ -9,12 +9,13 @@ import { Button } from '@/components/ui/button'
 import { CheckCircle2, ArrowLeft, ArrowRight } from 'lucide-react'
 
 interface Props {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params
   const concept = await prisma.concept.findUnique({
-    where: { slug: params.slug }
+    where: { slug }
   })
 
   return {
@@ -24,6 +25,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function ConceptPage({ params }: Props) {
+  const { slug } = await params
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.email) {
@@ -32,7 +34,7 @@ export default async function ConceptPage({ params }: Props) {
 
   // Fetch concept
   const concept = await prisma.concept.findUnique({
-    where: { slug: params.slug },
+    where: { slug },
     include: {
       week: true
     }
@@ -56,7 +58,7 @@ export default async function ConceptPage({ params }: Props) {
     select: { id: true, slug: true, title: true, orderIndex: true }
   })
 
-  const currentIndex = concepts.findIndex(c => c.slug === params.slug)
+  const currentIndex = concepts.findIndex(c => c.slug === slug)
   const previousConcept = currentIndex > 0 ? concepts[currentIndex - 1] : null
   const nextConcept = currentIndex < concepts.length - 1 ? concepts[currentIndex + 1] : null
 

@@ -10,7 +10,7 @@ export async function trackCitations(
     relevanceScore: number
   }>
 ): Promise<void> {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   try {
     // Get document metadata for chunks
@@ -64,7 +64,7 @@ export async function trackCitations(
 }
 
 export async function getCitationsForQuery(queryId: string): Promise<Citation[]> {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   const { data, error } = await supabase
     .from('rag_citations')

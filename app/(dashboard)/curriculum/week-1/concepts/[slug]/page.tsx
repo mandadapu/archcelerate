@@ -10,7 +10,7 @@ import { CheckCircle2, ArrowLeft, ArrowRight } from 'lucide-react'
 import { ConceptQuiz } from '@/components/curriculum/ConceptQuiz'
 
 interface Props {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }
 
 // Enable dynamic rendering with caching
@@ -20,8 +20,9 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0 // Let cache handle revalidation
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params
   const concept = await prisma.concept.findUnique({
-    where: { slug: params.slug }
+    where: { slug }
   })
 
   return {
@@ -31,6 +32,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function ConceptPage({ params }: Props) {
+  const { slug } = await params
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.email) {
@@ -39,7 +41,7 @@ export default async function ConceptPage({ params }: Props) {
 
   // Fetch concept
   const concept = await prisma.concept.findUnique({
-    where: { slug: params.slug },
+    where: { slug },
     include: {
       week: true
     }
@@ -63,7 +65,7 @@ export default async function ConceptPage({ params }: Props) {
     select: { id: true, slug: true, title: true, orderIndex: true }
   })
 
-  const currentIndex = concepts.findIndex(c => c.slug === params.slug)
+  const currentIndex = concepts.findIndex(c => c.slug === slug)
   const previousConcept = currentIndex > 0 ? concepts[currentIndex - 1] : null
   const nextConcept = currentIndex < concepts.length - 1 ? concepts[currentIndex + 1] : null
 
@@ -149,7 +151,7 @@ export default async function ConceptPage({ params }: Props) {
       )}
 
       {/* Concept Quiz */}
-      <ConceptQuiz conceptSlug={params.slug} conceptTitle={concept.title} />
+      <ConceptQuiz conceptSlug={slug} conceptTitle={concept.title} />
 
       {/* Complete Button & Navigation */}
       <div className="mt-12 flex items-center justify-between border-t pt-8">

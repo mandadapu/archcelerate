@@ -49,7 +49,7 @@ export class AgentExecutor {
 
   async execute(input: string): Promise<AgentExecutionResult> {
     this.startTime = Date.now()
-    const supabase = createClient()
+    const supabase = await createClient()
 
     try {
       // Create execution record
@@ -381,7 +381,7 @@ export class AgentExecutor {
   private async recordStep(step: AgentStep) {
     if (!this.executionId) return
 
-    const supabase = createClient()
+    const supabase = await createClient()
     await supabase.from('agent_steps').insert({
       execution_id: this.executionId,
       step_number: step.stepNumber,
@@ -402,7 +402,7 @@ export class AgentExecutor {
   ) {
     if (!this.executionId) return
 
-    const supabase = createClient()
+    const supabase = await createClient()
     await supabase.from('tool_calls').insert({
       execution_id: this.executionId,
       tool_name: toolName,

@@ -11,7 +11,7 @@ import { createErrorResponse } from '@/lib/rag/utils'
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
-  const supabase = createClient()
+  const supabase = await createClient()
 
   try {
     // Authenticate

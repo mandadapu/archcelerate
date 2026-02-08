@@ -28,7 +28,7 @@ export class AgentMemory {
     executionId: string,
     context: Record<string, any>
   ): Promise<void> {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     const entries = Object.entries(context).map(([key, value]) => ({
       execution_id: executionId,
@@ -40,7 +40,7 @@ export class AgentMemory {
   }
 
   async getShortTermMemory(executionId: string): Promise<Record<string, any>> {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     const { data, error } = await supabase
       .from('agent_short_term_memory')
@@ -62,7 +62,7 @@ export class AgentMemory {
     importanceScore: number = 0.5,
     metadata?: Record<string, any>
   ): Promise<void> {
-    const supabase = createClient()
+    const supabase = await createClient()
     const embedding = await generateEmbedding(summary)
 
     await supabase.from('agent_long_term_memory').insert({
@@ -79,7 +79,7 @@ export class AgentMemory {
     query: string,
     limit: number = 5
   ): Promise<Array<{ summary: string; relevanceScore: number; metadata?: any }>> {
-    const supabase = createClient()
+    const supabase = await createClient()
     const queryEmbedding = await generateEmbedding(query)
 
     const { data, error } = await supabase.rpc('match_agent_long_term_memory', {
@@ -149,7 +149,7 @@ export class AgentMemory {
 
   // Cleanup old memories
   async pruneMemories(maxMemories: number = 1000): Promise<number> {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     const { data, error } = await supabase.rpc('prune_agent_long_term_memory', {
       p_user_id: this.userId,

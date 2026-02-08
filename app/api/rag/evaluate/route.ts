@@ -9,7 +9,7 @@ import { RAG_CONFIG } from '@/lib/rag/constants'
 import { createErrorResponse, chunkArray } from '@/lib/rag/utils'
 
 export async function POST(request: NextRequest) {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   try {
     // Authenticate
@@ -103,7 +103,7 @@ async function evaluateQuestion(
   userId: string,
   question: EvaluationQuestion,
   datasetId: string,
-  supabase: ReturnType<typeof createClient>
+  supabase: Awaited<ReturnType<typeof createClient>>
 ): Promise<EvaluationResult> {
   // Retrieve relevant chunks
   const chunks = await hybridSearch(userId, question.question, RAG_CONFIG.limits.documentChunks)

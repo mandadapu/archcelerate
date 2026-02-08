@@ -7,7 +7,7 @@ import { AgentMetricsCard } from '@/components/dashboard/agent-metrics'
 import { PlayCircle } from 'lucide-react'
 
 export default async function AgentsDashboardPage() {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
