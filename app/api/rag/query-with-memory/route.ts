@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     await logLLMRequest({
       userId: user.id,
       endpoint: '/api/rag/query-with-memory',
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-sonnet-4-5-20250929',
       promptTokens: result.tokenUsage?.input ?? 0,
       completionTokens: result.tokenUsage?.output ?? 0,
       totalTokens: (result.tokenUsage?.input ?? 0) + (result.tokenUsage?.output ?? 0),

@@ -51,7 +51,7 @@ export async function moderateContent(
 async function checkWithPrompt(content: string): Promise<ModerationResult> {
   try {
     const response = await client.messages.create({
-      model: 'claude-3-haiku-20240307', // Fast, cheap model for moderation
+      model: 'claude-haiku-4-5-20251001', // Fast, cheap model for moderation
       max_tokens: 100,
       messages: [{
         role: 'user',

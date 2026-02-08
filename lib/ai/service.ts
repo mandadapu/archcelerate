@@ -50,7 +50,7 @@ class AIService {
 
     try {
       const response = await this.client.messages.create({
-        model: 'claude-3-haiku-20240307',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: maxTokens,
         temperature,
         system: systemPrompt,
@@ -98,7 +98,7 @@ class AIService {
 
     try {
       const stream = await this.client.messages.create({
-        model: 'claude-3-haiku-20240307',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: maxTokens,
         temperature,
         system: systemPrompt,

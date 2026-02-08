@@ -88,7 +88,7 @@ Format (repeat for 50 questions):
 Make questions practical for engineers building AI products. All questions MUST have "difficulty": "${level}". Start your response with [ and end with ]`
 
   const message = await anthropic.messages.create({
-    model: 'claude-opus-4-5-20251101',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 8192,
     temperature: 0.7,
     messages: [

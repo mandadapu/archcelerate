@@ -24,7 +24,7 @@ export interface MeetingSummary {
  */
 export async function extractActionItems(text: string): Promise<ActionItem[]> {
   const response = await client.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 2048,
     messages: [{
       role: 'user',
@@ -88,7 +88,7 @@ export async function summarizeMeeting(
   }
 
   const response = await client.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 1500,
     messages: [{
       role: 'user',
@@ -112,7 +112,7 @@ ${text}`
  */
 export async function generateFullSummary(text: string): Promise<MeetingSummary> {
   const response = await client.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 3000,
     messages: [{
       role: 'user',
@@ -172,7 +172,7 @@ Return ONLY the JSON object, no additional text.`
  */
 export async function identifyParticipants(text: string): Promise<string[]> {
   const response = await client.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 500,
     messages: [{
       role: 'user',
@@ -207,7 +207,7 @@ ${text}`
  */
 export async function extractDecisions(text: string): Promise<string[]> {
   const response = await client.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 1024,
     messages: [{
       role: 'user',
@@ -247,7 +247,7 @@ export async function generateMeetingMinutes(
   text: string
 ): Promise<string> {
   const response = await client.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 3000,
     messages: [{
       role: 'user',

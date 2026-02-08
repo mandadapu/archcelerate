@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       await logLLMRequest({
         userId: user.id,
         endpoint: '/api/chat',
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-4-5-20250929',
         promptTokens: 0,
         completionTokens: 0,
         totalTokens: 0,
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
 
     // 7. Call Claude API
     const response = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-sonnet-4-5-20250929',
       max_tokens: 1024,
       messages
     })
@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
 
     // 10. Log request and track cost
     const cost = calculateCost(
-      'claude-3-5-sonnet-20241022',
+      'claude-sonnet-4-5-20250929',
       response.usage.input_tokens,
       response.usage.output_tokens
     )
@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
     await logLLMRequest({
       userId: user.id,
       endpoint: '/api/chat',
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-sonnet-4-5-20250929',
       promptTokens: response.usage.input_tokens,
       completionTokens: response.usage.output_tokens,
       totalTokens: response.usage.input_tokens + response.usage.output_tokens,
@@ -242,7 +242,7 @@ export async function POST(request: NextRequest) {
       await logLLMRequest({
         userId: user.id,
         endpoint: '/api/chat',
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-4-5-20250929',
         promptTokens: 0,
         completionTokens: 0,
         totalTokens: 0,
