@@ -6,6 +6,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { Header } from '@/components/landing/Header'
 import { SystemDiagram } from '@/components/landing/SystemDiagram'
+import { ArchitectureTour } from '@/components/landing/ArchitectureTour'
 import { TechStack } from '@/components/landing/TechStack'
 import { ProjectShowcase } from '@/components/landing/ProjectShowcase'
 import { Testimonials } from '@/components/landing/Testimonials'
@@ -142,6 +143,9 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Architecture Tour Preview */}
+      <ArchitectureTour />
 
       {/* The Command Center - System Modules */}
       <section id="features" className="py-8 bg-white">
