@@ -119,6 +119,46 @@ graph.addConditionalEdges("planner", shouldContinue);
 const workflow = graph.compile();`
   },
   {
+    id: 'content-generator',
+    title: 'AI API Product',
+    week: 7,
+    description: 'Ship production API with auth, rate limiting, and monitoring',
+    tags: ['API', 'Auth', 'Monitoring'],
+    outcome: 'HIPAA/SOC2 compliance with 99.97% uptime',
+    milestone: 'Master Auth, Rate Limiting, and Monitoring as a service',
+    architecture: `Client → API Gateway → Rate Limiter
+                         ↓
+                    Auth → Claude API
+                         ↓
+              Analytics + Redis Cache`,
+    techStack: {
+      framework: 'Next.js API Routes, tRPC',
+      auth: 'NextAuth.js with JWT tokens',
+      rateLimit: 'Upstash Redis',
+      monitoring: 'Sentry, custom dashboards',
+      docs: 'OpenAPI/Swagger auto-generated'
+    },
+    implementation: [
+      'Set up API authentication (API keys + OAuth)',
+      'Implement rate limiting (tier-based quotas)',
+      'Add request caching for repeated queries',
+      'Build usage tracking and analytics dashboard',
+      'Create developer documentation portal',
+      'Deploy with CI/CD and monitoring'
+    ],
+    codeSnippet: `// Rate-limited API endpoint
+export async function POST(req: Request) {
+  const apiKey = req.headers.get('x-api-key');
+
+  // Check rate limit
+  const limit = await redis.get(\`rate:\${apiKey}\`);
+  if (limit > 100) throw new Error('Rate limit exceeded');
+
+  // Track usage
+  await db.usage.create({ apiKey, tokens: response.usage });
+}`
+  },
+  {
     id: 'ai-code-reviewer',
     title: 'Fine-tuned Model',
     week: 10,
@@ -158,46 +198,6 @@ const response = await anthropic.messages.create({
   model: job.fine_tuned_model,
   ...
 });`
-  },
-  {
-    id: 'content-generator',
-    title: 'AI API Product',
-    week: 7,
-    description: 'Ship production API with auth, rate limiting, and monitoring',
-    tags: ['API', 'Auth', 'Monitoring'],
-    outcome: 'HIPAA/SOC2 compliance with 99.97% uptime',
-    milestone: 'Master Auth, Rate Limiting, and Monitoring as a service',
-    architecture: `Client → API Gateway → Rate Limiter
-                         ↓
-                    Auth → Claude API
-                         ↓
-              Analytics + Redis Cache`,
-    techStack: {
-      framework: 'Next.js API Routes, tRPC',
-      auth: 'NextAuth.js with JWT tokens',
-      rateLimit: 'Upstash Redis',
-      monitoring: 'Vercel Analytics, Sentry',
-      docs: 'OpenAPI/Swagger auto-generated'
-    },
-    implementation: [
-      'Set up API authentication (API keys + OAuth)',
-      'Implement rate limiting (tier-based quotas)',
-      'Add request caching for repeated queries',
-      'Build usage tracking and analytics dashboard',
-      'Create developer documentation portal',
-      'Deploy with CI/CD and monitoring'
-    ],
-    codeSnippet: `// Rate-limited API endpoint
-export async function POST(req: Request) {
-  const apiKey = req.headers.get('x-api-key');
-
-  // Check rate limit
-  const limit = await redis.get(\`rate:\${apiKey}\`);
-  if (limit > 100) throw new Error('Rate limit exceeded');
-
-  // Track usage
-  await db.usage.create({ apiKey, tokens: response.usage });
-}`
   },
   {
     id: 'data-analyst',
