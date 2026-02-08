@@ -6,7 +6,6 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useSession } from 'next-auth/react'
 import { Header } from '@/components/landing/Header'
-import { SystemDiagram } from '@/components/landing/SystemDiagram'
 import { ArchitectureTour } from '@/components/landing/ArchitectureTour'
 import { TechStack } from '@/components/landing/TechStack'
 import { ProjectShowcase } from '@/components/landing/ProjectShowcase'
@@ -117,11 +116,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* System Diagram - Full Width */}
-        <div className="w-full px-4">
-          <SystemDiagram />
-        </div>
-
         {/* Quick Stats */}
         <div className="max-w-7xl mx-auto px-4">
           <div className="mt-12 mb-12 grid grid-cols-3 gap-8 text-center">
@@ -147,7 +141,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Architecture Tour Preview */}
+      {/* Page 2: The Sovereign Stack — Conceptual Priming */}
       <ArchitectureTour
         isAuthenticated={!!session}
         onDiagnosisClick={() => {
@@ -160,7 +154,7 @@ export default function Home() {
         }}
       />
 
-      {/* The Command Center - System Modules */}
+      {/* Page 3: The Command Center — Practical Execution */}
       <section id="features" className="py-8 bg-white">
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
@@ -168,7 +162,7 @@ export default function Home() {
               The Command Center
             </h2>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Production-grade system modules that prove your mastery to CTOs
+              The Command Center in action: Watch a request clear the Governance Gateway and trigger the Multi-Agent Supervisor.
             </p>
           </div>
 
