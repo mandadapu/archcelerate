@@ -55,11 +55,11 @@ const providerIcons: Record<AuthProvider, React.ReactNode> = {
 }
 
 const providerLabels: Record<AuthProvider, string> = {
-  google: 'AUTHORIZE IDENTITY: GOOGLE',
-  facebook: 'AUTHORIZE IDENTITY: FACEBOOK',
-  linkedin: 'AUTHORIZE IDENTITY: LINKEDIN',
-  github: 'AUTHORIZE IDENTITY: GITHUB',
-  email: 'AUTHORIZE IDENTITY: EMAIL',
+  google: 'AUTHORIZE: GOOGLE',
+  facebook: 'AUTHORIZE: FACEBOOK',
+  linkedin: 'AUTHORIZE: LINKEDIN',
+  github: 'AUTHORIZE: GITHUB',
+  email: 'AUTHORIZE: EMAIL',
 }
 
 const utilityLabels: Record<AuthProvider, string> = {
@@ -87,13 +87,13 @@ const buttonClasses: Record<AuthButtonVariant, string> = {
   ),
   primary: cn(
     'h-12 px-5',
-    'bg-[#111] border border-[#333] rounded-lg',
+    'bg-slate-800 border border-slate-600 rounded-lg',
     'font-mono text-[11px] font-medium tracking-widest text-slate-400 uppercase',
     'hover:border-purple-500/70 hover:text-slate-200 hover:shadow-[0_0_20px_rgba(147,51,234,0.2)]',
   ),
   secondary: cn(
     'h-10 px-4',
-    'bg-[#111]/60 border border-[#333] rounded-md',
+    'bg-slate-800/60 border border-slate-600 rounded-md',
     'font-mono text-[11px] font-medium tracking-widest text-slate-500 uppercase',
     'hover:border-slate-500 hover:text-slate-300 hover:bg-[#111]/80',
   ),

@@ -31,7 +31,7 @@ export function LoginModal({ open, onOpenChange, callbackUrl = '/dashboard?welco
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md bg-[#0A0A0A] border-[#222] text-slate-200 shadow-2xl shadow-purple-900/20">
+      <DialogContent className="sm:max-w-md bg-gradient-to-br from-slate-900 to-[#0f1117] border-slate-700/60 text-slate-200 shadow-2xl shadow-purple-900/20">
         <DialogHeader className="text-center space-y-4">
           {/* Pulsing Logo */}
           <div className="flex justify-center">
@@ -110,7 +110,7 @@ export function LoginModal({ open, onOpenChange, callbackUrl = '/dashboard?welco
         )}
 
         {/* Terminal Footer */}
-        <div className="pt-3 border-t border-[#222] text-center space-y-1.5">
+        <div className="pt-3 border-t border-slate-700/50 text-center space-y-1.5">
           <p className="font-mono text-[9px] text-slate-600 leading-relaxed">
             By continuing, you accept the{' '}
             <Link href="/terms" className="text-purple-500 hover:text-purple-400">
