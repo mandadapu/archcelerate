@@ -96,46 +96,6 @@ export default function Home() {
                 The <span className="font-semibold text-gray-900">comprehensive roadmap</span> for software engineers to master the <span className="font-semibold text-gray-900">physics of LLMs</span>, build <span className="font-semibold text-gray-900">sovereign security frameworks</span>, and ship a <span className="font-semibold text-gray-900">complete portfolio</span> of production-grade systems.
               </p>
 
-              {/* Primary Action */}
-              <div className="flex items-center justify-center">
-                <button
-                  onClick={() => {
-                    if (session) {
-                      router.push('/diagnosis')
-                    } else {
-                      setLoginCallbackUrl('/diagnosis?welcome=1')
-                      setShowLoginModal(true)
-                    }
-                  }}
-                  className="px-8 py-3 bg-gradient-to-r from-purple-600 to-cyan-500 text-white text-lg font-semibold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
-                >
-                  {session ? 'Continue Your Diagnosis' : 'Start Skill Diagnosis'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Stats */}
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="mt-12 mb-12 grid grid-cols-3 gap-8 text-center">
-            <div>
-              <div className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent">
-                12
-              </div>
-              <div className="text-sm text-gray-600 mt-1">Weeks</div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent">
-                10
-              </div>
-              <div className="text-sm text-gray-600 mt-1">Enterprise Scenarios</div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent">
-                7
-              </div>
-              <div className="text-sm text-gray-600 mt-1">Production Systems</div>
             </div>
           </div>
         </div>
