@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { prisma } from '@/lib/db'
 import Link from 'next/link'
 import Image from 'next/image'
+import { ArchitectureTourCard } from '@/components/dashboard/ArchitectureTourCard'
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions)
@@ -22,6 +23,8 @@ export default async function DashboardPage() {
   })
 
   const diagnosisCompleted = !!user?.skillDiagnosis
+  const tourCompleted = user?.tourCompleted || false
+  const tourStartedAt = user?.tourStartedAt
 
   // Fetch Week 1 data and progress
   let week1Data = null
@@ -90,8 +93,18 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {!diagnosisCompleted ? (
-        /* Incomplete: Dark "Complete Your Architectural Diagnosis" card */
+      {/* Stage 1: Tour Not Started */}
+      {!tourCompleted && !tourStartedAt && (
+        <ArchitectureTourCard status="not-started" />
+      )}
+
+      {/* Stage 2: Tour In Progress */}
+      {!tourCompleted && tourStartedAt && (
+        <ArchitectureTourCard status="in-progress" tourStartedAt={tourStartedAt.toISOString()} />
+      )}
+
+      {/* Stage 3: Tour Complete, Diagnosis Pending */}
+      {tourCompleted && !diagnosisCompleted && (
         <div className="rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700 p-8">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-10 h-10 bg-gradient-to-r from-purple-600 to-cyan-500 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -119,8 +132,10 @@ export default async function DashboardPage() {
             </Link>
           </div>
         </div>
-      ) : (
-        /* Complete: "Architect's Telemetry" with 7-domain breakdown */
+      )}
+
+      {/* Stage 4: Diagnosis Complete — Architect's Telemetry */}
+      {diagnosisCompleted && (
         <div className="rounded-2xl bg-white border border-gray-200 p-8 shadow-sm">
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -484,6 +499,38 @@ export default async function DashboardPage() {
           </Card>
         )}
 
+
+        {/* Architecture Tour — mini reference card (visible after completion) */}
+        {tourCompleted && (
+          <Card className="group relative bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200 transition-all duration-300 hover:shadow-lg flex flex-col h-full">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-indigo-900 flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                  Architecture Tour
+                </CardTitle>
+                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                  Complete
+                </span>
+              </div>
+              <CardDescription className="text-indigo-700">4-Layer Sovereign Stack</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col flex-1">
+              <p className="text-sm text-slate-600 mb-4">
+                Review the executive summary of production AI architecture anytime.
+              </p>
+              <div className="flex justify-end mt-auto">
+                <Link href="/architecture-tour">
+                  <Button size="sm" variant="outline" className="border-indigo-300 text-indigo-700 hover:bg-indigo-50">
+                    Review
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent flex flex-col h-full">
           <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
