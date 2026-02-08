@@ -11,7 +11,7 @@ interface LoginModalProps {
   callbackUrl?: string
 }
 
-export function LoginModal({ open, onOpenChange, callbackUrl = '/dashboard' }: LoginModalProps) {
+export function LoginModal({ open, onOpenChange, callbackUrl = '/dashboard?welcome=1' }: LoginModalProps) {
   const handleSignIn = (provider: string) => {
     onOpenChange(false)
     signIn(provider, { callbackUrl })

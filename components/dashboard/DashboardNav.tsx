@@ -8,10 +8,9 @@ import { ArchcelerateLogo } from '@/components/brand/ArchcelerateLogo'
 
 interface DashboardNavProps {
   userEmail?: string | null
-  diagnosisCompleted?: boolean
 }
 
-export function DashboardNav({ userEmail, diagnosisCompleted = false }: DashboardNavProps) {
+export function DashboardNav({ userEmail }: DashboardNavProps) {
   const [showSignOutDialog, setShowSignOutDialog] = useState(false)
 
   return (
@@ -27,11 +26,6 @@ export function DashboardNav({ userEmail, diagnosisCompleted = false }: Dashboar
                 <Link href="/dashboard" className="text-sm text-slate-600 hover:text-slate-900">
                   Dashboard
                 </Link>
-                {diagnosisCompleted && (
-                  <Link href="/skill-diagnosis" className="text-sm text-slate-600 hover:text-slate-900">
-                    My Proficiency
-                  </Link>
-                )}
                 <Link href="/mentor/new" className="text-sm text-slate-600 hover:text-slate-900">
                   AI Mentor
                 </Link>

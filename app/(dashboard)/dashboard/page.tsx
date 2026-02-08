@@ -76,64 +76,104 @@ export default async function DashboardPage() {
 
   // Sprint progress removed - using Week-based curriculum instead
 
+  // Parse skill scores for the telemetry card
+  const skillScores = user?.skillDiagnosis?.skillScores as Record<string, number> | undefined
+  const architecturalDomains = [
+    { key: 'systematic_prompting', label: 'Systematic Prompting' },
+    { key: 'sovereign_governance', label: 'Sovereign Governance' },
+    { key: 'knowledge_architecture', label: 'Knowledge Architecture' },
+    { key: 'agentic_systems', label: 'Agentic Systems' },
+    { key: 'context_engineering', label: 'Context Engineering' },
+    { key: 'production_systems', label: 'Production Systems' },
+    { key: 'model_selection', label: 'Model Selection' },
+  ]
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold text-slate-900">
-          Welcome back, {user?.name || session!.user!.name}!
-        </h2>
-        <p className="text-slate-600 mt-2">
-          {diagnosisCompleted
-            ? `You're on the ${user?.skillDiagnosis?.recommendedPath.replace(/-/g, ' ')} path`
-            : 'Take the skill diagnosis to get started'
-          }
-        </p>
-      </div>
-
       {!diagnosisCompleted ? (
-        <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
-          <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <svg className="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        /* Incomplete: Dark "Complete Your Architectural Diagnosis" card */
+        <div className="rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700 p-8">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 bg-gradient-to-r from-purple-600 to-cyan-500 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
               </svg>
-              Skill Diagnosis
-            </CardTitle>
-            <CardDescription>
-              Take a quick 10-minute assessment to personalize your learning
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold tracking-[0.15em] uppercase text-slate-500">
+                Mission Critical
+              </p>
+              <h2 className="text-2xl font-bold text-white font-display">
+                Complete Your Architectural Diagnosis
+              </h2>
+            </div>
+          </div>
+          <p className="text-slate-400 text-sm mb-6 ml-[52px]">
+            Map your 7-axis skill telemetry to unlock your personalized production roadmap.
+          </p>
+          <div className="ml-[52px]">
             <Link href="/diagnosis">
-              <Button className="bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white">
-                Start
+              <Button className="bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white font-semibold">
+                Begin Diagnosis
               </Button>
             </Link>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       ) : (
-        <Card className="group relative bg-white border border-gray-200 transition-all duration-300 hover:shadow-xl hover:border-transparent">
-          <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-green-600 to-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-xl" />
-          <CardHeader>
-            <CardTitle>✓ Diagnosis Complete</CardTitle>
-            <CardDescription>
-              View your personalized results and question review
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex gap-3">
+        /* Complete: "Architect's Telemetry" with 7-domain breakdown */
+        <div className="rounded-2xl bg-white border border-gray-200 p-8 shadow-sm">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <p className="text-[10px] font-semibold tracking-[0.15em] uppercase text-slate-500 mb-1">
+                Skill Gap Radar
+              </p>
+              <h2 className="text-2xl font-bold text-slate-900 font-display">
+                Architect&apos;s Telemetry
+              </h2>
+            </div>
+            <span className="px-3 py-1 bg-gradient-to-r from-purple-100 to-cyan-100 text-purple-700 text-xs font-semibold rounded-full border border-purple-200">
+              {user?.skillDiagnosis?.recommendedPath?.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+            </span>
+          </div>
+
+          {/* 7-Domain Mini Bars */}
+          <div className="space-y-3 mb-6">
+            {architecturalDomains.map(({ key, label }) => {
+              const score = skillScores?.[key] ?? 0
+              const pct = Math.round(score * 100)
+              return (
+                <div key={key} className="flex items-center gap-3">
+                  <span className="text-xs text-slate-600 w-40 flex-shrink-0 truncate">{label}</span>
+                  <div className="flex-1 bg-slate-100 rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full transition-all ${
+                        pct >= 80 ? 'bg-gradient-to-r from-green-500 to-emerald-400' :
+                        pct >= 50 ? 'bg-gradient-to-r from-purple-500 to-cyan-400' :
+                        'bg-gradient-to-r from-amber-500 to-orange-400'
+                      }`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <span className="text-xs font-semibold text-slate-700 w-10 text-right">{pct}%</span>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* CTAs */}
+          <div className="flex gap-3">
             <Link href="/diagnosis/results">
-              <Button variant="outline" className="border-green-300 text-green-700 hover:bg-green-100">
-                View Results
+              <Button className="bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-700 hover:to-cyan-600 text-white font-semibold">
+                View Full Report
               </Button>
             </Link>
-            <Link href="/diagnosis">
+            <Link href="/curriculum/week-1">
               <Button variant="outline" className="border-slate-300 text-slate-700 hover:bg-slate-100">
-                Retake Quiz
+                Continue Curriculum
               </Button>
             </Link>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
