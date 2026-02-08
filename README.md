@@ -33,7 +33,6 @@ Start learning today at [http://localhost:3000](http://localhost:3000)
 ### AI & ML
 - **Claude API** (Anthropic) - Primary LLM (Sonnet 4, Haiku 4)
 - **OpenAI API** - Embeddings (text-embedding-3-small)
-- **Vercel AI SDK** - Streaming chat interfaces
 - **Tavily Search API** - Web search for agents
 
 ### Development & Deployment
@@ -381,15 +380,14 @@ npm run test:e2e:ui      # Playwright UI mode
 
 ## 📦 Deployment
 
-### Vercel (Recommended)
+### Google Cloud Run (Production)
 
-1. Push code to GitHub
-2. Import project in Vercel
-3. Add environment variables
-4. Deploy
+Deployed via GitHub Actions CI/CD pipeline. See `.github/workflows/deploy-production.yml`.
 
-**Database**: Use managed PostgreSQL (Vercel Postgres, Supabase, or Neon)
-**Redis**: Use Upstash Redis (free tier available)
+Secrets are managed via Google Secret Manager.
+
+**Database**: Cloud SQL PostgreSQL
+**Redis**: Managed Redis instance
 
 ### Docker Production
 
