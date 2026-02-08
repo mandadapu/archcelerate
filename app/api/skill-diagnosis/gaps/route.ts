@@ -14,6 +14,15 @@ const domainLabels: Record<string, string> = {
   model_selection: 'Model Selection',
 }
 
+const quizDomainLabels: Record<string, string> = {
+  llm_fundamentals: 'LLM Fundamentals',
+  prompt_engineering: 'Prompt Engineering',
+  rag: 'RAG Systems',
+  agents: 'AI Agents',
+  multimodal: 'Multimodal AI',
+  production_ai: 'Production AI',
+}
+
 const domainWeekMap: Record<string, number> = {
   systematic_prompting: 1,
   sovereign_governance: 2,
@@ -22,6 +31,15 @@ const domainWeekMap: Record<string, number> = {
   context_engineering: 4,
   production_systems: 6,
   model_selection: 7,
+}
+
+const quizDomainWeekMap: Record<string, number> = {
+  llm_fundamentals: 1,
+  prompt_engineering: 2,
+  rag: 3,
+  agents: 5,
+  multimodal: 8,
+  production_ai: 6,
 }
 
 /**
@@ -47,14 +65,15 @@ export async function GET(request: NextRequest) {
     if (diagnosis?.skillScores) {
       const scores = diagnosis.skillScores as Record<string, number>
       const targetLevel = 80
-      const gaps = Object.entries(domainLabels)
+      // Use quiz domain keys (llm_fundamentals, etc.) not architecture domain keys
+      const gaps = Object.entries(quizDomainLabels)
         .map(([key, name]) => {
           const pct = Math.round((scores[key] ?? 0) * 100)
           const gap = targetLevel - pct
           if (gap <= 0) return null
           const priority: 'high' | 'medium' | 'low' =
             gap > 40 ? 'high' : gap > 20 ? 'medium' : 'low'
-          const weekNum = domainWeekMap[key] ?? 1
+          const weekNum = quizDomainWeekMap[key] ?? 1
           return {
             domainName: name,
             domainSlug: key.replace(/_/g, '-'),

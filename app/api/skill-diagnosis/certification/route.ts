@@ -14,6 +14,15 @@ const domainLabels: Record<string, string> = {
   model_selection: 'Model Selection',
 }
 
+const quizDomainLabels: Record<string, string> = {
+  llm_fundamentals: 'LLM Fundamentals',
+  prompt_engineering: 'Prompt Engineering',
+  rag: 'RAG Systems',
+  agents: 'AI Agents',
+  multimodal: 'Multimodal AI',
+  production_ai: 'Production AI',
+}
+
 /**
  * GET /api/skill-diagnosis/certification
  * Get certification status for the current user
@@ -36,11 +45,14 @@ export async function GET(request: NextRequest) {
 
     if (diagnosis?.skillScores) {
       const scores = diagnosis.skillScores as Record<string, number>
-      const domainPcts = Object.keys(domainLabels).map(key => Math.round((scores[key] ?? 0) * 100))
-      const overallProficiency = domainPcts.reduce((s, p) => s + p, 0) / domainPcts.length
+      // Use quiz domain keys (llm_fundamentals, etc.) not architecture domain keys
+      const quizKeys = Object.keys(quizDomainLabels)
+      const domainPcts = quizKeys.map(key => Math.round((scores[key] ?? 0) * 100))
+      const domainCount = quizKeys.length
+      const overallProficiency = domainPcts.reduce((s, p) => s + p, 0) / domainCount
       const domainsAbove70 = domainPcts.filter(p => p >= 70).length
       const domainsAbove85 = domainPcts.filter(p => p >= 85).length
-      const allDomainsAbove70 = domainsAbove70 === 7
+      const allDomainsAbove70 = domainsAbove70 === domainCount
       const fourDomainsAbove85 = domainsAbove85 >= 4
       const overallAbove80 = overallProficiency >= 80
       const isEligible = allDomainsAbove70 && fourDomainsAbove85 && overallAbove80
@@ -51,7 +63,7 @@ export async function GET(request: NextRequest) {
       else if (overallProficiency >= 61) level = 'mid'
       else if (overallProficiency > 0) level = 'junior'
 
-      const topDomains = Object.entries(domainLabels)
+      const topDomains = Object.entries(quizDomainLabels)
         .map(([key, name]) => ({ name, pct: Math.round((scores[key] ?? 0) * 100) }))
         .filter(d => d.pct >= 85)
         .sort((a, b) => b.pct - a.pct)
@@ -68,9 +80,7 @@ export async function GET(request: NextRequest) {
           level,
           isEligible,
           overallProficiency,
-          domainsAbove70,
-          domainsAbove85,
-          requirements: {
+          requirementsMet: {
             allDomainsAbove70,
             fourDomainsAbove85,
             overallAbove80,

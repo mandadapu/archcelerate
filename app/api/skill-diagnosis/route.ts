@@ -18,6 +18,15 @@ const domainLabels: Record<string, string> = {
   model_selection: 'Model Selection',
 }
 
+const quizDomainLabels: Record<string, string> = {
+  llm_fundamentals: 'LLM Fundamentals',
+  prompt_engineering: 'Prompt Engineering',
+  rag: 'RAG Systems',
+  agents: 'AI Agents',
+  multimodal: 'Multimodal AI',
+  production_ai: 'Production AI',
+}
+
 /**
  * GET /api/skill-diagnosis
  * Get overall skill diagnosis for the current user.
@@ -43,7 +52,8 @@ export async function GET(request: NextRequest) {
     if (diagnosis?.skillScores) {
       const scores = diagnosis.skillScores as Record<string, number>
 
-      const domains = Object.entries(domainLabels).map(([key, name], index) => {
+      // Use quiz domain keys (llm_fundamentals, etc.) not architecture domain keys
+      const domains = Object.entries(quizDomainLabels).map(([key, name], index) => {
         const score = scores[key] ?? 0
         const pct = Math.round(score * 100)
         return {
