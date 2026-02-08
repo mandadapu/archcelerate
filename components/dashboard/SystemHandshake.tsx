@@ -1,0 +1,54 @@
+'use client'
+
+import { useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { toast } from 'sonner'
+
+interface SystemHandshakeProps {
+  provider?: string
+  userName?: string
+}
+
+export function SystemHandshake({ provider, userName }: SystemHandshakeProps) {
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    if (searchParams.get('welcome') !== '1') return
+
+    const providerLabel = provider
+      ? `${provider.toUpperCase()}_OAUTH`
+      : 'SSO'
+
+    const displayName = userName?.split(' ')[0]?.toUpperCase() || 'ARCHITECT'
+
+    toast(
+      <div className="font-mono text-xs leading-relaxed space-y-0.5">
+        <div>
+          <span className="text-slate-500">[SYSTEM]:</span>{' '}
+          <span className="text-green-400">IDENTITY_VERIFIED</span>{' '}
+          <span className="text-slate-500">via</span>{' '}
+          <span className="text-cyan-400">{providerLabel}</span>
+        </div>
+        <div>
+          <span className="text-slate-500">[STATUS]:</span>{' '}
+          <span className="text-green-400">SESSION INITIALIZED</span>
+        </div>
+        <div>
+          <span className="text-slate-500">[ACTION]:</span>{' '}
+          <span className="text-white">WELCOME BACK, {displayName}.</span>
+        </div>
+      </div>,
+      {
+        duration: 5000,
+        className: '!bg-slate-900 !border-slate-700 !shadow-lg !shadow-purple-500/10',
+      }
+    )
+
+    // Clean the ?welcome=1 from URL
+    const url = new URL(window.location.href)
+    url.searchParams.delete('welcome')
+    window.history.replaceState({}, '', url.pathname + url.search)
+  }, [searchParams, provider, userName])
+
+  return null
+}

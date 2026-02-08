@@ -17,7 +17,7 @@ export default function Home() {
   const { data: session } = useSession()
   const router = useRouter()
   const [showLoginModal, setShowLoginModal] = useState(false)
-  const [loginCallbackUrl, setLoginCallbackUrl] = useState('/dashboard')
+  const [loginCallbackUrl, setLoginCallbackUrl] = useState('/dashboard?welcome=1')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const searchParams = useSearchParams()
 
@@ -104,7 +104,7 @@ export default function Home() {
                     if (session) {
                       router.push('/skill-diagnosis')
                     } else {
-                      setLoginCallbackUrl('/skill-diagnosis')
+                      setLoginCallbackUrl('/skill-diagnosis?welcome=1')
                       setShowLoginModal(true)
                     }
                   }}
@@ -154,7 +154,7 @@ export default function Home() {
           if (session) {
             router.push('/skill-diagnosis')
           } else {
-            setLoginCallbackUrl('/skill-diagnosis')
+            setLoginCallbackUrl('/skill-diagnosis?welcome=1')
             setShowLoginModal(true)
           }
         }}
