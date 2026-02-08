@@ -247,6 +247,111 @@ With this routing logic, token consumption shifts from a flat, high-cost line to
 
 ---
 
+### The Sovereign Audit Log: Immutable Accountability
+
+In a medical context, an auditor doesn't just ask *what* the AI said — they ask **why the system decided to use a cheaper model** for a specific patient. If you cannot prove the reasoning was sound, the cost-saving measure becomes a legal liability.
+
+#### Architectural Pattern: Cryptographic Hash Chaining
+
+We implement a Merkle Tree-inspired structure where every governance event (a routing decision, a PII block, or a safety veto) is linked to the previous one.
+
+```typescript
+import { createHash } from 'crypto'
+
+interface AuditEntry {
+  timestamp: string
+  tenantId: string
+  queryHash: string           // SHA-256 of the original query
+  routerConfidence: number
+  modelSelected: string
+  policyId: string
+  piiEntitiesRedacted: number
+  safetyCheckPassed: boolean
+  safetyCheckLatencyMs: number
+  previousHash: string        // Hash link to prior entry
+  currentHash: string         // SHA-256(previousHash + currentEventData)
+}
+
+function createAuditEntry(
+  event: Omit<AuditEntry, 'currentHash'>
+): AuditEntry {
+  const eventData = JSON.stringify({
+    timestamp: event.timestamp,
+    tenantId: event.tenantId,
+    queryHash: event.queryHash,
+    routerConfidence: event.routerConfidence,
+    modelSelected: event.modelSelected,
+    policyId: event.policyId,
+    piiEntitiesRedacted: event.piiEntitiesRedacted,
+    safetyCheckPassed: event.safetyCheckPassed,
+    previousHash: event.previousHash,
+  })
+
+  // Cryptographic Seal: SHA-256(previousHash + currentEventData)
+  const currentHash = createHash('sha256')
+    .update(event.previousHash + eventData)
+    .digest('hex')
+
+  return { ...event, currentHash }
+}
+
+function verifyChainIntegrity(entries: AuditEntry[]): boolean {
+  for (let i = 1; i < entries.length; i++) {
+    const recomputed = createAuditEntry({
+      ...entries[i],
+      previousHash: entries[i - 1].currentHash,
+    })
+
+    if (recomputed.currentHash !== entries[i].currentHash) {
+      console.error(`Chain broken at entry ${i}: tampering detected`)
+      return false  // A single altered byte breaks the entire chain
+    }
+  }
+  return true  // 100% Chain Integrity
+}
+```
+
+#### The HIPAA-Compliant Decision Record
+
+When the Model Cascade routes a query to a smaller model, the Sovereign Audit Log records a **Sovereign Manifest**:
+
+```typescript
+// Example: Haiku handles a low-risk administrative query
+const manifest: AuditEntry = createAuditEntry({
+  timestamp: new Date().toISOString(),
+  tenantId: 'clinic-west-001',
+  queryHash: createHash('sha256').update(sanitizedQuery).digest('hex'),
+  routerConfidence: 0.98,
+  modelSelected: 'claude-haiku-4-5-20251001',
+  policyId: 'ROUTING-v2.3-low-risk-admin',
+  piiEntitiesRedacted: 0,           // PII-Scrubber active; 0 entities leaked
+  safetyCheckPassed: true,           // Safety check passed
+  safetyCheckLatencyMs: 45,
+  previousHash: lastAuditEntry.currentHash,
+})
+
+// Proof chain for auditors:
+// 1. Routing Logic: "Confidence 0.98; no high-risk keywords"
+// 2. Safety Signature: "Safety check passed (45ms)"
+// 3. Data Integrity: "0 PII entities leaked to third-party API"
+// 4. Cryptographic Seal: SHA-256 hash linking to previous entry
+```
+
+#### From Cost-Center to Trust-Center
+
+By hardening the audit layer, you transform AI infrastructure from a risky experiment into a **Sovereign Asset**:
+
+| Enterprise Risk | Architectural Solution | Audit Proof |
+|----------------|----------------------|-------------|
+| Data Leakage | Pre-Inference PII Gateway | Log of 0 leaked entities |
+| Medical Error | Confidence-Based Escalation | Record of high-confidence routing |
+| Systemic Failure | Multi-Provider Failover | Uptime report across providers |
+| Audit Failure | Hash-Chained Audit Logs | 100% Chain Integrity Report |
+
+> **The Sovereign Architect's Mandate:** Your telehealth platform now routes 93% cheaper ($78,750 → ~$5,500), with clinically safe confidence-based escalation, and every decision cryptographically signed for HIPAA/GDPR/SOC2 auditors. This is the difference between building a chatbot and building a **Sovereign Intelligence System**.
+
+---
+
 **How This Connects to LLM Fundamentals**:
 - **Tokenization Physics** → Understanding that Haiku uses the same tokenizer as Opus enables seamless cascade without prompt rewriting
 - **Context Constraints** → Staying within 32K token sweet spot ensures high precision for medical queries
@@ -588,7 +693,7 @@ async function buildPromptWithDensityCheck(
 ```typescript
 function selectModel(useCase: UseCase): Model {
   // Constraint #1: Latency Requirements
-  if (useCase.requiresRealTime && useCase.p95Latency &lt; 1000ms) {
+  if (useCase.requiresRealTime && useCase.p95Latency &lt; 1000) { // ms
     return 'claude-haiku-4.5' // Only option for sub-second
   }
 
@@ -1977,7 +2082,7 @@ D) **Increase Temperature (Hope the model remembers)** - Adjust model parameters
 // Current state (before truncation)
 messages = [
   { role: 'system', content: 'Medical Safety Guidelines: ESCALATE chest pain...' },  // Index 0
-  ...44_minutes_of_diagnostic_conversation,  // 190K tokens
+  // ...44 minutes of diagnostic conversation (~190K tokens)
   { role: 'user', content: 'I\'m having chest pain' }  // CRITICAL!
 ]
 
@@ -2034,7 +2139,7 @@ function safeMedicalTruncation(messages: Message[]): Message[] {
 **Option C (Clear Cache/Fresh Session)**: ⚠️ **Wasteful but Safe**
 ```typescript
 // Nuclear option: Start over
-function clearSession(patientId: string): Message[] {
+async function clearSession(patientId: string): Promise<Message[]> {
   // Save old session to database
   await archiveSession(patientId, oldMessages)
 
