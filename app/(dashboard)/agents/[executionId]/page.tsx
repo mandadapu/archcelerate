@@ -16,7 +16,7 @@ async function getExecutionDetails(executionId: string) {
   const res = await fetch(url, {
     cache: 'no-store',
     headers: {
-      Cookie: (await import('next/headers')).cookies().toString(),
+      Cookie: (await (await import('next/headers')).cookies()).toString(),
     },
   })
 
@@ -33,9 +33,10 @@ async function getExecutionDetails(executionId: string) {
 export default async function ExecutionDetailsPage({
   params,
 }: {
-  params: { executionId: string }
+  params: Promise<{ executionId: string }>
 }) {
-  const data = await getExecutionDetails(params.executionId)
+  const { executionId } = await params
+  const data = await getExecutionDetails(executionId)
 
   if (!data) {
     notFound()

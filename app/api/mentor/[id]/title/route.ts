@@ -5,9 +5,10 @@ import { prisma } from '@/lib/db'
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const session = await getServerSession(authOptions)
 
     if (!session?.user?.email) {
@@ -30,7 +31,7 @@ export async function PATCH(
 
     const { count } = await prisma.mentorConversation.updateMany({
       where: {
-        id: params.id,
+        id,
         userId: user.id,
       },
       data: { title },

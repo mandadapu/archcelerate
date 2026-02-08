@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 }
 
 export default async function Week2ProjectPage() {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   // Check authentication
   const { data: { user } } = await supabase.auth.getUser()

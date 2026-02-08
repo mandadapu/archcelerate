@@ -10,12 +10,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { CheckCircle2, Circle, ArrowLeft } from 'lucide-react'
 
 interface Props {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params
   const lab = await prisma.lab.findUnique({
-    where: { slug: params.slug }
+    where: { slug }
   })
 
   return {
@@ -25,6 +26,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function LabPage({ params }: Props) {
+  const { slug } = await params
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.email) {
@@ -39,7 +41,7 @@ export default async function LabPage({ params }: Props) {
 
   // Fetch lab
   const lab = await prisma.lab.findUnique({
-    where: { slug: params.slug },
+    where: { slug },
     include: { week: true }
   })
 
@@ -136,7 +138,7 @@ export default async function LabPage({ params }: Props) {
       })
     }
 
-    redirect(`/curriculum/week-3/lab/${params.slug}`)
+    redirect(`/curriculum/week-3/lab/${slug}`)
   }
 
   const completedCount = submissions.filter(s => s.completed).length

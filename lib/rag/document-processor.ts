@@ -9,7 +9,7 @@ export async function processDocument(
   filePath: string,
   fileType: string
 ): Promise<void> {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   try {
     // Update status to processing

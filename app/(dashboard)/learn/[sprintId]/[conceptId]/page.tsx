@@ -12,13 +12,14 @@ import ConceptViewer from '@/components/learning/ConceptViewer'
 import Link from 'next/link'
 
 interface ConceptPageProps {
-  params: {
+  params: Promise<{
     sprintId: string
     conceptId: string
-  }
+  }>
 }
 
 export default async function ConceptPage({ params }: ConceptPageProps) {
+  const { sprintId, conceptId } = await params
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.email) {
@@ -34,8 +35,8 @@ export default async function ConceptPage({ params }: ConceptPageProps) {
   }
 
   const [sprint, conceptContent] = await Promise.all([
-    getSprintById(params.sprintId),
-    getConceptContent(params.sprintId, params.conceptId),
+    getSprintById(sprintId),
+    getConceptContent(sprintId, conceptId),
   ])
 
   if (!sprint || !conceptContent) {
@@ -43,15 +44,15 @@ export default async function ConceptPage({ params }: ConceptPageProps) {
   }
 
   // Track that user viewed this concept
-  await trackConceptView(user.id, params.sprintId, params.conceptId)
+  await trackConceptView(user.id, sprintId, conceptId)
 
   // Get progress
-  const progress = await getConceptProgress(user.id, params.sprintId, params.conceptId)
+  const progress = await getConceptProgress(user.id, sprintId, conceptId)
 
   // Get navigation concepts
   const [nextConcept, previousConcept] = await Promise.all([
-    getNextConcept(params.sprintId, params.conceptId),
-    getPreviousConcept(params.sprintId, params.conceptId),
+    getNextConcept(sprintId, conceptId),
+    getPreviousConcept(sprintId, conceptId),
   ])
 
   // Serialize MDX
@@ -70,7 +71,7 @@ export default async function ConceptPage({ params }: ConceptPageProps) {
           Dashboard
         </Link>
         <span>/</span>
-        <Link href={`/learn/${params.sprintId}`} className="hover:underline">
+        <Link href={`/learn/${sprintId}`} className="hover:underline">
           {sprint.title}
         </Link>
         <span>/</span>
@@ -117,8 +118,8 @@ export default async function ConceptPage({ params }: ConceptPageProps) {
       {/* Content */}
       <ConceptViewer
         mdxSource={mdxSource}
-        sprintId={params.sprintId}
-        conceptId={params.conceptId}
+        sprintId={sprintId}
+        conceptId={conceptId}
         conceptTitle={conceptContent.metadata.title}
         nextConceptId={nextConcept?.id}
         previousConceptId={previousConcept?.id}

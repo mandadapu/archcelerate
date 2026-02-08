@@ -16,7 +16,7 @@ export async function semanticSearch(
   limit: number = 5,
   threshold: number = 0.7
 ): Promise<SearchResult[]> {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   // Generate embedding for query
   const queryEmbedding = await generateEmbedding(query)
@@ -45,7 +45,7 @@ export async function hybridSearch(
   query: string,
   limit: number = 5
 ): Promise<SearchResult[]> {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   // Get vector search results
   const vectorResults = await semanticSearch(userId, query, limit * 2, 0.5)

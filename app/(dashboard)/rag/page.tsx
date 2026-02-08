@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default async function RAGPage() {
   // Check authentication
-  const supabase = createClient()
+  const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()

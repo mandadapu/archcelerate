@@ -3,10 +3,11 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { executionId: string } }
+  { params }: { params: Promise<{ executionId: string }> }
 ) {
   try {
-    const supabase = createClient()
+    const { executionId } = await params
+    const supabase = await createClient()
 
     // Authenticate user
     const {
@@ -17,8 +18,6 @@ export async function GET(
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-
-    const { executionId } = params
 
     // Fetch execution with agent definition
     const { data: execution, error: executionError } = await supabase

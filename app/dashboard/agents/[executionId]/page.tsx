@@ -8,9 +8,10 @@ import { ArrowLeft } from 'lucide-react'
 export default async function ExecutionDetailPage({
   params
 }: {
-  params: { executionId: string }
+  params: Promise<{ executionId: string }>
 }) {
-  const supabase = createClient()
+  const { executionId } = await params
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
@@ -23,14 +24,14 @@ export default async function ExecutionDetailPage({
       *,
       agent_definition:agent_definitions(*)
     `)
-    .eq('id', params.executionId)
+    .eq('id', executionId)
     .eq('user_id', user.id)
     .single()
 
   const { data: steps } = await supabase
     .from('agent_steps')
     .select('*')
-    .eq('execution_id', params.executionId)
+    .eq('execution_id', executionId)
     .order('step_number', { ascending: true })
 
   if (!execution) {

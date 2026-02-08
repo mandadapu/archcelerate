@@ -10,7 +10,7 @@ const VALID_AGENT_TYPES = ['research', 'code-review', 'support'] as const
 type AgentType = (typeof VALID_AGENT_TYPES)[number]
 
 export async function POST(request: NextRequest) {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   try {
     const { data: { user }, error: authError } = await supabase.auth.getUser()

@@ -13,12 +13,13 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { CheckCircle2, Circle, ArrowLeft, ExternalLink, Github } from 'lucide-react'
 
 interface Props {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params
   const project = await prisma.weekProject.findUnique({
-    where: { slug: params.slug }
+    where: { slug }
   })
 
   return {
@@ -28,6 +29,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function ProjectPage({ params }: Props) {
+  const { slug } = await params
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.email) {
@@ -42,7 +44,7 @@ export default async function ProjectPage({ params }: Props) {
 
   // Fetch project
   const project = await prisma.weekProject.findUnique({
-    where: { slug: params.slug },
+    where: { slug },
     include: { week: true }
   })
 
@@ -128,7 +130,7 @@ export default async function ProjectPage({ params }: Props) {
       })
     }
 
-    redirect(`/curriculum/week-3/project/${params.slug}`)
+    redirect(`/curriculum/week-3/project/${slug}`)
   }
 
   const isSubmitted = submission?.status === 'submitted'

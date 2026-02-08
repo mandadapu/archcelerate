@@ -8,7 +8,7 @@ export async function submitLabExercise(
   exerciseNumber: number,
   submission: string
 ) {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   // Get authenticated user
   const { data: { user }, error: authError } = await supabase.auth.getUser()

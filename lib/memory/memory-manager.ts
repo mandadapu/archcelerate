@@ -12,7 +12,7 @@ export class MemoryManager {
     summary: string,
     importanceScore: number = 0.5
   ) {
-    const supabase = createClient()
+    const supabase = await createClient()
     const embedding = await generateEmbedding(summary)
 
     await supabase.from('memory_episodic').insert({
@@ -27,7 +27,7 @@ export class MemoryManager {
 
   // Retrieve relevant episodic memories
   async retrieveEpisodicMemory(query: string, limit: number = 3): Promise<any[]> {
-    const supabase = createClient()
+    const supabase = await createClient()
     const queryEmbedding = await generateEmbedding(query)
 
     const { data } = await supabase.rpc('match_episodic_memory', {
@@ -45,7 +45,7 @@ export class MemoryManager {
     sourceConversationId: string,
     confidence: number = 0.8
   ) {
-    const supabase = createClient()
+    const supabase = await createClient()
     const embedding = await generateEmbedding(fact)
 
     await supabase.from('memory_semantic').insert({
@@ -59,7 +59,7 @@ export class MemoryManager {
 
   // Retrieve relevant semantic memories
   async retrieveSemanticMemory(query: string, limit: number = 3): Promise<any[]> {
-    const supabase = createClient()
+    const supabase = await createClient()
     const queryEmbedding = await generateEmbedding(query)
 
     const { data } = await supabase.rpc('match_semantic_memory', {
@@ -85,7 +85,7 @@ export class MemoryManager {
 
   // Procedural Memory: Update user preferences
   async updateProceduralMemory(preferences: Record<string, any>) {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     const { data: existing } = await supabase
       .from('memory_procedural')
@@ -112,7 +112,7 @@ export class MemoryManager {
 
   // Get procedural memory (preferences)
   async getProceduralMemory(): Promise<any> {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     const { data } = await supabase
       .from('memory_procedural')
@@ -125,7 +125,7 @@ export class MemoryManager {
 
   // Memory pruning: Remove low-importance episodic memories
   async pruneEpisodicMemory(threshold: number = 0.3, maxAge: number = 90) {
-    const supabase = createClient()
+    const supabase = await createClient()
     const cutoffDate = new Date()
     cutoffDate.setDate(cutoffDate.getDate() - maxAge)
 

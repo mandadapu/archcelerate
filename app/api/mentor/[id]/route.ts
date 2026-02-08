@@ -5,9 +5,10 @@ import { prisma } from '@/lib/db'
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const session = await getServerSession(authOptions)
 
     if (!session?.user?.email) {
@@ -24,7 +25,7 @@ export async function GET(
 
     const conversation = await prisma.mentorConversation.findFirst({
       where: {
-        id: params.id,
+        id,
         userId: user.id,
       },
     })

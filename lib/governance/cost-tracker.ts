@@ -7,7 +7,7 @@ export async function checkBudget(userId: string): Promise<{
   monthlyBudget: number
   remaining: number
 }> {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   // Get or create user budget
   let { data: budget } = await supabase
@@ -62,7 +62,7 @@ export async function checkBudget(userId: string): Promise<{
 }
 
 export async function trackCost(userId: string, cost: number) {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   const { data: budget } = await supabase
     .from('user_budgets')
@@ -86,7 +86,7 @@ export async function trackCost(userId: string, cost: number) {
 }
 
 export async function getUsageStats(userId: string, days: number = 30) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const since = new Date()
   since.setDate(since.getDate() - days)
 

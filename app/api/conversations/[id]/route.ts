@@ -4,9 +4,10 @@ import { createClient } from '@/lib/supabase/server'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const supabase = createClient()
+  const { id } = await params
+  const supabase = await createClient()
 
   // Authenticate
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -15,7 +16,7 @@ export async function GET(
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const conversationId = params.id
+  const conversationId = id
 
   // Verify conversation belongs to user
   const { data: conversation, error: convError } = await supabase

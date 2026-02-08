@@ -9,10 +9,9 @@ import Link from 'next/link'
 export default async function LabPage({
   params,
 }: {
-  params: { sprintId: string; slug: string }
+  params: Promise<{ sprintId: string; slug: string }>
 }) {
-  const sprintId = params.sprintId
-  const labSlug = params.slug
+  const { sprintId, slug: labSlug } = await params
 
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
