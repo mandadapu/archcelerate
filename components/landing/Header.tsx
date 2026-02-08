@@ -83,7 +83,7 @@ export function Header({ onLoginClick }: HeaderProps) {
                 </AvatarFallback>
               </Avatar>
               <span className="text-sm font-medium text-gray-600 group-hover:text-gray-900 transition-colors">
-                Dashboard
+                {session.user?.name?.split(' ')[0] || 'My Account'}
               </span>
             </Link>
           ) : (
