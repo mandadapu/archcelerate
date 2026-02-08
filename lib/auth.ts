@@ -2,15 +2,26 @@ import { NextAuthOptions } from 'next-auth'
 import GoogleProvider from 'next-auth/providers/google'
 import FacebookProvider from 'next-auth/providers/facebook'
 import LinkedInProvider from 'next-auth/providers/linkedin'
+import GitHubProvider from 'next-auth/providers/github'
 import { PrismaAdapter } from '@auth/prisma-adapter'
 import { prisma } from './prisma'
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as any,
   providers: [
+    GitHubProvider({
+      clientId: process.env.GITHUB_ID!,
+      clientSecret: process.env.GITHUB_SECRET!,
+      allowDangerousEmailAccountLinking: true,
+    }),
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      allowDangerousEmailAccountLinking: true,
+    }),
+    LinkedInProvider({
+      clientId: process.env.LINKEDIN_CLIENT_ID!,
+      clientSecret: process.env.LINKEDIN_CLIENT_SECRET!,
       allowDangerousEmailAccountLinking: true,
     }),
     FacebookProvider({
@@ -18,11 +29,6 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.FACEBOOK_CLIENT_SECRET!,
       allowDangerousEmailAccountLinking: true,
     }),
-    // Uncomment when you have LinkedIn credentials:
-    // LinkedInProvider({
-    //   clientId: process.env.LINKEDIN_CLIENT_ID!,
-    //   clientSecret: process.env.LINKEDIN_CLIENT_SECRET!,
-    // }),
   ],
   callbacks: {
     async signIn({ user, account, profile }) {
