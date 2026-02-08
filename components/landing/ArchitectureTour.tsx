@@ -3,9 +3,14 @@
 const layers = [
   {
     name: 'SHIELD',
-    title: 'Governance Gateway',
+    title: 'The Governance Gateway',
+    description: 'Before a user\'s prompt even touches your application logic, it passes through the Governance Gateway.',
+    details: [
+      'Intent Classification via fast classifier (Haiku) to block Prompt Injection',
+      'PII Redaction via NER before data reaches third-party LLM providers',
+    ],
     metric: '98%',
-    metricLabel: 'blocked',
+    metricLabel: 'injection blocked',
     icon: (
       <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
@@ -14,7 +19,12 @@ const layers = [
   },
   {
     name: 'BRAIN',
-    title: 'Multi-Agent DAG',
+    title: 'The Orchestration Layer',
+    description: 'The Supervisor Agent breaks requests into a Directed Acyclic Graph (DAG) instead of one model doing everything.',
+    details: [
+      'Specialist Handoffs to Researcher, Coder, and Auditor nodes',
+      'Context Pruning compresses output to ~500 tokens before handoffs',
+    ],
     metric: '87%',
     metricLabel: 'cost reduced',
     icon: (
@@ -25,7 +35,13 @@ const layers = [
   },
   {
     name: 'LIBRARY',
-    title: 'Hybrid Search + Rerank',
+    title: 'Retrieval & Memory',
+    description: 'Advanced RAG engineered for precision over simple vector lookup.',
+    details: [
+      'Hybrid Search: Vector + BM25 fused via Reciprocal Rank Fusion',
+      'Cross-Encoder Reranking ensures only top-tier context reaches the LLM',
+      'Cell Isolation silos tenant data for GDPR/HIPAA compliance',
+    ],
     metric: '94%',
     metricLabel: 'precision',
     icon: (
@@ -36,7 +52,12 @@ const layers = [
   },
   {
     name: 'MUSCLE',
-    title: 'Model Router + Distill',
+    title: 'The Model Layer',
+    description: 'A dynamic execution engine that prioritizes Uptime and Cost Efficiency.',
+    details: [
+      'Model Distillation: fine-tuned specialists for routine tasks at 90% savings',
+      'Provider Failover between Anthropic, OpenAI, and local instances for 99.9% uptime',
+    ],
     metric: '90%',
     metricLabel: 'savings',
     icon: (
@@ -61,49 +82,58 @@ export function ArchitectureTour({ onDiagnosisClick, onTourClick }: Architecture
         {/* Section Header */}
         <div className="text-center mb-16">
           <h2 className="font-display text-4xl md:text-5xl font-bold text-white mb-4">
-            The Architecture Behind the{' '}
+            The{' '}
             <span className="bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
-              Architect
+              Sovereign Stack
             </span>
           </h2>
-          <p className="text-xl text-slate-400 max-w-2xl mx-auto">
-            4 layers. 6 stages. One production-grade system.
+          <p className="text-lg text-slate-400 max-w-3xl mx-auto">
+            A 30,000-foot view of how RAG, Agents, Fine-tuning, and Infrastructure mesh into a single, cohesive engine.
           </p>
         </div>
 
         {/* Layer Cards */}
-        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4 mb-16">
-          {layers.map((layer, index) => (
-            <div key={layer.name} className="relative">
+        <div className="grid gap-8 md:grid-cols-2 mb-16">
+          {layers.map((layer) => (
+            <div key={layer.name}>
               <div className="bg-slate-800/50 p-8 rounded-2xl border border-slate-700 transition-all duration-300 hover:border-slate-500 h-full">
-                <div className="w-12 h-12 mb-4 bg-gradient-to-r from-purple-600 to-cyan-500 rounded-lg flex items-center justify-center">
-                  {layer.icon}
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-r from-purple-600 to-cyan-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                    {layer.icon}
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-purple-400 tracking-wider uppercase">
+                      Layer {layers.indexOf(layer) + 1} &mdash; {layer.name}
+                    </div>
+                    <h3 className="font-display text-xl font-semibold text-white">
+                      {layer.title}
+                    </h3>
+                  </div>
                 </div>
 
-                <div className="text-xs font-bold text-purple-400 tracking-wider uppercase mb-2">
-                  {layer.name}
-                </div>
+                <p className="text-slate-400 text-sm mb-4 leading-relaxed">
+                  {layer.description}
+                </p>
 
-                <h3 className="font-display text-lg font-semibold text-white mb-3">
-                  {layer.title}
-                </h3>
+                <ul className="space-y-2 mb-5">
+                  {layer.details.map((detail, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
+                      <svg className="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      {detail}
+                    </li>
+                  ))}
+                </ul>
 
-                <div className="flex items-baseline gap-2">
-                  <span className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
+                <div className="flex items-baseline gap-2 pt-4 border-t border-slate-700">
+                  <span className="text-sm text-slate-500">Production Impact:</span>
+                  <span className="text-xl font-bold bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
                     {layer.metric}
                   </span>
                   <span className="text-sm text-slate-400">{layer.metricLabel}</span>
                 </div>
               </div>
-
-              {/* Arrow connector between cards (lg only) */}
-              {index < layers.length - 1 && (
-                <div className="hidden lg:block absolute -right-4 top-1/2 -translate-y-1/2 z-10">
-                  <svg className="w-8 h-8 text-purple-500/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-              )}
             </div>
           ))}
         </div>
@@ -137,6 +167,13 @@ export function ArchitectureTour({ onDiagnosisClick, onTourClick }: Architecture
               <span className="text-green-400 font-semibold">auditable</span>
             </p>
           </div>
+        </div>
+
+        {/* Architect's Mandate */}
+        <div className="text-center mb-10">
+          <p className="text-slate-500 text-sm italic max-w-2xl mx-auto">
+            &quot;You don&apos;t build AI features. You build AI systems&mdash;systems that defend themselves, heal themselves, and scale themselves.&quot;
+          </p>
         </div>
 
         {/* CTA — Hierarchical Layout */}
