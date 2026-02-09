@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -12,6 +12,34 @@ import { ProjectShowcase } from '@/components/landing/ProjectShowcase'
 import { Testimonials } from '@/components/landing/Testimonials'
 import { LoginModal } from '@/components/auth/LoginModal'
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
+
+function TouchTooltip({ children, content }: { children: React.ReactNode; content: string }) {
+  const [open, setOpen] = useState(false)
+
+  const handleTap = useCallback((e: React.TouchEvent | React.MouseEvent) => {
+    // Only handle taps on touch devices
+    if ('ontouchstart' in window) {
+      e.preventDefault()
+      setOpen((prev) => !prev)
+    }
+  }, [])
+
+  return (
+    <Tooltip open={open} onOpenChange={setOpen}>
+      <TooltipTrigger asChild>
+        <span
+          className="font-semibold text-gray-900 underline decoration-dashed underline-offset-4 decoration-purple-400/60 cursor-help"
+          onClick={handleTap}
+        >
+          {children}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-[250px] font-mono text-xs leading-relaxed">
+        {content}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
 
 export default function Home() {
   const { data: session } = useSession()
@@ -102,49 +130,21 @@ export default function Home() {
               </h1>
               <p className="text-xl md:text-2xl text-gray-600 leading-relaxed max-w-2xl mx-auto mb-8 text-center">
                 The framework to build{' '}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="font-semibold text-gray-900 underline decoration-dashed underline-offset-4 decoration-purple-400/60 cursor-help">
-                      Sovereign Security
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-[250px] font-mono text-xs leading-relaxed">
-                    Data privacy is binary. This framework implements PII-stripping layers, local-first guardrails, and VPC-isolated LLM access to ensure compliance in HIPAA/GDPR environments.
-                  </TooltipContent>
-                </Tooltip>
+                <TouchTooltip content="Data privacy is binary. This framework implements PII-stripping layers, local-first guardrails, and VPC-isolated LLM access to ensure compliance in HIPAA/GDPR environments.">
+                  Sovereign Security
+                </TouchTooltip>
                 , master{' '}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="font-semibold text-gray-900 underline decoration-dashed underline-offset-4 decoration-purple-400/60 cursor-help">
-                      Agentic Orchestration
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-[250px] font-mono text-xs leading-relaxed">
-                    Go beyond linear chains. We focus on stateful, cyclic graphs (LangGraph/CrewAI) with built-in retry logic, human-in-the-loop triggers, and error recovery for autonomous workflows.
-                  </TooltipContent>
-                </Tooltip>
+                <TouchTooltip content="Go beyond linear chains. We focus on stateful, cyclic graphs (LangGraph/CrewAI) with built-in retry logic, human-in-the-loop triggers, and error recovery for autonomous workflows.">
+                  Agentic Orchestration
+                </TouchTooltip>
                 , bridge{' '}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="font-semibold text-gray-900 underline decoration-dashed underline-offset-4 decoration-purple-400/60 cursor-help">
-                      the Demo Gap
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-[250px] font-mono text-xs leading-relaxed">
-                    The 80% of work that happens after the first successful prompt: latency optimization, token budget management, enterprise observability, and security hardening.
-                  </TooltipContent>
-                </Tooltip>
+                <TouchTooltip content="The 80% of work that happens after the first successful prompt: latency optimization, token budget management, enterprise observability, and security hardening.">
+                  the Demo Gap
+                </TouchTooltip>
                 , and ship with{' '}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="font-semibold text-gray-900 underline decoration-dashed underline-offset-4 decoration-purple-400/60 cursor-help">
-                      Serverless-First Scale
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-[250px] font-mono text-xs leading-relaxed">
-                    Architect for zero-to-N scaling. We focus on Dockerized deployments that eliminate idle costs and infrastructure toil, while maintaining sub-second cold starts for production loads.
-                  </TooltipContent>
-                </Tooltip>
+                <TouchTooltip content="Architect for zero-to-N scaling. We focus on Dockerized deployments that eliminate idle costs and infrastructure toil, while maintaining sub-second cold starts for production loads.">
+                  Serverless-First Scale
+                </TouchTooltip>
                 .
               </p>
 
