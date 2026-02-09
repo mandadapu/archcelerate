@@ -43,8 +43,9 @@ export function DashboardNav({ userName }: DashboardNavProps) {
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowSignOutDialog(true)}
+                className="font-mono text-[11px] font-semibold tracking-[1px] uppercase text-slate-600 hover:text-red-400 transition-colors"
               >
-                Sign out
+                TERMINATE SESSION
               </Button>
             </div>
           </div>
