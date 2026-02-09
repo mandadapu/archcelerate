@@ -13,6 +13,11 @@ export function SystemHandshake({ provider, userName }: SystemHandshakeProps) {
   const searchParams = useSearchParams()
 
   useEffect(() => {
+    // Track session start time for "Time in Terminal" on logout
+    if (!sessionStorage.getItem('session_start_time')) {
+      sessionStorage.setItem('session_start_time', Date.now().toString())
+    }
+
     if (searchParams.get('welcome') !== '1') return
 
     const urlProvider = searchParams.get('provider')

@@ -91,7 +91,7 @@ export function Header({ onLoginClick }: HeaderProps) {
               onClick={onLoginClick}
               className="font-mono text-[11px] font-semibold tracking-[1px] uppercase text-slate-600 hover:text-slate-900 transition-colors"
             >
-              AUTHORIZE ACCESS
+              AUTHORIZE
             </button>
           )}
         </div>
