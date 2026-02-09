@@ -48,7 +48,6 @@ const nodeTypes = {
   output: OutputNode,
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const NODE_DEFAULTS: Record<WorkflowNodeType, any> = {
   input: DEFAULT_INPUT,
   llm_call: DEFAULT_LLM_CALL,
