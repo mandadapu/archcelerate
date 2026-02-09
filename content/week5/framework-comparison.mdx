@@ -433,6 +433,102 @@ The pattern is clear: **prototype with CrewAI, ship with LangGraph**. Use the sp
 
 ---
 
+## Human-in-the-Loop (HITL): The Compliance Pattern
+
+In a regulated environment like digital health, "Human-in-the-Loop" (HITL) isn't just a feature — it is often a **compliance necessity** for safety and data integrity. In LangGraph, this is achieved through **breakpoints**, which allow the state machine to pause, persist its state, and wait for external input.
+
+### The "Check-and-Edit" Pattern for AI Architects
+
+This pattern is essential because it demonstrates how to harden a system for **HIPAA-level scrutiny**.
+
+#### 1. The Breakpoint (Persistence)
+
+To implement HITL, you must use a **Checkpointer**. This saves the thread state to a database (like PostgreSQL/pgvector) so the execution can be halted indefinitely without losing context.
+
+```typescript
+import { StateGraph } from '@langchain/langgraph'
+import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres'
+
+// Production-grade checkpointer
+const checkpointer = new PostgresSaver(connectionString)
+
+const workflow = new StateGraph<ClinicalState>({
+  channels: { ... }
+})
+
+// Define nodes
+workflow.addNode('intake', processIntake)
+workflow.addNode('clinical_validation', validateClinical)  // HITL node
+workflow.addNode('finalize', finalizeReport)
+
+// Add edges
+workflow.addEdge('__start__', 'intake')
+workflow.addEdge('intake', 'clinical_validation')
+workflow.addEdge('clinical_validation', 'finalize')
+workflow.addEdge('finalize', '__end__')
+
+// Compile with HITL breakpoint
+const app = workflow.compile({
+  checkpointer,
+  interrupt_before: ['clinical_validation']  // Pause here for human review
+})
+```
+
+The graph pauses **before** the `clinical_validation` node executes, giving a human reviewer the opportunity to inspect and modify the state.
+
+#### 2. The Human Action (State Modification)
+
+While the graph is paused, the human user can:
+
+- **Approve**: Continue the execution as-is.
+- **Edit**: Manually override the state (e.g., correcting a misinterpreted lab value) before the next node processes it.
+- **Rewind**: Use LangGraph's "Time Travel" to move the thread back to a previous node if the AI's logic went off-track.
+
+```typescript
+// Get current state at breakpoint
+const state = await app.getState({
+  configurable: { thread_id: 'patient-456' }
+})
+
+// Human reviews and edits the state
+const correctedState = {
+  ...state.values,
+  labResults: {
+    ...state.values.labResults,
+    hemoglobin: 13.5  // Corrected from AI's misread of 15.3
+  },
+  reviewedBy: 'Dr. Smith',
+  reviewedAt: new Date().toISOString()
+}
+
+// Update state with human corrections
+await app.updateState(
+  { configurable: { thread_id: 'patient-456' } },
+  correctedState
+)
+
+// Resume execution from breakpoint
+const result = await app.invoke(null, {
+  configurable: { thread_id: 'patient-456' }
+})
+```
+
+#### 3. The Resume (Feedback Loop)
+
+Once the human submits their input, the graph resumes from the breakpoint with the updated state. This creates a **verifiable audit trail** showing that a human reviewed the PHI (Protected Health Information) before it was finalized.
+
+### Why This Matters for 24/7 Production Systems
+
+| Concern | How HITL Addresses It |
+|---------|----------------------|
+| **Error Mitigation** | Prevents "hallucinated" medical advice from reaching a patient. |
+| **Compliance** | Provides a clear log of human intervention, critical for FDA-cleared platforms. |
+| **Developer Velocity** | Allows senior engineers to debug complex agentic failures by stepping through the graph node-by-node in a staging environment. |
+
+> **Production Tip**: In a real deployment, the breakpoint triggers a webhook or pushes to a review queue. The human reviewer uses a dashboard (not a terminal) to approve, edit, or rewind. The graph remains paused in PostgreSQL until the review is complete — whether that takes 5 seconds or 5 days.
+
+---
+
 ## The Model Context Protocol (MCP)
 
 **The new 2026 standard** for how agents talk to external tools.
