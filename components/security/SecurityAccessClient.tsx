@@ -182,8 +182,8 @@ export function SecurityAccessClient({
           PERMANENT_IDENTITY_DEPROVISIONING
         </p>
 
-        <div className="bg-red-950/20 border border-red-800/40 rounded-lg p-5 space-y-4">
-          <p className="font-mono text-[11px] text-red-300/80 leading-relaxed">
+        <div className="bg-red-50 border border-red-300 rounded-lg p-5 space-y-4">
+          <p className="font-mono text-[11px] text-red-700 leading-relaxed">
             WARNING: This action will permanently purge your architectural
             portfolio, skill telemetry, and certification progress. This
             operation is non-reversible.
