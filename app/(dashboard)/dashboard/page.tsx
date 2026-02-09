@@ -551,9 +551,11 @@ export default async function DashboardPage() {
                 in a visual builder—no complex coding needed. From simple automations to
                 enterprise-grade pipelines.
               </p>
-              <Button size="sm" variant="outline" className="w-full border-blue-300 text-blue-700 hover:bg-blue-50">
-                Coming Soon
-              </Button>
+              <Link href="/workflows">
+                <Button size="sm" variant="outline" className="w-full border-blue-300 text-blue-700 hover:bg-blue-50">
+                  Build Workflows
+                </Button>
+              </Link>
             </CardContent>
           </Card>
 
