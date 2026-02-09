@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -16,23 +16,20 @@ import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/comp
 function TouchTooltip({ children, content }: { children: React.ReactNode; content: string }) {
   const [open, setOpen] = useState(false)
 
-  const handleTap = useCallback((e: React.TouchEvent | React.MouseEvent) => {
-    // Only handle taps on touch devices
-    if ('ontouchstart' in window) {
-      e.preventDefault()
-      setOpen((prev) => !prev)
-    }
-  }, [])
-
   return (
     <Tooltip open={open} onOpenChange={setOpen}>
       <TooltipTrigger asChild>
-        <span
-          className="font-semibold text-gray-900 underline decoration-dashed underline-offset-4 decoration-purple-400/60 cursor-help"
-          onClick={handleTap}
+        <button
+          type="button"
+          className="font-semibold text-gray-900 underline decoration-dashed underline-offset-4 decoration-purple-400/60 cursor-help inline"
+          onClick={() => setOpen((prev) => !prev)}
+          onTouchEnd={(e) => {
+            e.preventDefault()
+            setOpen((prev) => !prev)
+          }}
         >
           {children}
-        </span>
+        </button>
       </TooltipTrigger>
       <TooltipContent className="max-w-[250px] font-mono text-xs leading-relaxed">
         {content}
