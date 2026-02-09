@@ -26,7 +26,9 @@ import {
   Zap,
   Server,
   Rocket,
-  ArrowRight
+  ArrowRight,
+  AlertTriangle,
+  Wrench
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -102,6 +104,15 @@ function getConceptIllustration(slug: string) {
           <Server className="h-6 w-6 text-gray-500" />
           <Rocket className="h-7 w-7 text-teal-600" />
           <CheckCircle2 className="h-6 w-6 text-green-600" />
+        </div>
+      </div>
+    ),
+    'rag-production-failures': (
+      <div className="w-20 flex items-center justify-start opacity-75 group-hover:opacity-90 transition-opacity">
+        <div className="flex items-center gap-1.5">
+          <AlertTriangle className="h-7 w-7 text-amber-500" />
+          <Search className="h-6 w-6 text-teal-600" />
+          <Wrench className="h-5 w-5 text-cyan-500" />
         </div>
       </div>
     ),
