@@ -8,7 +8,7 @@ import { DeprovisionModal } from './DeprovisionModal'
 interface AccessEvent {
   id: string
   eventType: string
-  eventData: Record<string, string>
+  eventData: Record<string, unknown>
   occurredAt: string
 }
 
@@ -84,13 +84,21 @@ export function SecurityAccessClient({
       .replace(',', '')
   }
 
-  const formatProvider = (eventData: Record<string, string>, eventType: string) => {
+  const formatDevice = (eventData: Record<string, unknown>) => {
+    const device = eventData?.device as Record<string, string> | undefined
+    if (!device) return { type: '—', detail: '' }
+    const type = (device.type || 'desktop').toUpperCase()
+    const parts = [device.browser, device.os].filter(Boolean)
+    return { type, detail: parts.join(' / ') || '' }
+  }
+
+  const formatProvider = (eventData: Record<string, unknown>, eventType: string) => {
     if (eventType === 'session.logout') {
       const p = eventData?.provider
       if (p === 'BULK_TERMINATE') return 'BULK_TERMINATE'
       return 'SESSION_LOGOUT'
     }
-    const p = eventData?.provider || 'unknown'
+    const p = (eventData?.provider as string) || 'unknown'
     if (p === 'unknown') return 'UNKNOWN'
     return `${p.toUpperCase()}_OAUTH`
   }
@@ -128,12 +136,15 @@ export function SecurityAccessClient({
         {/* Access Log Table */}
         <div className="bg-slate-900 border border-slate-700/60 rounded-lg overflow-hidden">
           {/* Table Header */}
-          <div className="grid grid-cols-3 md:grid-cols-4 gap-3 md:gap-4 px-4 md:px-5 py-3 border-b border-slate-700/60">
+          <div className="grid grid-cols-3 md:grid-cols-5 gap-3 md:gap-4 px-4 md:px-5 py-3 border-b border-slate-700/60">
             <span className="font-mono text-[10px] text-slate-500 tracking-widest uppercase">
               TIMESTAMP
             </span>
             <span className="font-mono text-[10px] text-slate-500 tracking-widest uppercase">
               PROVIDER
+            </span>
+            <span className="font-mono text-[10px] text-slate-500 tracking-widest uppercase hidden md:block">
+              DEVICE
             </span>
             <span className="font-mono text-[10px] text-slate-500 tracking-widest uppercase hidden md:block">
               IP ADDRESS
@@ -151,31 +162,40 @@ export function SecurityAccessClient({
               </p>
             </div>
           ) : (
-            events.map((event) => (
-              <div
-                key={event.id}
-                className="grid grid-cols-3 md:grid-cols-4 gap-3 md:gap-4 px-4 md:px-5 py-3 border-b border-slate-800/60 last:border-b-0 hover:bg-slate-800/30 transition-colors"
-              >
-                <span className="font-mono text-[10px] md:text-[11px] text-slate-400">
-                  {formatTimestamp(event.occurredAt)}
-                </span>
-                <span className="font-mono text-[10px] md:text-[11px] text-cyan-400 truncate">
-                  {formatProvider(event.eventData, event.eventType)}
-                </span>
-                <span className="font-mono text-[11px] text-slate-400 hidden md:block">
-                  {event.eventData?.ipAddress || 'unknown'}
-                </span>
-                <span
-                  className={`font-mono text-[11px] font-medium ${
-                    event.eventData?.status === 'SUCCESS'
-                      ? 'text-green-400'
-                      : 'text-amber-400'
-                  }`}
+            events.map((event) => {
+              const { type, detail } = formatDevice(event.eventData)
+              return (
+                <div
+                  key={event.id}
+                  className="grid grid-cols-3 md:grid-cols-5 gap-3 md:gap-4 px-4 md:px-5 py-3 border-b border-slate-800/60 last:border-b-0 hover:bg-slate-800/30 transition-colors"
                 >
-                  {event.eventData?.status || 'UNKNOWN'}
-                </span>
-              </div>
-            ))
+                  <span className="font-mono text-[10px] md:text-[11px] text-slate-400">
+                    {formatTimestamp(event.occurredAt)}
+                  </span>
+                  <span className="font-mono text-[10px] md:text-[11px] text-cyan-400 truncate">
+                    {formatProvider(event.eventData, event.eventType)}
+                  </span>
+                  <span className="font-mono text-[11px] text-slate-400 hidden md:block truncate" title={detail}>
+                    <span className={type === 'MOBILE' ? 'text-amber-400' : type === 'TABLET' ? 'text-purple-400' : 'text-slate-400'}>
+                      {type}
+                    </span>
+                    {detail && <span className="text-slate-600"> {detail}</span>}
+                  </span>
+                  <span className="font-mono text-[11px] text-slate-400 hidden md:block">
+                    {(event.eventData?.ipAddress as string) || 'unknown'}
+                  </span>
+                  <span
+                    className={`font-mono text-[11px] font-medium ${
+                      event.eventData?.status === 'SUCCESS'
+                        ? 'text-green-400'
+                        : 'text-amber-400'
+                    }`}
+                  >
+                    {(event.eventData?.status as string) || 'UNKNOWN'}
+                  </span>
+                </div>
+              )
+            })
           )}
         </div>
       </div>
