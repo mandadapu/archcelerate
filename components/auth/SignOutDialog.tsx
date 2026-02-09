@@ -17,6 +17,13 @@ export function SignOutDialog({ open, onOpenChange }: SignOutDialogProps) {
     setIsSigningOut(true)
 
     try {
+      // Log logout event
+      await fetch('/api/access-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventType: 'session.logout' }),
+      }).catch(() => {})
+
       // Compute session duration from sessionStorage timestamp
       const startTime = sessionStorage.getItem('session_start_time')
       const sessionMinutes = startTime
