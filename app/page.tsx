@@ -86,7 +86,7 @@ export default function Home() {
             {/* Metrics Badge */}
             <div className="mb-8 inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-50 to-cyan-50 border border-purple-100 rounded-full text-center max-w-full">
               <span className="text-sm font-semibold text-gray-900 break-words">
-                Joined by 500+ Senior/Lead Engineers from Stripe, Google, and Meta
+                Collaborating with a global network of 500+ Senior and Staff Engineers to redefine enterprise AI delivery.
               </span>
             </div>
 
@@ -95,7 +95,7 @@ export default function Home() {
               <h1 className="font-display text-4xl md:text-6xl font-bold text-gray-900 mb-6 tracking-tight leading-[1.3]">
                 <span className="block mb-2">Build AI Products. Harden Systems.</span>
                 <span className="inline-block bg-gradient-to-r from-purple-600 to-cyan-500 bg-clip-text text-transparent pb-2">
-                  Become an AI Architect.
+                  Master the Architect's Blueprint.
                 </span>
               </h1>
               <p className="text-xl md:text-2xl text-gray-600 leading-relaxed max-w-2xl mx-auto mb-8 text-center">
