@@ -36,6 +36,9 @@ export function DashboardNav({ userName }: DashboardNavProps) {
                 <Link href="/skill-diagnosis" className="text-sm text-slate-600 hover:text-slate-900">
                   My Progress
                 </Link>
+                <Link href="/security-access" className="text-sm text-slate-600 hover:text-slate-900">
+                  Security
+                </Link>
               </div>
             </div>
             <div className="flex items-center space-x-4">

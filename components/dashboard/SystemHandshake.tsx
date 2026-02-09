@@ -23,6 +23,13 @@ export function SystemHandshake({ provider, userName }: SystemHandshakeProps) {
     const urlProvider = searchParams.get('provider')
     const activeProvider = urlProvider || provider
 
+    // Log access event
+    fetch('/api/access-log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: activeProvider || 'unknown' }),
+    }).catch(() => {})
+
     const providerLabel = activeProvider
       ? `${activeProvider.toUpperCase()}_OAUTH`
       : 'SSO'
