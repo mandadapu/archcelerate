@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { SignOutDialog } from '@/components/auth/SignOutDialog'
 import { ArchcelerateLogo } from '@/components/brand/ArchcelerateLogo'
+import { Power } from 'lucide-react'
 
 interface DashboardNavProps {
   userName?: string | null
@@ -43,8 +44,9 @@ export function DashboardNav({ userName }: DashboardNavProps) {
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowSignOutDialog(true)}
-                className="font-mono text-[11px] font-semibold tracking-[1px] uppercase text-slate-600 hover:text-red-400 transition-colors"
+                className="font-mono text-[11px] font-semibold tracking-[1px] uppercase text-slate-600 hover:text-red-400 transition-colors flex items-center gap-1.5"
               >
+                <Power className="w-3.5 h-3.5" />
                 TERMINATE SESSION
               </Button>
             </div>

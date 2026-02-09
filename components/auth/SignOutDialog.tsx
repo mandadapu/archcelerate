@@ -15,7 +15,30 @@ export function SignOutDialog({ open, onOpenChange }: SignOutDialogProps) {
 
   const handleSignOut = async () => {
     setIsSigningOut(true)
-    await signOut({ callbackUrl: '/' })
+
+    try {
+      // Compute session duration from sessionStorage timestamp
+      const startTime = sessionStorage.getItem('session_start_time')
+      const sessionMinutes = startTime
+        ? Math.floor((Date.now() - parseInt(startTime)) / 60000)
+        : 0
+
+      // Fetch progress snapshot before session is destroyed
+      const res = await fetch('/api/session-summary')
+      if (res.ok) {
+        const data = await res.json()
+        localStorage.setItem(
+          'session_summary',
+          JSON.stringify({ ...data, sessionMinutes })
+        )
+      }
+
+      sessionStorage.removeItem('session_start_time')
+    } catch {
+      // Proceed with sign-out even if summary fetch fails
+    }
+
+    await signOut({ callbackUrl: '/session-terminated' })
   }
 
   return (
