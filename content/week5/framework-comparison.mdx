@@ -396,6 +396,43 @@ user_proxy.initiate_chat(
 
 ---
 
+## Orchestration Strategy: Control vs. Autonomy
+
+### The Core Trade-off
+
+In production-grade AI, the choice between LangGraph and CrewAI is a choice between **deterministic reliability** and **agentic flexibility**.
+
+### Framework Comparison Matrix
+
+| Feature | LangGraph (The State Machine) | CrewAI (The Collaborative Team) |
+|---------|-------------------------------|----------------------------------|
+| **Philosophy** | Cycles and Graphs: You define the edges. | Role-Playing: You define the personas. |
+| **State** | Persistent, versioned "checkpoints." | Linear task-based memory. |
+| **Auditability** | High: Every state transition is traceable. | Medium: Agent reasoning can be stochastic. |
+| **Best For** | Regulated Health/Finance (HIPAA/GDPR). | Creative workflows and rapid MVPs. |
+
+### Engineering Decision Logic
+
+#### Choose LangGraph when:
+
+- **Compliance is a Requirement**: You need to pass HIPAA or FDA audits where "unpredictable agent behavior" is a risk.
+- **Complex Error Handling**: The workflow requires "Human-in-the-loop" (HITL) for expert verification of PHI.
+- **Time-Travel Debugging**: You need to roll back the state of an agent to a specific checkpoint to analyze a failure.
+
+#### Choose CrewAI when:
+
+- **Speed is the Primary Metric**: You are building an internal tool or a non-regulated MVP (like the "80-hour build").
+- **Open-Ended Objectives**: You have a goal (e.g., "Analyze this market") but don't want to script every sub-task.
+- **Dynamic Scaling**: You need agents to spawn and collaborate on tasks autonomously without pre-defined graph nodes.
+
+### The "Archcelerate" Pivot: When to Refactor
+
+> "Most AI projects die because they stay in the 'autonomous' phase too long. For production, we refactor CrewAI prototypes into LangGraph state machines to ensure 24/7 reliability."
+
+The pattern is clear: **prototype with CrewAI, ship with LangGraph**. Use the speed of role-based agents to validate your architecture, then lock it down into a deterministic state machine before going to production.
+
+---
+
 ## The Model Context Protocol (MCP)
 
 **The new 2026 standard** for how agents talk to external tools.
