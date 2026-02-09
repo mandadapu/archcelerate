@@ -14,6 +14,7 @@ interface DashboardNavProps {
 const navLinks = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/mentor/new', label: 'AI Mentor' },
+  { href: '/workflows', label: 'Workflows' },
   { href: '/portfolio', label: 'Portfolio' },
   { href: '/skill-diagnosis', label: 'My Progress' },
   { href: '/security-access', label: 'Security' },
