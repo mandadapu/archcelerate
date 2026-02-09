@@ -99,11 +99,11 @@ export function SecurityAccessClient({
     <div className="space-y-8">
       {/* Section 1: Access Logs */}
       <div>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <div>
-            <h1 className="font-mono text-xl font-bold tracking-wider">
+            <h1 className="font-mono text-lg sm:text-xl font-bold tracking-wider">
               <span className="bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
-                SECURITY_AUDIT: RECENT_ACCESS_LOGS
+                SECURITY_AUDIT: ACCESS_LOGS
               </span>
             </h1>
             <p className="font-mono text-[10px] text-slate-500 tracking-widest uppercase mt-1">
@@ -112,15 +112,15 @@ export function SecurityAccessClient({
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="font-mono text-[10px] text-slate-500 tracking-widest uppercase">
+            <span className="font-mono text-[10px] text-slate-500 tracking-widest uppercase hidden sm:inline">
               {sessionCount} ACTIVE SESSION{sessionCount !== 1 ? 'S' : ''}
             </span>
             <button
               onClick={handleTerminateSessions}
               disabled={isTerminating || sessionCount <= 1}
-              className="h-9 px-4 bg-slate-900 border border-red-500/40 rounded-lg font-mono text-[10px] font-medium tracking-widest text-red-400 uppercase transition-all duration-200 hover:border-red-500 hover:text-red-300 hover:shadow-[0_0_16px_rgba(239,68,68,0.15)] disabled:opacity-40 disabled:cursor-not-allowed"
+              className="h-9 px-3 sm:px-4 bg-slate-900 border border-red-500/40 rounded-lg font-mono text-[10px] font-medium tracking-widest text-red-400 uppercase transition-all duration-200 hover:border-red-500 hover:text-red-300 hover:shadow-[0_0_16px_rgba(239,68,68,0.15)] disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {isTerminating ? 'TERMINATING...' : 'TERMINATE ALL OTHER SESSIONS'}
+              {isTerminating ? 'TERMINATING...' : 'TERMINATE OTHER SESSIONS'}
             </button>
           </div>
         </div>
@@ -128,14 +128,14 @@ export function SecurityAccessClient({
         {/* Access Log Table */}
         <div className="bg-slate-900 border border-slate-700/60 rounded-lg overflow-hidden">
           {/* Table Header */}
-          <div className="grid grid-cols-4 gap-4 px-5 py-3 border-b border-slate-700/60">
+          <div className="grid grid-cols-3 md:grid-cols-4 gap-3 md:gap-4 px-4 md:px-5 py-3 border-b border-slate-700/60">
             <span className="font-mono text-[10px] text-slate-500 tracking-widest uppercase">
               TIMESTAMP
             </span>
             <span className="font-mono text-[10px] text-slate-500 tracking-widest uppercase">
               PROVIDER
             </span>
-            <span className="font-mono text-[10px] text-slate-500 tracking-widest uppercase">
+            <span className="font-mono text-[10px] text-slate-500 tracking-widest uppercase hidden md:block">
               IP ADDRESS
             </span>
             <span className="font-mono text-[10px] text-slate-500 tracking-widest uppercase">
@@ -154,15 +154,15 @@ export function SecurityAccessClient({
             events.map((event) => (
               <div
                 key={event.id}
-                className="grid grid-cols-4 gap-4 px-5 py-3 border-b border-slate-800/60 last:border-b-0 hover:bg-slate-800/30 transition-colors"
+                className="grid grid-cols-3 md:grid-cols-4 gap-3 md:gap-4 px-4 md:px-5 py-3 border-b border-slate-800/60 last:border-b-0 hover:bg-slate-800/30 transition-colors"
               >
-                <span className="font-mono text-[11px] text-slate-400">
+                <span className="font-mono text-[10px] md:text-[11px] text-slate-400">
                   {formatTimestamp(event.occurredAt)}
                 </span>
-                <span className="font-mono text-[11px] text-cyan-400">
+                <span className="font-mono text-[10px] md:text-[11px] text-cyan-400 truncate">
                   {formatProvider(event.eventData, event.eventType)}
                 </span>
-                <span className="font-mono text-[11px] text-slate-400">
+                <span className="font-mono text-[11px] text-slate-400 hidden md:block">
                   {event.eventData?.ipAddress || 'unknown'}
                 </span>
                 <span
