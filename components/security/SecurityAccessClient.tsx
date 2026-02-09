@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { DeprovisionModal } from './DeprovisionModal'
 
@@ -22,6 +23,7 @@ export function SecurityAccessClient({
   activeSessions,
   userEmail,
 }: SecurityAccessClientProps) {
+  const router = useRouter()
   const [isTerminating, setIsTerminating] = useState(false)
   const [showDeprovision, setShowDeprovision] = useState(false)
   const [sessionCount, setSessionCount] = useState(activeSessions)
@@ -56,6 +58,7 @@ export function SecurityAccessClient({
               '!bg-slate-900 !border-slate-700 !shadow-lg !shadow-purple-500/10',
           }
         )
+        router.refresh()
       } else {
         toast.error('Failed to terminate sessions')
       }
@@ -81,7 +84,12 @@ export function SecurityAccessClient({
       .replace(',', '')
   }
 
-  const formatProvider = (eventData: Record<string, string>) => {
+  const formatProvider = (eventData: Record<string, string>, eventType: string) => {
+    if (eventType === 'session.logout') {
+      const p = eventData?.provider
+      if (p === 'BULK_TERMINATE') return 'BULK_TERMINATE'
+      return 'SESSION_LOGOUT'
+    }
     const p = eventData?.provider || 'unknown'
     if (p === 'unknown') return 'UNKNOWN'
     return `${p.toUpperCase()}_OAUTH`
@@ -152,7 +160,7 @@ export function SecurityAccessClient({
                   {formatTimestamp(event.occurredAt)}
                 </span>
                 <span className="font-mono text-[11px] text-cyan-400">
-                  {formatProvider(event.eventData)}
+                  {formatProvider(event.eventData, event.eventType)}
                 </span>
                 <span className="font-mono text-[11px] text-slate-400">
                   {event.eventData?.ipAddress || 'unknown'}
