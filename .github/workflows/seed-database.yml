@@ -17,10 +17,6 @@ on:
 permissions:
   contents: read
 
-env:
-  GCP_PROJECT_ID: archcelerate
-  GCP_REGION: us-central1
-
 jobs:
   seed:
     name: Seed Production Database
@@ -40,28 +36,15 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Get Database Credentials
-        id: db-creds
-        run: |
-          DB_PASSWORD=$(gcloud secrets versions access latest --secret=DB_PASSWORD --project=${{ env.GCP_PROJECT_ID }})
-          DB_HOST=$(gcloud sql instances describe archcelerate-db --project=${{ env.GCP_PROJECT_ID }} --format="value(ipAddresses[0].ipAddress)")
-          echo "DATABASE_URL=postgresql://postgres:${DB_PASSWORD}@${DB_HOST}:5432/archcelerate?schema=public" >> $GITHUB_OUTPUT
-        shell: bash
+      - name: Generate Prisma Client
+        run: npx prisma generate
 
       - name: Run Database Migrations
         if: ${{ !inputs.skip_migrations }}
         id: migrate
         run: npx prisma migrate deploy
         env:
-          DATABASE_URL: ${{ steps.db-creds.outputs.DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Seed Database
         id: seed
@@ -99,7 +82,7 @@ jobs:
 
           echo "✅ Database seeding completed"
         env:
-          DATABASE_URL: ${{ steps.db-creds.outputs.DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Verify Seeding
         id: verify
@@ -155,7 +138,7 @@ jobs:
 
           npx tsx /tmp/verify.ts
         env:
-          DATABASE_URL: ${{ steps.db-creds.outputs.DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Summary
         if: always()
@@ -165,7 +148,7 @@ jobs:
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo ""
           echo "Configuration:"
-          echo "  Project:          ${{ env.GCP_PROJECT_ID }}"
+          echo "  Project:          archcelerate"
           echo "  Skip Migrations:  ${{ inputs.skip_migrations || false }}"
           echo "  Week Filter:      ${{ inputs.week || 'all' }}"
           echo ""
