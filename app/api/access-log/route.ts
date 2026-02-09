@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+const UAParser = require('ua-parser-js')
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,6 +20,14 @@ export async function POST(request: NextRequest) {
       request.headers.get('x-real-ip') ||
       'unknown'
     const userAgent = request.headers.get('user-agent') || 'unknown'
+    const parser = new UAParser(userAgent)
+    const device = {
+      type: parser.getDevice().type || 'desktop',
+      browser: parser.getBrowser().name || 'unknown',
+      browserVersion: parser.getBrowser().version || 'unknown',
+      os: parser.getOS().name || 'unknown',
+      osVersion: parser.getOS().version || 'unknown',
+    }
 
     await prisma.learningEvent.create({
       data: {
@@ -28,6 +37,7 @@ export async function POST(request: NextRequest) {
           provider,
           ipAddress,
           userAgent,
+          device,
           status: eventType === 'session.login' ? 'SUCCESS' : 'TERMINATED',
         },
       },
