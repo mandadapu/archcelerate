@@ -46,6 +46,12 @@ const week6Data = {
       title: 'Enterprise RAG Hardening & Evaluation',
       minutes: 55,
       description: 'Production metrics (Recall@10, MRR, TTFT, QPS), semantic caching, and HNSW indexing for scale'
+    },
+    {
+      slug: 'rag-production-failures',
+      title: 'RAG Production Failure Patterns',
+      minutes: 45,
+      description: 'Real-world case study: diagnosing and fixing context poisoning, stale retrieval, and latency spikes in production RAG systems'
     }
   ],
   lab: {
