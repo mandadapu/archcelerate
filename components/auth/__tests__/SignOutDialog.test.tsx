@@ -56,7 +56,7 @@ describe('SignOutDialog', () => {
       fireEvent.click(terminateButton)
 
       await waitFor(() => {
-        expect(signOut).toHaveBeenCalledWith({ callbackUrl: '/' })
+        expect(signOut).toHaveBeenCalledWith({ callbackUrl: '/session-terminated' })
       })
     })
 

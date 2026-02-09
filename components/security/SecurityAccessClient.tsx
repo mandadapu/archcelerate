@@ -99,18 +99,22 @@ export function SecurityAccessClient({
               </span>
             </h1>
             <p className="font-mono text-[10px] text-slate-500 tracking-widest uppercase mt-1">
-              IDENTITY VERIFICATION HISTORY &bull; {sessionCount} ACTIVE
-              SESSION{sessionCount !== 1 ? 'S' : ''}
+              IDENTITY VERIFICATION HISTORY
             </p>
           </div>
 
-          <button
-            onClick={handleTerminateSessions}
-            disabled={isTerminating || sessionCount <= 1}
-            className="h-9 px-4 bg-slate-900 border border-red-500/40 rounded-lg font-mono text-[10px] font-medium tracking-widest text-red-400 uppercase transition-all duration-200 hover:border-red-500 hover:text-red-300 hover:shadow-[0_0_16px_rgba(239,68,68,0.15)] disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {isTerminating ? 'TERMINATING...' : 'TERMINATE ALL OTHER SESSIONS'}
-          </button>
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-[10px] text-slate-500 tracking-widest uppercase">
+              {sessionCount} ACTIVE SESSION{sessionCount !== 1 ? 'S' : ''}
+            </span>
+            <button
+              onClick={handleTerminateSessions}
+              disabled={isTerminating || sessionCount <= 1}
+              className="h-9 px-4 bg-slate-900 border border-red-500/40 rounded-lg font-mono text-[10px] font-medium tracking-widest text-red-400 uppercase transition-all duration-200 hover:border-red-500 hover:text-red-300 hover:shadow-[0_0_16px_rgba(239,68,68,0.15)] disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {isTerminating ? 'TERMINATING...' : 'TERMINATE ALL OTHER SESSIONS'}
+            </button>
+          </div>
         </div>
 
         {/* Access Log Table */}
@@ -182,8 +186,8 @@ export function SecurityAccessClient({
           PERMANENT_IDENTITY_DEPROVISIONING
         </p>
 
-        <div className="bg-red-950/20 border border-red-800/40 rounded-lg p-5 space-y-4">
-          <p className="font-mono text-[11px] text-red-300/80 leading-relaxed">
+        <div className="bg-red-50 border border-red-300 rounded-lg p-5 space-y-4">
+          <p className="font-mono text-[11px] text-red-700 leading-relaxed">
             WARNING: This action will permanently purge your architectural
             portfolio, skill telemetry, and certification progress. This
             operation is non-reversible.
