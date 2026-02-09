@@ -11,6 +11,7 @@ import { TechStack } from '@/components/landing/TechStack'
 import { ProjectShowcase } from '@/components/landing/ProjectShowcase'
 import { Testimonials } from '@/components/landing/Testimonials'
 import { LoginModal } from '@/components/auth/LoginModal'
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
 
 export default function Home() {
   const { data: session } = useSession()
@@ -49,6 +50,7 @@ export default function Home() {
   }, [searchParams])
 
   return (
+    <TooltipProvider delayDuration={200}>
     <div className="min-h-screen bg-white">
       {/* Fixed Navigation Header */}
       <Header onLoginClick={() => setShowLoginModal(true)} />
@@ -99,7 +101,51 @@ export default function Home() {
                 </span>
               </h1>
               <p className="text-xl md:text-2xl text-gray-600 leading-relaxed max-w-2xl mx-auto mb-8 text-center">
-                The framework to build <span className="font-semibold text-gray-900">sovereign security</span>, master <span className="font-semibold text-gray-900">Agentic Orchestration</span>, and ship <span className="font-semibold text-gray-900">production-grade systems</span> from prototype to GA.
+                The framework to build{' '}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="font-semibold text-gray-900 underline decoration-dashed underline-offset-4 decoration-purple-400/60 cursor-help">
+                      Sovereign Security
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-[250px] font-mono text-xs leading-relaxed">
+                    Data privacy is binary. This framework implements PII-stripping layers, local-first guardrails, and VPC-isolated LLM access to ensure compliance in HIPAA/GDPR environments.
+                  </TooltipContent>
+                </Tooltip>
+                , master{' '}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="font-semibold text-gray-900 underline decoration-dashed underline-offset-4 decoration-purple-400/60 cursor-help">
+                      Agentic Orchestration
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-[250px] font-mono text-xs leading-relaxed">
+                    Go beyond linear chains. We focus on stateful, cyclic graphs (LangGraph/CrewAI) with built-in retry logic, human-in-the-loop triggers, and error recovery for autonomous workflows.
+                  </TooltipContent>
+                </Tooltip>
+                , bridge{' '}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="font-semibold text-gray-900 underline decoration-dashed underline-offset-4 decoration-purple-400/60 cursor-help">
+                      the Demo Gap
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-[250px] font-mono text-xs leading-relaxed">
+                    The 80% of work that happens after the first successful prompt: latency optimization, token budget management, enterprise observability, and security hardening.
+                  </TooltipContent>
+                </Tooltip>
+                , and ship with{' '}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="font-semibold text-gray-900 underline decoration-dashed underline-offset-4 decoration-purple-400/60 cursor-help">
+                      Serverless-First Scale
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-[250px] font-mono text-xs leading-relaxed">
+                    Architect for zero-to-N scaling. We focus on Dockerized deployments that eliminate idle costs and infrastructure toil, while maintaining sub-second cold starts for production loads.
+                  </TooltipContent>
+                </Tooltip>
+                .
               </p>
 
             </div>
@@ -658,5 +704,6 @@ export default function Home() {
       {/* Login Modal */}
       <LoginModal open={showLoginModal} onOpenChange={setShowLoginModal} callbackUrl={loginCallbackUrl} />
     </div>
+    </TooltipProvider>
   )
 }
