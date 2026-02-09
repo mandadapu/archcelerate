@@ -330,6 +330,7 @@ archcelerate/
 - ❌ Commit directly to `main`
 - ❌ Merge without a PR
 - ❌ Push directly to `main` branch
+- ❌ Commit changes without first running and passing `npm run lint`
 
 **Support**: [GitHub Issues](https://github.com/mandadapu/archcelerate/issues)
 
