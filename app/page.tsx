@@ -21,6 +21,12 @@ export default function Home() {
   const searchParams = useSearchParams()
 
   useEffect(() => {
+    // Auto-open login modal when redirected from session-terminated page
+    if (searchParams.get('login') === '1') {
+      setShowLoginModal(true)
+      window.history.replaceState({}, '', '/')
+    }
+
     const error = searchParams.get('error')
     if (error) {
       const errorMessages: Record<string, string> = {

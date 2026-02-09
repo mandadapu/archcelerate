@@ -128,7 +128,7 @@ export default function SessionTerminatedPage() {
 
         {/* Re-Authorize Button */}
         <button
-          onClick={() => router.push('/')}
+          onClick={() => router.push('/?login=1')}
           className="h-11 px-8 bg-slate-800 border border-green-500/40 rounded-lg font-mono text-[11px] font-medium tracking-widest text-green-400 uppercase transition-all duration-200 hover:border-green-500 hover:text-green-300 hover:shadow-[0_0_16px_rgba(34,197,94,0.15)]"
         >
           RE-AUTHORIZE SESSION
