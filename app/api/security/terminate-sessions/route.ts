@@ -30,6 +30,23 @@ export async function POST() {
       },
     })
 
+    // Log termination event if sessions were actually terminated
+    if (result.count > 0) {
+      await prisma.learningEvent.create({
+        data: {
+          userId: session.user.id,
+          eventType: 'session.logout',
+          eventData: {
+            provider: 'BULK_TERMINATE',
+            ipAddress: 'N/A',
+            userAgent: 'N/A',
+            status: 'TERMINATED',
+            detail: `${result.count} remote session${result.count !== 1 ? 's' : ''} revoked`,
+          },
+        },
+      })
+    }
+
     return NextResponse.json({
       success: true,
       terminatedSessions: result.count,
