@@ -1,0 +1,242 @@
+---
+title: 'LangGraph Edge Cases in Clinical AI Systems'
+description: 'Preventing fabrication in cyclic workflows and building graceful human handoff architecture for high-stakes clinical systems'
+---
+
+# LangGraph Edge Cases in Clinical AI Systems
+
+In clinical systems, the cost of a wrong answer is infinitely higher than the cost of no answer. Your architecture must encode that principle.
+
+---
+
+## Part 1: Preventing Fabrication in Cyclic Workflows
+
+The core problem with LangGraph's cyclic state management in clinical settings is that LLMs are completion machines — they *want* to produce an answer. In a clinical workflow, that instinct is dangerous.
+
+The approach has three layers.
+
+### Layer 1: Deterministic Validation Gates at Every State Transition
+
+In LangGraph, every edge between nodes is an opportunity to validate. These are not simple routing decisions — they are clinical checkpoints. Before the graph transitions from a "patient data retrieval" node to a "clinical reasoning" node, a **deterministic validator** checks for data completeness and consistency — not the LLM, a rule-based service.
+
+For example, if you're pulling patient data from two FHIR endpoints and the medication lists conflict (common with hospital system mergers), the validator catches that before the reasoning agent ever sees it. The agent never gets the chance to "reconcile" conflicting data creatively.
+
+```python
+# LangGraph state validation — deterministic gate
+from enum import Enum
+from dataclasses import dataclass, field
+
+class ConfidenceLevel(Enum):
+    HIGH = "high"
+    DEGRADED = "degraded"
+    LOW = "low"
+
+@dataclass
+class ClinicalState:
+    medications: list[dict]
+    allergies: list[dict]
+    lab_results: list[dict]
+    conflict_registry: list[dict] = field(default_factory=list)
+    confidence: ConfidenceLevel = ConfidenceLevel.HIGH
+
+def validate_clinical_data(state: ClinicalState) -> str:
+    """Deterministic gate — no LLM involved."""
+    conflicts = detect_data_conflicts(
+        state.medications, state.allergies, state.lab_results
+    )
+    if conflicts:
+        state.conflict_registry = conflicts
+        state.confidence = ConfidenceLevel.DEGRADED
+        return "human_escalation"  # Route to clinician
+    if not meets_minimum_data_threshold(state):
+        return "request_additional_data"  # Retry with explicit data fetch
+    return "proceed_to_reasoning"
+```
+
+**Key insight**: The agent never decides whether data is "good enough." That's a deterministic function with clinically-defined thresholds, not an LLM judgment call.
+
+### Layer 2: Structured Output with Schema Enforcement
+
+Every agent node that produces clinical output is constrained to a strict schema — not just "return JSON" but validated against a clinical data model. If the agent can't populate required fields from the available evidence, those fields stay empty rather than hallucinated.
+
+Pydantic models with validators reject outputs where the provenance chain is broken:
+
+```python
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional
+
+class EvidenceSource(BaseModel):
+    fhir_resource_id: str
+    resource_type: str
+    excerpt: str
+
+class ClinicalRecommendation(BaseModel):
+    recommendation: str
+    supporting_evidence: list[EvidenceSource]  # Must trace to real data
+    confidence: float = Field(ge=0.0, le=1.0)
+    contraindications_checked: bool
+
+    @field_validator("supporting_evidence")
+    @classmethod
+    def evidence_must_be_traceable(cls, v):
+        for source in v:
+            if not source.fhir_resource_id:
+                raise ValueError(
+                    "Every clinical claim must trace to a FHIR resource"
+                )
+        return v
+```
+
+If the agent produces output that can't pass validation, it doesn't get surfaced. Period.
+
+### Layer 3: Cycle Depth Limits with Monotonic Progress
+
+LangGraph's cyclic capability is powerful but dangerous in clinical workflows. Two constraints are enforced:
+
+1. **Hard cycle depth limit** — typically 3 iterations for any reasoning loop
+2. **Monotonic progress requirement** — each cycle must demonstrably reduce uncertainty or add new information
+
+If a cycle produces the same confidence score or doesn't resolve the ambiguity that triggered it, the graph breaks out to escalation rather than trying again.
+
+---
+
+## Part 2: The Fallback Architecture — Graceful Human Handoff
+
+This is where most teams get it wrong. They build the escalation path as an afterthought — a log entry and an alert. In clinical systems, **the escalation path IS the primary path**. The autonomous resolution is the optimization.
+
+### Confidence-Tiered Routing
+
+A three-tier confidence model is baked into the LangGraph state:
+
+| Tier | Confidence | Behavior |
+|------|-----------|----------|
+| **Green** | &gt;0.85 | Autonomous action with async clinician review |
+| **Yellow** | 0.60 – 0.84 | Present recommendation, require clinician confirmation before action |
+| **Red** | &lt;0.60 or any conflict flag | Full handoff — clinician makes the decision |
+
+The thresholds aren't arbitrary. They're calibrated per use case with clinical stakeholders and tuned based on outcome data. Medication dosing might have a green threshold of 0.95. Appointment scheduling might be 0.75.
+
+### Session Context Preservation During Handoff
+
+This is the critical technical challenge. When you hand off to a human clinician, you can't just say "the AI got stuck." You need to give them everything — and in a format that respects their time.
+
+```python
+from pydantic import BaseModel
+from typing import Optional
+from enum import Enum
+from datetime import datetime
+
+class TimeSensitivity(Enum):
+    URGENT = "urgent"
+    ROUTINE = "routine"
+    FYI = "fyi"
+
+class ReasoningStep(BaseModel):
+    node: str
+    input_summary: str
+    output_summary: str
+    confidence: float
+    timestamp: datetime
+
+class DataConflict(BaseModel):
+    field: str
+    source_a: str
+    source_b: str
+    description: str
+
+class PatientSummary(BaseModel):
+    patient_id: str
+    name: str
+    active_conditions: list[str]
+    current_medications: list[str]
+
+class EscalationPackage(BaseModel):
+    """What the clinician sees when the agent escalates."""
+    patient_context: PatientSummary
+    agent_reasoning_trace: list[ReasoningStep]     # Full chain
+    data_conflicts: list[DataConflict]              # Why it escalated
+    partial_recommendation: Optional[str]           # What the agent was leaning toward
+    confidence_history: list[float]                 # Show degradation over cycles
+    time_sensitivity: TimeSensitivity               # URGENT / ROUTINE / FYI
+    suggested_data_to_resolve: list[str]            # What info would unblock this
+```
+
+The `suggested_data_to_resolve` field is crucial — it tells the clinician not just "I'm stuck" but "here's what would unstick me," which dramatically reduces their cognitive load.
+
+### Session State Survives the Handoff
+
+The full LangGraph state is persisted (using a checkpointer backed by a HIPAA-compliant datastore — Cloud SQL with encryption, not Redis) so that once the clinician resolves the ambiguity, the workflow can **resume from exactly where it stopped**.
+
+The clinician's input gets injected back into the state graph as a new authoritative data point, and the agent continues downstream processing:
+
+```python
+from datetime import datetime, timezone
+
+class AuditEntry(BaseModel):
+    actor: str          # "agent" or "clinician"
+    action: str
+    timestamp: datetime
+    details: dict
+
+class ClinicianInput(BaseModel):
+    resolution: str
+    clinical_justification: str
+    override_confidence: Optional[float] = None
+
+async def resume_from_escalation(
+    thread_id: str,
+    clinician_resolution: ClinicianInput,
+    graph,
+    checkpointer,
+):
+    """Resume a paused workflow after clinician resolves the conflict."""
+    # Reload exact state from checkpoint
+    state = await checkpointer.load(thread_id)
+
+    # Inject clinician decision as authoritative
+    state.resolved_conflicts.append(clinician_resolution)
+    state.confidence = recalculate_confidence(state)
+    state.audit_log.append(
+        AuditEntry(
+            actor="clinician",
+            action="conflict_resolution",
+            timestamp=datetime.now(timezone.utc),
+            details=clinician_resolution.model_dump(),
+        )
+    )
+
+    # Resume graph from the escalation node
+    result = await graph.ainvoke(
+        state,
+        config={"configurable": {"thread_id": thread_id}},
+    )
+    return result
+```
+
+### The Audit Trail Is Non-Negotiable
+
+Every state transition, every confidence score, every escalation, every clinician override — logged immutably. When the auditor asks "why did the system recommend X for this patient," you can reconstruct the entire decision chain, including the moment the agent said "I don't know" and a human stepped in.
+
+This is what passes HIPAA audits. Not the happy path — the documentation of what happens when things go wrong.
+
+---
+
+## Architect's Takeaways
+
+**1. The escalation path is the primary path.** Design the human handoff first, then optimize for autonomous resolution. If your fallback is an afterthought, your system isn't production-ready for clinical use.
+
+**2. Deterministic gates beat LLM judgment for safety decisions.** Never let the LLM decide whether data is "good enough" or whether a conflict is "minor." Those are clinical decisions encoded as deterministic rules, not probabilistic completions.
+
+**3. Structured output with provenance enforcement eliminates fabrication at the source.** If the agent can't trace a claim to a FHIR resource, the claim doesn't exist. Schema validation is cheaper than post-hoc hallucination detection.
+
+**4. Cycle depth limits with monotonic progress prevent infinite loops.** In clinical workflows, "trying harder" without new information is not just wasteful — it's dangerous. Break to escalation, not to retry.
+
+**5. Session state persistence enables seamless handoff and resume.** The clinician resolves the ambiguity, the agent picks up where it left off. No context is lost, no work is repeated.
+
+---
+
+## Further Reading
+
+- **Week 5**: Framework Comparison — LangGraph orchestration patterns and Human-in-the-Loop compliance
+- **Week 6**: Enterprise RAG Hardening — production metrics and reliability patterns
+- **Case Study**: RAG Production Failure Patterns — context poisoning, stale retrieval, and latency spikes
