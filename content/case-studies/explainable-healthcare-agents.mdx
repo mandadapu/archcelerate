@@ -1,0 +1,612 @@
+---
+title: 'Explainable Healthcare AI with Specialized Agents'
+description: 'Building a multi-agent system with 6 specialized agents for file processing, privacy protection, data preparation, patient matching, and interpretable predictions'
+---
+
+# Explainable Healthcare AI with Specialized Agents
+
+In healthcare, a prediction without an explanation is a liability. Clinicians don't need a black box that says "high risk" — they need to know *why*, traced back to specific data points they can verify. This case study walks through a production multi-agent architecture designed for explainability from the ground up.
+
+---
+
+## The Architecture: 6 Specialized Agents
+
+Instead of one monolithic model, the system uses a pipeline of **6 specialized agents**, each with a single responsibility and a well-defined contract. Every agent produces auditable, traceable output — and any agent can halt the pipeline if its invariants are violated.
+
+```
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│  1. File      │───▶│  2. Privacy   │───▶│  3. Data      │
+│  Processing   │    │  Protection   │    │  Preparation  │
+└──────────────┘    └──────────────┘    └──────────────┘
+                                               │
+                                               ▼
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│  6. Explain-  │◀──│  5. Predict-  │◀──│  4. Patient   │
+│  ability      │    │  ion Engine  │    │  Matching     │
+└──────────────┘    └──────────────┘    └──────────────┘
+```
+
+Each agent is independently testable, deployable, and auditable — a critical requirement for FDA and HIPAA compliance.
+
+---
+
+## Agent 1: File Processing
+
+The entry point. Raw clinical data arrives in dozens of formats — HL7v2 messages, FHIR bundles, CSV lab exports, scanned PDF reports, and free-text clinical notes. This agent normalizes everything into a unified internal schema before any downstream processing occurs.
+
+```typescript
+interface FileProcessingConfig {
+  supportedFormats: string[]
+  maxFileSizeMB: number
+  ocrEnabled: boolean
+}
+
+interface ProcessedDocument {
+  id: string
+  sourceFormat: 'HL7' | 'FHIR' | 'CSV' | 'PDF' | 'FREE_TEXT'
+  extractedFields: ClinicalField[]
+  rawText: string
+  metadata: {
+    sourceSystem: string
+    receivedAt: Date
+    processingDurationMs: number
+    ocrConfidence?: number
+  }
+  validationErrors: string[]
+}
+
+interface ClinicalField {
+  name: string
+  value: string | number
+  unit?: string
+  sourceLocation: string  // Line number, FHIR path, or PDF page
+  extractionConfidence: number
+}
+
+async function processFile(
+  file: Buffer,
+  filename: string,
+  config: FileProcessingConfig
+): Promise<ProcessedDocument> {
+  const format = detectFormat(file, filename)
+
+  let fields: ClinicalField[]
+  switch (format) {
+    case 'FHIR':
+      fields = parseFhirBundle(file)
+      break
+    case 'HL7':
+      fields = parseHl7Message(file)
+      break
+    case 'CSV':
+      fields = parseCsvLabResults(file)
+      break
+    case 'PDF':
+      fields = config.ocrEnabled
+        ? await ocrExtract(file)
+        : extractPdfText(file)
+      break
+    case 'FREE_TEXT':
+      fields = await extractClinicalEntities(file)
+      break
+    default:
+      throw new UnsupportedFormatError(format)
+  }
+
+  // Every field tracks WHERE it came from — critical for explainability
+  const errors = validateFields(fields)
+
+  return {
+    id: generateDocumentId(),
+    sourceFormat: format,
+    extractedFields: fields,
+    rawText: file.toString('utf-8'),
+    metadata: {
+      sourceSystem: detectSourceSystem(file),
+      receivedAt: new Date(),
+      processingDurationMs: 0, // Set by caller
+      ocrConfidence: format === 'PDF' ? computeOcrConfidence(fields) : undefined,
+    },
+    validationErrors: errors,
+  }
+}
+```
+
+**Key design decision**: Every `ClinicalField` carries a `sourceLocation` and `extractionConfidence`. When the prediction agent later says "elevated HbA1c," the explainability agent can trace that claim back to "page 3 of lab-report-2024-06.pdf, OCR confidence 0.94."
+
+---
+
+## Agent 2: Privacy Protection
+
+Before any data touches an LLM or leaves the secure enclave, this agent strips, masks, or tokenizes Protected Health Information (PHI). This is not optional — it's a HIPAA requirement and the single most critical agent in the pipeline.
+
+```typescript
+interface PrivacyConfig {
+  mode: 'redact' | 'tokenize' | 'k_anonymize'
+  retainClinicalFields: string[]  // Fields safe to pass through
+  auditEveryAccess: boolean
+}
+
+interface PrivacyReport {
+  fieldsScanned: number
+  phiDetected: number
+  phiActions: PhiAction[]
+  complianceStatus: 'COMPLIANT' | 'REVIEW_REQUIRED'
+}
+
+interface PhiAction {
+  fieldName: string
+  originalType: 'NAME' | 'DOB' | 'SSN' | 'MRN' | 'ADDRESS' | 'PHONE' | 'EMAIL'
+  action: 'REDACTED' | 'TOKENIZED' | 'GENERALIZED'
+  token?: string  // Reversible only with vault key
+}
+
+function protectPrivacy(
+  document: ProcessedDocument,
+  config: PrivacyConfig
+): { sanitized: ProcessedDocument; report: PrivacyReport } {
+  const actions: PhiAction[] = []
+  const sanitizedFields: ClinicalField[] = []
+
+  for (const field of document.extractedFields) {
+    const phiType = detectPhiType(field.name, field.value)
+
+    if (phiType && !config.retainClinicalFields.includes(field.name)) {
+      // PHI detected — apply protection
+      const action = applyProtection(field, phiType, config.mode)
+      actions.push(action)
+
+      sanitizedFields.push({
+        ...field,
+        value: action.token || '[REDACTED]',
+      })
+    } else {
+      // Clinical data — pass through (lab values, vitals, diagnoses)
+      sanitizedFields.push(field)
+    }
+  }
+
+  return {
+    sanitized: { ...document, extractedFields: sanitizedFields },
+    report: {
+      fieldsScanned: document.extractedFields.length,
+      phiDetected: actions.length,
+      phiActions: actions,
+      complianceStatus: actions.every(a => a.action !== 'REDACTED')
+        ? 'COMPLIANT'
+        : 'REVIEW_REQUIRED',
+    },
+  }
+}
+```
+
+**Pipeline halt condition**: If PHI detection confidence is below 0.95 for any field, the pipeline stops and flags the document for manual review. A false negative here is a HIPAA violation.
+
+---
+
+## Agent 3: Data Preparation
+
+This agent transforms sanitized clinical data into analysis-ready features. It handles missing value imputation, unit normalization, temporal alignment, and feature engineering — all with full provenance tracking.
+
+```typescript
+interface PreparedDataset {
+  patientId: string
+  features: Feature[]
+  temporalWindow: { start: Date; end: Date }
+  completenessScore: number  // 0.0 – 1.0
+  imputationLog: ImputationEntry[]
+}
+
+interface Feature {
+  name: string
+  value: number
+  unit: string
+  normalizedValue: number  // Z-score or min-max normalized
+  source: string           // Traces back to ProcessedDocument.id
+  isImputed: boolean
+}
+
+interface ImputationEntry {
+  featureName: string
+  method: 'median' | 'last_observation' | 'clinical_default' | 'model_predicted'
+  confidence: number
+  justification: string
+}
+
+function prepareData(
+  documents: ProcessedDocument[],
+  patientId: string
+): PreparedDataset {
+  const rawFeatures = extractFeatures(documents)
+  const features: Feature[] = []
+  const imputationLog: ImputationEntry[] = []
+
+  for (const schema of CLINICAL_FEATURE_SCHEMA) {
+    const raw = rawFeatures.find(f => f.name === schema.name)
+
+    if (raw) {
+      // Normalize units (e.g., mg/dL to mmol/L)
+      const normalized = normalizeUnit(raw.value, raw.unit, schema.targetUnit)
+      features.push({
+        name: schema.name,
+        value: normalized.value,
+        unit: schema.targetUnit,
+        normalizedValue: zScore(normalized.value, schema.populationMean, schema.populationStd),
+        source: raw.documentId,
+        isImputed: false,
+      })
+    } else if (schema.required) {
+      // Missing required feature — impute with provenance
+      const imputed = imputeValue(schema, rawFeatures)
+      features.push({
+        ...imputed.feature,
+        isImputed: true,
+      })
+      imputationLog.push({
+        featureName: schema.name,
+        method: imputed.method,
+        confidence: imputed.confidence,
+        justification: imputed.justification,
+      })
+    }
+  }
+
+  const completeness = features.filter(f => !f.isImputed).length / features.length
+
+  return {
+    patientId,
+    features,
+    temporalWindow: computeTemporalWindow(documents),
+    completenessScore: completeness,
+    imputationLog,
+  }
+}
+```
+
+**Explainability hook**: The `imputationLog` is surfaced to clinicians. If a prediction depends heavily on an imputed value, the explanation says so explicitly — "HbA1c was not available; median population value of 5.7% was used. This reduces prediction confidence by 12%."
+
+---
+
+## Agent 4: Patient Matching
+
+For comparative analysis and cohort-based predictions, this agent finds clinically similar patients using a combination of exact matching, propensity scoring, and embedding similarity — not just demographic overlap.
+
+```typescript
+interface MatchCriteria {
+  primaryDiagnosis: string[]
+  ageRange: { min: number; max: number }
+  labValueRanges: Record<string, { min: number; max: number }>
+  minimumCohortSize: number
+}
+
+interface MatchResult {
+  cohortId: string
+  matchedPatients: number
+  matchQuality: number  // 0.0 – 1.0
+  matchMethod: 'exact' | 'propensity' | 'embedding' | 'hybrid'
+  matchBreakdown: MatchDimension[]
+}
+
+interface MatchDimension {
+  dimension: string
+  weight: number
+  similarity: number
+  description: string  // Human-readable explanation
+}
+
+async function findMatchingCohort(
+  patient: PreparedDataset,
+  criteria: MatchCriteria,
+  pool: Pool
+): Promise<MatchResult> {
+  // Stage 1: Exact match on primary diagnosis (fast, uses B-tree index)
+  const exactMatches = await pool.query(`
+    SELECT patient_id, features
+    FROM patient_cohorts
+    WHERE primary_diagnosis = ANY($1)
+      AND age BETWEEN $2 AND $3
+  `, [criteria.primaryDiagnosis, criteria.ageRange.min, criteria.ageRange.max])
+
+  if (exactMatches.rows.length >= criteria.minimumCohortSize) {
+    return buildMatchResult(exactMatches.rows, 'exact', patient)
+  }
+
+  // Stage 2: Propensity score matching (relaxed criteria)
+  const propensityMatches = await computePropensityScores(
+    patient.features,
+    criteria,
+    pool
+  )
+
+  if (propensityMatches.length >= criteria.minimumCohortSize) {
+    return buildMatchResult(propensityMatches, 'propensity', patient)
+  }
+
+  // Stage 3: Embedding similarity (most flexible, uses pgvector)
+  const patientEmbedding = await embedClinicalProfile(patient.features)
+  const embeddingMatches = await pool.query(`
+    SELECT patient_id, features,
+           1 - (embedding <=> $1) AS similarity
+    FROM patient_cohorts
+    WHERE 1 - (embedding <=> $1) > 0.75
+    ORDER BY embedding <=> $1
+    LIMIT $2
+  `, [patientEmbedding, criteria.minimumCohortSize])
+
+  return buildMatchResult(embeddingMatches.rows, 'embedding', patient)
+}
+```
+
+**Explainability hook**: The `matchBreakdown` array tells the clinician exactly *why* these patients were considered similar — "matched on: Type 2 diabetes diagnosis (exact), age 55-65 (exact), HbA1c 7.2-8.1% (range), BMI 28-33 (range)."
+
+---
+
+## Agent 5: Prediction Engine
+
+The prediction agent runs the clinical model — but it never outputs a bare prediction. Every prediction comes with feature attributions (which inputs drove the result) and uncertainty quantification (how confident the model is).
+
+```typescript
+interface Prediction {
+  outcome: string
+  probability: number
+  uncertainty: {
+    aleatoric: number   // Irreducible data noise
+    epistemic: number   // Model uncertainty (lack of training data)
+    total: number
+  }
+  featureAttributions: FeatureAttribution[]
+  modelVersion: string
+  predictionId: string
+}
+
+interface FeatureAttribution {
+  featureName: string
+  shapValue: number         // SHAP attribution
+  direction: 'risk_increasing' | 'risk_decreasing' | 'neutral'
+  featureValue: number
+  populationBaseline: number
+  isImputed: boolean        // Carried from data prep agent
+}
+
+async function predict(
+  dataset: PreparedDataset,
+  cohort: MatchResult,
+  modelId: string
+): Promise<Prediction> {
+  const model = await loadModel(modelId)
+  const featureVector = dataset.features.map(f => f.normalizedValue)
+
+  // Run prediction with Monte Carlo dropout for uncertainty
+  const mcSamples = 50
+  const predictions: number[] = []
+  for (let i = 0; i < mcSamples; i++) {
+    predictions.push(await model.predictWithDropout(featureVector))
+  }
+
+  const mean = predictions.reduce((a, b) => a + b) / predictions.length
+  const variance = predictions.reduce((a, b) => a + (b - mean) ** 2, 0) / predictions.length
+
+  // Compute SHAP values for feature attributions
+  const shapValues = await computeShap(model, featureVector, cohort)
+
+  const attributions: FeatureAttribution[] = dataset.features.map((f, i) => ({
+    featureName: f.name,
+    shapValue: shapValues[i],
+    direction: shapValues[i] > 0.01
+      ? 'risk_increasing'
+      : shapValues[i] < -0.01
+        ? 'risk_decreasing'
+        : 'neutral',
+    featureValue: f.value,
+    populationBaseline: CLINICAL_FEATURE_SCHEMA.find(s => s.name === f.name)!.populationMean,
+    isImputed: f.isImputed,
+  }))
+
+  // Sort by absolute impact
+  attributions.sort((a, b) => Math.abs(b.shapValue) - Math.abs(a.shapValue))
+
+  return {
+    outcome: model.outcomeLabel,
+    probability: mean,
+    uncertainty: {
+      aleatoric: estimateAleatoricUncertainty(dataset),
+      epistemic: variance,
+      total: Math.sqrt(variance + estimateAleatoricUncertainty(dataset)),
+    },
+    featureAttributions: attributions,
+    modelVersion: model.version,
+    predictionId: generatePredictionId(),
+  }
+}
+```
+
+**Key design decision**: Monte Carlo dropout gives uncertainty estimates without requiring a separate calibration model. If epistemic uncertainty is high, it means the model hasn't seen enough similar patients — a direct signal to the explainability agent.
+
+---
+
+## Agent 6: Explainability
+
+The final agent translates the technical output into clinician-facing explanations. It doesn't just format results — it contextualizes them, flags concerns, and generates audit-ready documentation.
+
+```typescript
+interface ClinicalExplanation {
+  summary: string                    // 2-3 sentence plain-language summary
+  riskLevel: 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL'
+  topFactors: ExplainedFactor[]      // Top 5 contributors
+  concerns: string[]                 // Flags for clinician attention
+  dataQualityNote: string            // Transparency about data limitations
+  auditRecord: AuditRecord
+}
+
+interface ExplainedFactor {
+  factor: string
+  impact: string           // "Increases risk by 15%"
+  patientValue: string     // "HbA1c: 8.2%"
+  referenceRange: string   // "Normal: 4.0 - 5.6%"
+  confidence: string       // "High — measured value" or "Moderate — imputed"
+}
+
+interface AuditRecord {
+  predictionId: string
+  timestamp: Date
+  modelVersion: string
+  dataCompleteness: number
+  matchCohortSize: number
+  uncertaintyLevel: string
+  phiProtectionVerified: boolean
+  fullTraceAvailable: boolean
+}
+
+function generateExplanation(
+  prediction: Prediction,
+  dataset: PreparedDataset,
+  cohort: MatchResult,
+  privacyReport: PrivacyReport
+): ClinicalExplanation {
+  const topFactors = prediction.featureAttributions
+    .slice(0, 5)
+    .map(attr => ({
+      factor: humanReadableName(attr.featureName),
+      impact: formatImpact(attr.shapValue, attr.direction),
+      patientValue: formatValue(attr.featureName, attr.featureValue),
+      referenceRange: formatRange(attr.featureName),
+      confidence: attr.isImputed
+        ? 'Moderate — value was imputed (not directly measured)'
+        : 'High — directly measured value',
+    }))
+
+  const concerns: string[] = []
+
+  // Flag high uncertainty
+  if (prediction.uncertainty.epistemic > 0.15) {
+    concerns.push(
+      `Model uncertainty is elevated (${(prediction.uncertainty.epistemic * 100).toFixed(1)}%). ` +
+      `Limited training data for this patient profile. Treat prediction as directional only.`
+    )
+  }
+
+  // Flag heavy reliance on imputed values
+  const imputedInTop5 = prediction.featureAttributions
+    .slice(0, 5)
+    .filter(a => a.isImputed)
+  if (imputedInTop5.length > 0) {
+    concerns.push(
+      `${imputedInTop5.length} of top 5 risk factors used imputed values: ` +
+      `${imputedInTop5.map(a => humanReadableName(a.featureName)).join(', ')}. ` +
+      `Obtaining actual measurements would improve prediction reliability.`
+    )
+  }
+
+  // Flag low data completeness
+  if (dataset.completenessScore < 0.7) {
+    concerns.push(
+      `Data completeness is ${(dataset.completenessScore * 100).toFixed(0)}%. ` +
+      `${dataset.imputationLog.length} values were imputed.`
+    )
+  }
+
+  // Flag small cohort
+  if (cohort.matchedPatients < 50) {
+    concerns.push(
+      `Matched cohort size is ${cohort.matchedPatients} patients (recommended: 50+). ` +
+      `Prediction may not generalize well to this patient profile.`
+    )
+  }
+
+  const riskLevel = prediction.probability > 0.8 ? 'CRITICAL'
+    : prediction.probability > 0.6 ? 'HIGH'
+    : prediction.probability > 0.3 ? 'MODERATE'
+    : 'LOW'
+
+  return {
+    summary: generatePlainLanguageSummary(prediction, topFactors, riskLevel),
+    riskLevel,
+    topFactors,
+    concerns,
+    dataQualityNote: `Based on ${dataset.features.filter(f => !f.isImputed).length} measured values ` +
+      `and ${dataset.imputationLog.length} imputed values from ${dataset.temporalWindow.start.toLocaleDateString()} ` +
+      `to ${dataset.temporalWindow.end.toLocaleDateString()}.`,
+    auditRecord: {
+      predictionId: prediction.predictionId,
+      timestamp: new Date(),
+      modelVersion: prediction.modelVersion,
+      dataCompleteness: dataset.completenessScore,
+      matchCohortSize: cohort.matchedPatients,
+      uncertaintyLevel: prediction.uncertainty.total > 0.2 ? 'HIGH' : prediction.uncertainty.total > 0.1 ? 'MODERATE' : 'LOW',
+      phiProtectionVerified: privacyReport.complianceStatus === 'COMPLIANT',
+      fullTraceAvailable: true,
+    },
+  }
+}
+
+function generatePlainLanguageSummary(
+  prediction: Prediction,
+  factors: ExplainedFactor[],
+  riskLevel: string
+): string {
+  const pct = (prediction.probability * 100).toFixed(0)
+  const topFactor = factors[0]
+  const secondFactor = factors[1]
+
+  return (
+    `${riskLevel} risk (${pct}% probability) for ${prediction.outcome}. ` +
+    `Primary driver: ${topFactor.factor} at ${topFactor.patientValue} ` +
+    `(reference: ${topFactor.referenceRange}). ` +
+    (secondFactor
+      ? `Secondary factor: ${secondFactor.factor} at ${secondFactor.patientValue}.`
+      : '')
+  )
+}
+```
+
+### What the Clinician Sees
+
+The output is a structured explanation, not a probability score:
+
+```
+RISK ASSESSMENT: HIGH (72% probability) — 30-day readmission
+
+Primary drivers:
+  1. HbA1c: 8.2% (normal: 4.0-5.6%) — increases risk by 18%
+     Confidence: High — directly measured value
+  2. Creatinine: 1.8 mg/dL (normal: 0.7-1.3) — increases risk by 12%
+     Confidence: High — directly measured value
+  3. Age: 67 — increases risk by 8%
+     Confidence: High
+  4. BMI: 31.2 (normal: 18.5-24.9) — increases risk by 5%
+     Confidence: Moderate — value was imputed (not directly measured)
+  5. Medication adherence score: 0.62 — increases risk by 4%
+     Confidence: High — sensor-derived value
+
+Concerns:
+  - 1 of top 5 risk factors (BMI) used an imputed value.
+    Obtaining actual measurement would improve reliability.
+
+Data quality: Based on 18 measured values and 3 imputed values
+              from 01/15/2026 to 02/08/2026.
+```
+
+Every claim traces back through the agent chain: prediction attribution → prepared feature → extracted field → source document page and line number.
+
+---
+
+## Architect's Takeaways
+
+**1. Single-responsibility agents are auditable agents.** When the FDA asks "how did you arrive at this prediction," you can point to 6 discrete, testable steps — not a black box. Each agent has its own test suite, its own failure modes, and its own rollback strategy.
+
+**2. Explainability is not a post-hoc layer — it's an architectural requirement.** Every agent in the pipeline carries provenance metadata forward. The explainability agent doesn't reverse-engineer explanations; it assembles them from structured data that was tracked from the start.
+
+**3. Privacy protection must be a hard gate, not a filter.** The privacy agent runs before any data touches an LLM or external model. If PHI detection confidence drops below threshold, the pipeline halts. A false negative is a compliance violation, not a bug.
+
+**4. Flag what you don't know as loudly as what you do know.** Imputed values, small cohorts, high model uncertainty — these aren't footnotes. They're front-and-center concerns that change how clinicians interpret the output. Transparency about limitations is what builds trust.
+
+**5. The audit trail is the product.** In regulated healthcare, the explanation and the trace are more valuable than the prediction itself. Build the audit record as a first-class output, not a log file.
+
+---
+
+## Further Reading
+
+- **Case Study**: LangGraph Edge Cases in Clinical AI — deterministic validation gates and human handoff
+- **Case Study**: RAG Production Failure Patterns — context poisoning and hybrid search fixes
+- **Week 5**: Framework Comparison — multi-agent orchestration patterns
+- **Week 7**: Observability Pillars — tracing and monitoring for production AI systems

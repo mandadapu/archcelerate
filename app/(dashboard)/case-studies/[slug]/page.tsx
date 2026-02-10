@@ -12,6 +12,8 @@ const caseStudyPaths: Record<string, string> = {
   'rag-production-failures': 'content/week6/rag-production-failures.mdx',
   'langgraph-clinical-edge-cases':
     'content/case-studies/langgraph-clinical-edge-cases.mdx',
+  'explainable-healthcare-agents':
+    'content/case-studies/explainable-healthcare-agents.mdx',
 }
 
 interface Props {
