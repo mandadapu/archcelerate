@@ -26,6 +26,13 @@ const caseStudies = [
       'Preventing fabrication in cyclic workflows and building graceful human handoff architecture',
     tags: ['LangGraph', 'Clinical AI', 'HIPAA', 'Human-in-the-Loop'],
   },
+  {
+    slug: 'explainable-healthcare-agents',
+    title: 'Explainable Healthcare AI with Specialized Agents',
+    description:
+      'Building a multi-agent system with 6 specialized agents for file processing, privacy protection, data prep, matching, and interpretable predictions',
+    tags: ['Multi-Agent', 'Explainability', 'HIPAA', 'SHAP', 'Healthcare'],
+  },
 ]
 
 export default async function CaseStudiesPage(): Promise<JSX.Element | null> {
