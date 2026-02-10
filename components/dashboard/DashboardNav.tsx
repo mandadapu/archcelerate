@@ -16,6 +16,7 @@ const navLinks = [
   { href: '/mentor/new', label: 'AI Mentor' },
   { href: '/workflows', label: 'Workflows' },
   { href: '/portfolio', label: 'Portfolio' },
+  { href: '/case-studies', label: 'Case Studies' },
   { href: '/skill-diagnosis', label: 'My Progress' },
   { href: '/security-access', label: 'Security' },
 ]
