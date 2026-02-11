@@ -1,0 +1,831 @@
+---
+title: "HIPAA-Compliant AI Architecture: Designing the Walled Garden"
+week: 12
+concept: 3
+description: "Architect HIPAA-compliant AI systems with network isolation, encryption at every layer, least-privilege IAM, and immutable audit logging for Protected Health Information"
+estimatedMinutes: 70
+difficulty: expert
+objectives:
+  - Design VPC-based network isolation for PHI workloads
+  - Implement encryption in transit and at rest with key rotation
+  - Build role-based access control with automatic session timeouts
+  - Architect immutable audit logging with log scrubbing for PHI
+---
+
+# HIPAA-Compliant AI Architecture: Designing the Walled Garden
+
+## Why This Matters
+
+**Simple Explanation**: Designing for HIPAA (Health Insurance Portability and Accountability Act) compliance at the architectural level moves the focus from "performance at all costs" to "security and auditability by default." It isn't just about encryption — it's about creating a verifiable walled garden for Protected Health Information (PHI).
+
+**Real Consequences**:
+- **HIPAA Violation Fine**: $100 to $50,000 per violation, up to $1.5 million per year per category
+- **Criminal Penalties**: Up to 10 years imprisonment for knowingly misusing PHI
+- **Breach Notification**: Must notify affected individuals within 60 days — no exceptions
+- **Reputational Damage**: 65% of patients would switch providers after a healthcare data breach
+- **Average Healthcare Breach Cost**: $10.93 million (IBM 2023) — highest of any industry
+
+> **Architect's Tip**: HIPAA compliance is not a feature you bolt on at the end. It is a foundational architectural constraint that shapes every design decision from day one. Retrofitting HIPAA into an existing system costs 5-10x more than building it in from the start.
+
+## The Four Architectural Pillars of HIPAA Compliance
+
+To meet the Technical Safeguards of HIPAA, your architecture must address four primary domains: **Network Isolation**, **Encryption**, **Identity and Access Management**, and **Auditing**.
+
+```
+┌─────────────────────────────────────────────────────┐
+│                 HIPAA Architecture                   │
+│                                                     │
+│  ┌───────────┐  ┌───────────┐  ┌───────────┐      │
+│  │  Network   │  │Encryption │  │    IAM    │      │
+│  │ Isolation  │  │ (Transit  │  │  (RBAC +  │      │
+│  │  (VPC +    │  │  + Rest)  │  │  Least    │      │
+│  │  Subnets)  │  │           │  │ Privilege)│      │
+│  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘      │
+│        │              │              │              │
+│        └──────────┬───┘──────────────┘              │
+│                   │                                  │
+│           ┌───────▼──────┐                          │
+│           │   Auditing   │                          │
+│           │  (Immutable  │                          │
+│           │    Logs)     │                          │
+│           └──────────────┘                          │
+└─────────────────────────────────────────────────────┘
+```
+
+---
+
+## Pillar 1: Network Isolation (The Walled Garden)
+
+You must separate your application and database layers from the public internet. Think of it as building a hospital — the lobby is public, but the patient records room has locked doors, badge access, and security cameras.
+
+### VPC Partitioning
+
+Use a Virtual Private Cloud (VPC) with strict subnets. Only a Load Balancer should be in the public subnet; all application servers and databases live in private subnets.
+
+```typescript
+// Infrastructure-as-Code: HIPAA-compliant VPC layout (AWS CDK pattern)
+interface HipaaVpcConfig {
+  readonly region: string
+  readonly cidrBlock: string
+  readonly enableFlowLogs: boolean // Required for HIPAA audit trail
+}
+
+class HipaaNetworkArchitecture {
+  // Public subnet: ONLY the load balancer lives here
+  private publicSubnet = {
+    name: 'public-alb-subnet',
+    cidr: '10.0.1.0/24',
+    allowedResources: ['Application Load Balancer'],
+    internetAccess: true
+  }
+
+  // Private subnet: Application servers (no direct internet access)
+  private appSubnet = {
+    name: 'private-app-subnet',
+    cidr: '10.0.2.0/24',
+    allowedResources: ['ECS Tasks', 'Lambda Functions'],
+    internetAccess: false, // Outbound via NAT Gateway only
+    inboundRules: [
+      { source: 'public-alb-subnet', port: 443, protocol: 'HTTPS' }
+    ]
+  }
+
+  // Isolated subnet: Database (no internet access at all)
+  private dataSubnet = {
+    name: 'isolated-data-subnet',
+    cidr: '10.0.3.0/24',
+    allowedResources: ['RDS PostgreSQL', 'ElastiCache Redis'],
+    internetAccess: false,
+    inboundRules: [
+      { source: 'private-app-subnet', port: 5432, protocol: 'TCP' },
+      { source: 'private-app-subnet', port: 6379, protocol: 'TCP' }
+    ]
+  }
+
+  validateArchitecture(): ValidationResult {
+    const violations: string[] = []
+
+    // Rule: Database must never be in a public subnet
+    if (this.dataSubnet.internetAccess) {
+      violations.push('CRITICAL: Database subnet must not have internet access')
+    }
+
+    // Rule: VPC Flow Logs must be enabled for audit
+    // HIPAA requires logging all network traffic to/from PHI systems
+
+    // Rule: All cross-subnet traffic must use TLS 1.2+
+    // Even "internal" traffic between app and database
+
+    return {
+      compliant: violations.length === 0,
+      violations
+    }
+  }
+}
+
+// Anti-pattern: Database in public subnet
+// ❌ RDS instance with public IP = instant HIPAA violation
+// ✅ RDS in isolated subnet, accessed only through private app subnet
+```
+
+### Bastion Hosts and VPN Access
+
+Developers should never SSH directly into a production server. Access must go through a hardened Bastion host or a site-to-site VPN with Multi-Factor Authentication (MFA).
+
+```typescript
+// Secure access pattern for HIPAA production environments
+interface BastionAccessPolicy {
+  // Only specific IPs can reach the bastion
+  allowedSourceIPs: string[]
+  // MFA is mandatory — no exceptions
+  requireMFA: true
+  // Sessions expire after 1 hour max
+  maxSessionDurationMinutes: 60
+  // Every command is logged
+  sessionLogging: true
+  // No direct database access — only through application layer
+  databaseAccessAllowed: false
+}
+
+class SecureAccessGateway {
+  async authenticateDevAccess(
+    developer: Developer,
+    mfaToken: string
+  ): Promise<SessionToken> {
+    // Step 1: Verify identity
+    const identity = await this.verifyIdentity(developer.email)
+    if (!identity.active) {
+      throw new AccessDeniedError('Account not active')
+    }
+
+    // Step 2: Verify MFA (HIPAA requires multi-factor)
+    const mfaValid = await this.verifyMFA(developer.id, mfaToken)
+    if (!mfaValid) {
+      await this.logFailedAccess(developer.id, 'MFA_FAILED')
+      throw new AccessDeniedError('MFA verification failed')
+    }
+
+    // Step 3: Check role-based permissions
+    const hasAccess = await this.checkRBAC(developer.id, 'production-read')
+    if (!hasAccess) {
+      await this.logFailedAccess(developer.id, 'RBAC_DENIED')
+      throw new AccessDeniedError('Insufficient permissions')
+    }
+
+    // Step 4: Create time-limited session with full audit logging
+    const session = await this.createAuditedSession(developer.id, {
+      expiresInMinutes: 60,
+      logAllCommands: true,
+      restrictedCommands: ['DROP', 'DELETE', 'TRUNCATE']
+    })
+
+    await this.logSuccessfulAccess(developer.id, session.id)
+    return session
+  }
+
+  private async logFailedAccess(
+    developerId: string,
+    reason: string
+  ): Promise<void> {
+    // HIPAA requires logging ALL access attempts, including failures
+    await this.auditLog.write({
+      event: 'ACCESS_ATTEMPT_FAILED',
+      actor: developerId,
+      reason,
+      timestamp: new Date().toISOString(),
+      sourceIP: this.getSourceIP()
+    })
+  }
+}
+```
+
+> **Interview Defense**: "In a HIPAA environment, we use a zero-trust network model. The database sits in an isolated subnet with no internet access. Even internal traffic between the app tier and data tier is encrypted with TLS 1.2+. Developer access goes through a bastion host with MFA and full session logging."
+
+---
+
+## Pillar 2: Encryption (In Transit and At Rest)
+
+HIPAA requires PHI to be unreadable to unauthorized parties. This means encryption everywhere — not just at the application boundary.
+
+### Encryption at Rest
+
+Every storage volume must use AES-256 encryption. Key management is vital — use a service like AWS KMS or Azure Key Vault where you can rotate keys and track their use.
+
+```typescript
+// Encryption-at-rest configuration for HIPAA compliance
+interface EncryptionAtRestConfig {
+  algorithm: 'AES-256-GCM' // HIPAA-approved algorithm
+  keyManagement: 'AWS_KMS' | 'AZURE_KEY_VAULT' | 'GCP_KMS'
+  keyRotationDays: 90 // Rotate encryption keys every 90 days
+  keyAccessLogging: true // Log every key usage event
+}
+
+class PHIEncryptionService {
+  private kmsClient: KMSClient
+
+  // Encrypt PHI before storing in database
+  async encryptPHI(plaintext: string, context: EncryptionContext): Promise<EncryptedData> {
+    // Use envelope encryption: KMS encrypts a data key,
+    // data key encrypts the actual PHI
+    const dataKey = await this.kmsClient.generateDataKey({
+      KeyId: process.env.HIPAA_KMS_KEY_ID,
+      KeySpec: 'AES_256',
+      EncryptionContext: {
+        purpose: 'phi-encryption',
+        dataType: context.dataType,
+        // Encryption context is logged with every key usage
+        // This creates an audit trail of what was encrypted and why
+        requestedBy: context.userId
+      }
+    })
+
+    // Encrypt the PHI with the plaintext data key
+    const encrypted = await this.aesEncrypt(
+      plaintext,
+      dataKey.Plaintext!,
+      'AES-256-GCM'
+    )
+
+    // Store the encrypted data key alongside the ciphertext
+    // Only KMS can decrypt the data key
+    return {
+      ciphertext: encrypted.ciphertext,
+      encryptedDataKey: dataKey.CiphertextBlob!,
+      iv: encrypted.iv,
+      authTag: encrypted.authTag,
+      algorithm: 'AES-256-GCM',
+      keyId: process.env.HIPAA_KMS_KEY_ID!
+    }
+  }
+
+  // Key rotation: re-encrypt all PHI with new key
+  async rotateEncryptionKey(oldKeyId: string, newKeyId: string): Promise<void> {
+    console.log(`Rotating encryption key: ${oldKeyId} → ${newKeyId}`)
+
+    // Find all records encrypted with the old key
+    const records = await this.findRecordsByKeyId(oldKeyId)
+    console.log(`Re-encrypting ${records.length} PHI records...`)
+
+    for (const record of records) {
+      // Decrypt with old key
+      const plaintext = await this.decryptPHI(record, oldKeyId)
+      // Re-encrypt with new key
+      const reEncrypted = await this.encryptPHI(plaintext, {
+        dataType: record.dataType,
+        userId: 'system-key-rotation'
+      })
+      // Update in database
+      await this.updateRecord(record.id, reEncrypted)
+    }
+
+    // Log the rotation event
+    await this.auditLog.write({
+      event: 'KEY_ROTATION_COMPLETED',
+      oldKeyId,
+      newKeyId,
+      recordsAffected: records.length,
+      timestamp: new Date().toISOString()
+    })
+  }
+}
+```
+
+### Encryption in Transit
+
+Force TLS 1.2 or higher for **all** connections. This includes internal traffic between the web server and the database — not just client-facing HTTPS.
+
+```typescript
+// Enforcing TLS 1.2+ for all connections
+const tlsConfig = {
+  // External: Client → Load Balancer
+  external: {
+    minVersion: 'TLSv1.2',
+    cipherSuites: [
+      'TLS_AES_256_GCM_SHA384',
+      'TLS_CHACHA20_POLY1305_SHA256'
+    ],
+    // HSTS header: force HTTPS for 1 year
+    hstsMaxAge: 31536000
+  },
+
+  // Internal: App Server → Database
+  // Many teams skip this — HIPAA does NOT allow it
+  internal: {
+    minVersion: 'TLSv1.2',
+    verifyCertificates: true,
+    // PostgreSQL SSL configuration
+    database: {
+      ssl: {
+        rejectUnauthorized: true,
+        ca: process.env.DB_CA_CERT,
+        cert: process.env.DB_CLIENT_CERT,
+        key: process.env.DB_CLIENT_KEY
+      }
+    },
+    // Redis TLS configuration
+    cache: {
+      tls: {
+        rejectUnauthorized: true,
+        ca: process.env.REDIS_CA_CERT
+      }
+    }
+  }
+}
+
+// Anti-pattern check: detect unencrypted internal connections
+function auditInternalConnections(connections: ConnectionConfig[]): string[] {
+  const violations: string[] = []
+
+  for (const conn of connections) {
+    if (!conn.ssl && !conn.tls) {
+      violations.push(
+        `VIOLATION: Unencrypted connection to ${conn.host}:${conn.port}. ` +
+        `HIPAA requires TLS 1.2+ for ALL connections carrying PHI, ` +
+        `including internal service-to-service traffic.`
+      )
+    }
+  }
+
+  return violations
+}
+```
+
+> **Architect's Tip**: A common mistake is encrypting external traffic (client → server) but leaving internal traffic (server → database) unencrypted. HIPAA treats all PHI in transit the same — encrypt it everywhere, even inside your VPC.
+
+---
+
+## Pillar 3: Identity and Access Management (IAM)
+
+The principle of **Least Privilege** is the law here. Every user and service gets only the permissions needed to function — nothing more.
+
+### Role-Based Access Control (RBAC)
+
+```typescript
+// HIPAA-compliant RBAC for a healthcare AI system
+enum ClinicalRole {
+  PHYSICIAN = 'physician',
+  NURSE = 'nurse',
+  ADMIN = 'admin',
+  RESEARCHER = 'researcher',
+  BILLING = 'billing',
+  AI_SERVICE = 'ai_service'
+}
+
+interface PHIAccessPolicy {
+  role: ClinicalRole
+  canReadPHI: boolean
+  canWritePHI: boolean
+  canExportPHI: boolean
+  canAccessAIInsights: boolean
+  phiFieldAccess: string[] // Which specific PHI fields this role can see
+  requiresBreakGlass: boolean // Emergency override protocol
+}
+
+const accessPolicies: Record<ClinicalRole, PHIAccessPolicy> = {
+  [ClinicalRole.PHYSICIAN]: {
+    role: ClinicalRole.PHYSICIAN,
+    canReadPHI: true,
+    canWritePHI: true,
+    canExportPHI: false, // Requires additional approval
+    canAccessAIInsights: true,
+    phiFieldAccess: ['*'], // Full access to assigned patients
+    requiresBreakGlass: false
+  },
+  [ClinicalRole.NURSE]: {
+    role: ClinicalRole.NURSE,
+    canReadPHI: true,
+    canWritePHI: true,
+    canExportPHI: false,
+    canAccessAIInsights: true,
+    phiFieldAccess: ['vitals', 'medications', 'allergies', 'notes'],
+    requiresBreakGlass: false
+  },
+  [ClinicalRole.RESEARCHER]: {
+    role: ClinicalRole.RESEARCHER,
+    canReadPHI: false, // Researchers get de-identified data only
+    canWritePHI: false,
+    canExportPHI: false,
+    canAccessAIInsights: true,
+    phiFieldAccess: [], // No direct PHI access
+    requiresBreakGlass: false
+  },
+  [ClinicalRole.AI_SERVICE]: {
+    role: ClinicalRole.AI_SERVICE,
+    canReadPHI: true, // Needs PHI to generate insights
+    canWritePHI: false, // AI cannot modify patient records
+    canExportPHI: false,
+    canAccessAIInsights: true,
+    phiFieldAccess: ['diagnosis', 'medications', 'lab_results'],
+    requiresBreakGlass: false
+  },
+  [ClinicalRole.BILLING]: {
+    role: ClinicalRole.BILLING,
+    canReadPHI: false,
+    canWritePHI: false,
+    canExportPHI: false,
+    canAccessAIInsights: false,
+    phiFieldAccess: ['billing_codes', 'insurance_id'], // Minimum needed
+    requiresBreakGlass: false
+  },
+  [ClinicalRole.ADMIN]: {
+    role: ClinicalRole.ADMIN,
+    canReadPHI: false, // Admins manage the system, not patient data
+    canWritePHI: false,
+    canExportPHI: false,
+    canAccessAIInsights: false,
+    phiFieldAccess: [],
+    requiresBreakGlass: true // Can access PHI only via break-glass
+  }
+}
+
+class HipaaAccessControl {
+  async checkAccess(
+    userId: string,
+    role: ClinicalRole,
+    action: 'read' | 'write' | 'export',
+    patientId: string
+  ): Promise<AccessDecision> {
+    const policy = accessPolicies[role]
+
+    // Check basic permission
+    const actionMap = {
+      read: policy.canReadPHI,
+      write: policy.canWritePHI,
+      export: policy.canExportPHI
+    }
+
+    if (!actionMap[action]) {
+      // Log the denied access attempt (HIPAA requires this)
+      await this.logAccessDenied(userId, role, action, patientId)
+      return { allowed: false, reason: `Role ${role} cannot ${action} PHI` }
+    }
+
+    // Check patient assignment (physicians only see their patients)
+    if (role === ClinicalRole.PHYSICIAN) {
+      const isAssigned = await this.isPatientAssigned(userId, patientId)
+      if (!isAssigned) {
+        await this.logAccessDenied(userId, role, action, patientId)
+        return { allowed: false, reason: 'Patient not assigned to this physician' }
+      }
+    }
+
+    // Log successful access (HIPAA requires logging ALL PHI access)
+    await this.logAccessGranted(userId, role, action, patientId)
+    return { allowed: true }
+  }
+}
+```
+
+### Automatic Session Timeouts
+
+The architecture must support session timeouts to prevent unauthorized access from unattended terminals — a real risk in clinical environments with shared workstations.
+
+```typescript
+// HIPAA session management
+interface HipaaSessionConfig {
+  // Maximum session duration before forced re-authentication
+  maxSessionDurationMinutes: 120
+  // Idle timeout: auto-logout after inactivity
+  idleTimeoutMinutes: 15
+  // Require re-authentication for sensitive operations
+  stepUpAuthActions: ['export_phi', 'bulk_access', 'admin_override']
+  // Concurrent session limit per user
+  maxConcurrentSessions: 2
+}
+
+class HipaaSessionManager {
+  async validateSession(sessionId: string): Promise<SessionValidation> {
+    const session = await this.getSession(sessionId)
+
+    if (!session) {
+      return { valid: false, reason: 'Session not found' }
+    }
+
+    // Check absolute expiry
+    const sessionAge = Date.now() - session.createdAt.getTime()
+    const maxAge = 120 * 60 * 1000 // 120 minutes
+    if (sessionAge > maxAge) {
+      await this.terminateSession(sessionId, 'MAX_DURATION_EXCEEDED')
+      return { valid: false, reason: 'Session expired — please re-authenticate' }
+    }
+
+    // Check idle timeout
+    const idleTime = Date.now() - session.lastActivityAt.getTime()
+    const maxIdle = 15 * 60 * 1000 // 15 minutes
+    if (idleTime > maxIdle) {
+      await this.terminateSession(sessionId, 'IDLE_TIMEOUT')
+      return { valid: false, reason: 'Session timed out due to inactivity' }
+    }
+
+    // Update last activity timestamp
+    await this.touchSession(sessionId)
+    return { valid: true }
+  }
+
+  private async terminateSession(
+    sessionId: string,
+    reason: string
+  ): Promise<void> {
+    await this.deleteSession(sessionId)
+
+    // Audit log: session terminations are compliance events
+    await this.auditLog.write({
+      event: 'SESSION_TERMINATED',
+      sessionId,
+      reason,
+      timestamp: new Date().toISOString()
+    })
+  }
+}
+```
+
+> **Interview Defense**: "We enforce the principle of least privilege at every layer. Researchers only see de-identified data. AI services can read PHI for inference but cannot write to patient records. Even system admins need a break-glass protocol to access PHI, and every access — granted or denied — is logged to an immutable audit trail."
+
+---
+
+## Pillar 4: Auditing and Logging (The Paper Trail)
+
+You must be able to reconstruct every event that touched PHI. This is not optional — HIPAA auditors will ask for proof.
+
+### Immutable Audit Logs
+
+Stream logs to a separate, locked-down account or a Write Once, Read Many (WORM) storage bucket. If anyone can modify the logs, they are useless for compliance.
+
+```typescript
+// Immutable audit logging for HIPAA compliance
+interface HipaaAuditEvent {
+  // WHO accessed the data
+  actor: {
+    userId: string
+    role: string
+    ipAddress: string
+    userAgent: string
+  }
+  // WHAT was accessed
+  resource: {
+    type: 'patient_record' | 'lab_result' | 'ai_insight' | 'medication'
+    id: string
+    fields: string[] // Which specific fields were accessed
+  }
+  // WHEN it happened
+  timestamp: string // ISO 8601
+  // WHERE (which system/service)
+  source: {
+    service: string
+    environment: 'production' | 'staging'
+    region: string
+  }
+  // Action and outcome
+  action: 'read' | 'write' | 'delete' | 'export' | 'ai_inference'
+  outcome: 'success' | 'denied' | 'error'
+  // Additional context
+  reason?: string // Why was this accessed (for break-glass)
+}
+
+class ImmutableAuditLogger {
+  // Logs go to a SEPARATE AWS account with WORM (Write Once Read Many) policy
+  // Even account admins cannot delete or modify these logs
+  private wormBucket: string
+  private logStream: string
+
+  async logPHIAccess(event: HipaaAuditEvent): Promise<void> {
+    // Validate completeness — incomplete audit logs are a violation
+    this.validateEvent(event)
+
+    // Write to multiple destinations for durability
+    await Promise.all([
+      // 1. CloudWatch Logs (real-time alerting)
+      this.writeToCloudWatch(event),
+      // 2. S3 WORM bucket (long-term immutable storage)
+      this.writeToWormStorage(event),
+      // 3. SIEM integration (security monitoring)
+      this.writeToSIEM(event)
+    ])
+  }
+
+  private validateEvent(event: HipaaAuditEvent): void {
+    const required = ['actor', 'resource', 'timestamp', 'action', 'outcome']
+    for (const field of required) {
+      if (!(field in event)) {
+        throw new Error(
+          `Audit event missing required field: ${field}. ` +
+          `Incomplete audit logs are a HIPAA violation.`
+        )
+      }
+    }
+  }
+
+  // HIPAA requires 6-year retention minimum
+  private readonly retentionYears = 6
+
+  async writeToWormStorage(event: HipaaAuditEvent): Promise<void> {
+    const key = `audit/${event.timestamp.slice(0, 10)}/${crypto.randomUUID()}.json`
+
+    await this.s3Client.putObject({
+      Bucket: this.wormBucket,
+      Key: key,
+      Body: JSON.stringify(event),
+      ContentType: 'application/json',
+      // Object Lock: prevents deletion for the retention period
+      ObjectLockMode: 'COMPLIANCE',
+      ObjectLockRetainUntilDate: new Date(
+        Date.now() + this.retentionYears * 365 * 24 * 60 * 60 * 1000
+      ).toISOString()
+    })
+  }
+}
+```
+
+### The Log Scrubbing Problem
+
+Here is where HIPAA fundamentally changes how you build logging and observability. In a non-HIPAA system, you log everything for debugging. In a HIPAA system, **your logs themselves become a liability**.
+
+```typescript
+// The PHI Log Scrubbing Layer
+// In HIPAA environments, you need a "sidecar" process that intercepts
+// application logs and redacts PHI before they leave the private network.
+
+class PHILogScrubber {
+  // Patterns that indicate PHI in log messages
+  private readonly phiPatterns = [
+    // Social Security Numbers
+    { pattern: /\b\d{3}-\d{2}-\d{4}\b/g, replacement: '[SSN-REDACTED]' },
+    // Medical Record Numbers (common formats)
+    { pattern: /\bMRN[:\s]*\d{6,10}\b/gi, replacement: '[MRN-REDACTED]' },
+    // Patient names (after known prefixes)
+    { pattern: /patient[:\s]+[A-Z][a-z]+ [A-Z][a-z]+/gi, replacement: 'patient: [NAME-REDACTED]' },
+    // Date of birth patterns
+    { pattern: /\bDOB[:\s]*\d{1,2}\/\d{1,2}\/\d{4}\b/gi, replacement: 'DOB: [DOB-REDACTED]' },
+    // Email addresses
+    { pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, replacement: '[EMAIL-REDACTED]' },
+    // Phone numbers
+    { pattern: /\b\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g, replacement: '[PHONE-REDACTED]' }
+  ]
+
+  scrub(logMessage: string): string {
+    let scrubbed = logMessage
+    for (const { pattern, replacement } of this.phiPatterns) {
+      scrubbed = scrubbed.replace(pattern, replacement)
+    }
+    return scrubbed
+  }
+
+  // Middleware for application logging
+  createLoggingMiddleware() {
+    return (logEntry: LogEntry): LogEntry => {
+      return {
+        ...logEntry,
+        message: this.scrub(logEntry.message),
+        // Also scrub structured data fields
+        metadata: this.scrubObject(logEntry.metadata),
+        // Tag as scrubbed for audit purposes
+        _hipaa: {
+          scrubbed: true,
+          scrubberVersion: '1.0.0',
+          timestamp: new Date().toISOString()
+        }
+      }
+    }
+  }
+
+  private scrubObject(obj: Record<string, unknown>): Record<string, unknown> {
+    const scrubbed: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(obj)) {
+      if (typeof value === 'string') {
+        scrubbed[key] = this.scrub(value)
+      } else if (typeof value === 'object' && value !== null) {
+        scrubbed[key] = this.scrubObject(value as Record<string, unknown>)
+      } else {
+        scrubbed[key] = value
+      }
+    }
+    return scrubbed
+  }
+}
+```
+
+> **Architect's Tip**: You cannot send raw request data to a logging service unless that service has signed a **Business Associate Agreement (BAA)** with you. This eliminates many popular SaaS logging tools. AWS CloudWatch, Datadog (with BAA), and Splunk (with BAA) are common HIPAA-eligible choices.
+
+---
+
+## Design Decision: HIPAA vs. Non-HIPAA Log Management
+
+One of the clearest differences in architectural design between HIPAA and non-HIPAA systems occurs in log management and observability.
+
+### Non-HIPAA Design
+
+In a standard SaaS app, your primary goal for logging is debugging and performance monitoring.
+
+- **The Decision**: Use a third-party logging tool (Datadog, Loggly) and send full application logs, including request parameters, to help developers fix bugs quickly.
+- **The Data**: If a user's email or name ends up in a log message during an error, it's a minor issue to clean up later.
+- **Log Volume**: You only log errors and warnings to save costs.
+
+### HIPAA-Constrained Design
+
+In a HIPAA environment, logging becomes a **liability risk** and an **audit requirement** simultaneously.
+
+- **The Decision**: Implement a Log Scrubbing Layer and a strict "No-PHI in Logs" policy enforced by code reviews and automated scanners.
+- **The Constraint**: You cannot send raw request data to a logging service unless that service has signed a BAA with you.
+- **The Paradox**: You must log MORE (every successful PHI read), but with LESS data (no actual PHI in the logs).
+
+```typescript
+// Side-by-side comparison: HIPAA vs. Non-HIPAA logging
+
+// ❌ Non-HIPAA logging (logs actual patient data — fine for standard SaaS)
+function logPatientAccessNonHipaa(patientId: string, patientName: string) {
+  console.log(`Accessed patient record: ${patientName} (ID: ${patientId})`)
+  // Logs: "Accessed patient record: John Smith (ID: P-12345)"
+  // In standard SaaS, this is fine for debugging
+}
+
+// ✅ HIPAA-compliant logging (redacts PHI, logs access metadata only)
+function logPatientAccessHipaa(
+  actorId: string,
+  patientId: string,
+  action: string
+) {
+  // Log the access event WITHOUT the patient's actual data
+  auditLogger.log({
+    event: 'PHI_ACCESS',
+    actor: actorId,
+    resourceId: patientId, // ID is OK — it's not PHI by itself
+    action,
+    timestamp: new Date().toISOString(),
+    // NO patient name, NO diagnosis, NO SSN in logs
+  })
+}
+
+// The volume difference:
+// Non-HIPAA: ~1,000 log events/day (errors + warnings only)
+// HIPAA:    ~50,000 log events/day (every PHI read + writes + errors)
+// Cost impact: 10-50x higher logging costs in HIPAA environments
+```
+
+---
+
+## Putting It All Together: HIPAA-Compliant AI Request Flow
+
+```
+Patient Data Request Flow (HIPAA-Compliant):
+
+  Client (Browser)
+       │
+       │ TLS 1.2+ (HTTPS)
+       ▼
+  ┌──────────────┐
+  │ Load Balancer │ ← Public Subnet (only public-facing resource)
+  │  (WAF + TLS)  │
+  └──────┬───────┘
+         │ TLS 1.2+ (internal)
+         ▼
+  ┌──────────────┐
+  │  App Server   │ ← Private Subnet
+  │  ┌──────────┐ │
+  │  │ Auth +   │ │  1. Verify identity + MFA
+  │  │ RBAC     │ │  2. Check role permissions
+  │  └────┬─────┘ │  3. Validate patient assignment
+  │       │       │
+  │  ┌────▼─────┐ │
+  │  │ PHI Log  │ │  4. Scrub PHI from app logs
+  │  │ Scrubber │ │  5. Write audit event (who/what/when)
+  │  └────┬─────┘ │
+  │       │       │
+  │  ┌────▼─────┐ │
+  │  │ Encrypt/ │ │  6. Decrypt PHI from database
+  │  │ Decrypt  │ │  7. Encrypt response
+  │  └──────────┘ │
+  └──────┬───────┘
+         │ TLS 1.2+ (internal)
+         ▼
+  ┌──────────────┐
+  │  PostgreSQL   │ ← Isolated Subnet (no internet)
+  │  (AES-256     │   PHI encrypted at rest
+  │   at rest)    │   Column-level encryption for sensitive fields
+  └──────────────┘
+```
+
+---
+
+## Common HIPAA Architecture Anti-Patterns
+
+| Anti-Pattern | Why It Fails | Correct Approach |
+|---|---|---|
+| Database in public subnet | Direct internet exposure to PHI | Isolated subnet, app-layer access only |
+| Unencrypted internal traffic | PHI exposed on internal network | TLS 1.2+ for ALL connections |
+| Shared admin credentials | No accountability in audit trail | Individual accounts + MFA |
+| PHI in application logs | Logs sent to non-BAA services = breach | Log scrubbing sidecar + BAA-only services |
+| No session timeouts | Unattended terminals in clinics | 15-min idle timeout, 2-hour max session |
+| Same AWS account for logs | Admins can delete audit evidence | Separate account + WORM storage |
+| Logging only errors | Cannot reconstruct PHI access history | Log ALL reads, writes, and denials |
+
+---
+
+## Key Takeaways
+
+1. **HIPAA compliance is architectural** — it shapes VPC design, encryption strategy, IAM policies, and logging infrastructure from day one
+2. **Network isolation** means private subnets for apps, isolated subnets for databases, and bastion hosts with MFA for developer access
+3. **Encrypt everything** — at rest with AES-256 and key rotation, in transit with TLS 1.2+ including internal service-to-service traffic
+4. **Least privilege is mandatory** — define granular RBAC policies per clinical role, log every access decision
+5. **Audit logging is the foundation** — immutable, WORM-protected logs capturing who, what, when, and where for every PHI touchpoint
+6. **Logs are a liability** — scrub PHI from application logs, but log MORE access events than non-HIPAA systems (every read, not just errors)
+7. **BAA agreements matter** — every third-party service touching PHI needs a signed Business Associate Agreement
