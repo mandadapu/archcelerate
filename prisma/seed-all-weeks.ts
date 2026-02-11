@@ -395,6 +395,7 @@ const weekData = [
     concepts: [
       { slug: 'enterprise-architecture', title: 'Enterprise AI Architecture Patterns', minutes: 45 },
       { slug: 'compliance-security', title: 'AI Compliance, Security & Governance: Auditable Trust Architecture', minutes: 75 },
+      { slug: 'hipaa-architecture', title: 'HIPAA-Compliant AI Architecture: Designing the Walled Garden', minutes: 70 },
       { slug: 'scaling-strategies', title: 'Scaling AI Systems to Production', minutes: 40 },
       { slug: 'global-ai-gateway', title: 'Global AI Gateway: Enterprise AI Infrastructure', minutes: 60 },
       { slug: 'master-playbook', title: 'The Archcelerate Master Architectural Playbook', minutes: 15 },
