@@ -33,6 +33,13 @@ const caseStudies = [
       'Building a multi-agent system with 6 specialized agents for file processing, privacy protection, data prep, matching, and interpretable predictions',
     tags: ['Multi-Agent', 'Explainability', 'HIPAA', 'SHAP', 'Healthcare'],
   },
+  {
+    slug: 'cyber-defense-pipeline',
+    title: 'AI Cyber-Defense Pipeline with Multi-Model Routing',
+    description:
+      'Building a 4-agent security log analysis pipeline using LangGraph with Haiku, Sonnet, and Opus for cost-optimized threat detection and incident reporting',
+    tags: ['Multi-Agent', 'LangGraph', 'Cost Optimization', 'Security'],
+  },
 ]
 
 export default async function CaseStudiesPage(): Promise<JSX.Element | null> {

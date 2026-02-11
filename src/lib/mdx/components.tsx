@@ -1,4 +1,5 @@
 import React from 'react'
+import { CyberDefenseDesign } from '@/components/case-studies/CyberDefenseDesign'
 
 // Callout Component
 interface CalloutProps {
@@ -165,4 +166,5 @@ export const mdxComponents = {
   Exercise,
   CodeSandbox,
   Quiz,
+  CyberDefenseDesign,
 }
