@@ -1,0 +1,157 @@
+---
+title: "How to Ship AI to Production"
+description: "The gap between a working prototype and a deployable product — stress testing, system design documents, and what enterprise buyers actually evaluate"
+estimatedMinutes: 35
+---
+
+# How to Ship AI to Production
+
+You've built something that works. The model is accurate. The retrieval is solid. The agents are well-orchestrated. The observability is in place.
+
+Now what?
+
+Now comes the part that kills most AI projects: turning a working system into something that can survive contact with real users, real scale, and real scrutiny. This is about the gap between "it works on my laptop" and "it's deployed and making money."
+
+> **Architect Perspective**: Shipping isn't a phase — it's a lens. Every architectural decision you've made in weeks 1-7 either helps or hinders deployment. This week is about evaluating your work through the lens of someone who has to bet their budget on it working.
+
+---
+
+## The Production Readiness Checklist
+
+There's a checklist that separates prototypes from products. Not every item applies to every system, but enterprise buyers evaluate against all of them:
+
+### Reliability
+
+- **What happens when the AI provider's API goes down?** If the answer is "the entire application crashes," you're not production-ready. Fallback behavior, queue-and-retry, graceful degradation — these must be designed, not improvised.
+- **What happens when the model returns garbage?** Output validation catches malformed responses before they reach users. Retry logic handles transient model failures. Circuit breakers prevent cascading failures.
+- **What's the failover story?** Single points of failure are disqualifying. Every critical component needs redundancy or a documented degradation path.
+
+### Security
+
+- **Can users access other users' data?** Tenant isolation must be provable, not just "we think the queries are scoped correctly."
+- **Is the system prompt leakable?** Assume it is. Don't put secrets in prompts. Treat the system prompt as public information.
+- **What data leaves your infrastructure?** Every API call to an AI provider sends data outside your boundary. Know exactly what data, to where, and under what contractual terms.
+
+### Scalability
+
+- **What happens at 10x current load?** Not "we'll figure it out" — specific answers. Queue depths, auto-scaling rules, rate limiting strategies.
+- **What are the cost projections at scale?** If your unit economics don't work at 10x, they're a ticking time bomb.
+
+---
+
+## Stress Testing: Breaking Your System Before Users Do
+
+Stress testing AI systems is different from stress testing traditional software. You're testing two things simultaneously: infrastructure capacity AND model behavior under pressure.
+
+### Load Testing
+
+Standard load testing applies: hammer the system with concurrent requests and measure latency degradation, error rates, and resource utilization.
+
+But LLM-specific load testing adds:
+- **Token throughput**: How many tokens per second can your system generate before quality degrades?
+- **Context window pressure**: Do responses get worse when the system is under load? (They can — batching and queuing can increase latency, which causes timeouts, which causes retries, which increases load further.)
+- **Cost under load**: A 10x traffic spike is also a 10x cost spike. Will it blow your budget?
+
+### Adversarial Testing (Red Teaming)
+
+This is security testing for AI systems. Try to make your system do things it shouldn't:
+
+- **Prompt injection**: Every known injection technique, plus creative variations
+- **Data extraction**: Can you get the system to reveal other users' data? The system prompt? Training data patterns?
+- **Boundary violation**: Can you get the system to provide medical/legal/financial advice? To generate harmful content? To break character?
+- **Abuse patterns**: Can you use the system to generate spam, phishing content, or social engineering attacks?
+
+Red teaming should be systematic, not ad hoc. Maintain a growing library of adversarial test cases and run them against every release.
+
+### Golden Dataset Regression
+
+Your curated test suite from Week 7. Run it before and after every change. Measure every metric. Accept no regressions.
+
+This is the most important test. All the other testing tells you the system can handle abuse and load. The golden dataset tells you the system still works correctly for legitimate users after your latest changes.
+
+---
+
+## The System Design Document
+
+This is the single most important artifact for shipping AI to production. Not because it's technically necessary — your code runs fine without documentation. But because it's the artifact that enterprise buyers, security reviewers, and technical due diligence teams evaluate.
+
+A System Design Document (SDD) contains:
+
+### 1. Architecture Overview
+- System diagram with all components, data flows, and trust boundaries
+- Technology choices and justification for each ("Why pgvector? Why not Pinecone?")
+- Deployment topology (regions, redundancy, scaling)
+
+### 2. AI-Specific Architecture
+- Model selection and rationale (why this model for this task?)
+- Prompt management (versioning, testing, rollback)
+- Retrieval pipeline (chunking strategy, search method, re-ranking)
+- Evaluation pipeline (automated metrics, human review cadence)
+
+### 3. Security Posture
+- Data classification and handling for each sensitivity level
+- Encryption (at rest, in transit, in processing)
+- Access control and authentication
+- Prompt injection defenses
+- Incident response procedures
+
+### 4. Governance and Compliance
+- Audit trail architecture
+- Bias testing methodology and results
+- Data retention and deletion policies
+- Regulatory mapping (which requirements, which controls)
+
+### 5. Operational Procedures
+- Deployment process (CI/CD, canary releases, rollback)
+- Monitoring and alerting (what triggers, who responds)
+- On-call procedures and escalation paths
+- Runbooks for common failure modes
+
+### 6. Cost Analysis
+- Unit economics (cost per query, per user, per month)
+- Scaling projections
+- Budget limits and circuit breakers
+
+This document does double duty: it forces you to think through every operational concern before launch, and it serves as the primary artifact for technical evaluation by buyers, investors, and auditors.
+
+---
+
+## The Portfolio Mindset
+
+Your work across weeks 1-7 isn't just coursework. It's a body of evidence that demonstrates your architectural thinking.
+
+What distinguishes an AI architect from an AI developer:
+
+**Developers show what they built.** "I built a RAG system with hybrid search."
+
+**Architects show why they built it that way.** "I chose hybrid search because our evaluation showed 23% recall improvement for domain-specific terminology, at a cost of 140ms additional latency which was within our SLA budget. Here's the A/B test data."
+
+The evidence that matters:
+- **Trade-off analysis**: Every decision has alternatives. Show that you considered them and chose deliberately.
+- **Metrics-driven iteration**: Before/after numbers for every optimization. Not "I made it better" but "I improved top-5 precision from 47% to 82%."
+- **Failure documentation**: What went wrong, what you learned, what you changed. This shows maturity more than a flawless success story.
+- **Production thinking**: Cost projections, scaling plans, security considerations, monitoring dashboards. Not just "it works" but "it's ready to work for paying customers."
+
+---
+
+## Key Takeaways
+
+1. **Production readiness is a checklist, not a feeling**: Reliability, security, scalability — each has specific, evaluable criteria that your system either meets or doesn't.
+
+2. **Stress testing is two things**: Infrastructure capacity AND model behavior under pressure. Both must be tested together.
+
+3. **Red teaming is mandatory**: Adversarial testing should be systematic, maintained, and run against every release. Not optional, not one-time.
+
+4. **The SDD is your most important artifact**: It forces architectural thinking and serves as the primary evaluation document for enterprise buyers.
+
+5. **Show the reasoning, not just the results**: Trade-off analysis, metrics-driven iteration, and failure documentation demonstrate architectural maturity.
+
+6. **The prototype is 40% of the work**: Budget 60% for security, reliability, compliance, and documentation. This is where projects succeed or fail.
+
+---
+
+## Further Reading
+
+- [The Twelve-Factor App](https://12factor.net/) — Foundational principles for production software (applies to AI systems too)
+- [Google SRE Book: Monitoring Distributed Systems](https://sre.google/sre-book/monitoring-distributed-systems/) — Production monitoring principles
+- [Designing Data-Intensive Applications (Kleppmann)](https://dataintensive.net/) — The reference for production system architecture

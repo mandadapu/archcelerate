@@ -1,0 +1,206 @@
+---
+title: "How Multi-Agent Systems Actually Work"
+description: "From coordination patterns to conflict resolution to failure modes — the engineering of agents that work together"
+estimatedMinutes: 35
+---
+
+# How Multi-Agent Systems Actually Work
+
+In Week 5, you built a single agent — an LLM in a loop with tools. That agent could reason, take actions, and iterate toward a solution. Powerful.
+
+Now multiply it. Put five agents in a system, each specialized, each with its own tools, each making decisions. Suddenly you don't have five times the capability — you have five agents that can contradict each other, duplicate work, deadlock, and create failures that no individual agent would produce.
+
+Multi-agent systems are distributed systems with an LLM at each node. Every hard problem in distributed computing applies, plus the new problem that each node is a probabilistic decision-maker.
+
+> **Architect Perspective**: The value of multi-agent systems comes from specialization and parallelism. The cost comes from coordination and failure modes. The architecture question is always: does the value of having specialized agents exceed the cost of coordinating them? Sometimes the answer is no, and a single well-prompted agent is better.
+
+---
+
+## Why Multiple Agents?
+
+Single agents hit limits on complex tasks:
+
+**Context window saturation**: A single agent handling research, analysis, writing, and fact-checking accumulates so much context that earlier information falls out of the window.
+
+**Conflicting expertise requirements**: An agent that's great at code review uses different patterns than one that's great at writing documentation. One system prompt can't optimize for both.
+
+**Sequential bottleneck**: A single agent does everything in sequence. Multiple agents can work in parallel on independent sub-tasks.
+
+**Accountability**: When a single agent makes an error, you don't know which "part" of its reasoning failed. With specialized agents, you can pinpoint which agent was wrong about what.
+
+---
+
+## Coordination Patterns
+
+### Supervisor (Hub-and-Spoke)
+
+One agent (the Supervisor) receives tasks, delegates to specialized workers, collects results, and synthesizes the final output.
+
+```
+User Request → Supervisor
+                  ├── Worker A (Research)
+                  ├── Worker B (Analysis)
+                  └── Worker C (Writing)
+               Supervisor ← collects results
+               Supervisor → synthesized response to user
+```
+
+**Advantages**: Clear control flow. The Supervisor maintains overall coherence. Easy to add or remove workers.
+
+**Disadvantages**: The Supervisor is a single point of failure and a bottleneck. It must understand every worker's capabilities without being an expert in any of them.
+
+**Best for**: Tasks with clear decomposition where a coordinator adds value — research projects, multi-format content creation, analysis pipelines.
+
+### Pipeline (Sequential)
+
+Agents are arranged in a chain. Each agent processes the output of the previous one.
+
+```
+Input → Agent A (Extract) → Agent B (Analyze) → Agent C (Format) → Output
+```
+
+**Advantages**: Simple. Each agent has a well-defined input and output. Easy to test each stage independently.
+
+**Disadvantages**: Slow (strictly sequential). Errors propagate forward — if Agent A extracts wrong data, Agents B and C build on a broken foundation.
+
+**Best for**: Tasks with natural sequential dependencies — ETL pipelines, document processing workflows, staged content review.
+
+### Debate (Adversarial)
+
+Multiple agents analyze the same problem independently, then argue their positions. A judge agent (or human) evaluates the arguments and selects the best answer.
+
+```
+Question → Agent A (Position 1)
+         → Agent B (Position 2)
+         → Agent C (Position 3)
+              ↓
+         Judge Agent → selects best answer
+```
+
+**Advantages**: Reduces individual agent bias. Multiple perspectives surface risks and alternatives that a single agent might miss.
+
+**Disadvantages**: Expensive (3+ full LLM runs per question). Can produce fake disagreements where agents argue positions they were assigned rather than positions they believe.
+
+**Best for**: High-stakes decisions where getting it wrong is expensive — risk assessment, strategic analysis, code review.
+
+### Blackboard (Shared State)
+
+All agents share a common workspace. Each agent monitors the workspace for information relevant to its specialty, contributes when it has something to add, and steps back when it doesn't.
+
+```
+Shared Workspace (Blackboard)
+  ├── Agent A reads/writes (when relevant to A's specialty)
+  ├── Agent B reads/writes (when relevant to B's specialty)
+  └── Agent C reads/writes (when relevant to C's specialty)
+```
+
+**Advantages**: Most flexible. Agents self-organize based on the evolving state of the problem. No central bottleneck.
+
+**Disadvantages**: Hardest to control. Agents can conflict, duplicate work, or starve each other. Requires careful state management.
+
+**Best for**: Open-ended problems where you can't predict the workflow in advance — creative brainstorming, complex debugging, exploratory research.
+
+---
+
+## Communication: The Hidden Cost
+
+Every time agents communicate, you spend tokens. A supervisor reading a worker's 500-token report is an LLM inference. Five workers, each reporting once, is five inferences just for the supervisor to process updates. Add the workers' own reasoning, and a single round of multi-agent coordination might use 10-20 LLM calls.
+
+### Token-Efficient Communication
+
+**Structured messages**: Agents communicate via typed, structured messages — not free-form text. A research agent returns `{ "findings": [...], "confidence": 0.87, "sources": [...] }` instead of a paragraph. The receiving agent parses the structure instead of interpreting prose.
+
+**Summarization at boundaries**: When passing context between agents, summarize rather than forwarding the full conversation history. Agent A's 2,000-token research becomes a 200-token summary for Agent B.
+
+**Need-to-know context**: Each agent receives only the context relevant to its task. The writing agent doesn't need the research agent's full search history — just the findings.
+
+---
+
+## Conflict Resolution
+
+When agents disagree — and they will — you need a defined resolution process.
+
+### Confidence-Based Resolution
+
+Each agent's output includes a confidence score. When agents disagree, the highest-confidence assessment wins. If confidences are close (within a defined margin), escalate to a judge agent or human.
+
+### Evidence-Based Resolution
+
+When agents disagree, each must cite specific evidence for its position. The resolution process evaluates the evidence, not just the conclusion. An agent that says "the contract is risky because of clause 4.2, which states..." beats an agent that says "the contract seems risky."
+
+### Human Escalation
+
+Some disagreements can't be resolved automatically. When the stakes are high and agents can't converge, escalate to a human. This isn't a failure — it's the system correctly identifying its own uncertainty.
+
+The key architectural decision: **what triggers escalation?** Define this explicitly. "When confidence scores differ by more than 0.3" or "when the disagreement involves a financial decision above $10K" — concrete rules, not vibes.
+
+---
+
+## Failure Modes Unique to Multi-Agent Systems
+
+### Cascade Failures
+
+Agent A produces bad output. Agent B, trusting Agent A, builds on the bad output. Agent C builds on Agent B's corrupted work. By the end of the pipeline, the error has been amplified and is unrecoverable.
+
+**Mitigation**: Validation at every agent boundary. Each agent validates its input before processing, not just its output after processing.
+
+### Deadlocks
+
+Agent A is waiting for Agent B's output. Agent B is waiting for Agent A's output. Neither can proceed.
+
+**Mitigation**: Timeout-based resolution. If an agent doesn't produce output within a defined timeframe, the waiting agent proceeds with a default or escalates.
+
+### Resource Contention
+
+Multiple agents try to call the same API simultaneously, hitting rate limits. Or multiple agents try to modify the same data, creating conflicts.
+
+**Mitigation**: Centralized resource management. A queue or semaphore controls access to rate-limited resources. Optimistic locking or turn-based access for shared data.
+
+### Emergent Behavior
+
+The system produces results that no individual agent intended. This can be positive (creative solutions) or negative (systematic bias amplification). When multiple biased agents interact, their biases can compound in unpredictable ways.
+
+**Mitigation**: End-to-end evaluation. Don't just test individual agents — test the system's collective output against known-good answers.
+
+---
+
+## When NOT to Use Multi-Agent Systems
+
+Multi-agent systems add complexity. They're justified when:
+- The task naturally decomposes into independent sub-tasks
+- Different sub-tasks require different expertise or tools
+- Parallelism provides meaningful speedup
+- The coordination overhead is less than the specialization benefit
+
+They're NOT justified when:
+- A single well-prompted agent can handle the task
+- The sub-tasks are tightly coupled (every agent needs every other agent's output)
+- The coordination overhead exceeds the benefit of specialization
+- You can't afford the token cost of inter-agent communication
+
+The simplest architecture that solves the problem is the right architecture. Don't use five agents when one will do.
+
+---
+
+## Key Takeaways
+
+1. **Multi-agent systems are distributed systems**: Every distributed computing problem — consensus, conflict, fault tolerance, communication overhead — applies.
+
+2. **Choose the right coordination pattern**: Supervisor for clear decomposition. Pipeline for sequential tasks. Debate for high-stakes decisions. Blackboard for open-ended problems.
+
+3. **Communication has token cost**: Structured messages, summarization at boundaries, and need-to-know context keep costs manageable.
+
+4. **Conflict resolution must be explicit**: Confidence-based, evidence-based, or human escalation — define the rules before agents disagree.
+
+5. **Validate at every boundary**: Don't trust upstream agents blindly. Each agent should validate its inputs, not just its outputs.
+
+6. **Simpler is usually better**: If a single agent can do the job, use a single agent. Multi-agent complexity is only justified when it buys you something a single agent can't provide.
+
+---
+
+## Further Reading
+
+- [AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation](https://arxiv.org/abs/2308.08155) — Microsoft's multi-agent framework
+- [CrewAI Documentation](https://docs.crewai.com/) — Agent team orchestration
+- [Communicating Sequential Processes (Hoare)](https://www.cs.cmu.edu/~crary/819-f09/Hoare78.pdf) — Foundational theory of concurrent agent communication
+- [Society of Mind (Minsky)](https://web.media.mit.edu/~minsky/som/som.html) — The original vision of intelligence as agent collaboration

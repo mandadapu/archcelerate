@@ -1,0 +1,247 @@
+---
+title: "How LLMs Talk to Systems"
+description: "Structured output, function calling, and the engineering that turns a chatbot into a system component"
+estimatedMinutes: 40
+---
+
+# How LLMs Talk to Systems
+
+Here's the fundamental tension: LLMs speak human. APIs speak JSON. Databases speak SQL. Every system in your stack has a rigid, typed interface. And you're trying to connect them through a model that generates free-form text.
+
+This is the integration problem, and solving it is what transforms an LLM from a chatbot into a system component.
+
+> **Architect Perspective**: The difference between a demo and a product is the interface layer. Demos can tolerate free-form text. Products need structured, validated, typed data flowing between components. Every technique in this week exists to bridge that gap.
+
+---
+
+## The Problem With Free Text
+
+Ask an LLM "What's the weather in Tokyo?" and it responds: "The weather in Tokyo is currently sunny with a temperature of about 72°F."
+
+Beautiful. Useless to a system.
+
+Your weather widget needs `{ "city": "Tokyo", "temp_f": 72, "condition": "sunny" }`. The LLM gave you a sentence. You need a data structure.
+
+You could parse the sentence with regex or another LLM call. But that's fragile, expensive, and introduces a new failure mode at every extraction point. There's a better way.
+
+---
+
+## Structured Output: Teaching the Model to Speak JSON
+
+Structured output is exactly what it sounds like: telling the model to respond in a specific format — usually JSON — that conforms to a schema you define.
+
+The simplest version:
+
+```
+Respond ONLY with a JSON object. No other text.
+{
+  "city": string,
+  "temp_f": number,
+  "condition": "sunny" | "cloudy" | "rainy" | "snowy"
+}
+```
+
+Modern APIs go further with **constrained decoding** — the model's token generation is literally constrained so that only valid JSON tokens can be produced. The model physically cannot output malformed JSON. This is a hard guarantee, not a hopeful prompt.
+
+### Why This Matters
+
+Without structured output, every LLM response requires parsing. Parsing requires assumptions about format. Assumptions break when the model decides to be creative with formatting — adding markdown, changing key names, including explanatory text alongside the JSON.
+
+With structured output, the model's response IS the data structure. No parsing. No assumptions. No breakage. `JSON.parse()` always works.
+
+This is the difference between treating the LLM as a text generator (parse its prose) and treating it as a data generator (consume its output directly). The second approach is what makes LLMs viable as system components.
+
+---
+
+## Function Calling: The Model Decides What to Do
+
+Structured output lets the model produce data. Function calling lets the model take actions.
+
+The concept: you describe a set of available functions — their names, parameters, and what they do. The model, based on the user's request, decides which function to call with what arguments.
+
+User: "Send an email to Sarah about the meeting tomorrow at 3pm."
+
+Without function calling, the model generates prose: "I'd be happy to help you send an email..." — and you parse it.
+
+With function calling, the model generates a structured function call:
+
+```json
+{
+  "function": "send_email",
+  "arguments": {
+    "to": "sarah@company.com",
+    "subject": "Meeting Tomorrow",
+    "body": "Hi Sarah, just confirming our meeting tomorrow at 3pm."
+  }
+}
+```
+
+Your code receives this, validates it, and executes the function. The model decided what to do. Your code decides whether to actually do it.
+
+### The Critical Architecture
+
+Function calling is a **control loop**, not a fire-and-forget mechanism:
+
+1. **Model proposes** — generates a function call based on user intent
+2. **System validates** — checks that the function exists, parameters are valid, and the user has permission
+3. **System executes** — calls the actual function and captures the result
+4. **Model observes** — receives the function's return value
+5. **Model responds** — generates a human-readable response based on the result
+
+The model never directly executes anything. It proposes actions. Your code validates and executes. The model interprets the results. This separation is what makes function calling safe — the model has influence, not control.
+
+---
+
+## Schemas: The Contract Between Model and System
+
+A schema defines the exact shape of the data the model must produce. Think of it as a contract: the model promises to generate data that matches this structure, and your system promises to handle any data that matches it.
+
+Good schemas are:
+
+**Explicit about types**: `"priority": "low" | "medium" | "high"` — not `"priority": string`. Enumerating valid values prevents the model from inventing new ones.
+
+**Explicit about required fields**: Which fields must always be present? Which are optional? The model needs to know what's mandatory.
+
+**Explicit about constraints**: `"age": integer, minimum 0, maximum 150`. Without constraints, the model might generate `"age": -3` or `"age": 9999`.
+
+**Documented with descriptions**: `"due_date": string, format "YYYY-MM-DD", description: "The deadline for this task. Must be in the future."` The description helps the model understand the semantic meaning, not just the type.
+
+### Runtime Validation
+
+Even with constrained decoding, validate at runtime. The model might produce valid JSON that's semantically wrong — a date in the past for a "future deadline" field, a negative number for a price, an email address that doesn't match any known user.
+
+Schema validation (Zod, JSON Schema) catches structural issues. Business logic validation catches semantic issues. Both are necessary.
+
+---
+
+## The Tool Specification Pattern
+
+When you give the model a set of available functions, you're defining a tool specification. The quality of this specification directly determines the quality of the model's tool use.
+
+A bad specification:
+
+```json
+{
+  "name": "search",
+  "description": "Search for stuff"
+}
+```
+
+The model doesn't know what to search, how to format the query, or what to expect back. It will guess — and guess wrong.
+
+A good specification:
+
+```json
+{
+  "name": "search_products",
+  "description": "Search the product catalog. Returns up to 10 matching products sorted by relevance. Use this when the user asks about product availability, pricing, or specifications.",
+  "parameters": {
+    "query": {
+      "type": "string",
+      "description": "Natural language search query. Be specific about product attributes."
+    },
+    "category": {
+      "type": "string",
+      "enum": ["electronics", "clothing", "home", "sports"],
+      "description": "Product category to search within. Omit to search all categories."
+    },
+    "max_price": {
+      "type": "number",
+      "description": "Maximum price in USD. Omit for no price limit."
+    }
+  },
+  "required": ["query"]
+}
+```
+
+The model knows exactly what this tool does, when to use it, what parameters it accepts, and what each parameter means. The specification is the documentation — and for LLMs, good documentation isn't nice to have, it's functionally necessary.
+
+---
+
+## Multi-Step Orchestration
+
+Real tasks require multiple function calls in sequence. "Check if we have the laptop in stock, and if we do, send the customer a quote."
+
+This is orchestration: the model chains function calls, using the result of each call to decide what to do next.
+
+```
+Step 1: check_inventory(product_id="laptop-x1")
+Result: { "in_stock": true, "quantity": 7, "price": 1299.99 }
+
+Step 2: send_quote(customer_id="cust-456", product="laptop-x1", price=1299.99)
+Result: { "quote_id": "Q-789", "sent": true }
+
+Model response: "Great news! The Laptop X1 is in stock (7 available) at $1,299.99. I've sent a quote to the customer — reference number Q-789."
+```
+
+The model decided the sequence. After step 1 returned `in_stock: true`, it proceeded to step 2. If step 1 had returned `in_stock: false`, it would have skipped the quote and told the user the item was unavailable.
+
+This is where LLMs become genuinely powerful as system components — not just answering questions, but orchestrating multi-step workflows across multiple systems based on dynamic conditions.
+
+### Where It Breaks
+
+Multi-step orchestration fails when:
+
+- **Error handling is missing**: Step 2 fails. Does the model retry? Inform the user? Try an alternative? Without explicit error handling, the model often pretends the failure didn't happen.
+- **State isn't tracked**: The model loses track of what's already been done. If the conversation is long, earlier results might fall out of context.
+- **Permissions aren't checked**: The model calls functions the user doesn't have permission to use. Function-level authorization is required.
+- **Side effects aren't considered**: The model calls a function with side effects (sending an email, processing a payment) without confirming with the user first.
+
+---
+
+## The Parallel Call Pattern
+
+Sometimes the model needs data from multiple independent sources. Modern function calling supports **parallel calls** — multiple functions invoked simultaneously.
+
+"What's the status of order #123, and do we have a support ticket from the same customer?"
+
+Instead of:
+1. Call `get_order(123)` → wait → get result
+2. Call `search_tickets(customer_of_order_123)` → wait → get result
+
+Parallel:
+1. Call `get_order(123)` AND `search_tickets(customer_of_order_123)` → wait once → get both results
+
+This cuts latency in half for independent operations. The model identifies which calls are independent and groups them. Your orchestration layer executes them concurrently and returns all results together.
+
+---
+
+## The Mental Model
+
+Think of the LLM as a **universal adapter** between human language and system interfaces.
+
+Humans communicate in ambiguous, context-dependent, unstructured natural language. Systems communicate in precise, typed, structured data formats. The LLM sits between them, translating in both directions:
+
+```
+Human → [natural language] → LLM → [structured output / function calls] → Systems
+Systems → [structured results] → LLM → [natural language] → Human
+```
+
+Every technique in this week — structured output, function calling, schema design, orchestration — is about making that translation layer reliable, validated, and type-safe.
+
+The model provides the intelligence (understanding intent, choosing actions, interpreting results). Your code provides the guarantees (validation, authorization, error handling, execution). Together, they're a system. Separately, the model is just a chatbot and your code is just an API.
+
+---
+
+## Key Takeaways
+
+1. **Structured output turns text generators into data generators**: JSON mode with constrained decoding gives you parseable, validated output every time. No regex. No parsing hacks.
+
+2. **Function calling is a control loop, not fire-and-forget**: The model proposes actions. Your code validates and executes. The model interprets results. Separation of proposal from execution is what makes it safe.
+
+3. **Schema quality determines tool use quality**: Detailed descriptions, explicit types, enumerated values, and clear constraints are functionally necessary — not just nice documentation.
+
+4. **Multi-step orchestration is where LLMs become system components**: Chaining function calls based on dynamic conditions transforms a chatbot into a workflow engine.
+
+5. **Validation happens at two levels**: Schema validation catches structural issues. Business logic validation catches semantic issues. Both are required.
+
+6. **The LLM is a universal adapter**: It translates between human language and system interfaces. Your job is making that translation reliable.
+
+---
+
+## Further Reading
+
+- [OpenAI Function Calling Guide](https://platform.openai.com/docs/guides/function-calling) — Practical guide to function calling patterns
+- [Anthropic Tool Use Documentation](https://docs.anthropic.com/en/docs/build-with-claude/tool-use) — Claude's approach to tool use
+- [JSON Schema Specification](https://json-schema.org/) — The standard for defining structured data contracts
+- [Zod: TypeScript-first Schema Validation](https://zod.dev/) — Runtime validation for structured LLM outputs

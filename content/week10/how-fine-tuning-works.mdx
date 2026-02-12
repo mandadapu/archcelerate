@@ -1,0 +1,158 @@
+---
+title: "How Fine-Tuning Actually Works"
+description: "When to fine-tune, when not to, and the mechanics of teaching a model new tricks without breaking the old ones"
+estimatedMinutes: 35
+---
+
+# How Fine-Tuning Actually Works
+
+Fine-tuning is the most over-prescribed solution in AI engineering. Not because it doesn't work — it does, powerfully, for the right use cases. But because teams default to it when prompting, RAG, or structured output would solve the problem faster, cheaper, and more flexibly.
+
+This is about understanding the mechanism well enough to know when fine-tuning is the right tool — and when it's an expensive distraction.
+
+> **Architect Perspective**: The decision to fine-tune is an architectural decision with long-term consequences. A fine-tuned model is a frozen snapshot of a specific behavior. It's harder to update, harder to debug, and harder to adapt than a well-crafted prompt. Choose deliberately.
+
+---
+
+## What Fine-Tuning Actually Does
+
+During pretraining, the model learned general patterns from trillions of tokens. Fine-tuning adjusts those patterns — slightly — to specialize the model for a specific task.
+
+Think of it like this: pretraining is a liberal arts education. The model knows a lot about everything. Fine-tuning is vocational training. You take that broadly educated model and teach it to do one specific thing very well.
+
+Mechanically, fine-tuning works the same way as pretraining — gradient descent on a dataset — but with two key differences:
+
+1. **Much smaller dataset**: Hundreds to thousands of examples, not trillions of tokens
+2. **Much smaller learning rate**: Tiny weight adjustments, not wholesale learning. You're nudging the model's behavior, not rebuilding it.
+
+The result is a model that retains its general capabilities but has shifted its default behavior toward the patterns in your fine-tuning data.
+
+---
+
+## The Three Things Fine-Tuning Can Do
+
+### 1. Teach a Consistent Format
+
+If you need the model to always produce output in a very specific format — a particular JSON structure, a particular writing style, a particular analysis template — and prompting gets you there 85% of the time but not 99%, fine-tuning can close that gap.
+
+The model sees thousands of examples of the exact format you want. The pattern becomes deeply encoded. Consistency goes from "usually right" to "almost always right."
+
+### 2. Encode Domain Knowledge
+
+If your domain has terminology, conventions, or reasoning patterns that the base model doesn't handle well — because they weren't heavily represented in pretraining data — fine-tuning on domain-specific examples can improve performance.
+
+Legal citation formats. Medical coding conventions. Financial regulatory terminology. These specialized patterns may not be common enough in general training data for the base model to handle reliably.
+
+### 3. Reduce Token Usage
+
+A fine-tuned model can learn to produce the desired output without lengthy system prompts, few-shot examples, or detailed instructions. The behavior is "baked in."
+
+If your current prompt is 2,000 tokens of instructions and examples, and a fine-tuned model produces the same output with a 200-token prompt, you save 1,800 tokens per call. At scale, this is significant cost savings.
+
+---
+
+## The Three Things Fine-Tuning Can't Do
+
+### 1. Add Knowledge the Model Doesn't Have
+
+Fine-tuning doesn't add factual knowledge to the model in any reliable way. If you fine-tune on documents about your company's products, the model doesn't "learn" those product facts the way a student learns from a textbook. It learns to pattern-match against similar-looking outputs.
+
+For adding knowledge, use RAG. It's more reliable, more updatable, and more auditable.
+
+### 2. Fix Fundamental Reasoning Limitations
+
+If the base model can't do multi-step math, fine-tuning won't teach it multi-step math. You can teach it to format math problems correctly, to show its work in a specific way, or to recognize when it should use a calculator tool. But the underlying reasoning capability is determined by the base model's architecture and pretraining, not by your fine-tuning data.
+
+### 3. Keep Up With Change
+
+Fine-tuned behavior is frozen at the time of training. If your requirements evolve — new output formats, updated terminology, changed business rules — you retrain. Each retraining cycle requires data collection, quality assurance, training compute, evaluation, and deployment.
+
+Prompts update in seconds. Fine-tuned models update in weeks.
+
+---
+
+## The Decision Framework
+
+### Fine-tune when ALL of these are true:
+
+1. **The task is stable**: The desired behavior doesn't change frequently. Format consistency, domain-specific style, or fixed extraction schemas.
+2. **You have abundant quality data**: Hundreds to thousands of input-output pairs. Not dozens.
+3. **Prompting demonstrably isn't enough**: You've tried detailed prompts with examples and anti-patterns, and you're still below your quality threshold.
+4. **The behavior can be demonstrated but not described**: There's something about the desired output that you can show through examples but can't fully articulate in instructions.
+5. **The volume justifies the cost**: You're making enough API calls that the per-call savings from reduced prompts (or using a smaller fine-tuned model) offset the training cost.
+
+### Don't fine-tune when ANY of these are true:
+
+1. **Requirements are still evolving**: If you're still figuring out what the output should look like, fine-tuning freezes you prematurely.
+2. **Prompting gets you to 90%+**: The marginal improvement from fine-tuning rarely justifies the cost if prompting is already working well.
+3. **You need factual accuracy**: Use RAG for knowledge grounding. Fine-tuning is for behavior, not knowledge.
+4. **Your dataset is small or imbalanced**: Fine-tuning on insufficient data produces overfitting, not generalization.
+
+---
+
+## The Training Process
+
+### Data Preparation
+
+This is 80% of the work. Your training data must be:
+
+- **High quality**: Every example should be a perfect representation of the desired output. The model learns from the data exactly as provided — including errors, inconsistencies, and quirks.
+- **Diverse**: Cover the full range of inputs the model will encounter. If your training data is 80% one category, the model will be great at that category and mediocre at everything else.
+- **Balanced**: Roughly equal representation of different output types, formats, and edge cases.
+- **Formatted correctly**: Input-output pairs in the exact format the model will see during inference.
+
+Bad training data produces a bad model. There's no algorithm that compensates for garbage examples. Quality control on training data is the single most important step.
+
+### Training Configuration
+
+**Epochs**: How many times the model sees each example. Too few (1-2) and the model barely learns. Too many (10+) and the model memorizes instead of generalizing. 3-5 epochs is typical.
+
+**Learning rate**: How aggressively the weights change. Too high and the model "forgets" its general capabilities (catastrophic forgetting). Too low and the fine-tuning has minimal effect.
+
+**Validation split**: Hold out 10-20% of your data for evaluation. If performance on the validation set stops improving while training loss keeps decreasing, you're overfitting.
+
+### Evaluation
+
+Compare the fine-tuned model against:
+1. **The base model with your best prompt**: If the fine-tuned model isn't meaningfully better, the training didn't help.
+2. **The base model with few-shot examples**: Sometimes adding 3-5 examples to the prompt matches fine-tuning quality at zero training cost.
+3. **A smaller fine-tuned model vs. a larger prompted model**: A fine-tuned Haiku might outperform a prompted Sonnet for your specific task — at 10x lower cost.
+
+---
+
+## Catastrophic Forgetting: The Main Risk
+
+When you fine-tune aggressively on a narrow dataset, the model can "forget" general capabilities it had before fine-tuning. This is called **catastrophic forgetting**.
+
+A model fine-tuned exclusively on medical extraction tasks might become worse at general conversation, creative writing, or code generation — because the fine-tuning pushed it so far toward medical patterns that other patterns weakened.
+
+Mitigations:
+- **Low learning rates**: Small weight changes preserve more general capability
+- **Mixed training data**: Include some general-purpose examples alongside your specialized data
+- **Evaluation breadth**: Test not just your target task but also general capabilities to detect degradation
+- **LoRA / Parameter-efficient fine-tuning**: Only modify a small subset of the model's weights, preserving the majority of general knowledge
+
+---
+
+## Key Takeaways
+
+1. **Fine-tuning is behavior modification, not knowledge injection**: It teaches the model how to respond, not what to know. Use RAG for knowledge.
+
+2. **Data quality is 80% of the work**: Bad training data produces bad models. There's no algorithmic shortcut.
+
+3. **The decision framework is "all conditions must be true"**: Stable task, abundant data, prompting insufficient, behavior > description, volume justifies cost. If any condition fails, don't fine-tune.
+
+4. **Catastrophic forgetting is the main risk**: Aggressive fine-tuning on narrow data degrades general capabilities. Low learning rates and mixed data mitigate this.
+
+5. **Always compare against prompting**: A well-crafted prompt with few-shot examples often matches fine-tuning quality at zero training cost. Prove fine-tuning is better before committing.
+
+6. **Fine-tuned small models can beat prompted large models**: For narrow, stable tasks, this is where the real cost savings live.
+
+---
+
+## Further Reading
+
+- [OpenAI Fine-tuning Guide](https://platform.openai.com/docs/guides/fine-tuning) — Practical fine-tuning walkthrough
+- [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) — Parameter-efficient fine-tuning
+- [Catastrophic Forgetting in Neural Networks](https://arxiv.org/abs/1612.00796) — The forgetting problem and mitigations
+- [Scaling Data-Constrained Language Models](https://arxiv.org/abs/2305.16264) — What happens when you don't have enough data
