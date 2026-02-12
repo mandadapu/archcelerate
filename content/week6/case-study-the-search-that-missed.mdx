@@ -1,0 +1,191 @@
+---
+title: "Case Study: The Search That Missed What Mattered"
+description: "A hospital system builds advanced RAG over patient records — and discovers that basic retrieval misses the information that saves lives"
+estimatedMinutes: 30
+---
+
+# Case Study: The Search That Missed What Mattered
+
+This is about the gap between "returns results" and "returns the right results." In most applications, mediocre retrieval means a slightly worse user experience. In clinical decision support, it means a missed diagnosis.
+
+> **Architect Perspective**: Advanced RAG isn't about fancy algorithms. It's about understanding the failure modes of basic RAG and engineering around them. Every technique in this week exists because someone, somewhere, built a system where basic retrieval wasn't good enough — and the consequences were real.
+
+---
+
+## The System
+
+MedSearch — a clinical decision support tool built for a regional hospital network — helped physicians find relevant patient history, similar cases, and clinical guidelines. Doctors would describe a patient's presentation, and the system would retrieve relevant information from:
+
+- 3.2 million patient records (anonymized)
+- 12,000 clinical guidelines and protocols
+- 850,000 published case reports
+
+The goal: when a doctor sees an unusual presentation, surface similar cases and relevant guidelines within seconds. Basic RAG got them 70% of the way there. The last 30% nearly killed the project.
+
+---
+
+## Failure 1: The Vocabulary Gap
+
+A doctor entered: "67-year-old male presenting with crushing substernal chest pain radiating to the left arm, diaphoresis, and dyspnea."
+
+The system needed to find: myocardial infarction cases, ACS protocols, STEMI guidelines.
+
+The problem? The query used clinical terminology ("substernal," "diaphoresis," "dyspnea") while many of the relevant documents used different terms for the same concepts. Older case reports said "heart attack." Nursing notes said "sweating" and "shortness of breath." Guidelines used ICD codes.
+
+Semantic search helped — "diaphoresis" and "sweating" are closer in embedding space than in string space. But the mapping wasn't reliable. The embedding model had seen far more general English than clinical text, so its understanding of medical synonym relationships was inconsistent.
+
+"Substernal chest pain" and "retrosternal discomfort" should be nearly identical. They weren't — the cosine similarity was 0.71, below the retrieval threshold of 0.75.
+
+### The Lesson
+
+Semantic search assumes the embedding model understands domain-specific synonym relationships. In specialized domains, it often doesn't.
+
+The fix was **hybrid search** — combining semantic similarity with keyword matching:
+
+1. **BM25 keyword search** catches exact terminology matches that embeddings miss
+2. **Semantic search** catches paraphrases and conceptual matches that keywords miss
+3. **Reciprocal Rank Fusion** combines both result sets, weighted by domain-tuned parameters
+
+Neither search method alone was sufficient. BM25 missed paraphrases. Semantic search missed exact medical terms. Together, they covered each other's blind spots.
+
+Retrieval recall went from 73% to 91% with this single change.
+
+---
+
+## Failure 2: The Re-Ranking Gap
+
+Hybrid search returned more relevant documents, but it also returned more noise. The top-20 results were better, but the top-5 — what actually fit in the context window — were sometimes wrong.
+
+Example: a query about pediatric asthma management retrieved:
+1. Adult asthma guidelines (high keyword overlap, wrong population)
+2. A pediatric case report about asthma (relevant)
+3. A study about asthma medication side effects in elderly patients (high semantic similarity to "asthma management," wrong population)
+4. Pediatric asthma emergency protocol (highly relevant)
+5. A general article about respiratory diseases in children (tangentially related)
+
+Positions 2 and 4 were the best results. Positions 1, 3, and 5 were noise. And with only 5 slots in the context window, noise displaced signal.
+
+### The Lesson
+
+First-stage retrieval (whether BM25, semantic, or hybrid) optimizes for recall — finding everything potentially relevant. But the context window demands precision — only the most relevant documents make it in.
+
+The fix was a **cross-encoder re-ranker**: a second model that takes each (query, document) pair and scores their relevance with much higher accuracy than embedding similarity.
+
+The cross-encoder is slower — it processes each pair individually instead of comparing pre-computed vectors. But it only needs to re-rank the top-20, not search the entire corpus. The latency cost was ~200ms for dramatically better result ordering.
+
+After re-ranking:
+1. Pediatric asthma emergency protocol
+2. Pediatric case report about asthma
+3. Pediatric asthma management guidelines
+4. Adult asthma guidelines (deprioritized but still available)
+5. Related pediatric respiratory case
+
+Top-3 precision went from 47% to 82%.
+
+---
+
+## Failure 3: The Multi-Hop Problem
+
+A doctor entered: "Patient on warfarin presenting with new atrial fibrillation — what are the stroke risk considerations given their existing anticoagulation?"
+
+This requires connecting information across multiple documents:
+- The patient's medication history (warfarin dosage and INR levels)
+- Atrial fibrillation stroke risk guidelines (CHA₂DS₂-VASc scoring)
+- Warfarin-specific considerations for AF patients
+- Drug interaction risks if switching anticoagulants
+
+No single document contained all of this. The basic retrieval returned documents about warfarin OR atrial fibrillation OR stroke risk, but not the intersection of all three in the context of an existing anticoagulation regimen.
+
+### The Lesson
+
+Complex clinical queries often require reasoning across multiple documents that each contain a piece of the puzzle. Single-shot retrieval returns documents about individual topics but misses the connections.
+
+The fix was **query decomposition**:
+
+1. Break the original query into sub-queries:
+   - "warfarin anticoagulation management guidelines"
+   - "atrial fibrillation stroke risk CHA2DS2-VASc"
+   - "anticoagulation switching protocols warfarin to DOAC"
+   - "warfarin drug interactions with AF medications"
+
+2. Retrieve for each sub-query independently
+
+3. Deduplicate and re-rank the combined results
+
+4. Feed the model context from multiple retrieval paths, enabling it to synthesize across documents
+
+This added latency (4 parallel retrievals instead of 1) but dramatically improved answer completeness for complex queries. The model could now connect warfarin management to AF stroke risk to switching protocols — because it had context from all three areas.
+
+---
+
+## Failure 4: The Stale Protocol Problem
+
+A doctor queried about sepsis management. The system retrieved the hospital's sepsis protocol — the 2019 version. The hospital had updated the protocol in 2024 based on new Surviving Sepsis Campaign guidelines. The 2024 version recommended different initial fluid resuscitation volumes.
+
+Both documents existed in the corpus. Both were highly relevant to the query. The 2019 version actually scored higher because it used more traditional terminology that better matched the query.
+
+A doctor following the retrieved 2019 protocol would have administered 30 mL/kg of crystalloid in the first 3 hours. The 2024 protocol recommended a more conservative approach with reassessment after each 500mL bolus. For certain patient populations, the difference mattered.
+
+### The Lesson
+
+In any domain where documents get updated, retrieval must account for document currency. The most textually relevant document isn't always the most current — and in clinical settings, outdated protocols can cause patient harm.
+
+The fix was **temporal metadata filtering**:
+
+1. Every document tagged with effective date and supersession status
+2. When a new protocol version is ingested, the old version is marked as superseded
+3. Retrieval filters to active documents by default
+4. Historical queries ("what was the 2019 sepsis protocol?") explicitly opt in to archived documents
+5. Retrieved results display the document date prominently so clinicians can verify currency
+
+---
+
+## The Final Architecture
+
+```
+Clinical Query
+      ↓
+Query Analysis
+  ├── Complexity check → simple or multi-hop?
+  └── If multi-hop → decompose into sub-queries
+      ↓
+Hybrid Search (per sub-query)
+  ├── BM25 keyword search
+  ├── Semantic vector search
+  └── Reciprocal Rank Fusion
+      ↓
+Temporal Filtering (active documents only)
+      ↓
+Cross-Encoder Re-Ranking (top-20 → top-5)
+      ↓
+Context Assembly + Generation
+      ↓
+Response with citations and document dates
+```
+
+### The Numbers
+
+| Metric | Basic RAG | Advanced RAG | Improvement |
+|---|---|---|---|
+| Retrieval recall@20 | 73% | 94% | +21 points |
+| Top-3 precision | 47% | 82% | +35 points |
+| Multi-hop query accuracy | 31% | 78% | +47 points |
+| Outdated protocol retrieval | 18% of queries | <1% | Temporal filtering |
+| Avg. response latency | 1.8s | 3.1s | +1.3s (acceptable trade-off) |
+| Clinician trust score | 3.1/5 | 4.4/5 | +1.3 points |
+
+The latency increase was a conscious trade-off. An extra 1.3 seconds for dramatically better clinical accuracy was unanimously accepted by the physician advisory board.
+
+---
+
+## Key Takeaways
+
+1. **Hybrid search is non-negotiable for specialized domains**: Semantic search alone misses domain-specific terminology. BM25 alone misses paraphrases. You need both.
+
+2. **Re-ranking is the precision layer**: First-stage retrieval optimizes for recall. Cross-encoder re-ranking optimizes for precision. The context window demands precision.
+
+3. **Complex queries need decomposition**: Single-shot retrieval can't handle multi-hop reasoning. Break complex queries into sub-queries and retrieve independently.
+
+4. **Document currency matters**: In any domain with versioned documents, temporal filtering prevents retrieval of outdated information that may cause harm.
+
+5. **Latency is a trade-off, not a constraint**: Clinicians unanimously preferred waiting an extra second for better results. Optimize for the right metric.

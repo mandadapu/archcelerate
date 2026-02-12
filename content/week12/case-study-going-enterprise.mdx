@@ -1,0 +1,174 @@
+---
+title: "Case Study: Going Enterprise"
+description: "A startup's AI product gets its first Fortune 500 customer — and discovers that enterprise deployment is a different sport entirely"
+estimatedMinutes: 30
+---
+
+# Case Study: Going Enterprise
+
+This is the final case study, and it's about the final mile. You've built the AI. It works. It's accurate, observable, governed, and well-architected. Now a Fortune 500 company wants to deploy it across 15,000 employees. Everything you've learned in 11 weeks converges here.
+
+> **Architect Perspective**: Enterprise AI deployment isn't a technical problem wearing a business disguise. It's a genuine combination of both: technical architecture that serves business requirements, organizational change management, and stakeholder alignment. The architect who can navigate all three is the one who ships.
+
+---
+
+## The Deal
+
+InsightAI — a startup selling AI-powered competitive intelligence — landed a pilot with Meridian Industries, a Fortune 500 manufacturing conglomerate. Meridian wanted InsightAI to analyze competitor filings, patent databases, market reports, and news feeds, then deliver actionable intelligence briefings to their strategy team.
+
+The pilot was 50 users. If successful, rollout to 15,000 employees across 23 countries.
+
+InsightAI's platform worked. The AI was accurate. The demos were impressive. Then the enterprise deployment started, and they encountered problems that no amount of model tuning could solve.
+
+---
+
+## Challenge 1: Multi-Tenancy at Scale
+
+Meridian had 7 business divisions, each with different competitive landscapes, different data sensitivity levels, and different access permissions. The Automotive division's competitive intelligence couldn't be visible to the Aerospace division — not because of external security, but internal politics and regulatory Chinese walls.
+
+InsightAI's architecture was single-tenant. One database, one index, one retrieval pipeline. Adding a second "tenant" meant duplicating the entire stack.
+
+The real requirement wasn't just data isolation. It was:
+
+- **Data isolation**: Division A's documents invisible to Division B
+- **Model isolation**: Queries from Division A don't influence results for Division B
+- **Cost attribution**: Each division pays for their own usage from their own budget
+- **Admin independence**: Each division's admin controls their own users, sources, and configuration
+- **Shared infrastructure**: Despite isolation, the underlying platform is maintained once, not seven times
+
+### The Solution
+
+They rebuilt around a **tenant-aware architecture**:
+
+1. **Database**: Row-level security with tenant ID on every table. Queries automatically scoped.
+2. **Vector store**: Separate namespaces per tenant within the same index. Retrieval scoped to the querying tenant's namespace.
+3. **Prompt context**: Tenant-specific system prompts loaded dynamically. Each division has its own terminology, focus areas, and output preferences.
+4. **Billing**: Usage metering per tenant. API calls, storage, and compute tracked and attributed.
+5. **Admin portal**: Delegated administration. Division admins manage their users without seeing other divisions.
+
+Engineering time: 6 weeks. But without it, the deal was dead.
+
+---
+
+## Challenge 2: Single Sign-On and Access Control
+
+Meridian had 43,000 employees on Microsoft Entra ID (Azure AD) with a complex group hierarchy. InsightAI's auth system was "email + password" with a simple admin panel.
+
+The requirements:
+
+- **SAML/OIDC SSO**: No separate passwords. Employees log in with their corporate credentials.
+- **Group-based access**: Access controlled by AD groups, not individual user accounts. When someone transfers from Automotive to Aerospace, their access changes automatically.
+- **MFA enforcement**: Meridian's security policy requires MFA for all third-party applications.
+- **Session management**: 8-hour maximum sessions. Automatic logout on inactivity. Concurrent session limits.
+- **Provisioning/deprovisioning**: When an employee leaves the company, their InsightAI access is revoked within 15 minutes via SCIM.
+
+InsightAI had built none of this. Their auth handled 50 users with magic links. It took 4 weeks to implement enterprise identity integration — not because the protocols are complex (they are), but because the edge cases are endless. What happens when a user is in two AD groups with conflicting permissions? When an account is disabled mid-session? When the identity provider is temporarily unreachable?
+
+### The Lesson
+
+Enterprise identity is not "auth but bigger." It's a fundamentally different architecture where the customer controls the identity infrastructure and you integrate with it, rather than the other way around.
+
+---
+
+## Challenge 3: Data Residency and Sovereignty
+
+Meridian operated in 23 countries. The EU General Data Protection Regulation required that EU employees' data be processed and stored within the EU. China had similar requirements. Brazil, India, and several other jurisdictions had data localization rules of varying strictness.
+
+InsightAI's infrastructure was in US-East. All of it.
+
+The initial reaction: "We'll just deploy in every region." The reality: deploying a full AI stack (application servers, databases, vector stores, model API access) in multiple regions is a massive infrastructure undertaking. And some AI providers don't have endpoints in every required region.
+
+### The Solution
+
+A tiered approach:
+
+1. **Application and database**: Deployed in 3 regions (US, EU, APAC) with data routing based on user location
+2. **Vector store**: Regional instances with tenant data stored in the appropriate region
+3. **Model API calls**: Routed through regional proxies. For regions where the AI provider didn't have endpoints, data was anonymized before crossing borders, processed, and the results returned without PII
+4. **Audit logging**: Regional logs stored locally, with anonymized metadata replicated centrally for global dashboards
+
+This wasn't elegant engineering. It was compliance engineering — ugly, necessary, and non-negotiable for an enterprise deal.
+
+---
+
+## Challenge 4: The Change Management Problem
+
+This wasn't a technical challenge. It was a human one.
+
+Meridian's strategy analysts had been doing competitive intelligence manually for 20 years. They were good at it. They had relationships with industry contacts, institutional knowledge about competitor behavior patterns, and professional pride in their craft.
+
+Then management told them they were getting an AI tool that would "augment their capabilities."
+
+They heard: "You're being replaced."
+
+Adoption in the first month: 12%. Eighty-eight percent of users logged in once, poked around, and went back to their existing workflow. Several senior analysts actively lobbied management to cancel the project, calling the AI's analysis "superficial" and "lacking nuance."
+
+They weren't entirely wrong. The AI did lack the institutional context that a 20-year veteran carried. But it could process 500 filings in an hour — something no human could do. The problem wasn't capability. It was positioning.
+
+### The Solution
+
+The rollout was redesigned around the analysts' existing workflow:
+
+1. **Tool, not replacement**: Repositioned as "the AI does the reading, you do the thinking." The AI processes the volume; the analyst provides the judgment and context.
+2. **Analyst-in-the-loop**: Every AI-generated briefing was a draft that the analyst reviewed, annotated, and published under their own name. The AI saved them time; they maintained ownership.
+3. **Champion program**: Identified 5 analysts who were curious about the tool and gave them early access with dedicated support. Their success stories brought others along.
+4. **Feedback loop**: Analysts could rate and correct the AI's output. Their corrections improved the system and gave them a sense of ownership over it.
+5. **Metrics that matter**: Tracked "analyst time saved" not "AI accuracy." The metric that resonated was "you get your evenings back," not "the AI is 94% accurate."
+
+Adoption at month 3: 67%. Month 6: 89%. The senior analyst who lobbied hardest against it became the biggest advocate — because the tool let him focus on the strategic analysis he loved instead of the document processing he endured.
+
+---
+
+## Challenge 5: SLAs and Incident Response
+
+Meridian's contract required:
+
+- **99.9% uptime** (8.76 hours of allowed downtime per year)
+- **< 5 second response time** for 95th percentile queries
+- **4-hour incident response** for severity 1 issues
+- **Monthly reporting** on accuracy, uptime, and usage metrics
+- **$50K/incident penalties** for SLA breaches
+
+InsightAI had never operated under SLAs. Their uptime was "pretty good" — no one had measured it precisely. Their incident response was "whoever's awake fixes it."
+
+Building SLA-grade operations required:
+
+1. **Redundancy**: Multi-AZ deployment with automated failover. No single point of failure.
+2. **On-call rotation**: 24/7 coverage with escalation procedures and response time commitments.
+3. **Runbooks**: Documented procedures for every known failure mode. "If X happens, do Y" — not "figure it out."
+4. **Status page**: Real-time system status visible to the client. Transparency builds trust.
+5. **Incident post-mortems**: Every incident gets a root cause analysis and preventive action. Shared with the client.
+
+---
+
+## The Timeline
+
+| Phase | Duration | Focus |
+|---|---|---|
+| Technical due diligence | 2 weeks | Security review, architecture assessment |
+| Multi-tenancy rebuild | 6 weeks | Data isolation, namespace separation |
+| Enterprise identity | 4 weeks | SSO, SCIM, group-based access |
+| Data residency | 5 weeks | Regional deployment, compliance routing |
+| SLA infrastructure | 3 weeks | Redundancy, monitoring, on-call |
+| Pilot (50 users) | 8 weeks | Validation, feedback, iteration |
+| Change management | Ongoing | Champion program, training, feedback loops |
+| Rollout planning | 3 weeks | Phased deployment across divisions |
+| **Total to enterprise-ready** | **~6 months** | From "it works" to "it's deployed" |
+
+The AI itself was ready on day one. Everything else took six months.
+
+---
+
+## Key Takeaways
+
+1. **Multi-tenancy is table stakes**: Enterprise customers have divisions, teams, and Chinese walls. Data isolation, cost attribution, and admin delegation are requirements, not features.
+
+2. **Enterprise identity is a different paradigm**: SSO, SCIM provisioning, group-based access, and MFA aren't auth add-ons. They're a fundamentally different architecture where the customer controls identity.
+
+3. **Data residency is non-negotiable**: Global companies operate under multiple jurisdictions. Processing and storing data in the right geography isn't optional — it's a legal requirement.
+
+4. **Change management determines adoption**: The best AI in the world fails at 12% adoption. Position as a tool that amplifies expertise, not a replacement. Let users own the output.
+
+5. **SLAs require operational maturity**: "Pretty good uptime" doesn't survive a $50K/incident penalty clause. Redundancy, on-call, runbooks, and post-mortems are the minimum.
+
+6. **The AI is the easy part**: Building the model, tuning the prompts, optimizing the retrieval — that's maybe 30% of an enterprise deployment. The other 70% is infrastructure, compliance, identity, operations, and change management.

@@ -1,0 +1,150 @@
+---
+title: "Case Study: The Search Engine That Learned to Ask Why"
+description: "An e-commerce company's product search fails on complex queries — and rebuilding it reveals what advanced retrieval actually means"
+estimatedMinutes: 30
+---
+
+# Case Study: The Search Engine That Learned to Ask Why
+
+This is about the difference between finding documents that contain the right words and finding documents that answer the right question. Every search system in the world struggles with this gap. The ones that close it use techniques you're about to learn.
+
+> **Architect Perspective**: Advanced RAG isn't a checklist of techniques you bolt on. It's a diagnostic process: find where basic retrieval fails, understand why, and apply the minimum intervention that fixes it. Over-engineering retrieval is as dangerous as under-engineering it.
+
+---
+
+## The Company
+
+ShelfSmart — an e-commerce platform for specialty kitchen equipment — had 180,000 products and a search system that worked fine for simple queries. "chef's knife" returned chef's knives. "stand mixer" returned stand mixers. Basic vector search over product descriptions.
+
+Then they looked at the queries where users searched, didn't click anything, and left. The abandonment rate was 34%. And the abandoned queries told a very different story from the successful ones.
+
+---
+
+## The Queries That Broke Everything
+
+Simple queries worked:
+- "cast iron skillet" → ✅ Returns cast iron skillets
+- "KitchenAid mixer" → ✅ Returns the right brand and product
+
+Complex queries didn't:
+
+**Query 1**: "something to make pasta from scratch for a beginner, under $50"
+
+This requires understanding intent (pasta making), experience level (beginner — so not a professional extruder), and a price constraint. The vector search returned results about pasta in general — cookbooks, pasta storage containers, and one $300 professional pasta machine that happened to have "beginner-friendly" in its description.
+
+**Query 2**: "what do I need to start making sourdough"
+
+This isn't a product query — it's a knowledge query. The user needs to understand the category before they can shop in it. They need a starter kit concept: Dutch oven, proofing basket, bench scraper, kitchen scale, scoring lame. The search returned individual products matching "sourdough" in their descriptions — sourdough cookbooks and a single proofing basket.
+
+**Query 3**: "replacement for my broken Cuisinart food processor lid — model DFP-14BCWNY"
+
+Hyperspecific. The user knows exactly what they need. Semantic search was useless here because the model number is an opaque string that embeddings can't meaningfully represent. The search returned food processors (not lids), Cuisinart products (wrong accessories), and nothing matching that specific model.
+
+---
+
+## Fix 1: Query Understanding
+
+The first insight: different queries need different retrieval strategies. Treating every query the same is why 34% of them fail.
+
+They built a **query classifier** that categorized incoming queries:
+
+| Query Type | Example | Strategy |
+|---|---|---|
+| **Product search** | "chef's knife" | Standard hybrid search |
+| **Intent-based** | "make pasta from scratch" | Expand to product categories, filter by attributes |
+| **Knowledge/exploratory** | "start making sourdough" | Retrieve curated collections and buying guides |
+| **Specific/model** | "Cuisinart DFP-14BCWNY lid" | Exact match on SKU/model, fallback to compatible parts |
+
+Each category triggered a different retrieval pipeline. The classifier itself was a lightweight LLM call (~50ms) that paid for itself many times over in retrieval quality.
+
+---
+
+## Fix 2: Query Expansion
+
+For intent-based queries like "make pasta from scratch for a beginner under $50," the raw query doesn't map well to product descriptions. "Make pasta from scratch" needs to become:
+
+- Product categories: hand-crank pasta machine, pasta roller, pasta drying rack
+- Attribute filters: price < $50, difficulty = beginner
+- Exclusions: professional/commercial grade, electric extruders
+
+They used an LLM to **expand the query** before retrieval:
+
+```
+Original: "make pasta from scratch for a beginner under $50"
+
+Expanded:
+- Search terms: ["manual pasta machine", "hand crank pasta maker",
+  "pasta roller attachment", "pasta drying rack", "beginner pasta kit"]
+- Filters: price_max=50, skill_level=["beginner", "entry-level"]
+- Boost: products tagged "starter kit" or "beginner recommended"
+- Exclude: commercial_grade=true, price_min=200
+```
+
+This expansion step converted a vague human intent into precise retrieval parameters. The expanded query hit the right products because it spoke the language of the product catalog instead of the language of the user.
+
+---
+
+## Fix 3: Multi-Index Search
+
+The sourdough query revealed that sometimes the answer isn't a single product — it's a collection. "What do I need to start making sourdough" requires assembling a kit from multiple product categories.
+
+They built a **collections index** alongside their product index:
+
+- **Product index**: Individual products with descriptions, specs, prices
+- **Collections index**: Curated bundles, buying guides, "starter kits" for common activities
+- **Compatibility index**: Which products work together, replacement parts, accessories by model
+
+For knowledge queries, the system searched the collections index first, returning "Sourdough Starter Kit: Everything You Need" — a curated guide linking to a Dutch oven ($45), proofing basket ($18), bench scraper ($12), kitchen scale ($25), and scoring lame ($9).
+
+For specific/model queries, the compatibility index returned exact replacement parts and compatible alternatives.
+
+One search query, multiple specialized indexes, each optimized for a different type of need.
+
+---
+
+## Fix 4: Learned Ranking
+
+After query expansion and multi-index search improved recall, they still had a ranking problem. The system returned good results — they just weren't in the right order.
+
+The default ranking combined text relevance, vector similarity, and price. But user behavior showed that different queries had different ranking priorities:
+
+- Beginners valued reviews and ratings more than specifications
+- Specific model queries valued exact match above all else
+- Budget queries needed price as the primary sort, with quality as tiebreaker
+
+They built a **learned ranking model** trained on click-through data:
+
+- Features: text relevance score, vector similarity, price, rating, review count, return rate, query type, user segment
+- Training data: 6 months of (query, clicked product, ignored products) triples
+- Output: predicted probability of click/purchase
+
+The learned ranker replaced the hand-tuned scoring formula and improved click-through rate by 23%. It automatically learned that beginners care about reviews, experts care about specs, and budget shoppers care about price — without anyone programming these rules.
+
+---
+
+## The Results
+
+| Metric | Before | After | Improvement |
+|---|---|---|---|
+| Search abandonment rate | 34% | 12% | -22 points |
+| Click-through rate | 28% | 51% | +23 points |
+| Conversion from search | 8.2% | 14.7% | +6.5 points |
+| "No results" rate | 7% | 0.8% | -6.2 points |
+| Avg. search latency | 180ms | 340ms | +160ms (acceptable) |
+| Revenue per search session | $3.40 | $6.10 | +79% |
+
+The latency increase (query classification + expansion + multi-index search + re-ranking) was 160ms. Users didn't notice. The revenue impact was immediate and dramatic.
+
+---
+
+## Key Takeaways
+
+1. **Different queries need different strategies**: A single retrieval pipeline can't handle product searches, intent-based queries, knowledge questions, and specific model lookups. Classify first, then route.
+
+2. **Query expansion bridges the vocabulary gap**: Users describe what they want to do. Product catalogs describe what things are. An LLM expansion step translates between these languages.
+
+3. **Multiple specialized indexes beat one general index**: Products, collections, and compatibility data serve different needs. Searching the right index matters more than searching one index better.
+
+4. **Learned ranking beats hand-tuned scoring**: Click-through data reveals what users actually value. A model trained on behavior outperforms any manually designed relevance formula.
+
+5. **Advanced retrieval is diagnostic, not prescriptive**: Don't apply every technique. Find where basic retrieval fails, understand the failure mode, and apply the targeted fix.

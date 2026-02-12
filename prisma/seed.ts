@@ -77,7 +77,8 @@ const weekData = [
       { slug: 'governance-foundations', title: 'AI Governance Foundations: System Prompts as Policy', minutes: 35 },
       { slug: 'responsible-ai', title: 'Responsible AI: Bias Detection, XAI & Self-Correction', minutes: 60 },
       { slug: 'compliance-patterns', title: 'Domain Compliance & Redaction: PII/PHI Protection', minutes: 50 },
-      { slug: 'ai-testing-nfrs', title: 'Testing & Non-Functional Requirements: Production Telemetry', minutes: 55 }
+      { slug: 'ai-testing-nfrs', title: 'Testing & Non-Functional Requirements: Production Telemetry', minutes: 55 },
+      { slug: 'case-study-the-ai-that-couldnt-say-no', title: 'Case Study: The AI That Couldn\'t Say No', minutes: 30 }
     ],
     lab: {
       slug: 'governance-compliance-lab',
@@ -176,7 +177,8 @@ const weekData = [
     concepts: [
       { slug: 'structured-output', title: 'Structured Output', description: 'JSON mode and type-safe responses.', minutes: 40 },
       { slug: 'function-calling', title: 'Function Calling', description: 'Tool integration and external system connections.', minutes: 45 },
-      { slug: 'schema-design', title: 'Schema Design', description: 'Type systems and validation patterns.', minutes: 45 }
+      { slug: 'schema-design', title: 'Schema Design', description: 'Type systems and validation patterns.', minutes: 45 },
+      { slug: 'case-study-the-integration-nightmare', title: 'Case Study: The Integration Nightmare', minutes: 30 }
     ],
     lab: {
       slug: 'support-ticket-router',
@@ -231,7 +233,8 @@ const weekData = [
       { slug: 'supervisor-patterns', title: 'Supervisor & Collaborative Patterns: Manager Agents and Swarms', minutes: 40 },
       { slug: 'reliability-patterns', title: 'Reliability Patterns: Self-Reflection and HITL', minutes: 50 },
       { slug: 'state-checkpointing', title: 'Persistence & State Checkpointing: Resumable Agent Threads', minutes: 45 },
-      { slug: 'framework-selection', title: 'Framework Selection: LangGraph vs. CrewAI Performance', minutes: 35 }
+      { slug: 'framework-selection', title: 'Framework Selection: LangGraph vs. CrewAI Performance', minutes: 35 },
+      { slug: 'case-study-the-agent-that-wouldnt-stop', title: 'Case Study: The Agent That Wouldn\'t Stop', minutes: 30 }
     ],
     lab: {
       slug: 'newsletter-team',
@@ -299,7 +302,8 @@ const weekData = [
       { slug: 'observability-basics', title: 'Request Tracing', description: 'Single-request debugging with spans and traces.', minutes: 30 },
       { slug: 'monitoring-ai-systems', title: 'System Metrics', description: 'Aggregated monitoring for drift, cost, and health.', minutes: 35 },
       { slug: 'performance-optimization', title: 'Performance & Caching', description: 'Low-latency engineering with semantic caching.', minutes: 40 },
-      { slug: 'production-deployment', title: 'Production Deployment', description: 'Scaling and infrastructure best practices.', minutes: 35 }
+      { slug: 'production-deployment', title: 'Production Deployment', description: 'Scaling and infrastructure best practices.', minutes: 35 },
+      { slug: 'case-study-the-search-that-missed', title: 'Case Study: The Search That Missed What Mattered', minutes: 30 }
     ],
     lab: {
       slug: 'medical-records-navigator',
@@ -365,7 +369,8 @@ const weekData = [
     concepts: [
       { slug: 'observability-pillars', title: 'Observability Pillars', description: 'Traces, evaluations, and cost tracking.', minutes: 50 },
       { slug: 'guardrails', title: 'Production Guardrails', description: 'Input/output validation and safety checks.', minutes: 45 },
-      { slug: 'automated-evaluation', title: 'Automated Evaluation', description: 'LLM-as-a-Judge for continuous quality assurance.', minutes: 45 }
+      { slug: 'automated-evaluation', title: 'Automated Evaluation', description: 'LLM-as-a-Judge for continuous quality assurance.', minutes: 45 },
+      { slug: 'case-study-the-silent-failure', title: 'Case Study: The Silent Failure', minutes: 30 }
     ],
     lab: {
       slug: 'production-dashboard',
@@ -422,7 +427,8 @@ const weekData = [
       { slug: 'vertical-ai-platforms', title: 'Architecting Vertical AI Platforms: Multi-Tenant Design', minutes: 45 },
       { slug: 'production-stress-test', title: 'The Production Stress-Test: Red-Team & Load Validation', minutes: 50 },
       { slug: 'evaluation-suite', title: 'Engineering the Evaluation Suite: Golden Datasets', minutes: 40 },
-      { slug: 'architectural-storytelling', title: 'Architectural Storytelling: System Design Documents', minutes: 35 }
+      { slug: 'architectural-storytelling', title: 'Architectural Storytelling: System Design Documents', minutes: 35 },
+      { slug: 'case-study-from-demo-to-deal', title: 'Case Study: From Demo to Deal', minutes: 30 }
     ],
     lab: {
       slug: 'stress-test-suite',
@@ -473,7 +479,8 @@ const weekData = [
     concepts: [
       { slug: 'hybrid-search', title: 'Hybrid Search: Dense + Sparse Retrieval', minutes: 40 },
       { slug: 'query-optimization', title: 'Query Rewriting & Expansion', minutes: 35 },
-      { slug: 'reranking-strategies', title: 'Re-ranking and Filtering Strategies', minutes: 40 }
+      { slug: 'reranking-strategies', title: 'Re-ranking and Filtering Strategies', minutes: 40 },
+      { slug: 'case-study-the-search-engine-that-understood', title: 'Case Study: The Search Engine That Learned to Ask Why', minutes: 30 }
     ],
     lab: {
       slug: 'advanced-rag',
@@ -514,7 +521,8 @@ const weekData = [
     concepts: [
       { slug: 'finetuning-basics', title: 'Fine-tuning Fundamentals', minutes: 40 },
       { slug: 'dataset-prep', title: 'Dataset Preparation & Curation', minutes: 45 },
-      { slug: 'model-evaluation', title: 'Model Evaluation & Iteration', minutes: 40 }
+      { slug: 'model-evaluation', title: 'Model Evaluation & Iteration', minutes: 40 },
+      { slug: 'case-study-the-fine-tuning-trap', title: 'Case Study: The Fine-Tuning Trap', minutes: 30 }
     ],
     lab: {
       slug: 'finetune-model',
@@ -555,7 +563,8 @@ const weekData = [
     concepts: [
       { slug: 'agent-coordination', title: 'Multi-Agent Coordination Patterns', minutes: 45 },
       { slug: 'task-delegation', title: 'Task Delegation & Orchestration', minutes: 40 },
-      { slug: 'conflict-resolution', title: 'Conflict Resolution in Agent Systems', minutes: 35 }
+      { slug: 'conflict-resolution', title: 'Conflict Resolution in Agent Systems', minutes: 35 },
+      { slug: 'case-study-the-ai-war-room', title: 'Case Study: The AI War Room', minutes: 30 }
     ],
     lab: {
       slug: 'multi-agent-system',
@@ -596,7 +605,8 @@ const weekData = [
     concepts: [
       { slug: 'enterprise-architecture', title: 'Enterprise AI Architecture Patterns', minutes: 45 },
       { slug: 'compliance-security', title: 'AI Compliance, Security & Governance', minutes: 50 },
-      { slug: 'scaling-strategies', title: 'Scaling AI Systems to Production', minutes: 40 }
+      { slug: 'scaling-strategies', title: 'Scaling AI Systems to Production', minutes: 40 },
+      { slug: 'case-study-going-enterprise', title: 'Case Study: Going Enterprise', minutes: 30 }
     ],
     lab: {
       slug: 'enterprise-deployment',

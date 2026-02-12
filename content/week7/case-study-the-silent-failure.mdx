@@ -1,0 +1,152 @@
+---
+title: "Case Study: The Silent Failure"
+description: "A production AI system degrades for weeks before anyone notices — and the team learns that LLM failures don't trigger alerts"
+estimatedMinutes: 30
+---
+
+# Case Study: The Silent Failure
+
+This is the scariest kind of failure. Not the dramatic crash that wakes you up at 3 AM. The slow, invisible degradation that erodes your product for weeks while every dashboard shows green.
+
+> **Architect Perspective**: Traditional monitoring answers "is the system up?" LLM monitoring must answer "is the system correct?" Those are very different questions, and the tools for answering them are very different too. This case study is about what happens when you only answer the first one.
+
+---
+
+## The System
+
+DocuMind — an AI-powered document analysis platform for insurance companies — processed claims, extracted key information, flagged anomalies, and generated summaries. 15,000 documents per day across 8 insurance clients.
+
+The system had excellent traditional monitoring:
+- 99.97% uptime over 6 months
+- Average response time: 1.2 seconds
+- Error rate: 0.03%
+- All infrastructure metrics: green
+
+Then claims adjusters started complaining. "The AI summaries don't seem as good as they used to be." Management dismissed it as perception bias. Three weeks later, a client ran an audit and found that 23% of recent claim summaries contained factual errors — up from 4% at launch.
+
+The system had been silently degrading for 5 weeks. Every alert, every dashboard, every health check said everything was fine.
+
+---
+
+## What Went Wrong
+
+### The Prompt Drift
+
+It started with a routine model version update. The AI provider released a minor version bump — not a new model, just a point release with "improved instruction following." The team's CI/CD pipeline automatically picked up the new version.
+
+The new version was indeed better at following instructions. So much better that it started following the system prompt more literally. The system prompt said "summarize the key findings," and the old version interpreted "key" liberally — including relevant context and background. The new version interpreted "key" literally — only the most critical facts, stripped of context.
+
+Summaries went from comprehensive 200-word analyses to bare-bones 60-word bullet points. Technically more accurate per-finding, but missing the context that claims adjusters needed to make decisions.
+
+### The Data Distribution Shift
+
+Simultaneously, one of the insurance clients started processing a new type of claim — cyber insurance — that the system had rarely seen before. The document format was different. The terminology was specialized. The relevant fields were in different locations.
+
+The system handled these documents without errors. It extracted information, generated summaries, returned results. All within normal latency. All with HTTP 200. But the extraction accuracy on cyber claims was 61% compared to 94% on the traditional claim types the system was trained for.
+
+### The Compound Effect
+
+New model behavior + new document type = compounding degradation. The terser summaries meant less context for adjusters to catch errors. The unfamiliar document type meant more errors to catch. Neither problem alone would have triggered a crisis. Together, they pushed error rates from 4% to 23% over five weeks.
+
+---
+
+## Why Nobody Noticed
+
+Every monitoring system DocuMind had was infrastructure-focused:
+
+| What They Monitored | What It Told Them | What It Missed |
+|---|---|---|
+| Uptime | System is running | System is running but wrong |
+| Latency | Responses are fast | Fast wrong answers |
+| Error rate | API calls succeed | Successful calls with bad content |
+| Token usage | Model is processing | Processing doesn't mean correct |
+| CPU/Memory | Resources are healthy | Correctness ≠ resource health |
+
+Not one of these metrics would detect that summaries had gotten shorter. Not one would flag that cyber claim extraction was unreliable. Not one measures the thing that actually matters: **is the output correct?**
+
+---
+
+## The Observability Stack They Built
+
+After the incident, DocuMind built a proper LLM observability system. It took eight weeks and fundamentally changed how they operated.
+
+### Layer 1: Output Quality Monitoring
+
+Every response is scored on multiple dimensions:
+
+- **Completeness**: Does the summary cover all required fields? (Automated check against document schema)
+- **Accuracy sampling**: 3% of responses randomly selected for human review daily
+- **Length distribution**: Track response length over time. Sudden shifts indicate behavioral change.
+- **Confidence tracking**: The model rates its own confidence. Low-confidence responses get flagged for review.
+
+When summary length dropped by 40% overnight, this system would have caught it within hours.
+
+### Layer 2: Drift Detection
+
+- **Model version tracking**: Every response tagged with the exact model version that produced it. When a new version rolls out, quality metrics are compared automatically.
+- **Input distribution monitoring**: Track the types of documents being processed. When a new document category appears (like cyber claims), alert the team and increase the human review sampling rate.
+- **Embedding drift**: Monitor the distribution of input embeddings over time. A shift indicates the system is seeing different types of content than it was trained/tested on.
+
+### Layer 3: Automated Evaluation
+
+A separate, smaller model runs continuous evaluation:
+
+- Compare each summary against the source document for factual consistency
+- Flag responses where the confidence score doesn't match the actual quality
+- Detect pattern changes: "summaries are getting shorter" / "new terminology appearing" / "extraction patterns changing"
+
+This is LLM-as-judge — imperfect, but fast and cheap. It catches the obvious problems (factual errors, missing fields) and escalates edge cases to human review.
+
+### Layer 4: Business Impact Metrics
+
+The metrics that actually matter:
+
+- **Adjustor override rate**: How often do humans modify the AI's output? Rising rates indicate declining quality.
+- **Claim processing time**: If the AI is helpful, claims process faster. Slowdowns suggest the AI is creating work, not reducing it.
+- **Client satisfaction scores**: Lagging indicator, but the ultimate measure.
+
+---
+
+## The Alert That Would Have Caught It
+
+With the new observability stack, here's what would have triggered:
+
+**Day 1 of model update**:
+- Alert: "Summary length distribution shifted. Mean length dropped from 187 words to 63 words. Model version changed from v3.1.2 to v3.1.3."
+- Action: Human review of 50 random summaries from old and new versions. Decision to rollback or adjust prompts.
+
+**Day 1 of cyber claims**:
+- Alert: "New document category detected. 847 documents don't match any known claim type schema. Extraction confidence below threshold for 39% of these documents."
+- Action: Increase human review rate for new category. Begin developing cyber claim extraction templates.
+
+Both problems caught on day one instead of week five. Estimated savings: $180,000 in client remediation costs and zero risk to the client relationships.
+
+---
+
+## The Cost of Not Observing
+
+| Impact | Cost |
+|---|---|
+| Client audit and remediation | $120,000 |
+| Re-processing 5 weeks of claims | $45,000 |
+| Emergency engineering (8 weeks) | $160,000 |
+| Client trust damage | 2 clients reduced volume |
+| **Total** | **~$325,000 + ongoing revenue impact** |
+
+Versus the cost of building observability from day one: roughly $80,000 in engineering time (4 weeks, 2 engineers) plus ~$2,000/month in compute for the evaluation pipeline.
+
+---
+
+## Key Takeaways
+
+1. **Infrastructure monitoring doesn't measure correctness**: HTTP 200 with a hallucinated answer looks identical to HTTP 200 with a correct answer. You need semantic monitoring.
+
+2. **Model updates cause behavioral drift**: Even minor version bumps can change output characteristics. Track model versions and compare quality metrics across versions.
+
+3. **Input distribution shifts are invisible to traditional monitoring**: New document types, new use cases, new terminology — all look normal to infrastructure metrics while degrading output quality.
+
+4. **Automated evaluation catches obvious problems cheaply**: LLM-as-judge isn't perfect, but it's fast, continuous, and catches the most damaging errors before humans see them.
+
+5. **Business metrics are the ground truth**: Adjustor override rates, processing times, and client satisfaction are the metrics that actually matter. Technical metrics are leading indicators; business metrics are the proof.
+
+6. **The cost of observability is a fraction of the cost of not having it**: $80K upfront vs. $325K+ in incident response. The math is obvious in retrospect. Build it before you need it.

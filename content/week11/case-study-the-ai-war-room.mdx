@@ -1,0 +1,185 @@
+---
+title: "Case Study: The AI War Room"
+description: "A security operations center builds a multi-agent threat detection system — and discovers that the hardest problem isn't individual agents, it's making them work together"
+estimatedMinutes: 30
+---
+
+# Case Study: The AI War Room
+
+This is about coordination. Individual AI agents are impressive. Put five of them in a room and tell them to work together, and you'll discover that collaboration is a harder engineering problem than capability.
+
+> **Architect Perspective**: Multi-agent systems aren't just "multiple agents." They're distributed systems with all the classic distributed systems problems: consensus, conflict resolution, fault tolerance, and communication overhead. If you don't design for coordination, you'll get chaos that looks like capability.
+
+---
+
+## The System
+
+SecureOps — a managed security service provider — built an AI-powered Security Operations Center (SOC). The vision: multiple specialized agents working together to detect, analyze, and respond to security threats faster than human analysts.
+
+The agent team:
+
+| Agent | Specialty | Model |
+|---|---|---|
+| **Scanner** | Ingests logs, network traffic, endpoint data. Flags anomalies. | Haiku (fast, cheap) |
+| **Analyst** | Deep-dives flagged events. Determines threat severity. | Sonnet (balanced) |
+| **Correlator** | Connects events across systems. Identifies attack patterns. | Sonnet (balanced) |
+| **Responder** | Recommends and executes containment actions. | Opus (highest reasoning) |
+| **Reporter** | Generates incident reports for clients and compliance. | Sonnet (balanced) |
+
+Each agent was excellent in isolation. The Scanner caught 94% of anomalies. The Analyst correctly classified 91% of threats. The Correlator identified 87% of multi-stage attacks.
+
+Then they started working together, and the numbers got worse.
+
+---
+
+## Failure 1: The Disagreement Problem
+
+3:17 AM. The Scanner flagged unusual outbound traffic from a database server — large data transfers to an external IP at odd hours.
+
+The Analyst received the flag and assessed it: "Likely data exfiltration. Severity: Critical. Recommend immediate network isolation."
+
+The Correlator received the same flag and cross-referenced it against scheduled operations: "This IP is a cloud backup provider. The transfer matches the nightly backup schedule that was modified last week. Severity: Low. Recommend monitoring."
+
+Two agents, same data, opposite conclusions. Both were defensible. The Analyst was pattern-matching against exfiltration signatures. The Correlator had additional context about backup schedules.
+
+The Responder received both assessments and... froze. Its prompt said to "act on threat assessments from the analysis team," but the team disagreed. It couldn't determine which agent to trust, so it defaulted to the more severe assessment and isolated the database server.
+
+The nightly backup failed. The client's RPO was violated. It took 4 hours to restore connectivity and manually trigger the backup.
+
+### The Lesson
+
+Multi-agent systems need explicit **conflict resolution protocols**. When agents disagree, the system needs a defined process — not just "pick the scarier one."
+
+The fix:
+
+1. **Structured disagreement format**: When agents disagree, both must state their evidence, confidence level, and what additional information would change their assessment
+2. **Escalation to higher-tier agent**: The Responder (Opus) acts as a judge, explicitly evaluating conflicting assessments with access to both agents' reasoning
+3. **Confidence-weighted decisions**: Assessments carry confidence scores. A 95%-confident "Low" from the Correlator overrides a 70%-confident "Critical" from the Analyst
+4. **Human escalation threshold**: When the disagreement can't be resolved by confidence scores, page a human analyst. Some decisions are too consequential for automated resolution.
+
+---
+
+## Failure 2: The Communication Overhead
+
+The agents communicated through a shared state object — a JSON document that each agent read from and wrote to. Every agent had access to everything.
+
+In theory, this was transparent and democratic. In practice, it was chaos.
+
+The Scanner processed 50,000 events per hour, writing each anomaly to the shared state. The Analyst read the shared state to pick up new flags, but by the time it finished analyzing one event, 200 new ones had arrived. The Correlator needed to read events from the last 24 hours for pattern matching, which meant scanning through hundreds of thousands of entries.
+
+The shared state grew to 4GB in 12 hours. Read latency went from 50ms to 3,200ms. The entire system slowed to a crawl.
+
+### The Lesson
+
+A shared-everything architecture doesn't scale. Agents need structured communication channels, not a shared mutable state.
+
+The fix was a **message bus architecture**:
+
+1. **Typed channels**: Scanner → Analyst (anomaly events), Analyst → Correlator (assessed threats), Correlator → Responder (correlated incidents)
+2. **Priority queues**: Critical events jump the queue. Low-priority anomalies are batched.
+3. **Backpressure**: When the Analyst can't keep up, the Scanner summarizes low-priority events instead of queueing them individually
+4. **Time-windowed state**: The Correlator maintains a 24-hour sliding window, not an ever-growing history
+
+Communication overhead dropped by 85%. Throughput tripled.
+
+---
+
+## Failure 3: The Cascade Failure
+
+The Scanner went down for 12 minutes during a routine update. When it came back, it processed the backlog and flagged 3,000 anomalies simultaneously — a normal batch after a brief outage.
+
+The Analyst saw 3,000 events arrive at once and interpreted this as a massive coordinated attack. It elevated all of them to Critical severity. The Correlator, seeing 3,000 Critical events, identified "patterns" in the noise — coincidental similarities between unrelated events that looked like an advanced persistent threat.
+
+The Responder, faced with what appeared to be a nation-state-level attack, began isolating systems across the client's network. In 4 minutes, it had quarantined 23 servers, including the primary web application, the email server, and the HR system.
+
+The client's business was offline for 90 minutes during business hours. The "attack" was a backup scanner clearing its queue.
+
+### The Lesson
+
+Multi-agent systems are vulnerable to **cascade failures** where one agent's abnormal output triggers disproportionate responses from downstream agents. Each agent interprets its input in isolation, without understanding the system-level context.
+
+The fix:
+
+1. **Anomaly context injection**: Every batch of events includes metadata about system state — "Scanner was offline for 12 minutes, this is backlog processing, not a live attack"
+2. **Rate-of-change detection**: The Analyst detects when event volume spikes abnormally and flags it as a potential system artifact before treating it as a threat
+3. **Circuit breakers**: The Responder has a limit on actions per time window. More than 5 containment actions in 10 minutes triggers a mandatory human review before proceeding
+4. **Blast radius limits**: No automated action can affect more than 3 systems without human approval
+
+---
+
+## Failure 4: The Duplication Problem
+
+A phishing email was reported by three employees. The Scanner flagged each report independently. The Analyst assessed each one independently — three separate "Phishing Attack" incidents. The Correlator identified them as related but created a new "Coordinated Phishing Campaign" incident on top of the three individual ones.
+
+The Responder processed four incidents about the same email. It sent four separate alerts to the client, recommended blocking the sender IP four times, and generated four incident reports.
+
+The client received four urgent notifications about a single phishing email. Their trust in the system took a hit not because the detection failed, but because the coordination did.
+
+### The Lesson
+
+Agent deduplication is a hard problem. Each agent sees events through its own lens, and without explicit deduplication logic, the same real-world incident becomes multiple parallel workstreams.
+
+The fix:
+
+1. **Incident identity**: Every detected event gets a unique fingerprint based on its core attributes (sender, subject, hash). Events with matching fingerprints are merged before hitting the Analyst.
+2. **Deduplication at each stage**: The Analyst checks whether a "new" assessment matches an in-progress assessment. The Correlator merges related incidents before creating new ones.
+3. **Single source of truth**: One incident record per real-world event, updated by multiple agents, rather than multiple records about the same event.
+
+---
+
+## The Final Architecture
+
+```
+Raw Data Streams (logs, network, endpoints)
+      ↓
+Scanner Agent (Haiku)
+  ├── Anomaly detection with fingerprinting
+  ├── Backpressure when downstream is saturated
+  └── Context metadata (system state, backlog status)
+      ↓ [Priority message queue]
+Analyst Agent (Sonnet)
+  ├── Threat assessment with confidence scores
+  ├── Deduplication against in-progress incidents
+  └── Structured disagreement when conflicting signals
+      ↓ [Assessed threats channel]
+Correlator Agent (Sonnet)
+  ├── 24-hour sliding window pattern matching
+  ├── Incident merging and deduplication
+  └── Multi-stage attack detection
+      ↓ [Correlated incidents channel]
+Responder Agent (Opus)
+  ├── Conflict resolution (judge role)
+  ├── Circuit breakers (max actions per window)
+  ├── Blast radius limits (max systems affected)
+  └── Human escalation for high-impact decisions
+      ↓
+Reporter Agent (Sonnet)
+  └── Single consolidated report per incident
+```
+
+### The Numbers
+
+| Metric | V1 (Uncoordinated) | V2 (Orchestrated) |
+|---|---|---|
+| False positive rate | 23% | 7% |
+| Duplicate alerts | ~40% of notifications | <2% |
+| Cascade failures | 3 in first month | 0 in 6 months |
+| Avg. time to detect | 4.2 minutes | 2.8 minutes |
+| Avg. time to respond | 18 minutes | 6 minutes |
+| Unnecessary containment actions | 12/month | 1/month |
+
+---
+
+## Key Takeaways
+
+1. **Conflict resolution must be explicit**: When agents disagree, the system needs a defined protocol — confidence-weighted decisions, escalation to a judge agent, and human escalation thresholds.
+
+2. **Shared mutable state doesn't scale**: Use typed message channels with priority queues and backpressure instead of a shared-everything architecture.
+
+3. **Cascade failures are the biggest risk**: One agent's abnormal output can trigger disproportionate responses from every downstream agent. Circuit breakers and blast radius limits are essential.
+
+4. **Deduplication is a coordination problem**: Without explicit fingerprinting and merging, the same real-world event generates parallel workstreams that waste resources and erode trust.
+
+5. **Individual agent quality ≠ system quality**: Agents that are 90%+ accurate in isolation produce worse outcomes when poorly coordinated than agents that are 80% accurate with good orchestration.
+
+6. **The orchestration layer is the product**: The agents are components. The message bus, conflict resolution, circuit breakers, and deduplication — that's the system.
