@@ -1,6 +1,10 @@
 name: Seed Database
 
 on:
+  workflow_run:
+    workflows: ["Deploy to Production"]
+    types:
+      - completed
   workflow_dispatch:
     inputs:
       skip_migrations:
@@ -22,6 +26,7 @@ jobs:
     name: Seed Production Database
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
 
     steps:
       - name: Checkout code
@@ -83,7 +88,8 @@ jobs:
         run: |
           echo "Seeding database..."
 
-          case "${{ inputs.week }}" in
+          WEEK="${{ inputs.week || 'all' }}"
+          case "$WEEK" in
             "all")
               echo "Seeding all 12 weeks using master seed file..."
               npm run db:seed
