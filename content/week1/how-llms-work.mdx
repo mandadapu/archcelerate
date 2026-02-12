@@ -314,6 +314,146 @@ The model's reliability is uniform — it's always doing the same thing, pattern
 
 ---
 
+## The Frontier: What's Happening Right Now
+
+Now that you've got the fundamentals solid, let's talk about where this is all going. The field isn't standing still — it's moving fast, and the interesting problems are at the edges.
+
+### RAG — Retrieval Augmented Generation
+
+Remember the core limitation? The model only knows what it saw during training. Its knowledge is frozen in time, and it hallucinates when it doesn't have good patterns to match.
+
+RAG is the most practical solution to this right now. The idea is elegant: before the model generates an answer, you search a knowledge base for relevant documents, stuff those documents into the prompt as context, and then let the model generate.
+
+Think of it this way. Instead of asking someone to answer from memory — where they might fabricate — you hand them the relevant textbook pages first and say "answer based on this."
+
+The model is still doing pattern matching. But now it's matching against verified, current, specific information you've provided, not just whatever it absorbed during training months ago.
+
+The topology looks like this:
+
+```
+User Question
+      ↓
+Embedding (convert question to vector)
+      ↓
+Semantic Search (find relevant documents)
+      ↓
+Retrieved Context + Original Question
+      ↓
+LLM generates answer grounded in retrieved documents
+      ↓
+Response (with sources)
+```
+
+This is huge because it **separates two concerns**: the model's ability to understand and generate language stays the same, but the knowledge it draws from becomes updatable, verifiable, and domain-specific.
+
+You can build a RAG system over your company's internal docs, over a legal database, over the latest research papers — and the model suddenly becomes an expert in your specific domain, without retraining a single weight.
+
+The catch? The model can still ignore the retrieved context if its training patterns are strong enough. And if the retrieval step pulls back the wrong documents, you get confidently wrong answers grounded in irrelevant sources. Garbage in, garbage out — just with extra steps.
+
+### Agents — LLMs That Take Action
+
+Here's where things get genuinely interesting and a little bit scary.
+
+An agent is an LLM in a loop. Instead of one prompt → one response, it goes:
+
+**Think → Decide on an action → Execute the action → Observe the result → Think again → ...**
+
+This is called the **ReAct pattern** — Reasoning plus Acting. The model doesn't just answer your question. It breaks the problem into steps, uses tools, checks intermediate results, and iterates until it has a satisfactory answer.
+
+**Example**: "Find me the cheapest flight from LA to Tokyo next month and compare it with train + ferry alternatives."
+
+A basic LLM would hallucinate some prices. An agent would:
+
+1. **Think**: "I need to search flight databases for LA to Tokyo"
+2. **Act**: Call a flight search API
+3. **Observe**: Get actual results with real prices
+4. **Think**: "Now I need alternative routes — train and ferry"
+5. **Act**: Search for trans-Pacific ferry options
+6. **Observe**: Discover there aren't practical ferry routes
+7. **Think**: "I should tell the user this alternative doesn't exist and present the flight options"
+8. **Respond** with grounded, factual information
+
+The model is still pattern matching at every step. But now it's pattern matching about **what to do next**, not just what to say next. And it has access to real tools that compensate for its weaknesses — calculators, search engines, databases, code execution.
+
+The risk? Every step in the chain is a pattern match that could go wrong. And **errors compound**. If the model decides on the wrong action at step 3, everything after that is built on a broken foundation. The longer the chain, the more fragile it gets.
+
+This is why **human-in-the-loop** matters so much for agents. Let the model propose actions. Have a human approve the critical ones. Automate the low-stakes steps. Keep judgment where it counts.
+
+### Context Windows — The Working Memory Problem
+
+Here's a fundamental constraint that shapes everything: the model can only "see" a limited amount of text at once. This is called the **context window**.
+
+Early models could handle maybe 2,000 tokens — roughly a page and a half. Current models handle 100,000 to 200,000 tokens — a small book. But there are hard limits, and they matter.
+
+Why? Because the model has **no persistent memory**. Every conversation starts from zero. Whatever isn't in the context window doesn't exist for the model. It's like talking to someone with perfect short-term recall but absolutely no long-term memory.
+
+This creates practical problems:
+
+- Long conversations degrade as early context drops out of the window
+- You can't just dump an entire codebase into the prompt
+- The model can "forget" instructions you gave at the beginning if enough text has passed since
+
+Solutions are evolving. Longer context windows help. RAG helps by pulling in only the relevant pieces. Memory systems that summarize and store previous conversations help. But none of them fully solve the fundamental issue: the model is **stateless**. Every inference is a fresh computation on whatever happens to be in the window right now.
+
+### Fine-Tuning vs Prompting — When to Use Which
+
+People often ask: "Should I fine-tune a model for my use case or just write better prompts?"
+
+Here's the framework:
+
+**Prompt engineering** is like giving someone detailed instructions for a specific task. Quick, flexible, no training required. Works when the task is within the model's existing capabilities and you just need to steer it.
+
+**Fine-tuning** is like sending someone to a specialized training program. Takes time and data, but fundamentally changes what patterns the model can match. Use it when:
+
+- You need the model to learn a specific style or format it hasn't seen
+- You have domain-specific terminology or conventions
+- Prompt engineering consistently falls short
+- You need reliable, repeatable behavior at scale
+
+Think of it this way: if you're building something for ten people, prompt engineer. If you're building something for ten thousand, consider fine-tuning.
+
+But here's the counterintuitive insight — prompting has gotten so good that fine-tuning is needed less than people think. A well-crafted system prompt with good examples often gets you 90% of the way there. Fine-tuning gets you the last 10%, but at significant cost in time, data, and flexibility.
+
+### The Evaluation Problem — How Do You Know If It's Working?
+
+This is the unsexy but critical question everyone glosses over.
+
+With traditional software, testing is straightforward. Input X should produce output Y. Run the test. Pass or fail.
+
+With LLMs, evaluation is fundamentally harder because:
+
+- The same input can produce different outputs (sampling is stochastic)
+- "Correct" is often subjective — is this summary good enough?
+- Edge cases are infinite and unpredictable
+- The model might be right for the wrong reasons
+
+Current approaches:
+
+| Approach | Strengths | Weaknesses |
+|---|---|---|
+| **Benchmarks** | Standardized, comparable | Often gamed — models optimize for the benchmark, not the underlying capability |
+| **Human evaluation** | Gold standard for quality | Expensive, slow, doesn't scale |
+| **LLM-as-judge** | Fast, scalable | Circular — pattern matching evaluating pattern matching |
+| **Ground truth comparison** | Objective, verifiable | Only works for tasks with clear right answers |
+
+The honest truth? Evaluation remains an unsolved problem. We're building increasingly powerful systems and our ability to measure whether they're working correctly lags behind. This should make you appropriately cautious.
+
+---
+
+## The Deepest Insight
+
+Here's what to walk away with. Not the technical details — those you can look up. The insight:
+
+LLMs are the most powerful **information reformulation tools** ever built. They can translate between representations, find semantic connections, generate implementations from specifications, and compress understanding into accessible explanations — at superhuman speed and scale.
+
+But they do not generate truth. They generate plausible patterns. The truth must come from somewhere else — from your expertise, from verified data, from external computation, from human judgment.
+
+The people who use LLMs most effectively are the ones who deeply understand this distinction. They don't treat the model as an oracle or dismiss it as a toy. They treat it as an extraordinarily capable tool with specific, predictable strengths and weaknesses.
+
+They're race car drivers. They know the car. They know the track. And they know exactly when to push and when to brake.
+
+---
+
 ## Key Takeaways
 
 1. **One mechanism**: LLMs predict the next token through attention-weighted pattern matching across training data. Everything else — conversation, code generation, reasoning — emerges from this.
@@ -328,7 +468,13 @@ The model's reliability is uniform — it's always doing the same thing, pattern
 
 6. **Tools compensate for mechanism gaps**: Calculator for math, code interpreter for algorithms, search for current facts. The model orchestrates; the tools compute.
 
-7. **Human judgment remains irreplaceable**: You cannot use pattern matching to verify pattern matching. External evidence and domain expertise exist outside the training distribution.
+7. **RAG separates knowledge from capability**: The model's language skills stay the same, but the knowledge it draws from becomes updatable, verifiable, and domain-specific.
+
+8. **Agents are powerful but fragile**: Errors compound across multi-step chains. Human-in-the-loop for critical decisions, automation for low-stakes steps.
+
+9. **Evaluation is an unsolved problem**: We're building systems faster than we can measure whether they work correctly. Calibrated skepticism is essential.
+
+10. **Human judgment remains irreplaceable**: You cannot use pattern matching to verify pattern matching. External evidence and domain expertise exist outside the training distribution.
 
 ---
 
@@ -338,3 +484,5 @@ The model's reliability is uniform — it's always doing the same thing, pattern
 - [The Illustrated Transformer](https://jalammar.github.io/illustrated-transformer/) — Visual walkthrough of the architecture
 - [Training language models to follow instructions with human feedback](https://arxiv.org/abs/2203.02155) — The InstructGPT/RLHF paper
 - [Language Models are Few-Shot Learners](https://arxiv.org/abs/2005.14165) — The GPT-3 paper on in-context learning
+- [Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks](https://arxiv.org/abs/2005.11401) — The original RAG paper
+- [ReAct: Synergizing Reasoning and Acting in Language Models](https://arxiv.org/abs/2210.03629) — The ReAct agent pattern
