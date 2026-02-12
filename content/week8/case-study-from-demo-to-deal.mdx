@@ -1,0 +1,167 @@
+---
+title: "Case Study: From Demo to Deal"
+description: "An AI architect takes a prototype through enterprise sales — and discovers that the gap between 'it works' and 'they'll buy it' is wider than the code"
+estimatedMinutes: 30
+---
+
+# Case Study: From Demo to Deal
+
+This isn't a story about code. It's about what happens after the code works. About the gap between a prototype that impresses your team and a product that passes a Fortune 500 security review. That gap is where most AI projects die.
+
+> **Architect Perspective**: Your portfolio isn't just a showcase of what you can build. It's evidence that you understand what it takes to deploy. Every enterprise buyer has been burned by an AI demo that couldn't survive first contact with their security team. Your job is to be the architect who proves it can.
+
+---
+
+## The Prototype
+
+Kai — a senior engineer turned AI architect — spent 8 weeks building a contract analysis system. It was genuinely good:
+
+- Upload any contract (PDF, DOCX, scanned images)
+- AI extracts key terms, obligations, dates, and risk clauses
+- Side-by-side comparison of multiple contracts
+- Natural language Q&A about contract content
+- Risk scoring with explanations
+
+The tech was solid. RAG over contract corpora. Structured extraction with validated schemas. Confidence scoring with human escalation. Kai had done the weeks 1-7 work properly.
+
+A mid-size law firm saw the demo and said: "We want to pilot this with our corporate practice group."
+
+Then they sent the vendor questionnaire.
+
+---
+
+## The Questionnaire
+
+87 questions. Kai had anticipated maybe 10.
+
+The questions fell into categories that had nothing to do with whether the AI was accurate:
+
+### Security (23 questions)
+- Where is data stored? What encryption at rest and in transit?
+- Who has access to customer data? How is access controlled?
+- Do you use customer data to train models?
+- What happens to uploaded documents after processing?
+- What is your incident response plan?
+- SOC 2 Type II certification status?
+
+### Data Privacy (18 questions)
+- How do you handle PII in contracts?
+- Data retention and deletion policies?
+- GDPR compliance for EU-based clients?
+- Right to deletion — can all client data be purged on request?
+- Where is data processed geographically? Data residency commitments?
+
+### Reliability (15 questions)
+- Uptime SLA commitment?
+- Disaster recovery plan and RTO/RPO?
+- What happens when the AI provider's API is down?
+- How do you handle model version changes?
+- Rollback procedures?
+
+### AI-Specific (12 questions)
+- How do you measure and report accuracy?
+- What is your hallucination rate? How is it measured?
+- How do you prevent data leakage between clients?
+- Explainability — can you show why the AI made a specific extraction?
+- Human oversight — what decisions require human review?
+
+### Compliance (19 questions)
+- Attorney-client privilege — how is it preserved?
+- Document retention requirements for legal industry?
+- Audit trail for all AI-assisted decisions?
+- Third-party sub-processors and their compliance status?
+- Insurance coverage for AI errors?
+
+Kai could answer about 30% of these on launch day. The other 70% required engineering work that had nothing to do with the AI itself.
+
+---
+
+## The Three-Month Sprint
+
+Kai had three months before the law firm's budget cycle closed. Here's what it took to turn a working prototype into a sellable product.
+
+### Month 1: Infrastructure and Security
+
+**Multi-tenancy**: The prototype stored all data in one database. Each client's contracts need to be completely isolated — separate encryption keys, separate storage partitions, no possibility of cross-client data access.
+
+**Encryption**: Data at rest (AES-256), data in transit (TLS 1.3), and data in processing (encrypted context windows that are purged after each request).
+
+**Access control**: Role-based access with audit logging. Who viewed which document, when, from what IP address.
+
+**Data lifecycle**: Automated deletion after configurable retention periods. Verifiable purge — not just soft delete, but cryptographic proof that the data is gone.
+
+None of this made the AI better. All of it made the AI deployable.
+
+### Month 2: Reliability and Operations
+
+**Fallback architecture**: When the AI provider's API is down (and it will be down), the system degrades gracefully. Document upload and storage still works. Extraction queues requests and processes them when the API returns. The UI shows "processing delayed" instead of an error page.
+
+**Model version pinning**: No more automatic updates. Model versions are pinned, tested against a regression suite, and promoted through staging before reaching production. The behavioral drift problem from the observability case study? Impossible with this architecture.
+
+**SLA engineering**: 99.9% uptime commitment backed by architecture, not aspiration. Redundant infrastructure, automated failover, health checks every 30 seconds.
+
+**Monitoring**: Full observability stack — not just infrastructure metrics, but output quality monitoring, accuracy sampling, and drift detection.
+
+### Month 3: Compliance and Documentation
+
+**The System Design Document**: A 40-page document that became the centerpiece of the enterprise sale:
+
+1. **Architecture overview** — system diagram with data flow, security boundaries, and failure modes
+2. **Security posture** — encryption, access control, audit trails, incident response
+3. **AI governance** — accuracy metrics, hallucination rates, human oversight procedures, model management
+4. **Compliance mapping** — how each regulatory requirement maps to specific system controls
+5. **Operational procedures** — deployment, monitoring, incident response, disaster recovery
+
+This document answered 90% of the vendor questionnaire before the law firm even asked the questions.
+
+---
+
+## The Portfolio That Sealed the Deal
+
+When Kai presented to the law firm's technology committee, they didn't lead with the AI demo. They led with the architecture.
+
+**Slide 1**: System architecture diagram showing data isolation, encryption boundaries, and the air gap between client data and model training.
+
+**Slide 2**: Accuracy metrics — not self-reported, but measured by an independent evaluation pipeline with specific numbers: 96.2% extraction accuracy, <2% hallucination rate on legal terms, 99.1% citation accuracy.
+
+**Slide 3**: The observability dashboard — live monitoring showing quality metrics, not just uptime. "Here's how we know it's working correctly right now."
+
+**Slide 4**: Failure mode documentation — "Here's what happens when the AI is wrong, and here's how we catch it." Including the confidence threshold system that routes uncertain extractions to human review.
+
+**Slide 5**: The demo — finally. By this point, the committee already trusted the system. The demo confirmed it, rather than carrying the entire burden of persuasion.
+
+The technology committee's feedback: "This is the first AI vendor presentation where the security and governance sections were more impressive than the AI demo. That's exactly what we needed to see."
+
+### The Lesson
+
+Enterprise buyers don't purchase technology. They purchase risk management. The AI has to work — that's table stakes. What closes the deal is demonstrating that you've thought about everything that can go wrong and built systems to handle it.
+
+---
+
+## The Numbers
+
+| Phase | Effort | What It Addressed |
+|---|---|---|
+| Prototype (Weeks 1-8) | 8 weeks | "Does the AI work?" |
+| Security & infrastructure | 4 weeks | "Is our data safe?" |
+| Reliability & operations | 4 weeks | "Will it stay working?" |
+| Compliance & documentation | 4 weeks | "Can we trust the vendor?" |
+| **Total to production** | **20 weeks** | **"Can we buy this?"** |
+
+The prototype was 40% of the total effort. The other 60% was making it enterprise-ready. This ratio surprises people, but it's consistent across the industry. Building the AI is the easy part. Making it deployable is the job.
+
+---
+
+## Key Takeaways
+
+1. **Enterprise sales are security reviews**: The vendor questionnaire is the real gatekeepper, not the product demo. Build for the questionnaire from day one.
+
+2. **Multi-tenancy is non-negotiable**: Shared infrastructure with logical separation isn't enough for enterprise clients. Data isolation must be provable and auditable.
+
+3. **The System Design Document is your most important deliverable**: A comprehensive architecture document answers vendor questions before they're asked and demonstrates professional maturity.
+
+4. **Lead with architecture, not demos**: Enterprise buyers need to trust your engineering before they'll trust your AI. Show the security and governance first.
+
+5. **The prototype is 40% of the work**: Budget 60% of your effort for security, reliability, compliance, and documentation. This is the gap where AI projects die.
+
+6. **Accuracy metrics must be independently measured**: Self-reported accuracy is meaningless to buyers. Show them the evaluation pipeline, not just the number.

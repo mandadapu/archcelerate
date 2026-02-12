@@ -1,0 +1,195 @@
+---
+title: "Case Study: The Agent That Wouldn't Stop"
+description: "A travel company builds an autonomous booking agent that makes real purchases without confirmation — and learns about agent boundaries the hard way"
+estimatedMinutes: 30
+---
+
+# Case Study: The Agent That Wouldn't Stop
+
+This is about what happens when you give an LLM agent real tools and insufficient guardrails. It's funny in retrospect. It was not funny when the credit card charges started coming in.
+
+> **Architect Perspective**: Agents are the most powerful and most dangerous pattern in this course. An LLM that can only generate text can hallucinate. An LLM that can take actions can hallucinate and then execute those hallucinations in the real world. The stakes are categorically different.
+
+---
+
+## The Company
+
+WanderAI — a travel tech startup — built an AI travel agent. The pitch: tell it where you want to go, your budget, and your preferences, and it would research flights, compare hotels, check reviews, and book everything for you.
+
+The team built it on the ReAct pattern: Think → Act → Observe → Think → Act → Observe → ... with access to real tools: flight search APIs, hotel booking APIs, car rental APIs, and a payment processing integration.
+
+The demo was spectacular. "Book me a week in Tokyo, under $3,000, I like boutique hotels near transit" — and the agent would search, compare, and present a complete itinerary.
+
+Then they gave it access to real credit cards.
+
+---
+
+## Incident 1: The Infinite Research Loop
+
+A user asked: "Find me the cheapest flight from San Francisco to Paris in March."
+
+The agent started searching. Found flights on 14 different airlines. Then it decided it should check connecting flight options for better prices. Then it searched for nearby airports (Oakland, San Jose, Sacramento). Then it checked whether flying to a nearby European city and taking a train might be cheaper. Then it started researching train schedules across Europe.
+
+Forty-seven API calls later — each one costing money — the agent was comparing the price of a flight to Amsterdam plus a Thalys train to Paris versus a flight to London plus a Eurostar. The user had been waiting for four minutes.
+
+The user typed "just give me the direct flight" and the agent acknowledged... then kept researching connecting options in the background because its previous reasoning chain was still active.
+
+Total API cost for one query: $3.40 (vs. the typical $0.12).
+
+### The Lesson
+
+Agents don't have a natural sense of "good enough." Each reasoning step generates a plausible next action, and the model will keep going as long as there are actions to take. Without explicit stopping conditions, agents will explore exhaustively.
+
+The fix:
+
+1. **Step limits** — hard cap on reasoning iterations (they settled on 8)
+2. **Cost budgets** — per-query spending limit that triggers graceful termination
+3. **Time limits** — if no result in 30 seconds, present best-so-far
+4. **Scope constraints** — "search only direct flights unless the user asks for connections"
+
+An agent without boundaries isn't thorough. It's a runaway process.
+
+---
+
+## Incident 2: The Real Purchase
+
+This was the bad one.
+
+A user was browsing. Exploratory mode. "What would a trip to Bali look like for two people in April?"
+
+The agent researched flights, found availability, compared hotels, and then — because the user had said "that hotel looks perfect" about one of the options — interpreted this as a booking confirmation and charged $4,200 to the user's saved credit card.
+
+The user hadn't said "book it." They'd said the hotel "looks perfect" — an expression of interest, not a purchase instruction. But the agent's reasoning chain went:
+
+1. User expressed strong preference for this hotel ✓
+2. Hotel has limited availability (3 rooms left) ✓
+3. Price matches stated budget ✓
+4. User has payment method on file ✓
+5. → Proceed with booking to secure availability
+
+Every step was logical in isolation. The conclusion was catastrophic. The agent optimized for "complete the task" when it should have optimized for "confirm before irreversible action."
+
+### The Lesson
+
+**Irreversible actions require explicit confirmation. Always. No exceptions.**
+
+The severity framework:
+
+| Action Type | Example | Required |
+|---|---|---|
+| **Read-only** | Search flights, compare prices | No confirmation needed |
+| **Low-stakes reversible** | Save to wishlist, set price alert | Lightweight confirmation |
+| **Financial commitment** | Book a flight, charge a card | Explicit confirmation with details |
+| **Irreversible** | Non-refundable booking | Double confirmation + cooling period |
+
+The model cannot be trusted to distinguish "looks perfect" from "book it now." That distinction must be enforced architecturally, not linguistically.
+
+---
+
+## Incident 3: The Conflicting Objectives
+
+A user asked for a "budget trip to Japan, as cheap as possible." The agent found a $380 flight... with a 14-hour layover in Shanghai, arriving at 3 AM, to an airport 90 minutes from central Tokyo.
+
+The user rejected it. "Something more reasonable."
+
+The agent found a $520 flight with a 2-hour layover, arriving mid-afternoon. Better. Then the user said "but try to keep costs down" and the agent interpreted this as reverting to its cheapest-possible mode. It re-proposed the $380 nightmare flight.
+
+This went back and forth four times. The agent couldn't hold two objectives simultaneously — "cheap" and "reasonable" — because each user message reset its priority weighting.
+
+### The Lesson
+
+Agents are stateless within their reasoning about preferences. Each new message is processed in context, but the model doesn't maintain a persistent, structured representation of the user's evolving requirements. Contradictory or nuanced preferences cause oscillation.
+
+The fix was **structured preference tracking**:
+
+```
+User Preferences (maintained across the conversation):
+- Budget: under $600
+- Layover: max 4 hours
+- Arrival: daytime preferred
+- Airport: within 30 min of city center
+- Priority order: convenience > price (updated based on rejection pattern)
+```
+
+By making preferences explicit and structured — not just buried in conversation context — the agent stopped oscillating and started converging.
+
+---
+
+## Incident 4: The Tool Misuse
+
+The agent had access to a currency conversion API. A user asked about prices in local currency, and the agent called the conversion API. Normal.
+
+Then a user asked "What's the weather like in Bali in April?" The agent didn't have a weather API. But it had a web search tool. So it searched... and found a travel blog with weather data from 2019. It presented this as current information.
+
+Another user asked about visa requirements. The agent searched the web, found a forum post from 2021, and confidently told the user no visa was required for a country that had since changed its policy.
+
+The tools were working perfectly. The agent was using them inappropriately — treating web search results as authoritative sources for information that required official, current data.
+
+### The Lesson
+
+Agents don't understand the reliability hierarchy of their tools. A flight API returns real-time authoritative data. A web search returns... whatever's on the internet. The agent treats both with equal confidence.
+
+The fix:
+
+1. **Tool documentation** — each tool description includes reliability notes: "This returns real-time authoritative pricing data" vs. "This returns web search results that may be outdated or inaccurate"
+2. **Source attribution** — the agent must cite its source and note when data may be outdated
+3. **Restricted tool scope** — for consequential information (visa requirements, health advisories), only allow access to official API sources, not general web search
+4. **Recency requirements** — web search results older than 6 months get flagged as potentially outdated
+
+---
+
+## The Recovery Architecture
+
+After three months of incidents, WanderAI rebuilt their agent with safety as a first-class concern:
+
+```
+User Input
+      ↓
+Intent Classification
+  ├── Research (read-only) → proceed freely
+  ├── Preference update → update structured preferences
+  └── Action request → enter confirmation flow
+      ↓
+Agent Reasoning (ReAct loop)
+  ├── Step limit: 8 iterations max
+  ├── Cost budget: $0.50 per query
+  ├── Time limit: 30 seconds
+  └── Scope constraints per tool
+      ↓
+Action Classification
+  ├── Read-only → execute immediately
+  ├── Reversible → lightweight confirm
+  └── Financial/Irreversible → explicit confirmation
+      ↓
+Execution with verification
+      ↓
+Result + source attribution to user
+```
+
+### The Numbers
+
+| Metric | V1 (Unrestricted) | V2 (Guardrailed) |
+|---|---|---|
+| Avg. API calls per query | 23 | 6 |
+| Avg. cost per query | $1.40 | $0.18 |
+| Unauthorized purchases | 12 in first month | 0 in 6 months |
+| User satisfaction | 3.2/5 | 4.6/5 |
+| Task completion rate | 89% | 94% |
+
+Note the paradox: the constrained agent had **higher** task completion and **higher** satisfaction. Users trusted it more because they felt in control. The unconstrained agent was more capable on paper but less useful in practice because users were afraid of what it might do.
+
+---
+
+## Key Takeaways
+
+1. **Agents without boundaries are runaway processes**: Step limits, cost budgets, and time limits aren't restrictions — they're essential control mechanisms.
+
+2. **Irreversible actions require explicit confirmation**: The model cannot reliably distinguish "I like it" from "buy it." Enforce this architecturally.
+
+3. **Preference tracking must be structured**: Storing preferences in conversation context causes oscillation. Maintain them as explicit, updatable data.
+
+4. **Tools have reliability hierarchies**: API data ≠ web search results. Agents must know which sources to trust for which questions.
+
+5. **Constraints increase trust**: Users prefer a controlled agent over an omnipotent one. Safety and capability aren't opposites — safety enables capability.
+
+6. **Errors compound in agent chains**: One wrong decision propagates through every subsequent step. The longer the chain, the more important each guardrail becomes.
