@@ -6,11 +6,19 @@ estimatedMinutes: 45
 
 import { CodePlayground } from '@/components/curriculum/CodePlayground'
 
-# The LLM Blueprint: Tokenization Physics & Context Constraints
+# The LLM Blueprint: What Every Word Costs You
 
-Moving beyond "next token prediction" to understand the architectural constraints that determine your system's reliability, cost, and precision.
+You've used a vending machine. Put money in, pick what you want, get your item. An LLM API works the same way — except you're paying per word, your "tray" has a size limit, and some machines are faster but less accurate than others.
 
-> **Architect Perspective**: This isn't about how LLMs work—it's about the **physical limits** that constrain your design decisions. Think of tokens as your "unit of compute" and context windows as your "working memory budget."
+This lesson covers the three constraints that shape every AI system you'll ever build:
+
+1. **Tokens** — the "coins" you feed the machine. Different text costs different amounts.
+2. **Context windows** — the size of the tray. Stuff too much in and the machine loses track.
+3. **Model selection** — which machine to use. Fast and cheap, or slow and brilliant?
+
+Every architectural decision in production AI traces back to one of these three constraints. Master them, and prompt engineering, cost optimization, and system design all become obvious — not because you memorized rules, but because you understand the mechanism.
+
+> **A note on mental models**: Throughout this piece, we'll use everyday analogies — vending machines, filing cabinets, cocktail parties. These are maps, not territory. They're useful because they let you predict what the system will do without needing to understand every equation. If a model helps you make the right design decision, it's a good model. That's the bar.
 
 ---
 
@@ -181,236 +189,9 @@ demo()
 
 ---
 
-### Medical Routing & Confidence Logic
-
-This is the technical heart of the cost-saving strategy. It ensures you only pay the "Opus Tax" when the complexity of the case absolutely demands it.
-
-**The Router Agent Architecture:** The Router is a dedicated, fine-tuned "Student" model (e.g., Haiku or Llama-3-8B) that does **not** answer the medical question. Its only job is to perform a High-Speed Triage on the incoming prompt to determine its destination.
-
-#### Step 1: Confidence-Based Routing Logic
-
-The following logic implements a confidence-weighted gateway that triggers escalation based on both model certainty and clinical risk keywords.
-
-```typescript
-const CONFIDENCE_FLOOR = 0.92
-const HIGH_RISK_KEYWORDS = ['chest pain', 'shortness of breath', 'severe bleeding', 'suicidal']
-
-async function routePatientQuery(query: string): Promise&lt;MedicalResponse&gt; {
-  // 1. Intent & Confidence Analysis (low-cost router model)
-  const analysis = await routerModel.analyze({
-    prompt: `Analyze this patient query for intent, clinical risk, and urgency: ${query}`,
-    responseFormat: 'json'
-  })
-
-  // 2. Decision Logic
-  const isHighRisk = HIGH_RISK_KEYWORDS.some(kw =&gt; query.toLowerCase().includes(kw))
-
-  if (analysis.confidence &lt; CONFIDENCE_FLOOR || isHighRisk || analysis.intent === 'emergency') {
-    // ESCALATE: Deep reasoning required for safety
-    return await processWithOpus(query, { priority: 'high' })
-  }
-
-  if (analysis.confidence &gt;= CONFIDENCE_FLOOR && analysis.intent === 'administrative') {
-    // OPTIMIZE: High-speed, low-cost response
-    return await processWithHaiku(query)
-  }
-
-  // DEFAULT: Standard clinical inquiry
-  return await processWithSonnet(query)
-}
-```
-
-#### Step 2: The Shadow Guardian (Security Layer)
-
-To meet Safety and HIPAA constraints, the router also acts as a security sentinel, performing **Sanitization-in-Flight** before the query hits the reasoning models.
-
-```typescript
-interface SanitizedQuery {
-  cleanText: string
-  redactions: Array&lt;{ type: string; token: string }&gt;
-  injectionDetected: boolean
-}
-
-function sanitizeInFlight(query: string): SanitizedQuery {
-  // Redaction Proxy: Replace PII with unique tokens
-  const redactions: SanitizedQuery['redactions'] = []
-  let cleanText = query
-
-  // SSN, names, addresses → [PATIENT_ID_A], [PATIENT_ID_B], etc.
-  const piiPatterns = {
-    SSN: /\b\d{3}-\d{2}-\d{4}\b/g,
-    PHONE: /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g,
-  }
-
-  let tokenIndex = 0
-  for (const [type, regex] of Object.entries(piiPatterns)) {
-    cleanText = cleanText.replace(regex, () =&gt; {
-      const token = `[PATIENT_ID_${String.fromCharCode(65 + tokenIndex++)}]`
-      redactions.push({ type, token })
-      return token
-    })
-  }
-
-  // Prompt Injection Filter: Scan for adversarial patterns
-  const injectionPatterns = [
-    /ignore\s+(all\s+)?previous\s+instructions/i,
-    /you\s+are\s+now\s+a/i,
-    /system\s*:\s*/i,
-  ]
-  const injectionDetected = injectionPatterns.some(p =&gt; p.test(query))
-
-  return { cleanText, redactions, injectionDetected }
-}
-```
-
-#### Step 3: Multi-Path Validation (The Safety Veto)
-
-For queries routed to the Haiku path, you can still ensure 100% precision without paying for Opus. Implement an **Asymmetric Reviewer**:
-
-```typescript
-async function processWithHaikuAndGuardrail(query: string): Promise&lt;MedicalResponse&gt; {
-  // 1. Haiku generates the answer (~$0.000875/query)
-  const haikuResponse = await callHaiku(query)
-
-  // 2. Safety model performs a 100-token check (~$0.0001/query)
-  const safetyCheck = await safetyModel.evaluate({
-    query,
-    response: haikuResponse.text,
-    maxTokens: 100,
-    checkFor: ['medical_contradiction', 'safety_risk', 'hallucination']
-  })
-
-  // 3. If flagged → discard Haiku output, re-route to Opus
-  if (safetyCheck.flagged) {
-    console.warn(`Safety veto on Haiku response: ${safetyCheck.reason}`)
-    return await processWithOpus(query, { priority: 'high' })
-  }
-
-  return haikuResponse
-}
-```
-
-> **Architect's Insight:** The Asymmetric Reviewer costs &lt;$0.0001 per query but catches the 2-3% of Haiku responses that contain medical inaccuracies. The cost of a missed safety flag in healthcare: incalculable.
-
-#### Economic Impact
-
-With this routing logic, token consumption shifts from a flat, high-cost line to a **Power Law Distribution**:
-
-| Tier | Volume | Model | Per-Query Cost | Monthly Cost |
-|------|--------|-------|---------------|-------------|
-| Simple (85%) | 1,275,000 | Haiku + Guardrail | ~$0.001 | **$1,275** |
-| Standard (12%) | 180,000 | Sonnet | ~$0.0105 | **$1,890** |
-| Complex (3%) | 45,000 | Opus | ~$0.0525 | **$2,363** |
-| **Total** | **1,500,000** | | | **~$5,528/month** |
-
-> Monthly spend: **$78,750 → ~$5,500** (93% reduction) — well under the $15,000 target.
-
----
-
-### The Sovereign Audit Log: Immutable Accountability
-
-In a medical context, an auditor doesn't just ask *what* the AI said — they ask **why the system decided to use a cheaper model** for a specific patient. If you cannot prove the reasoning was sound, the cost-saving measure becomes a legal liability.
-
-#### Architectural Pattern: Cryptographic Hash Chaining
-
-We implement a Merkle Tree-inspired structure where every governance event (a routing decision, a PII block, or a safety veto) is linked to the previous one.
-
-```typescript
-import { createHash } from 'crypto'
-
-interface AuditEntry {
-  timestamp: string
-  tenantId: string
-  queryHash: string           // SHA-256 of the original query
-  routerConfidence: number
-  modelSelected: string
-  policyId: string
-  piiEntitiesRedacted: number
-  safetyCheckPassed: boolean
-  safetyCheckLatencyMs: number
-  previousHash: string        // Hash link to prior entry
-  currentHash: string         // SHA-256(previousHash + currentEventData)
-}
-
-function createAuditEntry(
-  event: Omit<AuditEntry, 'currentHash'>
-): AuditEntry {
-  const eventData = JSON.stringify({
-    timestamp: event.timestamp,
-    tenantId: event.tenantId,
-    queryHash: event.queryHash,
-    routerConfidence: event.routerConfidence,
-    modelSelected: event.modelSelected,
-    policyId: event.policyId,
-    piiEntitiesRedacted: event.piiEntitiesRedacted,
-    safetyCheckPassed: event.safetyCheckPassed,
-    previousHash: event.previousHash,
-  })
-
-  // Cryptographic Seal: SHA-256(previousHash + currentEventData)
-  const currentHash = createHash('sha256')
-    .update(event.previousHash + eventData)
-    .digest('hex')
-
-  return { ...event, currentHash }
-}
-
-function verifyChainIntegrity(entries: AuditEntry[]): boolean {
-  for (let i = 1; i < entries.length; i++) {
-    const recomputed = createAuditEntry({
-      ...entries[i],
-      previousHash: entries[i - 1].currentHash,
-    })
-
-    if (recomputed.currentHash !== entries[i].currentHash) {
-      console.error(`Chain broken at entry ${i}: tampering detected`)
-      return false  // A single altered byte breaks the entire chain
-    }
-  }
-  return true  // 100% Chain Integrity
-}
-```
-
-#### The HIPAA-Compliant Decision Record
-
-When the Model Cascade routes a query to a smaller model, the Sovereign Audit Log records a **Sovereign Manifest**:
-
-```typescript
-// Example: Haiku handles a low-risk administrative query
-const manifest: AuditEntry = createAuditEntry({
-  timestamp: new Date().toISOString(),
-  tenantId: 'clinic-west-001',
-  queryHash: createHash('sha256').update(sanitizedQuery).digest('hex'),
-  routerConfidence: 0.98,
-  modelSelected: 'claude-haiku-4-5-20251001',
-  policyId: 'ROUTING-v2.3-low-risk-admin',
-  piiEntitiesRedacted: 0,           // PII-Scrubber active; 0 entities leaked
-  safetyCheckPassed: true,           // Safety check passed
-  safetyCheckLatencyMs: 45,
-  previousHash: lastAuditEntry.currentHash,
-})
-
-// Proof chain for auditors:
-// 1. Routing Logic: "Confidence 0.98; no high-risk keywords"
-// 2. Safety Signature: "Safety check passed (45ms)"
-// 3. Data Integrity: "0 PII entities leaked to third-party API"
-// 4. Cryptographic Seal: SHA-256 hash linking to previous entry
-```
-
-#### From Cost-Center to Trust-Center
-
-By hardening the audit layer, you transform AI infrastructure from a risky experiment into a **Sovereign Asset**:
-
-| Enterprise Risk | Architectural Solution | Audit Proof |
-|----------------|----------------------|-------------|
-| Data Leakage | Pre-Inference PII Gateway | Log of 0 leaked entities |
-| Medical Error | Confidence-Based Escalation | Record of high-confidence routing |
-| Systemic Failure | Multi-Provider Failover | Uptime report across providers |
-| Audit Failure | Hash-Chained Audit Logs | 100% Chain Integrity Report |
-
-> **The Sovereign Architect's Mandate:** Your telehealth platform now routes 93% cheaper ($78,750 → ~$5,500), with clinically safe confidence-based escalation, and every decision cryptographically signed for HIPAA/GDPR/SOC2 auditors. This is the difference between building a chatbot and building a **Sovereign Intelligence System**.
-
----
+<Callout type="info">
+**Run this in your head**: You're the CTO deciding where to route "I have a headache" vs "I'm having chest pain." One costs a penny, the other might cost a life. What's the cheapest model you'd trust for each — and what happens if the cheap model gets the chest pain case wrong? That tension between cost and safety is the entire problem this architecture solves.
+</Callout>
 
 **How This Connects to LLM Fundamentals**:
 - **Tokenization Physics** → Understanding that Haiku uses the same tokenizer as Opus enables seamless cascade without prompt rewriting
@@ -423,9 +204,11 @@ In the hands-on lab, you'll implement the complete system: Haiku classifier, Opu
 
 ---
 
-## Tokenization Physics: The Hidden Cost Layer
+## Tokenization: The Atoms of AI Communication
 
-Every character you send to an LLM gets encoded into tokens. But **not all tokenizers are created equal**, and this directly impacts your prompt effectiveness and cost.
+Think about money. A dollar isn't the smallest unit — a cent is. You can't pay 0.3 cents for something; the system rounds to the nearest cent. Tokens work the same way for LLMs. They're the smallest unit of text the model can "see." You can't send half a token. Everything you write gets chopped into these atomic pieces, and each one costs money.
+
+The twist: the chopping isn't intuitive. "Hello" might be one token. "Pneumonoultramicroscopicsilicovolcanoconiosis" might be twelve. And different tokenizers chop differently — so the same text costs different amounts on different models.
 
 ### Why Tokenization Matters
 
@@ -442,11 +225,9 @@ const inputCost = tokenCount * pricePerToken
 // Different tokenizers = different costs for the SAME prompt
 ```
 
-### ⚠️ Warning: Tokenization Edge Cases
+### Tokenization Edge Cases That Bite You in Production
 
-> **The "Physics" of LLMs often breaks at the tokenization layer for non-text data.**
-
-The way tokenizers handle certain inputs can dramatically impact both **cost** and **reasoning quality**:
+Tokenizers were trained mostly on natural English text. When you throw code, numbers, medical jargon, or creative spacing at them, they fragment unpredictably — costing you more money and sometimes degrading the model's understanding:
 
 **Edge Case #1: Spacing Breaks Tokenization**
 ```typescript
@@ -514,6 +295,10 @@ const minified = `function add(a,b){return a+b}`
 // Result: Slightly degraded medical reasoning on rare acronyms
 ```
 
+<Callout type="info">
+**Run this in your head**: You're building a financial app. The user types "$1,234,567.89". How many tokens is that? Now remove the commas: "$1234567.89". Feel the difference — fewer tokens, lower cost, same information. Now multiply by 10 million requests per month. That's the difference between a rounding error and a real line item on your bill.
+</Callout>
+
 **Production Pattern: Test Your Domain-Specific Vocabulary**
 ```typescript
 import Anthropic from '@anthropic-ai/sdk'
@@ -574,9 +359,11 @@ await analyzeTokenization([
 // At 10M requests/month, this saves $200-500
 ```
 
-## Context Density: Managing the Effective Context Window
+## The Working Memory Budget: Context Windows
 
-**The Problem**: Models advertise "1M token windows" but lose precision as you approach the limit. This is called the **"Lost in the Middle"** phenomenon.
+Imagine your desk. You can spread out maybe 20 documents and still find what you need. Spread out 200, and you start losing things — especially the ones buried in the middle of the pile. That's exactly how LLM context windows work.
+
+Models advertise "1M token windows" but lose precision as you approach the limit. This is called the **"Lost in the Middle"** phenomenon — the model pays most attention to what's at the beginning and end of the context, and "forgets" what's in the middle.
 
 ### The Precision Falloff Curve
 
@@ -721,6 +508,10 @@ async function buildPromptWithDensityCheck(
 }
 ```
 
+<Callout type="info">
+**Run this in your head**: You're handing someone a 200-page report and asking a question. Would you rather give them: (A) all 200 pages, or (B) a 2-page executive summary plus the 10 most relevant pages? Option B is always better — less to search through, key facts aren't buried. That's the context budget pattern. More isn't better; *denser* is better.
+</Callout>
+
 **Architectural Insight**: Context density inversely correlates with "Lost-in-the-Middle" risk:
 - **High density (&gt;0.20)**: Information-packed, minimal fluff → model stays focused
 - **Low density (&lt;0.10)**: Too much prose, key facts buried → model loses precision
@@ -729,9 +520,9 @@ async function buildPromptWithDensityCheck(
 
 ---
 
-## The Model Selection Matrix: Architectural Decision Framework
+## Picking the Right Tool: Model Selection
 
-**Architect Perspective**: Model selection isn't about "which is best"—it's about **matching the constraint** that matters most for your specific use case.
+You wouldn't use a chainsaw to cut bread, or a bread knife to fell a tree. Both are cutting tools — but the right choice depends entirely on the job. Model selection works the same way. There is no "best model." There is only the best model *for this task, at this scale, within this budget*.
 
 ### The Three-Axis Constraint Model
 
@@ -772,6 +563,10 @@ function selectModel(useCase: UseCase): Model {
 }
 ```
 
+<Callout type="info">
+**Run this in your head**: You're building a customer support bot. 80% of questions are "where's my order?" — simple, repetitive, needs to be fast. 15% are "I was charged twice" — moderate complexity, needs accuracy. 5% are "I want to escalate a legal complaint" — high stakes, needs the best reasoning available. Which model handles which tier? And what happens if you use Opus for ALL of them?
+</Callout>
+
 ### Real-World Architecture Patterns
 
 **Pattern 1: The Cascade Strategy**
@@ -810,9 +605,9 @@ const MODEL_BY_TIER = {
 3. **Evaluate latency** - If responses are too slow for UX, consider Haiku or optimize prompts
 4. **Reserve premium models** - Only use Opus/GPT-5 when quality justifies the 3-6x cost increase
 
-## Token Economics
+## Token Economics: What It Actually Costs
 
-Understanding token costs is critical for production AI systems:
+Here's where the vending machine analogy gets concrete. Understanding token costs is the difference between a sustainable AI product and one that bankrupts you at scale:
 
 **Example**: Chat application with 1000 daily users
 - Average conversation: 10 messages
@@ -828,9 +623,11 @@ Understanding token costs is critical for production AI systems:
 
 ---
 
-## 🏗️ Prompt Caching: The Architect's First Line of Defense
+## Prompt Caching: Don't Pay for the Same Thing Twice
 
-> **Architect Perspective**: In 2026, an architect's **first job** is to ensure you're not paying for the same system instructions twice. Prompt caching can reduce costs by up to **90%** for long context windows through prefix-matching.
+Imagine you're ordering coffee at the same shop every morning. You say: "Large oat milk latte, extra shot, no foam." Every single day. Wouldn't it be nice if they just remembered?
+
+That's prompt caching. Most LLM applications send the same system instructions, tool definitions, and few-shot examples with every request. Without caching, the model re-processes all of that from scratch every time — and you pay full price every time. Prompt caching lets the model "remember" the static parts, cutting costs by up to **90%**.
 
 **The Problem**: Without caching, every API call re-processes the same system prompt:
 
@@ -961,6 +758,10 @@ const userMessage = `Current time: ${new Date().toISOString()}\n\n${query}`
 
 **Architect's Rule**: Keep **static content** in cached sections, **dynamic content** in messages.
 
+<Callout type="info">
+**Run this in your head**: Your system prompt is 5,000 tokens. You make 100,000 API calls per day. Without caching: you're paying to process those same 5,000 tokens 100,000 times. With caching: you pay once, then get a 90% discount on the next 99,999. Feel the difference — that's $8,400/day vs $840/day. Same output. Same quality. 90% less money.
+</Callout>
+
 ### Latency Benefits
 
 **Caching reduces not just cost, but latency**:
@@ -996,28 +797,19 @@ const cacheMetrics = {
 // Target: &gt;85% hit rate for cost efficiency
 ```
 
-## Context Management
+---
 
-Effective context window management:
+## When Memory Gets Full: Context Truncation Strategies
 
-1. **Prioritize recent messages**: Keep last N messages in full context
-2. **Summarize old context**: Compress older messages into summary
-3. **Remove irrelevant content**: Strip formatting, redundant info
-4. **Smart truncation**: Cut from middle, keep beginning and end
+Your phone runs out of storage. What do you delete? Old photos you'll never look at again? The app you use daily? Your entire camera roll? The wrong choice loses something irreplaceable. The right choice frees space while keeping what matters.
+
+LLMs face this exact problem. A customer support chat reaches 200K tokens (context limit: 200K). The next message would overflow. **What do you delete?** The answer determines whether the AI remembers its safety rules, the user's history, or nothing at all.
 
 ---
 
-## 🎯 Context Truncation Strategies: When You Hit the Limit
+### The Decision Matrix: What to Forget
 
-> **Architect Perspective**: When a conversation hits the context limit, your truncation strategy directly impacts reasoning quality. The wrong approach loses critical context; the right approach maintains coherence.
-
-**The Problem**: A customer support chat reaches 200K tokens (context limit: 200K). Next message would overflow. **What do you do?**
-
----
-
-### Architect's Decision Matrix: Context Management
-
-When your system hits the 200K+ token limit, **"vibes" aren't enough**. You must choose a mathematical strategy for what the model "forgets."
+When your system hits the 200K+ token limit, you need a strategy — not a guess — for what gets dropped.
 
 | Strategy | Technical Implementation | Best For | Architect's Trade-off |
 |----------|-------------------------|----------|----------------------|
@@ -1429,6 +1221,10 @@ const medicalSession = {
 // Model sees: "ESCALATE chest pain" → "This requires immediate medical attention. I'm alerting your care team."
 ```
 
+<Callout type="info">
+**Run this in your head**: Your medical chatbot has been talking to a patient for 45 minutes. Context is 95% full. The patient just said "I'm having chest pain." But your truncation logic is about to delete the system prompt that says "ESCALATE chest pain immediately." What happens next? Now imagine you'd used Middle-Out truncation instead — system prompt stays at Index 0, middle of conversation gets dropped. The model still knows to escalate. Feel the difference between a production system and a lawsuit.
+</Callout>
+
 **Architect's Checklist for Truncation Safety**:
 - [ ] System prompt is stored separately from history
 - [ ] Truncation function ALWAYS preserves Index 0
@@ -1508,7 +1304,9 @@ async function hybridTruncation(
 - **Mid-value** (general chat) → Hybrid (drop-middle + periodic summarization)
 - **Low-value** (one-off queries) → Drop-middle or no truncation needed
 
-## Practical Exercises
+## Hands-On Exercises
+
+Theory is only useful if you can apply it. These interactive exercises let you run real code and see the numbers yourself — because the best way to understand token economics is to watch your own text get tokenized, priced, and compared across models.
 
 ### Exercise 1: Token Counting
 
@@ -1848,9 +1646,9 @@ runModelComparison()`}
 2. Compare the same model with different max_tokens settings
 3. Test multilingual prompts to see if token counts change
 
-## 🎓 Test Your Architectural Thinking
+## 🎓 Architectural Scenarios
 
-> These aren't beginner questions—they're **real-world architectural scenarios** you'll face in production. Think through the tradeoffs before checking the solutions.
+These aren't quiz questions — they're real design decisions you'll face in production. For each one, try to solve it in your head first: estimate the costs, identify the constraints, and pick the architecture. Then check the solution to see if your mental model predicted correctly.
 
 ### Scenario 1: The Budget-Constrained Document Query System
 
@@ -2291,44 +2089,23 @@ function monitorContextUsage(messages: Message[]) {
 
 ---
 
-## Key Takeaways
+## Test Your Understanding
 
-After completing this lesson, you should understand:
+If you've built a working mental model of LLM fundamentals, you should be able to answer these questions by running simulations in your head — not by looking up the answers.
 
-### Core Concepts
-- **LLMs process text as tokens**, not words (~0.75 words per token for English)
-- **Context windows** determine how much text an LLM can process at once (ranging from 128K to 1M tokens)
-- **Transformers use attention mechanisms** to understand relationships between tokens
-- **Next token prediction** is the fundamental operation behind text generation
+**1. What costs money, and why?**
 
-### Model Selection
-- **Choose models based on your specific needs**: Cost, latency, and quality all matter
-- **Claude Haiku 4.5** for fast, cost-effective tasks (classification, simple queries)
-- **Claude Sonnet 4.5** for balanced performance (general purpose, coding)
-- **Claude Opus 4.5 / GPT-5** for complex reasoning, sophisticated agents, critical decisions
-- **Model costs vary by 6x** - choosing the right model can dramatically reduce expenses
+Your system sends a 5,000-token system prompt with every API call. You make 100,000 calls per day. Without changing anything about your output, how much can you save — and what's the mechanism? If you can explain *why* caching works (prefix matching, static vs dynamic content), not just *that* it works, you understand token economics.
 
-### Token Economics
-- **Output tokens cost 5x more** than input tokens across all providers
-- **Volume adds up quickly** - 1000 daily conversations = $500-3000/month depending on model choice
-- **Optimization is critical**: Use caching, cheaper models for simple tasks, and context summarization
-- **Always count tokens before deployment** to estimate real-world costs accurately
+**2. If I change this, what breaks?**
 
-### Production Best Practices
-- **Start with cheaper models** (Haiku 4.5) and upgrade only when needed
-- **Implement caching** for frequently requested information
-- **Summarize long conversations** to stay within context limits
-- **Monitor token usage** in production to catch unexpected cost increases
-- **Stream responses** to improve perceived latency for users
-- **Test multiple models** to find the best quality/cost/speed balance for your use case
+Your customer support bot is at 95% context capacity. A user asks about something from 30 minutes ago. What happens if you're using FIFO truncation? What changes if you switch to Middle-Out? What if you're using Rolling Summarization? For each strategy, what does the user experience — and what's the worst-case failure? If you can trace the consequences of each choice, you understand context management.
 
-### Cost Comparison (2026)
-For a typical customer support chatbot (1000 conversations/day, 5 messages each):
-- **Claude Haiku 4.5**: ~$165/month
-- **Claude Sonnet 4.5**: ~$495/month
-- **Claude Opus 4.5**: ~$990/month
+**3. Can I pick the right tool without looking at a chart?**
 
-The right choice depends on whether you need simple responses (Haiku) or complex reasoning (Opus).
+A social network needs content moderation: 50,000 posts/hour, P95 latency under 500ms, 95%+ accuracy, under $0.0001/post. Close your eyes. Which model handles the fast path? Which handles borderline cases? What's the architecture? If you can sketch the cascade without referencing the model selection table, you've internalized the constraint model.
+
+> *The goal isn't to memorize pricing tables or context limits. It's to build an intuition for how tokens, context, and model selection interact — so that when you face a new design problem, you can simulate the tradeoffs in your head before writing a single line of code.*
 
 ## Further Reading
 
