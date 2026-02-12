@@ -118,28 +118,18 @@ jobs:
         id: verify
         run: |
           echo "Verifying seeded data..."
-
-          cat > /tmp/verify.ts << 'EOF'
-          import { PrismaClient } from '@prisma/client'
-          const prisma = new PrismaClient()
-          async function main() {
-            const weeks = await prisma.curriculumWeek.count()
-            const concepts = await prisma.concept.count()
-            const labs = await prisma.lab.count()
-            const projects = await prisma.weekProject.count()
-            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-            console.log('DATABASE CONTENTS')
-            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-            console.log(`Weeks:    ${weeks}`)
-            console.log(`Concepts: ${concepts}`)
-            console.log(`Labs:     ${labs}`)
-            console.log(`Projects: ${projects}`)
-            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-          }
-          main().finally(() => prisma.$disconnect())
-          EOF
-
-          npx tsx /tmp/verify.ts
+          npx tsx -e "
+            const { PrismaClient } = require('@prisma/client');
+            const prisma = new PrismaClient();
+            (async () => {
+              const weeks = await prisma.curriculumWeek.count();
+              const concepts = await prisma.concept.count();
+              const labs = await prisma.lab.count();
+              const projects = await prisma.weekProject.count();
+              console.log('Weeks:', weeks, '| Concepts:', concepts, '| Labs:', labs, '| Projects:', projects);
+              await prisma.\$disconnect();
+            })();
+          "
 
       - name: Summary
         if: always()
