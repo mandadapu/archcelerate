@@ -126,7 +126,7 @@ const weekData = [
     description: 'Build retrieval-augmented generation systems with vector databases',
     objectives: ['Implement vector search', 'Build RAG pipelines', 'Manage conversation memory'],
     concepts: [
-      { slug: 'how-llms-work', title: 'The Frontier: RAG, Agents & Beyond', minutes: 35 },
+      { slug: 'frontier-rag-agents', title: 'The Frontier: RAG, Agents & Beyond', minutes: 35 },
       { slug: 'rag-memory-fundamentals', title: 'RAG + Memory Fundamentals', minutes: 40 },
       { slug: 'vector-embeddings', title: 'Vector Embeddings & Similarity Search', minutes: 35 },
       { slug: 'rag-pipelines', title: 'Building RAG Pipelines', minutes: 40 },
@@ -685,14 +685,23 @@ async function main() {
     await prisma.lab.deleteMany({ where: { weekId: curriculumWeek.id } })
     await prisma.weekProject.deleteMany({ where: { weekId: curriculumWeek.id } })
 
-    // Create concepts
+    // Create or update concepts
     for (let i = 0; i < week.concepts.length; i++) {
       const concept = week.concepts[i]
-      await prisma.concept.create({
-        data: {
+      await prisma.concept.upsert({
+        where: { slug: concept.slug },
+        create: {
           weekId: curriculumWeek.id,
           orderIndex: i + 1,
           slug: concept.slug,
+          title: concept.title,
+          ...('description' in concept ? { description: concept.description } : {}),
+          contentPath: `content/week${week.weekNumber}/${concept.slug}.mdx`,
+          estimatedMinutes: concept.minutes
+        },
+        update: {
+          weekId: curriculumWeek.id,
+          orderIndex: i + 1,
           title: concept.title,
           ...('description' in concept ? { description: concept.description } : {}),
           contentPath: `content/week${week.weekNumber}/${concept.slug}.mdx`,
