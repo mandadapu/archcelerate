@@ -1,0 +1,251 @@
+---
+title: "Case Study: The RAG System That Almost Worked"
+description: "A legal tech company builds retrieval-augmented generation over 2 million documents — and learns that retrieval is harder than generation"
+estimatedMinutes: 35
+---
+
+# Case Study: The RAG System That Almost Worked
+
+This is about a company that did almost everything right — and still shipped a system that gave wrong answers 22% of the time. The gap between "almost working" and "production-ready" in RAG is where the real engineering lives.
+
+> **Architect Perspective**: RAG looks simple in tutorials. Embed documents, search by similarity, stuff context into prompt, generate. The tutorial version works on 50 documents. This case study is about what happens at 2 million documents, where every shortcut you took in the prototype comes back to bite you.
+
+---
+
+## The Company
+
+LegalSearch — a legal technology company — wanted to build an AI assistant that could answer questions about case law, contracts, and regulatory filings. Their customers were mid-size law firms that couldn't afford the research teams that Big Law had.
+
+Their document corpus: 2.1 million documents. Contracts, court opinions, regulatory filings, internal memos. Ranging from 1 page to 400 pages. Multiple formats: PDF, DOCX, scanned images with OCR.
+
+Their goal: a lawyer types a question, the system finds the relevant documents, and generates an answer with exact citations. Accuracy requirement: 95%+ for any answer that's shown to a client.
+
+They had a strong team. They'd read the papers. They knew the architecture. Here's what they learned that the papers don't tell you.
+
+---
+
+## Version 1: The Tutorial Approach
+
+They started exactly how every tutorial suggests:
+
+1. **Chunk** every document into 512-token segments
+2. **Embed** each chunk using `text-embedding-3-small`
+3. **Store** in PostgreSQL with pgvector
+4. **Search** using cosine similarity
+5. **Generate** using Sonnet with the top-5 retrieved chunks
+
+It took two weeks to build. It worked beautifully on their test set of 200 documents.
+
+Then they loaded the full 2.1 million documents and everything fell apart.
+
+---
+
+## Failure 1: The Chunking Disaster
+
+Their 512-token fixed chunking strategy shredded legal documents in ways that destroyed meaning.
+
+A contract clause like:
+
+> "The Licensor grants to the Licensee a non-exclusive, worldwide license to use the Software, **subject to the restrictions set forth in Section 4.2 below**, for a period of three (3) years from the Effective Date."
+
+Would get split between two chunks right at "subject to the restrictions." Chunk 1 says the license is granted. Chunk 2 has the restrictions. If the retrieval only finds Chunk 1, the model tells the lawyer the license has no restrictions. That's malpractice-grade wrong.
+
+Even worse: legal documents have a hierarchical structure. Section 4 depends on definitions in Section 1. Exceptions in subsection (b) modify the rule in subsection (a). Fixed chunking ignores all of this structure and treats a 200-page contract like a bag of interchangeable paragraphs.
+
+### What They Learned
+
+Chunking is not a preprocessing step you get out of the way. It's the most important architectural decision in a RAG system. The way you chunk determines what information can and cannot be retrieved.
+
+Their fix was **document-aware chunking** — a pipeline that understood document structure:
+
+- **Contracts**: chunk by clause, keeping parent section headers attached
+- **Court opinions**: chunk by legal argument, keeping the holding with its reasoning
+- **Regulatory filings**: chunk by section, preserving cross-reference targets
+
+This wasn't a library call. It was three weeks of engineering per document type, with custom parsers that understood legal formatting conventions.
+
+Their retrieval accuracy went from 67% to 81% with this change alone.
+
+---
+
+## Failure 2: Semantic Search Isn't Enough
+
+A lawyer asks: "Has the defendant ever been found liable for patent infringement in the Eastern District of Texas?"
+
+The system needs to find documents about:
+- This specific defendant
+- Patent infringement cases (not trademark, not copyright)
+- In the Eastern District of Texas specifically (not the Western District, not Texas generally)
+- Where the defendant lost (not won, not settled)
+
+Semantic search finds documents that are "about" patent infringement. That's the easy part. But it can't reliably filter by:
+- **Named entities**: "this defendant" vs "a different defendant with a similar name"
+- **Jurisdictions**: "Eastern District of Texas" vs "Texas" vs "5th Circuit"
+- **Case outcomes**: "found liable" vs "accused of" vs "settled"
+
+The embedding model compresses all of this into a single 1536-dimensional vector, and the nuance gets lost. Documents about patent infringement in the Western District of Texas score almost as high as documents about the Eastern District. Documents where the defendant won score similarly to documents where they lost — because the language is nearly identical, just with different outcomes.
+
+### What They Learned
+
+Pure semantic search works for "vibe matching" — finding documents that are roughly about the right topic. But legal research requires **precision**, not just relevance.
+
+Their fix was **hybrid search** — combining semantic similarity with structured metadata filters:
+
+```
+1. Semantic search: find top-100 documents about "patent infringement liability"
+2. Metadata filter: jurisdiction = "Eastern District of Texas"
+3. Metadata filter: parties CONTAINS "defendant_name"
+4. Metadata filter: outcome = "liable" OR "infringement found"
+5. Re-rank remaining results by relevance to full query
+```
+
+This required building a metadata extraction pipeline — using an LLM to parse every document and extract structured fields (jurisdiction, parties, outcome, date, case type) into a relational schema alongside the vector embeddings.
+
+Six weeks of work. But it moved their precision from 71% to 89%.
+
+---
+
+## Failure 3: The Freshness Problem
+
+Legal research has a critical temporal dimension. A court opinion from 2023 might overrule one from 2018. A regulation might be amended. A contract might be superseded by a newer version.
+
+Their system had no concept of time. It treated a 2005 contract and a 2024 amendment as equally valid. When asked about current terms, it would sometimes retrieve the old version because the language was more similar to the query (the old version used the same terminology; the amendment used updated language).
+
+One particularly bad incident: a lawyer asked about a client's indemnification obligations. The system retrieved the original contract (unlimited indemnification) instead of the amendment (capped at $5M). The lawyer almost sent a memo to the client with the wrong liability cap.
+
+### What They Learned
+
+RAG systems are not just search engines. They need **temporal awareness** — understanding which documents are current and which are superseded.
+
+Their fix:
+
+1. **Document lineage tracking** — every document knows its predecessors and successors
+2. **Temporal boosting** — newer documents score higher, with decay curves tuned per document type
+3. **Supersession detection** — when an amendment references the original, mark the original as superseded for the amended sections
+4. **Date-aware retrieval** — "what were the terms as of March 2022?" retrieves the version in effect at that date
+
+This was the hardest engineering problem of the project. Legal document lineage is messy — amendments reference originals by different names, documents get renumbered, companies merge and rename. Getting this right took two months.
+
+---
+
+## Failure 4: The Context Window Trap
+
+Even after fixing retrieval, they hit a generation problem. Complex legal questions often required context from 8-12 different document chunks. With each chunk at ~500 tokens plus the question and system prompt, they were hitting 8,000+ tokens of context.
+
+Two problems emerged:
+
+**Lost in the middle**: Research shows that LLMs pay more attention to information at the beginning and end of the context window, and less to information in the middle. When the critical chunk was the 6th out of 10, the model would sometimes ignore it and generate an answer from the other 9 chunks.
+
+**Contradictory context**: With 10+ chunks from different documents, some chunks contradicted others. An older contract says one thing; the amendment says another. The model had to figure out which one to trust, and it didn't always get it right.
+
+### What They Learned
+
+Stuffing more context into the prompt isn't always better. The quality of what you put in matters more than the quantity.
+
+Their fix was a **two-stage generation pipeline**:
+
+1. **Stage 1 — Extract**: For each retrieved chunk, ask the model: "What specific facts from this document are relevant to the question?" Generate a compressed summary of just the relevant information.
+2. **Stage 2 — Synthesize**: Feed only the extracted facts (not the raw chunks) into the final generation prompt, along with the source citations.
+
+This reduced context length by 60% while improving answer quality, because the model was working with clean, relevant extracts instead of raw document chunks full of irrelevant boilerplate.
+
+---
+
+## Failure 5: The Evaluation Gap
+
+The most insidious problem was that they didn't know what they didn't know.
+
+Their test set was 200 carefully curated question-answer pairs. The system scored 92% on this test set. Ship it, right?
+
+Wrong. The test set was biased toward simple, single-document questions. In production, lawyers asked questions that required synthesizing multiple documents, reasoning about temporal relationships, and handling ambiguity. On these real-world queries, accuracy was 78%.
+
+Worse, they had no way to detect wrong answers in real-time. A hallucinated citation looks identical to a real one in the model's output. The only way to verify was to manually check the source — which is exactly what the lawyers were trying to avoid.
+
+### What They Learned
+
+LLM evaluation requires measuring what actually matters, on data that actually represents production traffic.
+
+Their fix:
+
+1. **Shadow mode** — run the system alongside human researchers for 4 weeks, comparing answers
+2. **Citation verification** — automated pipeline that checks whether cited text actually appears in the source document
+3. **Confidence scoring** — the model rates its own confidence, and low-confidence answers get routed to human review
+4. **Continuous evaluation** — sample 5% of production queries daily for human review, tracking accuracy trends over time
+
+The citation verification alone caught 8% of responses that contained fabricated quotes — the model generated text that sounded like it could be in the document but wasn't.
+
+---
+
+## The Final Architecture
+
+After six months of iteration, here's what LegalSearch shipped:
+
+```
+User Question
+      ↓
+Query Analysis (extract entities, jurisdiction, date range, intent)
+      ↓
+Hybrid Search
+  ├── Semantic: pgvector cosine similarity (top 100)
+  ├── Metadata: jurisdiction + parties + date filters
+  └── Temporal: freshness boost + supersession check
+      ↓
+Re-ranking (cross-encoder model, top 10 → top 5)
+      ↓
+Stage 1: Extract relevant facts from each chunk
+      ↓
+Stage 2: Synthesize answer with citations
+      ↓
+Citation Verification (does cited text exist in source?)
+      ↓
+Confidence Check
+  ├── High confidence → show to user
+  └── Low confidence → route to human reviewer
+      ↓
+Response with verified citations
+```
+
+### The Numbers
+
+| Metric | V1 (Tutorial) | V2 (Final) | Improvement |
+|---|---|---|---|
+| Retrieval precision | 67% | 93% | +26 points |
+| Answer accuracy | 78% | 96% | +18 points |
+| Hallucinated citations | 12% | <1% | Citation verification |
+| Avg. response time | 2.1s | 3.8s | Trade-off for accuracy |
+| Monthly compute cost | $4,200 | $11,800 | More models, more stages |
+| Wrong answers to clients | ~50/week | <5/week | 90% reduction |
+
+Note the cost trade-off. The final system costs 2.8x more than V1. But V1 was giving wrong answers to lawyers 22% of the time. In legal work, one wrong answer can cost more than a year of compute. The economics clearly favor accuracy.
+
+---
+
+## The Pattern
+
+Every RAG failure follows the same arc:
+
+1. **Build the tutorial version** — it works on small, clean data
+2. **Hit real-world data** — messy documents, ambiguous queries, temporal complexity, scale
+3. **Discover that retrieval is the hard part** — not generation. The model can only be as good as the context you give it
+4. **Engineer the retrieval pipeline** — chunking, hybrid search, metadata, temporal awareness, re-ranking
+5. **Add verification** — because even good retrieval doesn't guarantee good answers
+
+The generation step — the part with the LLM — is actually the easiest part of a RAG system. The retrieval pipeline is where all the engineering complexity lives. This is counterintuitive, because the LLM is the flashy part. But the retrieval is what determines whether the LLM produces correct answers or confident hallucinations.
+
+---
+
+## Key Takeaways
+
+1. **Chunking is architecture, not preprocessing**: How you split documents determines what can be retrieved. Document-aware chunking is non-negotiable for specialized domains.
+
+2. **Semantic search alone isn't precise enough**: Hybrid search — combining vectors with structured metadata filters — is required for any use case where precision matters more than vibes.
+
+3. **Time is a first-class concern**: Documents have lineage. Newer versions supersede older ones. Without temporal awareness, your RAG system will confidently cite outdated information.
+
+4. **More context isn't always better**: Extract-then-synthesize beats stuff-everything-in. Quality of context matters more than quantity.
+
+5. **Citation verification is mandatory**: The model will fabricate quotes that sound like they could be in a document. Automated verification catches these before they reach users.
+
+6. **Your test set is lying to you**: Curated test sets underestimate real-world difficulty. Shadow mode with human comparison is the only reliable way to measure production accuracy.
+
+7. **Retrieval is the hard part**: The LLM is the easy piece. Engineering the pipeline that feeds it the right context at the right time — that's where the months of work go.

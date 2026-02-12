@@ -23,7 +23,8 @@ const weekData = [
       { slug: 'api-integration', title: 'API Resilience & Integration: Fault Tolerance & Model Cascade', minutes: 35 },
       { slug: 'architecture-decisions', title: 'Architectural ROI: Unit Economics & Model Selection Matrix', minutes: 30 },
       { slug: 'visual-builders', title: 'Rapid Prototyping with Wordware: System Flow Mapping', minutes: 25 },
-      { slug: 'production-readiness', title: 'Production Readiness Baseline: Safety Proxy & Pre-Deployment Checks', minutes: 30 }
+      { slug: 'production-readiness', title: 'Production Readiness Baseline: Safety Proxy & Pre-Deployment Checks', minutes: 30 },
+      { slug: 'case-study-the-50k-chatbot', title: 'Case Study: The $50,000 Chatbot', minutes: 30 }
     ],
     lab: {
       slug: 'first-llm-app',
@@ -128,7 +129,8 @@ const weekData = [
       { slug: 'vector-embeddings', title: 'Vector Embeddings & Similarity Search', minutes: 35 },
       { slug: 'rag-pipelines', title: 'Building RAG Pipelines', minutes: 40 },
       { slug: 'production-rag-architecture', title: 'Production RAG Architecture', minutes: 50 },
-      { slug: 'memory-systems', title: 'Conversation Memory Systems', minutes: 35 }
+      { slug: 'memory-systems', title: 'Conversation Memory Systems', minutes: 35 },
+      { slug: 'case-study-rag-that-almost-worked', title: 'Case Study: The RAG System That Almost Worked', minutes: 35 }
     ],
     lab: {
       slug: 'build-rag-system',
