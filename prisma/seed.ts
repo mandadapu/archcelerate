@@ -17,6 +17,7 @@ const weekData = [
       'Build rapid prototypes using visual builders to validate system flows before custom code'
     ],
     concepts: [
+      { slug: 'how-llms-work', title: 'How LLMs Actually Work: From Next-Token Prediction to Training Pipelines', minutes: 45 },
       { slug: 'llm-fundamentals', title: 'The LLM Blueprint: Tokenization Physics & Context Constraints', minutes: 30 },
       { slug: 'prompt-engineering', title: 'Deterministic Logic Patterns: Few-Shot Calibration & Thought Traces', minutes: 40 },
       { slug: 'api-integration', title: 'API Resilience & Integration: Fault Tolerance & Model Cascade', minutes: 35 },
