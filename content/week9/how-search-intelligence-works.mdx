@@ -1,0 +1,150 @@
+---
+title: "How Intelligent Search Actually Works"
+description: "Beyond retrieval — query understanding, learned ranking, multi-index architectures, and the engineering that makes search feel like it reads your mind"
+estimatedMinutes: 35
+---
+
+# How Intelligent Search Actually Works
+
+Week 6 taught you the mechanics: hybrid search, re-ranking, query transformation. This week is about what happens when those techniques aren't enough — when you need search that doesn't just find documents, but understands what the user actually needs.
+
+The difference is like asking a librarian versus asking a subject matter expert. The librarian finds books about your topic. The expert understands your question, knows what you're really after, and hands you exactly the right page.
+
+> **Architect Perspective**: The techniques here are what separate adequate search from great search. Most RAG systems stop at "retrieval works." The systems that users love — the ones that feel like magic — have invested in query understanding, intent routing, and learned ranking. This is where competitive advantage lives.
+
+---
+
+## Query Understanding: What Did They Actually Mean?
+
+Users don't write search queries. They express needs — imperfectly, ambiguously, and often with insufficient context. Your search system's first job is figuring out what they actually meant.
+
+### Intent Classification
+
+Not all queries want the same thing:
+
+- **Navigational**: "settings page" → the user knows what they want, just needs to find it
+- **Informational**: "how does rate limiting work" → the user wants to learn something
+- **Transactional**: "upgrade to pro plan" → the user wants to do something
+- **Exploratory**: "what can I do with the API" → the user is browsing, not searching
+
+Each intent type requires a different retrieval strategy. Navigational queries need exact matching. Informational queries need comprehensive coverage. Transactional queries need action-oriented results. Exploratory queries need breadth.
+
+A lightweight classifier at the front of your pipeline routes queries to the appropriate strategy. This single routing decision has more impact on result quality than any downstream optimization.
+
+### Entity Extraction
+
+"Show me John's tasks from last week" contains three entities: a person (John), a resource type (tasks), and a time range (last week). Your search system needs to extract these entities and use them as structured filters alongside the semantic search.
+
+Without entity extraction, "John's tasks from last week" is just a text query that gets embedded and compared against all documents. With entity extraction, it becomes a structured query: `user=John AND type=task AND date>=last_monday`.
+
+### Query Rewriting
+
+Sometimes the best thing you can do with a query is change it before searching.
+
+- **Spelling correction**: "retrival augmented generation" → "retrieval augmented generation"
+- **Acronym expansion**: "RAG latency issues" → "Retrieval Augmented Generation latency issues"
+- **Context injection**: If the user has been browsing Week 6 content, "chunking strategy" should be interpreted as document chunking for RAG, not video chunking for streaming
+
+Query rewriting is invisible to the user but dramatically improves retrieval for imprecise queries.
+
+---
+
+## Multi-Index Architecture
+
+A single search index assumes all your content is the same type, structured the same way, and searched the same way. In reality, most systems have multiple content types with different characteristics.
+
+The architecture: maintain separate, specialized indexes and route queries to the appropriate ones.
+
+For an AI education platform:
+
+| Index | Content | Optimized For |
+|---|---|---|
+| **Concepts** | Curriculum content, explanations | Semantic understanding, topic matching |
+| **Code** | Code examples, implementations | Exact syntax matching, language-specific search |
+| **FAQ** | Common questions and answers | Question-answer pair matching |
+| **API Reference** | Technical documentation | Exact function/parameter matching |
+
+A query like "how does attention work" hits the Concepts index. A query like "TypeScript embedding function" hits the Code index. A query like "how do I reset my password" hits the FAQ index. The router decides which indexes to search based on the classified intent.
+
+This is more work than a single index. But each index can be optimized independently — different chunking strategies, different embedding models, different ranking algorithms — and the overall quality is dramatically higher.
+
+---
+
+## Learned Ranking: Let Behavior Teach You
+
+Hand-tuned ranking formulas eventually hit a ceiling. You weight text relevance by 0.4, vector similarity by 0.3, recency by 0.2, and popularity by 0.1 — and then spend weeks tweaking the weights based on spot-checking results.
+
+**Learned ranking** replaces the formula with a model trained on user behavior.
+
+The training signal: every time a user searches, clicks a result, and either stays (relevant) or bounces back (irrelevant), you get a labeled example. Over thousands of queries, these signals teach a ranking model what users actually find useful.
+
+Features the model learns from:
+- Text relevance score
+- Vector similarity score
+- Document recency
+- Document quality signals (ratings, engagement)
+- Query-document fit (does the document actually answer the query type?)
+- User context (what the user was doing before searching)
+
+The learned ranker typically improves click-through rates by 15-30% over hand-tuned formulas, because it captures patterns that humans can't easily articulate. "Users who search for debugging tips prefer short, code-heavy documents over long explanations" — the model learns this from behavior, not from a product manager's intuition.
+
+---
+
+## Semantic Caching
+
+Many search systems receive the same questions — or nearly the same questions — repeatedly. "How does RAG work" and "how does rag work" and "explain RAG" and "what is retrieval augmented generation" are all the same query expressed differently.
+
+**Semantic caching** detects when a new query is semantically similar to a recently answered one and returns the cached result instead of re-running the full retrieval and generation pipeline.
+
+The implementation:
+1. Embed the new query
+2. Compare against recently cached query embeddings
+3. If cosine similarity > threshold (typically 0.95), return cached result
+4. If not, run the full pipeline and cache the result
+
+At a similarity threshold of 0.95, you avoid false cache hits while capturing obvious reformulations. In production systems with repetitive query patterns, semantic caching reduces compute costs by 30-50% and eliminates generation latency for cached queries entirely.
+
+The trade-off: stale cache. If the underlying data changes, cached results become outdated. Cache invalidation strategies (TTL, event-driven invalidation on document updates) prevent serving stale results.
+
+---
+
+## Feedback Loops: Getting Better Over Time
+
+The best search systems improve automatically because they learn from every interaction.
+
+**Implicit feedback**:
+- Clicks: The user selected this result — positive signal
+- Dwell time: The user spent 3 minutes on this page — strong positive signal
+- Bounce back: The user returned to search results immediately — negative signal
+- Reformulation: The user searched again with different terms — the first results weren't helpful
+
+**Explicit feedback**:
+- Thumbs up/down on results
+- "Was this helpful?" prompts
+- Reported issues ("this result is outdated")
+
+Both feedback types feed into the learned ranking model, creating a virtuous cycle: better ranking → more clicks → more training data → even better ranking.
+
+The risk: feedback loops can create filter bubbles. Popular results get more clicks, which makes them rank higher, which gets them more clicks. New or niche content never gets exposure. Mitigate with exploration — occasionally surfacing non-top-ranked results to collect diverse feedback signals.
+
+---
+
+## Key Takeaways
+
+1. **Query understanding is the highest-leverage investment**: Intent classification, entity extraction, and query rewriting collectively have more impact than any retrieval optimization.
+
+2. **Multi-index architectures serve multi-content systems**: Different content types need different search strategies. Route queries to specialized indexes.
+
+3. **Learned ranking outperforms hand-tuned formulas**: User behavior signals teach ranking models patterns that humans can't articulate. 15-30% improvement is typical.
+
+4. **Semantic caching eliminates redundant computation**: Similar queries get cached results. 30-50% cost reduction for repetitive query patterns.
+
+5. **Feedback loops create compounding improvement**: Every user interaction generates training signal. The system gets better automatically — if you design the feedback pipeline.
+
+---
+
+## Further Reading
+
+- [Learning to Rank for Information Retrieval](https://www.nowpublishers.com/article/Details/INR-016) — Foundational text on learned ranking
+- [Query Understanding for Search Engines](https://link.springer.com/book/10.1007/978-3-030-58334-7) — Comprehensive guide to query analysis
+- [GPTCache: Semantic Caching for LLM Applications](https://github.com/zilliztech/GPTCache) — Semantic caching implementation

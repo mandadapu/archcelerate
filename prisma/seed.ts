@@ -73,6 +73,7 @@ const weekData = [
       'Establish production telemetry with SLA circuit breakers for non-functional requirement validation'
     ],
     concepts: [
+      { slug: 'how-safety-works', title: 'How AI Safety Actually Works: From Prompt Injection to Audit Trails', minutes: 35 },
       { slug: 'governance-frameworks', title: 'AI Governance & Shielding Frameworks: Safety Proxy Implementation', minutes: 45 },
       { slug: 'governance-foundations', title: 'AI Governance Foundations: System Prompts as Policy', minutes: 35 },
       { slug: 'responsible-ai', title: 'Responsible AI: Bias Detection, XAI & Self-Correction', minutes: 60 },
@@ -175,6 +176,7 @@ const weekData = [
       'Validate LLM outputs with type safety'
     ],
     concepts: [
+      { slug: 'how-structured-output-works', title: 'How Structured Output Actually Works: From JSON Mode to Function Calling', minutes: 35 },
       { slug: 'structured-output', title: 'Structured Output', description: 'JSON mode and type-safe responses.', minutes: 40 },
       { slug: 'function-calling', title: 'Function Calling', description: 'Tool integration and external system connections.', minutes: 45 },
       { slug: 'schema-design', title: 'Schema Design', description: 'Type systems and validation patterns.', minutes: 45 },
@@ -229,6 +231,7 @@ const weekData = [
       'Build time-travel debugging capability to rewind agent state and diagnose reasoning failures'
     ],
     concepts: [
+      { slug: 'how-agents-work', title: 'How AI Agents Actually Work: From ReAct Loops to Multi-Agent Orchestration', minutes: 35 },
       { slug: 'agentic-architectures', title: 'Agentic Architectures & Planning: ReAct and Task Decomposition', minutes: 45 },
       { slug: 'supervisor-patterns', title: 'Supervisor & Collaborative Patterns: Manager Agents and Swarms', minutes: 40 },
       { slug: 'reliability-patterns', title: 'Reliability Patterns: Self-Reflection and HITL', minutes: 50 },
@@ -295,6 +298,7 @@ const weekData = [
       'Production Hardening & Scale: Build HIPAA-grade RAG systems featuring sub-200ms latency, semantic caching, and rigorous audit trails'
     ],
     concepts: [
+      { slug: 'how-advanced-rag-works', title: 'How Advanced RAG Actually Works: Hybrid Search, Re-Ranking & Query Transformation', minutes: 35 },
       { slug: 'hybrid-retrieval-reranking', title: 'Hybrid Search & Re-Ranking', description: 'Combining vector and keyword precision.', minutes: 50 },
       { slug: 'query-transformation-patterns', title: 'Query Transformation', description: 'Patterns like HyDE and Multi-Query decomposition.', minutes: 45 },
       { slug: 'context-window-optimization', title: 'Context Engineering', description: 'Chunking strategies and mitigating lost-in-the-middle.', minutes: 40 },
@@ -367,6 +371,7 @@ const weekData = [
       'Regression Testing: Create and maintain "Golden Datasets" to ensure new model deployments do not degrade existing system performance'
     ],
     concepts: [
+      { slug: 'how-observability-works', title: 'How AI Observability Actually Works: Traces, Evaluations & Unit Economics', minutes: 35 },
       { slug: 'observability-pillars', title: 'Observability Pillars', description: 'Traces, evaluations, and cost tracking.', minutes: 50 },
       { slug: 'guardrails', title: 'Production Guardrails', description: 'Input/output validation and safety checks.', minutes: 45 },
       { slug: 'automated-evaluation', title: 'Automated Evaluation', description: 'LLM-as-a-Judge for continuous quality assurance.', minutes: 45 },
@@ -424,6 +429,7 @@ const weekData = [
       'Author System Design Documents justifying tech stack decisions against enterprise constraints'
     ],
     concepts: [
+      { slug: 'how-to-ship', title: 'How to Ship AI to Production: Stress Testing, SDDs & Portfolio Thinking', minutes: 35 },
       { slug: 'vertical-ai-platforms', title: 'Architecting Vertical AI Platforms: Multi-Tenant Design', minutes: 45 },
       { slug: 'production-stress-test', title: 'The Production Stress-Test: Red-Team & Load Validation', minutes: 50 },
       { slug: 'evaluation-suite', title: 'Engineering the Evaluation Suite: Golden Datasets', minutes: 40 },
@@ -477,6 +483,7 @@ const weekData = [
     description: 'Master advanced RAG patterns including hybrid search and query optimization',
     objectives: ['Implement hybrid search', 'Optimize retrieval quality', 'Build advanced RAG systems'],
     concepts: [
+      { slug: 'how-search-intelligence-works', title: 'How Intelligent Search Actually Works: Query Understanding & Learned Ranking', minutes: 35 },
       { slug: 'hybrid-search', title: 'Hybrid Search: Dense + Sparse Retrieval', minutes: 40 },
       { slug: 'query-optimization', title: 'Query Rewriting & Expansion', minutes: 35 },
       { slug: 'reranking-strategies', title: 'Re-ranking and Filtering Strategies', minutes: 40 },
@@ -519,6 +526,7 @@ const weekData = [
     description: 'Fine-tune language models and build custom AI solutions',
     objectives: ['Fine-tune models', 'Prepare training data', 'Evaluate model performance'],
     concepts: [
+      { slug: 'how-fine-tuning-works', title: 'How Fine-Tuning Actually Works: When to Fine-Tune and When Not To', minutes: 35 },
       { slug: 'finetuning-basics', title: 'Fine-tuning Fundamentals', minutes: 40 },
       { slug: 'dataset-prep', title: 'Dataset Preparation & Curation', minutes: 45 },
       { slug: 'model-evaluation', title: 'Model Evaluation & Iteration', minutes: 40 },
@@ -561,6 +569,7 @@ const weekData = [
     description: 'Build systems with multiple AI agents working together',
     objectives: ['Design agent teams', 'Implement agent coordination', 'Handle complex workflows'],
     concepts: [
+      { slug: 'how-multi-agent-systems-work', title: 'How Multi-Agent Systems Actually Work: Coordination, Conflict & Failure Modes', minutes: 35 },
       { slug: 'agent-coordination', title: 'Multi-Agent Coordination Patterns', minutes: 45 },
       { slug: 'task-delegation', title: 'Task Delegation & Orchestration', minutes: 40 },
       { slug: 'conflict-resolution', title: 'Conflict Resolution in Agent Systems', minutes: 35 },
@@ -603,6 +612,7 @@ const weekData = [
     description: 'Deploy and scale AI systems in enterprise environments',
     objectives: ['Build enterprise architecture', 'Ensure compliance and security', 'Scale AI systems'],
     concepts: [
+      { slug: 'how-enterprise-ai-works', title: 'How Enterprise AI Deployment Actually Works: Multi-Tenancy, Compliance & Change Management', minutes: 35 },
       { slug: 'enterprise-architecture', title: 'Enterprise AI Architecture Patterns', minutes: 45 },
       { slug: 'compliance-security', title: 'AI Compliance, Security & Governance', minutes: 50 },
       { slug: 'scaling-strategies', title: 'Scaling AI Systems to Production', minutes: 40 },

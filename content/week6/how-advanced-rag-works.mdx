@@ -1,0 +1,208 @@
+---
+title: "How Advanced Retrieval Actually Works"
+description: "Beyond basic vector search — hybrid retrieval, re-ranking, query transformation, and the engineering that makes RAG production-ready"
+estimatedMinutes: 40
+---
+
+# How Advanced Retrieval Actually Works
+
+You built a RAG system in Week 3. It works. Documents go in, embeddings get created, queries get answered. So why does this week exist?
+
+Because "works" and "works reliably at scale in a domain where accuracy matters" are different things. Basic RAG retrieves documents that are roughly about the right topic. Advanced RAG retrieves the exact documents that answer the specific question — and it does it fast enough, reliably enough, and accurately enough for production.
+
+> **Architect Perspective**: Basic RAG is the 80/20 solution — 80% of the quality for 20% of the effort. This week is about the other 80% of quality. Every technique here exists because someone shipped a basic RAG system and discovered a specific failure mode that basic retrieval couldn't handle.
+
+---
+
+## Why Basic Vector Search Isn't Enough
+
+Vector search works by converting text into high-dimensional vectors (embeddings) and finding the vectors closest to your query. It's semantic — "happy" and "joyful" are close in vector space even though they share no letters.
+
+This is powerful, but it has specific failure modes:
+
+**Vocabulary mismatch**: The embedding model doesn't perfectly capture domain-specific terminology. "Myocardial infarction" and "heart attack" should be identical, but the embedding model might place them further apart than you'd like — especially if it wasn't trained heavily on medical text.
+
+**Precision loss**: Embeddings compress entire passages into a single vector. Details get lost. A document about "patent infringement in Texas" and one about "patent infringement in California" might have nearly identical embeddings — the geographic distinction is compressed away.
+
+**No exact matching**: If a user asks for document "ID-2847-A," vector search is useless. The ID is an opaque string with no semantic content. You need exact string matching.
+
+**No metadata filtering**: "Show me contracts from 2024" requires filtering by date. Vector similarity doesn't understand dates, categories, or any structured metadata.
+
+Each of these failures has a specific solution. That's what this week is about.
+
+---
+
+## Hybrid Search: Best of Both Worlds
+
+The most impactful upgrade to basic RAG is **hybrid search** — combining semantic vector search with keyword-based search (typically BM25).
+
+**Vector search** excels at: paraphrasing, conceptual similarity, natural language queries.
+
+**BM25 keyword search** excels at: exact term matching, technical vocabulary, names, codes, IDs.
+
+Neither alone is sufficient. Together, they cover each other's blind spots.
+
+### Reciprocal Rank Fusion
+
+How do you combine results from two different search methods? **Reciprocal Rank Fusion (RRF)** is the most common approach:
+
+1. Run vector search → get ranked list A
+2. Run BM25 search → get ranked list B
+3. For each document, calculate: `RRF_score = Σ 1 / (k + rank_in_list)`
+4. Sort by combined RRF score
+
+The `k` parameter (typically 60) prevents documents ranked #1 in one list from dominating. A document that's #3 in both lists often scores higher than a document that's #1 in one list and absent from the other — because consistent relevance across both methods is a stronger signal than dominance in one.
+
+### When Hybrid Search Matters
+
+Hybrid search is most impactful when your queries mix semantic intent with specific terms:
+
+- "What is the indemnification clause in the Acme Corp contract?" — semantic intent (indemnification) + specific entity (Acme Corp)
+- "Show me patients on warfarin with an INR above 4.0" — medical concept + specific drug name + numeric threshold
+- "Error code E-4072 in the authentication module" — opaque code + semantic context
+
+In production systems, hybrid search typically improves retrieval recall by 15-25% over vector-only search.
+
+---
+
+## Re-Ranking: The Precision Layer
+
+First-stage retrieval (whether vector, BM25, or hybrid) optimizes for **recall** — finding everything that might be relevant. It returns the top 20-50 candidates from a corpus of millions.
+
+But the LLM's context window only fits 5-10 of those candidates. You need the **most** relevant ones in those precious slots. That's re-ranking.
+
+A **cross-encoder re-ranker** takes each (query, document) pair and scores their relevance with much higher accuracy than embedding similarity. The trade-off: it's slower, because it processes each pair individually instead of comparing pre-computed vectors.
+
+The architecture:
+
+```
+Query → First-stage retrieval (fast, broad) → Top 50 candidates
+                                                    ↓
+                                          Re-ranker (slow, precise) → Top 5
+                                                    ↓
+                                          Context window → LLM generates answer
+```
+
+You'd never run a re-ranker over your entire corpus — too slow. But over 50 candidates? That's 50 model inferences, each taking ~10ms. Total: ~500ms for dramatically better precision.
+
+In practice, re-ranking improves top-5 precision by 20-40% over first-stage retrieval alone. It's the single highest-ROI technique in the advanced RAG toolkit.
+
+---
+
+## Query Transformation: Fixing the Question
+
+Sometimes the problem isn't the retrieval system — it's the query. Users ask vague questions, ambiguous questions, multi-part questions, or questions that use different terminology than the documents.
+
+### Multi-Query
+
+The idea: one user question becomes multiple retrieval queries, each approaching the topic from a different angle.
+
+User: "What are the risks of deploying LLMs in healthcare?"
+
+Generated queries:
+1. "LLM deployment risks healthcare clinical"
+2. "AI safety concerns medical applications"
+3. "Large language model failure modes patient care"
+4. "Hallucination risks clinical decision support"
+
+Each query retrieves different relevant documents. The union covers more ground than any single query. Deduplicate, re-rank, and you have a more comprehensive set of results.
+
+### HyDE (Hypothetical Document Embeddings)
+
+A clever technique: instead of embedding the user's question, generate a hypothetical answer first, then embed that answer and use it for retrieval.
+
+Why? Because the hypothetical answer is closer in embedding space to the actual documents than the question is. Questions and answers have different linguistic structures — embedding a fake answer searches more effectively than embedding the question.
+
+### Query Decomposition
+
+Complex questions get broken into sub-questions:
+
+User: "Compare the data privacy regulations in EU and US for AI systems in healthcare"
+
+Sub-queries:
+1. "EU data privacy regulations AI healthcare GDPR"
+2. "US data privacy regulations AI healthcare HIPAA"
+3. "Comparison EU US AI healthcare regulatory frameworks"
+
+Each sub-query retrieves from a more focused part of the corpus. The model synthesizes across all retrieved context.
+
+---
+
+## Context Window Engineering
+
+You've retrieved the right documents. Now you need to fit them into the context window effectively. This is harder than it sounds.
+
+### The Lost-in-the-Middle Problem
+
+Research shows that LLMs pay more attention to information at the beginning and end of the context window, and less to information in the middle. If your most relevant document is in position 6 out of 10, the model might underweight it.
+
+Mitigation: put the most relevant documents first and last. Less relevant context goes in the middle.
+
+### Chunking Strategy
+
+How you split documents into chunks determines what can be retrieved and how coherent the retrieved context is.
+
+**Fixed-size chunking** (512 tokens) is simple but breaks semantic units. A paragraph, an argument, a code block — all might be split arbitrarily.
+
+**Semantic chunking** splits at natural boundaries: paragraph breaks, section headings, topic shifts. The chunks are variable-sized but semantically coherent.
+
+**Parent-document retrieval** indexes small chunks for precise retrieval but returns the larger parent document for context. You search with surgical precision and read with full context.
+
+The right strategy depends on your documents. Legal contracts need clause-level chunking. Technical documentation needs section-level. Code needs function-level. There's no universal answer.
+
+### Context Compression
+
+Not everything in a retrieved document is relevant to the query. A 500-token chunk might contain 100 tokens of useful information and 400 tokens of boilerplate.
+
+Context compression extracts only the relevant portions before feeding them to the LLM. This fits more useful information into the same context window.
+
+The trade-off: compression itself requires an LLM call (or a trained extractor), adding latency and cost. Whether it's worth it depends on how much context window space you're wasting on irrelevant content.
+
+---
+
+## Evaluation: Knowing Whether It's Working
+
+Advanced RAG is meaningless without evaluation. You need to measure whether your improvements actually improve results.
+
+### Key Metrics
+
+**Recall@K**: Of all relevant documents in the corpus, how many appear in the top K results? Measures whether you're finding everything you should find.
+
+**Precision@K**: Of the top K results, how many are actually relevant? Measures whether you're including junk.
+
+**MRR (Mean Reciprocal Rank)**: How high does the first relevant result appear? MRR of 1.0 means the best result is always first. MRR of 0.5 means it's typically second.
+
+**Faithfulness**: Does the LLM's answer actually follow from the retrieved context? A high faithfulness score means the model answers from the documents, not from its training data.
+
+**Answer Relevance**: Does the answer actually address the question? A response can be faithful to the documents but not relevant to what was asked.
+
+### A/B Testing Retrieval
+
+Every technique in this week can be A/B tested. Run the same queries against two retrieval configurations and compare metrics. This is how you know whether hybrid search actually helps for your specific data, or whether re-ranking justifies its latency cost.
+
+Don't guess. Measure.
+
+---
+
+## Key Takeaways
+
+1. **Hybrid search is the highest-impact upgrade**: Combining vector and keyword search covers both methods' blind spots. 15-25% recall improvement is typical.
+
+2. **Re-ranking is the precision layer**: First-stage retrieval optimizes for recall. Re-ranking optimizes for precision. The context window demands precision.
+
+3. **Query transformation fixes the question, not the retrieval**: Multi-query, HyDE, and decomposition convert vague human questions into precise retrieval queries.
+
+4. **Context window engineering matters**: Document position, chunking strategy, and compression all affect how well the LLM uses retrieved context.
+
+5. **Evaluation is mandatory**: Recall@K, Precision@K, MRR, faithfulness, and answer relevance. If you're not measuring, you're guessing.
+
+6. **Every technique is a trade-off**: Hybrid search adds complexity. Re-ranking adds latency. Query transformation adds cost. Measure whether each trade-off is worth it for your specific use case.
+
+---
+
+## Further Reading
+
+- [Reciprocal Rank Fusion outperforms Condorcet and individual Rank Learning Methods](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) — The RRF paper
+- [Lost in the Middle: How Language Models Use Long Contexts](https://arxiv.org/abs/2307.03172) — Context window position effects
+- [Precise Zero-Shot Dense Retrieval without Relevance Labels (HyDE)](https://arxiv.org/abs/2212.10496) — Hypothetical Document Embeddings
+- [RAGAS: Automated Evaluation of Retrieval Augmented Generation](https://arxiv.org/abs/2309.15217) — RAG evaluation framework

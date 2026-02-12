@@ -1,0 +1,239 @@
+---
+title: "How AI Agents Actually Work"
+description: "From ReAct loops to supervisor patterns to state management — the architecture of LLMs that take action"
+estimatedMinutes: 40
+---
+
+# How AI Agents Actually Work
+
+An LLM by itself is reactive. You ask a question, it answers. One shot. Done.
+
+An agent is an LLM in a loop. It thinks, acts, observes, and thinks again — iterating until it's solved the problem. This is the difference between a calculator and a problem solver. And it's where LLMs go from impressive to genuinely transformative.
+
+It's also where they go from "might hallucinate an answer" to "might hallucinate an action and execute it in the real world." The stakes are categorically different.
+
+> **Architect Perspective**: Agents are distributed systems that happen to have an LLM at the center. They have all the classic distributed systems problems — state management, error propagation, timeout handling, consensus — plus the new problem that the decision-maker is a probabilistic pattern matcher. Design accordingly.
+
+---
+
+## The Core Loop: ReAct
+
+The foundational agent pattern is called **ReAct** — Reasoning plus Acting. It's a loop with three steps:
+
+1. **Think**: The model reasons about the current state. What do I know? What do I need to find out? What should I do next?
+2. **Act**: The model chooses a tool to use and generates the arguments.
+3. **Observe**: The tool executes, and the result is fed back to the model as new context.
+
+Then the loop repeats. The model thinks about the new observation, decides the next action, executes it, observes the result, and continues until it has a satisfactory answer.
+
+```
+User: "What was Apple's revenue last quarter and how does it compare to Microsoft's?"
+
+Think: I need to find Apple's latest quarterly revenue.
+Act: search_financial_data(company="AAPL", metric="revenue", period="latest_quarter")
+Observe: { "company": "AAPL", "revenue": "$94.9B", "quarter": "Q1 2026" }
+
+Think: Now I need Microsoft's revenue for the same period.
+Act: search_financial_data(company="MSFT", metric="revenue", period="Q1_2026")
+Observe: { "company": "MSFT", "revenue": "$69.6B", "quarter": "Q1 2026" }
+
+Think: I have both numbers. Apple's revenue is $94.9B vs Microsoft's $69.6B.
+      Apple's is 36% higher. I can now answer the user.
+Act: respond("Apple's Q1 2026 revenue was $94.9B, compared to Microsoft's
+      $69.6B — Apple's revenue was approximately 36% higher.")
+```
+
+Each "Think" step is a full LLM inference — the model generates its reasoning as text, which becomes part of the context for the next step. This is why chain-of-thought works: the intermediate reasoning tokens help the model track state across a multi-step problem.
+
+---
+
+## Why Agents Are Powerful
+
+The power of agents comes from three properties that basic LLM calls don't have:
+
+### 1. Tool Access
+
+A basic LLM can only generate text from patterns it learned during training. An agent can query databases, call APIs, run code, search the web, and interact with any system that has a programmable interface.
+
+This compensates for the LLM's core weaknesses. Can't do math? Use a calculator tool. Don't know current events? Use a search tool. Need to verify a fact? Use a knowledge base tool.
+
+The model's role shifts from "answer the question from memory" to "figure out how to find the answer and synthesize what you find." That's a dramatically more useful capability.
+
+### 2. Multi-Step Reasoning
+
+Basic LLM calls are one-shot: input → output. Agents can chain reasoning across multiple steps, where each step builds on the results of previous steps.
+
+This enables tasks that are impossible in a single inference: research requiring multiple sources, workflows with conditional branching, problems where you don't know what information you'll need until you start investigating.
+
+### 3. Self-Correction
+
+Because agents observe the results of their actions, they can detect and recover from errors. If a search returns no results, the agent can reformulate the query. If a calculation seems wrong, it can verify with a different approach.
+
+This doesn't make agents reliable — the self-correction itself is pattern matching that can fail. But it makes them more robust than single-shot calls for complex tasks.
+
+---
+
+## Agent Architectures
+
+The ReAct loop is the simplest agent. Real systems use more sophisticated architectures.
+
+### The Planner-Executor Pattern
+
+Instead of thinking one step at a time, a Planner agent creates a complete plan upfront, then an Executor agent carries it out step by step.
+
+```
+User: "Create a market analysis report for electric vehicles in Southeast Asia."
+
+Planner generates:
+1. Search for EV market size data in Southeast Asia
+2. Find major EV manufacturers operating in the region
+3. Identify government incentive programs by country
+4. Analyze infrastructure (charging stations) development
+5. Compare with global EV adoption rates
+6. Synthesize findings into a structured report
+
+Executor carries out each step, collecting results.
+```
+
+The advantage: the plan provides structure and prevents the agent from going down rabbit holes. The disadvantage: the plan might be wrong, and a rigid plan doesn't adapt well to unexpected findings.
+
+Good implementations allow the Executor to modify the plan based on what it discovers — "Step 3 revealed that Thailand has a major new policy. Adding a deep-dive on Thailand as Step 3b."
+
+### The Supervisor Pattern
+
+Multiple specialized agents, coordinated by a Supervisor agent that delegates tasks, monitors progress, and resolves conflicts.
+
+```
+Supervisor receives: "Analyze our competitor's new product launch"
+
+Supervisor delegates:
+→ Research Agent: "Find all public information about the launch"
+→ Financial Agent: "Analyze the competitor's recent financial filings"
+→ Social Agent: "Gauge public sentiment from social media"
+
+Each agent works independently, returns results to Supervisor.
+Supervisor synthesizes a unified analysis.
+```
+
+This is parallel processing with an LLM as the coordinator. It's faster than sequential execution and allows each agent to specialize. The Supervisor doesn't need to understand financial analysis — it just needs to know that the Financial Agent does.
+
+### The Blackboard Pattern
+
+All agents share a common "blackboard" — a structured state object. Each agent reads from the blackboard, does its work, and writes results back. No central coordinator; agents self-organize based on what's on the blackboard.
+
+This is the most flexible and the hardest to control. It works well when agents have clearly defined roles and the problem has a natural decomposition. It falls apart when agents conflict or when the blackboard grows too large.
+
+---
+
+## State Management: The Hidden Hard Problem
+
+Here's what makes agents genuinely difficult to engineer: state.
+
+A basic LLM call is stateless. Input → output. No memory, no side effects, no dependencies. An agent is inherently stateful — each step depends on the results of previous steps, and the accumulating context IS the agent's working memory.
+
+This creates several problems:
+
+### Context Window Limits
+
+The agent's "memory" is the context window. Every thought, action, observation, and result accumulates as tokens. For complex tasks with many steps, you run out of context.
+
+Solutions:
+- **Summarization**: Periodically compress the conversation history, keeping only the essential information
+- **Selective context**: Only include observations relevant to the current step, not the entire history
+- **External memory**: Store intermediate results in a database and retrieve them as needed, rather than keeping everything in the context window
+
+### Checkpoint and Recovery
+
+If an agent fails at step 7 of a 10-step task, can you resume from step 6? Without checkpointing, you restart from scratch — re-executing all previous steps, re-calling all APIs, re-spending all the compute.
+
+Database-backed state checkpointing saves the agent's state after each step. If something fails, you roll back to the last good checkpoint and retry from there.
+
+### Concurrency and Conflicts
+
+When multiple agents work on the same problem (Supervisor pattern), they can step on each other. Agent A reads the shared state, Agent B modifies it, Agent A writes back stale data. Classic race condition, but with LLMs.
+
+The fix is the same as in any distributed system: atomic state transitions, optimistic locking, or message-passing instead of shared mutable state.
+
+---
+
+## Error Handling: Where Agents Really Break
+
+Every step in an agent chain is a pattern match that can fail. And errors compound — a wrong decision at step 3 corrupts every subsequent step.
+
+### Error Types
+
+**Tool failures**: The API is down. The database times out. The search returns no results. These are straightforward — retry, fallback, or inform the user.
+
+**Reasoning failures**: The model misinterprets an observation and takes the wrong next action. These are insidious because the model doesn't know it's wrong — it continues confidently down the wrong path.
+
+**Infinite loops**: The model can't figure out how to solve the problem but keeps trying variations that all fail. Without a step limit, it runs forever.
+
+**Scope creep**: The model decides it needs to research one more thing, then one more, then one more. The task expands beyond the original request.
+
+### Defense Mechanisms
+
+1. **Step limits**: Hard cap on the number of reasoning iterations. 8-12 steps is typical for most tasks.
+2. **Cost budgets**: Maximum spend per agent invocation. Terminate gracefully when budget is exhausted.
+3. **Time limits**: Maximum wall-clock time. Present the best answer so far when time runs out.
+4. **Cycle detection**: If the model is taking similar actions repeatedly, break the loop.
+5. **Human-in-the-loop**: For high-stakes actions (spending money, sending communications, modifying data), require human approval before execution.
+
+---
+
+## Human-in-the-Loop: The Trust Architecture
+
+The most important architectural decision in agent design is: which actions require human approval?
+
+The framework is consequence-based:
+
+| Consequence | Examples | Approach |
+|---|---|---|
+| **None / trivially reversible** | Read-only queries, searches, calculations | Fully automated |
+| **Minor / easily reversible** | Saving drafts, creating internal notes | Automated with notification |
+| **Significant / hard to reverse** | Sending emails, modifying records, making purchases | Requires explicit human approval |
+| **Critical / irreversible** | Financial transactions, legal filings, production deployments | Requires human approval + cooling period |
+
+The agent proposes the action. Your system classifies the consequence level. Low-consequence actions execute automatically. High-consequence actions pause for human review. The model never has unilateral authority over irreversible actions.
+
+This isn't a limitation on the agent's capability. It's what makes the agent deployable. An agent that can spend money without approval isn't a feature — it's a liability.
+
+---
+
+## The Cost Equation
+
+Agents are expensive. Each reasoning step is an LLM inference. A 10-step agent run might use 10-50x more tokens than a single LLM call.
+
+The math:
+- Single LLM call: ~1K input + ~500 output = 1.5K tokens
+- 10-step agent: ~(1K + growing context per step) × 10 ≈ 30-80K tokens
+
+At scale, this adds up fast. The architectural question is: does the value of the agent's output justify the cost of the agent's reasoning?
+
+For complex, high-value tasks (research, analysis, multi-system orchestration) — yes, absolutely. For simple tasks (answering FAQs, basic classification) — no. Use a single LLM call.
+
+The right architecture often uses agents for complex orchestration and single calls for simple tasks, routing between them based on task complexity.
+
+---
+
+## Key Takeaways
+
+1. **Agents are LLMs in a loop**: Think → Act → Observe → repeat. The loop is what gives agents their power — and their failure modes.
+
+2. **Tool access is transformative**: An LLM that can query databases, call APIs, and run code is fundamentally more capable than one that can only generate text.
+
+3. **State management is the hard problem**: Context window limits, checkpoint/recovery, and concurrency are distributed systems challenges that happen to have an LLM in the middle.
+
+4. **Errors compound across steps**: A wrong decision at step 3 corrupts everything that follows. Step limits, cost budgets, and cycle detection are essential guardrails.
+
+5. **Human-in-the-loop is classified by consequence**: Read-only actions run freely. Financial transactions require approval. The model proposes; humans authorize.
+
+6. **Agents are expensive**: 10-50x more tokens than single calls. Use agents for complex tasks worth the compute. Use single calls for everything else.
+
+---
+
+## Further Reading
+
+- [ReAct: Synergizing Reasoning and Acting in Language Models](https://arxiv.org/abs/2210.03629) — The foundational ReAct paper
+- [LangGraph Documentation](https://langchain-ai.github.io/langgraph/) — Stateful agent orchestration framework
+- [Voyager: An Open-Ended Embodied Agent with Large Language Models](https://arxiv.org/abs/2305.16291) — Agents that learn and build
+- [Toolformer: Language Models Can Teach Themselves to Use Tools](https://arxiv.org/abs/2302.04761) — How models learn tool use
