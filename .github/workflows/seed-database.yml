@@ -47,12 +47,25 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Fetch DATABASE_URL from Secret Manager
+      - name: Fetch database credentials from Secret Manager
         id: secrets
         run: |
           DB_URL=$(gcloud secrets versions access latest --secret=DATABASE_URL --project=archcelerate)
           echo "::add-mask::$DB_URL"
-          echo "DATABASE_URL=$DB_URL" >> $GITHUB_ENV
+          # Rewrite Cloud SQL socket path to use localhost via proxy
+          # Original: postgresql://user:pass@localhost/db?host=/cloudsql/instance
+          # Rewritten: postgresql://user:pass@127.0.0.1:5432/db
+          PROXY_URL=$(echo "$DB_URL" | sed 's|?host=/cloudsql/[^&]*||' | sed 's|@localhost/|@127.0.0.1:5432/|')
+          echo "::add-mask::$PROXY_URL"
+          echo "DATABASE_URL=$PROXY_URL" >> $GITHUB_ENV
+
+      - name: Start Cloud SQL Auth Proxy
+        run: |
+          curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.3/cloud-sql-proxy.linux.amd64
+          chmod +x cloud-sql-proxy
+          ./cloud-sql-proxy archcelerate:us-central1:archcelerate-db --port 5432 &
+          sleep 3
+          echo "Cloud SQL Proxy started"
 
       - name: Run Database Migrations
         if: ${{ !inputs.skip_migrations }}
