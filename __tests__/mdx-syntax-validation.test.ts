@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
+import { execSync } from 'child_process'
 import { expect } from '@jest/globals'
 
 /**
@@ -137,41 +138,21 @@ describe('MDX Syntax Validation', () => {
       }
     })
 
-    test.skip.each(mdxFiles)('%s should not have unclosed JSX tags', (filePath) => {
-      const content = readFileSync(filePath, 'utf-8')
-      const relativePath = filePath.replace(process.cwd(), '')
-
-      // Skip code blocks
-      const withoutCodeBlocks = content.replace(/```[\s\S]*?```/g, '')
-
-      // Simple check for common unclosed tags (not comprehensive, but catches obvious issues)
-      const tagStack: string[] = []
-      const selfClosingTags = ['br', 'hr', 'img', 'input', 'meta', 'link']
-
-      // Very basic tag matching (this could be improved with a proper parser)
-      const tagPattern = /<\/?([a-zA-Z][a-zA-Z0-9]*)[^>]*>/g
-      const matches = [...withoutCodeBlocks.matchAll(tagPattern)]
-
-      for (const match of matches) {
-        const fullTag = match[0]
-        const tagName = match[1].toLowerCase()
-
-        if (selfClosingTags.includes(tagName)) continue
-        if (fullTag.startsWith('</')) {
-          // Closing tag
-          if (tagStack[tagStack.length - 1] === tagName) {
-            tagStack.pop()
-          }
-        } else if (!fullTag.endsWith('/>')) {
-          // Opening tag (not self-closing)
-          tagStack.push(tagName)
-        }
+    test('all MDX files should compile without errors', () => {
+      try {
+        const output = execSync('node scripts/compile-mdx-check.mjs', {
+          cwd: process.cwd(),
+          encoding: 'utf-8',
+          timeout: 120000,
+        })
+        // Script exits 0 on success, output contains summary
+        expect(output).toContain('All MDX files compiled successfully')
+      } catch (error) {
+        const execError = error as { stdout?: string; stderr?: string }
+        const output = execError.stdout || execError.stderr || String(error)
+        throw new Error(`MDX compilation check failed:\n${output}`)
       }
-
-      if (tagStack.length > 0) {
-        throw new Error(`${relativePath} may have unclosed JSX tags: ${tagStack.join(', ')}`)
-      }
-    })
+    }, 120000)
   })
 
   describe('Content Quality', () => {
