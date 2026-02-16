@@ -40,6 +40,13 @@ const caseStudies = [
       'Building a 4-agent security log analysis pipeline using LangGraph with Haiku, Sonnet, and Opus for cost-optimized threat detection and incident reporting',
     tags: ['Multi-Agent', 'LangGraph', 'Cost Optimization', 'Security'],
   },
+  {
+    slug: 'ai-medication-adherence',
+    title: 'AI for Medication Adherence',
+    description:
+      'How predictive ML models close the gap between prescribed medications and patient behavior — a $500 billion problem hiding in plain sight',
+    tags: ['Healthcare', 'Predictive ML', 'Feynman Method', 'Production AI'],
+  },
 ]
 
 export default async function CaseStudiesPage(): Promise<JSX.Element | null> {
