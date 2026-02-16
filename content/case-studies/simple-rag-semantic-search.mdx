@@ -1,0 +1,177 @@
+---
+title: 'Simple RAG Implementation with Contextual Semantic Search'
+description: 'A step-by-step guide to building a functional RAG system using ChromaDB, Sentence Transformers, and LangChain — from PDF ingestion to semantic retrieval to LLM generation'
+---
+
+# Simple RAG Implementation with Contextual Semantic Search
+
+*Enhancing AI outputs with semantic understanding — a hands-on implementation guide.*
+
+---
+
+## Introduction to RAG and Semantic Search
+
+Retrieval-Augmented Generation (RAG) is an advanced NLP framework that combines the capabilities of information retrieval systems with Large Language Models.
+
+RAG addresses the limitation of an LLM's static nature by using a retrieval mechanism that accesses external data sources. This provides the generative model with real-time information to produce more accurate outputs.
+
+The RAG framework operates through a two-step process:
+
+1. **Retrieval** — search documents from the database and identify information most relevant to the user's query
+2. **Generation** — utilize the retrieved information to construct an informative response
+
+---
+
+## Contextual Semantic Search
+
+The key question: how does the RAG system know how to retrieve the most relevant documents?
+
+**Lexical search** matches queries to documents based on exact or near-exact keyword matches. It searches for exact words or phrases without understanding the meaning of the query.
+
+**Semantic search** goes beyond keywords. It transforms the search engine by focusing on understanding the query's meaning, relationships, and context to retrieve more relevant results.
+
+### How Semantic Search Works
+
+Words and phrases are transformed into mathematical representations (embeddings) to capture their semantic meaning, allowing similarity-based comparison.
+
+For example, the text "Where are you going?" could be represented in vector space as a list of 768 numbers (`[0.14, 0.59, ..., 0.73]`). With these numbers, we can represent all documents and queries in vector space and perform retrieval using similarity scoring.
+
+The most common similarity scoring technique is **cosine similarity**, which measures the closeness between the query's embedding and the document embeddings. We retrieve the most relevant results by ranking the score and taking the top-k highest scores.
+
+---
+
+## Implementation: Building the RAG Pipeline
+
+### Tools Used
+
+- **ChromaDB** — Vector database for storing and querying embeddings
+- **Sentence Transformers** — Generating embeddings (vector representations) of text
+- **LangChain** — Text splitting and chunking
+- **LiteLLM** — Interacting with LLMs
+- **PyPDF2** — Extracting text from PDF files
+
+### Step 1: Extract Text from PDFs
+
+```python
+import os
+import PyPDF2
+from sentence_transformers import SentenceTransformer
+import chromadb
+from chromadb.config import Settings
+import litellm
+from litellm import completion
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+def extract_text_from_pdfs(folder_path):
+    all_text = ""
+    for filename in os.listdir(folder_path):
+        if filename.endswith(".pdf"):
+            file_path = os.path.join(folder_path, filename)
+            with open(file_path, 'rb') as file:
+                reader = PyPDF2.PdfReader(file)
+                for page in reader.pages:
+                    all_text += page.extract_text()
+    return all_text
+
+pdf_folder = "dataset"
+all_text = extract_text_from_pdfs(pdf_folder)
+```
+
+### Step 2: Chunk the Text
+
+Passing all the raw text from a PDF to the LLM at once would overwhelm the model. The raw text is split into smaller, meaningful chunks to preserve the system's efficiency and accuracy.
+
+```python
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=500,      # Size of each chunk
+    chunk_overlap=50,    # Overlap between chunks to maintain context
+    separators=["\n\n", "\n", " ", ""]  # Splitting hierarchy
+)
+
+chunks = text_splitter.split_text(all_text)
+```
+
+### Step 3: Store Embeddings in ChromaDB
+
+```python
+# Initialize a persistent ChromaDB client
+client = chromadb.PersistentClient(path="chroma_db")
+
+# Load the SentenceTransformer model for text embeddings
+text_embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# Create a new collection for text embeddings
+collection = client.create_collection(name="knowledge_base")
+
+# Add text chunks to the collection
+for i, chunk in enumerate(chunks):
+    embedding = text_embedding_model.encode(chunk)
+    collection.add(
+        ids=[f"chunk_{i}"],
+        embeddings=[embedding.tolist()],
+        metadatas=[{"source": "pdf", "chunk_id": i}],
+        documents=[chunk]
+    )
+```
+
+### Step 4: Perform Semantic Search
+
+ChromaDB makes it straightforward — pass the query embedding and retrieve the top-k most similar chunks.
+
+```python
+def semantic_search(query, top_k=5):
+    query_embedding = text_embedding_model.encode(query)
+    results = collection.query(
+        query_embeddings=[query_embedding.tolist()],
+        n_results=top_k
+    )
+    return results
+
+query = "What is the insurance for car?"
+results = semantic_search(query)
+
+for i, result in enumerate(results['documents'][0]):
+    print(f"Result {i+1}: {result}\n")
+```
+
+Each result is related to car insurance in some way, even if it does not specify the word "car" precisely. For example, a top result might reference "automobile" — semantic search understands these are the same concept.
+
+### Step 5: Generate a Response with the LLM
+
+```python
+def generate_response(query, context):
+    prompt = f"Query: {query}\nContext: {context}\nAnswer:"
+    response = completion(
+        model="gemini/gemini-1.5-flash",
+        messages=[{"content": prompt, "role": "user"}],
+        api_key=GEMINI_API_KEY
+    )
+    return response['choices'][0]['message']['content']
+
+search_results = semantic_search(query)
+context = "\n".join(search_results['documents'][0])
+response = generate_response(query, context)
+```
+
+---
+
+## What This Doesn't Cover (Yet)
+
+This basic implementation works, but the output may not fully satisfy the user's query, or the retrieval process may miss the most relevant documents. Production RAG systems need additional techniques:
+
+- **Reranking** — re-scoring retrieved chunks with a cross-encoder for higher precision
+- **Hybrid search** — combining BM25 keyword search with semantic search
+- **Query reformulation** — rewriting ambiguous queries before retrieval
+- **Chunk overlap tuning** — balancing context preservation with retrieval granularity
+
+---
+
+## Key Takeaways
+
+- **Semantic search beats lexical search** because it understands meaning, not just keyword matches — "car" and "automobile" are equivalent
+- **Chunking strategy matters** — 500-character chunks with 50-character overlap is a reasonable starting point, but optimal sizes depend on your data
+- **The retrieval step is the bottleneck** — if the retriever returns irrelevant chunks, no amount of LLM sophistication will save the output
+- **ChromaDB with Sentence Transformers** provides a minimal, local-first setup for prototyping RAG — but production systems need persistent, scalable vector stores
+- **RAG is a framework, not a product** — the real engineering is in tuning chunking, retrieval, and generation for your specific domain
+
+*Based on the RAG-To-Know series by Cornellius Yudha Wijaya.*
