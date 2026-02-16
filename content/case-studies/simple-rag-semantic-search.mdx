@@ -20,6 +20,26 @@ The RAG framework operates through a two-step process:
 1. **Retrieval** — search documents from the database and identify information most relevant to the user's query
 2. **Generation** — utilize the retrieved information to construct an informative response
 
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      RAG Framework                              │
+│                                                                 │
+│   ┌──────────┐    ┌───────────────────────────────────────┐     │
+│   │  User    │    │         RETRIEVAL                     │     │
+│   │  Query   │───▶│  Query ──▶ Search ──▶ Document DB     │     │
+│   └──────────┘    │              │                        │     │
+│                   │              ▼                        │     │
+│                   │     Relevant Documents                │     │
+│                   └──────────────┬────────────────────────┘     │
+│                                  │                              │
+│                                  ▼                              │
+│                   ┌───────────────────────────────────────┐     │
+│                   │         GENERATION                    │     │
+│                   │  Query + Context ──▶ LLM ──▶ Response │     │
+│                   └───────────────────────────────────────┘     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 ---
 
 ## Contextual Semantic Search
@@ -30,17 +50,87 @@ The key question: how does the RAG system know how to retrieve the most relevant
 
 **Semantic search** goes beyond keywords. It transforms the search engine by focusing on understanding the query's meaning, relationships, and context to retrieve more relevant results.
 
+```
+┌─────────────────────────────────┐  ┌─────────────────────────────────┐
+│        LEXICAL SEARCH           │  │        SEMANTIC SEARCH          │
+│                                 │  │                                 │
+│  Query: "car insurance"        │  │  Query: "car insurance"        │
+│           │                     │  │           │                     │
+│           ▼                     │  │           ▼                     │
+│  Matches exact keywords:        │  │  Understands meaning:           │
+│                                 │  │                                 │
+│  ✅ "car insurance policy"     │  │  ✅ "car insurance policy"     │
+│  ✅ "insurance for car"        │  │  ✅ "automobile coverage"      │
+│  ❌ "automobile coverage"      │  │  ✅ "vehicle protection plan"  │
+│  ❌ "vehicle protection plan"  │  │  ✅ "auto liability policy"    │
+│                                 │  │                                 │
+│  Finds: exact term overlap      │  │  Finds: conceptual similarity   │
+└─────────────────────────────────┘  └─────────────────────────────────┘
+```
+
 ### How Semantic Search Works
 
 Words and phrases are transformed into mathematical representations (embeddings) to capture their semantic meaning, allowing similarity-based comparison.
 
 For example, the text "Where are you going?" could be represented in vector space as a list of 768 numbers (`[0.14, 0.59, ..., 0.73]`). With these numbers, we can represent all documents and queries in vector space and perform retrieval using similarity scoring.
 
+```
+┌──────────────────────────────────────────────────────────────┐
+│                  VECTOR SPACE REPRESENTATION                 │
+│                                                              │
+│  Text Input                    Embedding Vector              │
+│  ─────────                     ────────────────              │
+│  "Where are you going?"   ──▶  [0.14, 0.59, ..., 0.73]     │
+│                                     768 dimensions           │
+│                                                              │
+│  ┌─────────────────────────────────────────────┐             │
+│  │          Vector Space                        │             │
+│  │                                              │             │
+│  │    Query ●                                   │             │
+│  │           \  0.92                             │             │
+│  │            \                                  │             │
+│  │     Doc A  ●──── cosine similarity ────●     │             │
+│  │                                    Doc B     │             │
+│  │                         0.41                  │             │
+│  │               ●                               │             │
+│  │            Doc C  (less relevant)             │             │
+│  │                                              │             │
+│  └─────────────────────────────────────────────┘             │
+│                                                              │
+│  Ranking: Doc A (0.92) > Doc B (0.41) > Doc C (0.23)        │
+│  Retrieve: Top-k highest similarity scores                   │
+└──────────────────────────────────────────────────────────────┘
+```
+
 The most common similarity scoring technique is **cosine similarity**, which measures the closeness between the query's embedding and the document embeddings. We retrieve the most relevant results by ranking the score and taking the top-k highest scores.
 
 ---
 
 ## Implementation: Building the RAG Pipeline
+
+```
+┌───────────┐    ┌───────────┐    ┌────────────┐    ┌─────────────┐
+│  PDF      │    │  Text     │    │  Embedding │    │  ChromaDB   │
+│  Files    │───▶│  Chunking │───▶│  Model     │───▶│  Vector DB  │
+│ (PyPDF2)  │    │(LangChain)│    │(MiniLM-L6) │    │  (Storage)  │
+└───────────┘    └───────────┘    └────────────┘    └──────┬──────┘
+                                                          │
+                  INGESTION PIPELINE (Steps 1-3)          │
+─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─│─ ─ ─ ─
+                  QUERY PIPELINE (Steps 4-5)              │
+                                                          │
+┌───────────┐    ┌───────────┐    ┌────────────┐          │
+│  User     │    │  Query    │    │  Semantic  │◀─────────┘
+│  Query    │───▶│  Embedding│───▶│  Search    │
+└───────────┘    └───────────┘    └─────┬──────┘
+                                       │
+                                       ▼
+                                 ┌────────────┐    ┌─────────────┐
+                                 │  Top-k     │    │  Generated  │
+                                 │  Results + │───▶│  Response   │
+                                 │  Query     │    │  (Gemini)   │
+                                 └────────────┘    └─────────────┘
+```
 
 ### Tools Used
 
