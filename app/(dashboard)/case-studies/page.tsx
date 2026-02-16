@@ -47,6 +47,13 @@ const caseStudies = [
       'How predictive ML models close the gap between prescribed medications and patient behavior — a $500 billion problem hiding in plain sight',
     tags: ['Healthcare', 'Predictive ML', 'Feynman Method', 'Production AI'],
   },
+  {
+    slug: 'zero-exposure-proxy-healthcare',
+    title: 'Zero-Exposure Proxy Pattern for Healthcare AI',
+    description:
+      'How certificate pinning, credential isolation, and a hardened API proxy eliminate the biggest mobile security vulnerabilities when handling sensitive medical data',
+    tags: ['Security', 'Healthcare', 'HIPAA', 'Mobile Architecture'],
+  },
 ]
 
 export default async function CaseStudiesPage(): Promise<JSX.Element | null> {
