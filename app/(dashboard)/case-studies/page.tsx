@@ -89,6 +89,13 @@ const caseStudies = [
       'Seven production-tested techniques for getting better LLM results — from zero-shot and chain-of-thought to prompt chaining and cross-model comparison',
     tags: ['Prompt Engineering', 'CoT', 'Few-Shot', 'Hands-On'],
   },
+  {
+    slug: 'rag-evaluation-monitoring',
+    title: 'RAG Evaluation, Monitoring, and Logging with Opik',
+    description:
+      'How to monitor and evaluate both retrieval and generation components of a RAG pipeline — with metrics for precision, recall, and hallucination detection',
+    tags: ['RAG', 'Evaluation', 'Monitoring', 'Opik'],
+  },
 ]
 
 export default async function CaseStudiesPage(): Promise<JSX.Element | null> {
