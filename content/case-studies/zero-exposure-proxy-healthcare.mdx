@@ -1,0 +1,59 @@
+---
+title: 'Zero-Exposure Proxy Pattern for Healthcare AI'
+description: 'How certificate pinning, credential isolation, and a hardened API proxy eliminate the biggest mobile security vulnerabilities when handling sensitive medical data'
+---
+
+# Zero-Exposure Proxy Pattern for Healthcare AI
+
+*A rock-solid security posture for platforms handling sensitive medical data.*
+
+---
+
+## The Core Idea
+
+In this architecture, the mobile app is a "dumb" client regarding infrastructure — it knows how to format data, but it has no idea where the "real" storage (S3/HealthLake) actually lives. By implementing **Certificate Pinning** and a **Hardened API Proxy**, you effectively eliminate the two biggest mobile vulnerabilities: Man-in-the-Middle (MITM) attacks and credential leakage.
+
+---
+
+## 1. The "Zero-Exposure" Proxy Pattern
+
+Since your apps only talk to your backend, your API Gateway/BFF (Backend-for-Frontend) acts as a security air-gap:
+
+**Credential Isolation:** The S3 and FHIR IAM roles/access keys live exclusively in your AWS Secret Manager or are attached to the EC2/Lambda execution role. The mobile app never sees an AWS Signature or an API Key.
+
+**Certificate Pinning:** By hardcoding the server's public key (or hash) into the app, you ensure it only talks to your specific backend instance. Even if a user installs a malicious root certificate on their device, the app will refuse to connect to a proxy.
+
+**Network Perimeter:** Your FHIR server and S3 buckets can stay in a Private Subnet with no public IP, accessible only via your API service's VPC endpoint.
+
+---
+
+## 2. Controlled External Connectivity
+
+Limiting the "Outside World" to only Google Analytics and Crashlytics is a classic strategy for minimizing the attack surface.
+
+**Analytics/Crashlytics:** These are strictly for telemetry and stability.
+
+**Data Sovereignty:** By proxying the clinical data (FHIR), you ensure that no PII (Personally Identifiable Information) ever accidentally leaks to a third-party SDK, as the "real" medical payload only travels through your pinned tunnel.
+
+---
+
+## 3. Implementation for Security-First AI Architecture
+
+This is a textbook case study for the "Untrusted Client" design principle — the phone can never be trusted with infrastructure secrets.
+
+| Security Risk | Solution |
+|---|---|
+| Credential Theft | Proxy Service (App never sees S3/FHIR keys) |
+| MITM / Proxy Tools | Certificate Pinning (Blocks tools like Charles Proxy/Burp Suite) |
+| Data Scraping | Rate Limiting and Identity-Aware Proxying at the Backend |
+| Side-Channel Leaks | Strict outbound allow-listing (Only Analytics/Crashlytics) |
+
+---
+
+## Key Takeaways
+
+- **Never expose infrastructure credentials to mobile clients** — treat every device as a potentially compromised endpoint
+- **Certificate pinning** is your first line of defense against MITM attacks, even on devices with malicious root certificates installed
+- **Private subnets with VPC endpoints** ensure clinical data stores have zero public internet exposure
+- **Outbound allow-listing** prevents accidental PII leakage to third-party SDKs
+- The "dumb client" pattern isn't a limitation — it's a deliberate security architecture that keeps sensitive medical data exactly where it belongs
