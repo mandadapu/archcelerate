@@ -75,6 +75,13 @@ const caseStudies = [
       'A step-by-step guide to building a functional RAG system using ChromaDB, Sentence Transformers, and LangChain — from PDF ingestion to semantic retrieval to LLM generation',
     tags: ['RAG', 'Semantic Search', 'ChromaDB', 'Hands-On'],
   },
+  {
+    slug: 'deepmind-data-center-cooling',
+    title: 'DeepMind Data Center Cooling — Curriculum Integration Map',
+    description:
+      'How Google DeepMind cut cooling costs by 40% using ensemble prediction, streaming pipelines, and safety-constrained autonomy — mapped to Accelerator project patterns',
+    tags: ['DeepMind', 'Multi-Model Routing', 'Streaming', 'Safety'],
+  },
 ]
 
 export default async function CaseStudiesPage(): Promise<JSX.Element | null> {
