@@ -82,6 +82,13 @@ const caseStudies = [
       'How Google DeepMind cut cooling costs by 40% using ensemble prediction, streaming pipelines, and safety-constrained autonomy — mapped to Accelerator project patterns',
     tags: ['DeepMind', 'Multi-Model Routing', 'Streaming', 'Safety'],
   },
+  {
+    slug: 'expert-prompt-engineering',
+    title: 'Expert-Level Prompt Engineering Techniques',
+    description:
+      'Seven production-tested techniques for getting better LLM results — from zero-shot and chain-of-thought to prompt chaining and cross-model comparison',
+    tags: ['Prompt Engineering', 'CoT', 'Few-Shot', 'Hands-On'],
+  },
 ]
 
 export default async function CaseStudiesPage(): Promise<JSX.Element | null> {
