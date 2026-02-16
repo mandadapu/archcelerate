@@ -1,0 +1,244 @@
+---
+title: 'RAG Evaluation, Monitoring, and Logging with Opik'
+description: 'How to monitor and evaluate both retrieval and generation components of a RAG pipeline using Opik — with metrics for precision, recall, hallucination detection, and experiment tracking'
+---
+
+# RAG Evaluation, Monitoring, and Logging with Opik
+
+*Assessing and monitoring your RAG pipeline is crucial — here's how to do it systematically.*
+
+---
+
+## Why RAG Monitoring Matters
+
+Building a RAG system is only half the battle. Without monitoring, you're flying blind:
+
+1. **Quality Assurance** — Regular evaluations maintain high accuracy standards
+2. **System Reliability** — Early issue detection enables timely corrections
+3. **User Trust** — Consistent performance builds confidence in system capabilities
+
+The critical insight: RAG systems have **two components that fail independently** — retrieval and generation. You need separate metrics for each.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    RAG EVALUATION FRAMEWORK                  │
+│                                                              │
+│  ┌─────────────────────┐    ┌─────────────────────────┐     │
+│  │   RETRIEVAL METRICS  │    │   GENERATION METRICS     │     │
+│  │                      │    │                          │     │
+│  │  • Context Precision │    │  • Answer Relevancy      │     │
+│  │  • Context Recall    │    │  • Faithfulness           │     │
+│  │  • Relevancy         │    │  • Hallucination Score    │     │
+│  │                      │    │                          │     │
+│  │  "Did we find the    │    │  "Did the LLM use the    │     │
+│  │   right chunks?"     │    │   chunks correctly?"     │     │
+│  └─────────────────────┘    └─────────────────────────┘     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Core Parameters Affecting Performance
+
+Five parameters that make or break a RAG pipeline:
+
+| Parameter | Impact |
+|-----------|--------|
+| Embedding model selection | Shapes domain-specific understanding |
+| Top-K and chunk granularity | Balances context breadth vs. information density |
+| Vector database structure | Impacts retrieval speed and accuracy |
+| LLM size and temperature | Affects fidelity and expense |
+| Prompt design | Guides coherence and reliability |
+
+---
+
+## Evaluation Metrics Deep Dive
+
+### Retrieval Metrics
+
+**Context Precision** — Do relevant chunks rank at the top? If the most useful information is buried at position 8 out of 10, the LLM may never see it effectively.
+
+**Context Recall** — Does the retrieval capture all relevant information? Missing a critical chunk means the LLM generates an answer with incomplete context.
+
+**Relevancy** — Are chunk size and top-K tuned to minimize noise? Irrelevant chunks dilute the context and increase hallucination risk.
+
+### Generation Metrics
+
+**Answer Relevancy** — Does the response actually address the query? A well-written but off-topic answer is still a failure.
+
+**Faithfulness / Hallucination** — Does the LLM stick to the retrieved context? This is the most dangerous failure mode — confident, articulate answers that aren't supported by the source material.
+
+---
+
+## Implementation with Opik
+
+### Setup
+
+```python
+import os
+import pandas as pd
+from sentence_transformers import SentenceTransformer
+import chromadb
+import litellm
+from litellm import completion
+from litellm.integrations.opik.opik import OpikLogger
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from opik import track, Opik
+from opik.opik_context import get_current_span_data
+from opik.evaluation import evaluate, models
+from opik.evaluation.metrics import Hallucination, ContextRecall, ContextPrecision
+```
+
+Configure environment variables:
+
+```python
+os.environ["OPIK_API_KEY"] = "YOUR_API_OPIK_TOKEN"
+os.environ["OPIK_WORKSPACE"] = "YOUR_WORKSPACE_NAME"
+os.environ["OPIK_PROJECT_NAME"] = "YOUR_PROJECT_NAME"
+```
+
+### Monitoring LLM Calls with the @track Decorator
+
+The `@track` decorator automatically captures function inputs, outputs, and metadata for every call:
+
+```python
+opik_logger = OpikLogger()
+litellm.callbacks = [opik_logger]
+
+model_name = "gemini/gemini-2.0-flash-lite"
+
+@track
+def generate_response(query: str, context: str):
+    prompt = f"Query: {query}\nContext: {context}\nAnswer:"
+    response = completion(
+        model=model_name,
+        messages=[{"role": "user", "content": prompt}],
+        api_key=GEMINI_API_KEY,
+        metadata={
+            "opik": {
+                "current_span_data": get_current_span_data(),
+                "tags": ["insurance-rag-test"],
+            }
+        }
+    )
+    generated = response["choices"][0]["message"]["content"]
+    return generated
+
+search_results = semantic_search(query)
+context = "\n".join(search_results["documents"][0])
+response = generate_response(query, context)
+```
+
+Every call is now logged with:
+- Unique call ID and timestamp
+- Prompt content and response
+- Token usage and cost
+- Custom metadata tags
+
+### Creating Evaluation Datasets
+
+Build a benchmark dataset to evaluate against consistently:
+
+```python
+insurance_qa = pd.read_csv('/content/dataset/96_sample_insurance_qa.csv')
+
+examples = [
+    {
+        "input": q, "context": c, "expected_output": a
+    }
+    for q, c, a in zip(
+        insurance_qa["question"],
+        insurance_qa["context"],
+        insurance_qa["answer"]
+    )
+]
+
+client = Opik()
+dataset = client.get_or_create_dataset(name="Insurance-96-QA-Dataset")
+dataset.insert(examples)
+```
+
+### Running Evaluations
+
+The evaluation pipeline runs your RAG task against the dataset and scores it with multiple metrics simultaneously:
+
+```python
+def evaluation_task(x: dict) -> dict:
+    answer = generate_response(x["input"], x["context"])
+    return {
+        "input": x["input"],
+        "output": answer,
+        "context": x["context"],
+        "expected_output": x["expected_output"]
+    }
+
+experiment_config = {
+    "model_id": "gemini/gemini-2.0-flash-lite",
+    "embedding_model_id": "all-MiniLM-L6-v2"
+}
+
+model = models.LiteLLMChatModel(
+    model_name="gemini/gemini-2.0-flash-lite"
+)
+
+scoring_metrics = [
+    Hallucination(model=model),
+    ContextRecall(model=model),
+    ContextPrecision(model=model)
+]
+
+evaluate(
+    dataset=dataset,
+    task=evaluation_task,
+    scoring_metrics=scoring_metrics,
+    experiment_config=experiment_config,
+    task_threads=1,
+    nb_samples=9
+)
+```
+
+```
+┌──────────────────────────────────────────────────────────┐
+│              EVALUATION PIPELINE FLOW                     │
+│                                                           │
+│  ┌──────────┐    ┌──────────────┐    ┌────────────────┐  │
+│  │ Dataset  │    │  RAG Task    │    │  Scoring       │  │
+│  │ (96 QA   │───▶│  Function    │───▶│  Metrics       │  │
+│  │  pairs)  │    │  (retrieve + │    │  • Hallucinate │  │
+│  │          │    │   generate)  │    │  • Ctx Recall  │  │
+│  └──────────┘    └──────────────┘    │  • Ctx Precision│  │
+│                                      └───────┬────────┘  │
+│                                              │           │
+│                                              ▼           │
+│                                      ┌────────────────┐  │
+│                                      │  Opik Dashboard│  │
+│                                      │  • Scores      │  │
+│                                      │  • Comparisons │  │
+│                                      │  • Drill-down  │  │
+│                                      └────────────────┘  │
+└──────────────────────────────────────────────────────────┘
+```
+
+---
+
+## What the Dashboard Shows
+
+The Opik UI provides:
+
+- **Call monitoring** — Every function call with unique IDs, timing, token usage, and costs
+- **Metadata inspection** — Drill into individual calls to see full prompt/response pairs
+- **Experiment comparison** — Compare metric results across different configurations (swap embedding models, adjust chunk sizes, change LLMs)
+- **Individual sample details** — See exactly which questions the system got wrong and why
+
+---
+
+## Key Takeaways
+
+- **Monitor retrieval and generation separately** — a perfect retriever paired with a hallucinating LLM still fails; separate metrics catch this
+- **Context Precision matters more than you think** — retrieving the right chunks but ranking them poorly means the LLM never sees the best information
+- **Hallucination detection is non-negotiable** for production RAG — use LLM-as-a-Judge scoring to catch confident but unsupported answers
+- **Benchmark datasets enable regression testing** — when you change chunk sizes or embedding models, re-run the evaluation to measure impact
+- **Experiment configs track what changed** — logging model ID and embedding model alongside scores lets you compare configurations systematically
+- **The `@track` decorator is the lowest-effort win** — adding one line to your function gives you full observability for free
+
+*Based on the RAG-To-Know series by Cornellius Yudha Wijaya.*

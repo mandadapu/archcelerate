@@ -30,6 +30,8 @@ const caseStudyPaths: Record<string, string> = {
     'content/case-studies/deepmind-data-center-cooling.mdx',
   'expert-prompt-engineering':
     'content/case-studies/expert-prompt-engineering.mdx',
+  'rag-evaluation-monitoring':
+    'content/case-studies/rag-evaluation-monitoring.mdx',
 }
 
 interface Props {
