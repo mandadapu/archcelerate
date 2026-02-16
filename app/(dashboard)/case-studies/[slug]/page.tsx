@@ -24,6 +24,8 @@ const caseStudyPaths: Record<string, string> = {
     'content/case-studies/self-healing-credential-rotation.mdx',
   'resilient-rag-healthcare':
     'content/case-studies/resilient-rag-healthcare.mdx',
+  'simple-rag-semantic-search':
+    'content/case-studies/simple-rag-semantic-search.mdx',
 }
 
 interface Props {

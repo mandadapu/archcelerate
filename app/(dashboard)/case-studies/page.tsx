@@ -68,6 +68,13 @@ const caseStudies = [
       'How LangGraph orchestration, Kafka-backed streaming, and FHIR-aware context injection transform a simple retrieve-and-summarize pipeline into a production-grade AI engine',
     tags: ['RAG', 'LangGraph', 'Kafka', 'Healthcare'],
   },
+  {
+    slug: 'simple-rag-semantic-search',
+    title: 'Simple RAG with Contextual Semantic Search',
+    description:
+      'A step-by-step guide to building a functional RAG system using ChromaDB, Sentence Transformers, and LangChain — from PDF ingestion to semantic retrieval to LLM generation',
+    tags: ['RAG', 'Semantic Search', 'ChromaDB', 'Hands-On'],
+  },
 ]
 
 export default async function CaseStudiesPage(): Promise<JSX.Element | null> {
