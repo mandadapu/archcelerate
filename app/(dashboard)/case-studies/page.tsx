@@ -54,6 +54,13 @@ const caseStudies = [
       'How certificate pinning, credential isolation, and a hardened API proxy eliminate the biggest mobile security vulnerabilities when handling sensitive medical data',
     tags: ['Security', 'Healthcare', 'HIPAA', 'Mobile Architecture'],
   },
+  {
+    slug: 'self-healing-credential-rotation',
+    title: 'Self-Healing Credential Rotation for Healthcare AI',
+    description:
+      'How 90-day automatic rotation and threat-based on-demand rotation create a moving-target defense for API proxies handling sensitive medical data',
+    tags: ['Security', 'AWS', 'Credential Rotation', 'Healthcare'],
+  },
 ]
 
 export default async function CaseStudiesPage(): Promise<JSX.Element | null> {

@@ -20,6 +20,8 @@ const caseStudyPaths: Record<string, string> = {
     'content/case-studies/ai-medication-adherence.mdx',
   'zero-exposure-proxy-healthcare':
     'content/case-studies/zero-exposure-proxy-healthcare.mdx',
+  'self-healing-credential-rotation':
+    'content/case-studies/self-healing-credential-rotation.mdx',
 }
 
 interface Props {
