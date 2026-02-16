@@ -1,0 +1,71 @@
+---
+title: 'Resilient RAG for Healthcare AI'
+description: 'How LangGraph orchestration, Kafka-backed streaming, and FHIR-aware context injection transform a simple retrieve-and-summarize pipeline into a production-grade AI engine'
+---
+
+# Resilient RAG for Healthcare AI
+
+*Moving from traditional fixed-size chunking to LangGraph-driven orchestration and Kafka-backed streaming — a production-grade AI engine for regulated healthcare data.*
+
+---
+
+## The Core Idea
+
+A RAG pipeline handling structured HL7/FHIR data and unstructured sensor telemetry isn't a simple "retrieve and summarize" script. It's a sophisticated, multi-agent orchestration designed for high-velocity, regulated environments. The shift from fixed-size chunking to event-driven, self-correcting retrieval marks the difference between a demo and a production system.
+
+---
+
+## 1. The Orchestration Logic: LangGraph vs. CrewAI
+
+The choice between orchestration frameworks depends on the deterministic nature of the healthcare task:
+
+**LangGraph for Clinical Workflows:** Use LangGraph for tasks requiring high precision and state management — for example, checking if a medication ingestion event exists in AWS HealthLake before answering a question. It allows for cyclic graphs where an agent can loop back to a "Correction" node if the FHIR validator fails.
+
+**CrewAI for Research and Synthesis:** Leverage CrewAI when the task is more collaborative and open-ended — such as a "Medical Researcher Agent" and a "Summary Agent" working together to analyze long-term adherence trends across a patient's history.
+
+| Framework | Best For | Key Strength |
+|-----------|----------|-------------|
+| LangGraph | Clinical workflows, FHIR validation | Cyclic graphs, state management, deterministic control |
+| CrewAI | Research synthesis, trend analysis | Collaborative agents, open-ended exploration |
+
+---
+
+## 2. The Data Flow: Kafka as the "Nervous System"
+
+Instead of a request-response bottleneck, Kafka decouples data ingestion from AI processing:
+
+**Event-Driven RAG:** When the mobile app (via the proxy) pushes a new FHIR Observation to the backend, Kafka broadcasts this event.
+
+**Real-time Vectorization:** A consumer service picks up the event, processes it through the embedding model, and updates the Vector Database (Pinecone or Weaviate) in real-time.
+
+**Latency Mitigation:** By using Kafka, the RAG pipeline can perform "Pre-computation." The AI engine doesn't wait for a user query to start understanding the data — the context is already indexed and ready by the time the question is asked.
+
+---
+
+## 3. Production Refinement: Hybrid Search and Agentic Correctives
+
+Fixed-size chunking leads to "context fragmentation" in clinical data. The refined logic uses:
+
+**Hybrid Search:** Combining Keyword Search (BM25) for specific medical terms (like drug names or LOINC codes) with Vector Search (Semantic) for broader health queries.
+
+**Self-Correction Loop:** Within LangGraph, if the "Retriever" node returns low-relevance scores, the graph triggers a "Query Reformulation" node to broaden the search parameters before passing data to the LLM.
+
+---
+
+## 4. HL7/FHIR Context Injection
+
+This is where the RAG logic becomes "Healthcare Aware":
+
+**System Prompting:** The agent is instructed to only use data wrapped in specific FHIR resource types.
+
+**Metadata Filtering:** Using the `meta.tag` (OrgID/ClinicID) injected at the server side to ensure the RAG engine never "hallucinates" data from a different patient or organization — this is **multi-tenancy isolation** at the retrieval layer.
+
+---
+
+## Key Takeaways
+
+- **Match orchestration to task type** — deterministic clinical workflows need LangGraph's cyclic graphs; open-ended research tasks benefit from CrewAI's collaborative agents
+- **Decouple ingestion from processing** — Kafka-backed event-driven RAG eliminates the request-response bottleneck and enables pre-computation
+- **Hybrid search beats pure vector search** in healthcare — BM25 catches exact medical terms (LOINC codes, drug names) that semantic search can miss
+- **Self-correction loops** prevent low-relevance retrievals from reaching the LLM — query reformulation is cheaper than hallucination cleanup
+- **Multi-tenancy isolation at the retrieval layer** (FHIR `meta.tag` filtering) is non-negotiable in healthcare — without it, the RAG engine can leak data across patients or organizations

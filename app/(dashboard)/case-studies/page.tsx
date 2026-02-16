@@ -61,6 +61,13 @@ const caseStudies = [
       'How 90-day automatic rotation and threat-based on-demand rotation create a moving-target defense for API proxies handling sensitive medical data',
     tags: ['Security', 'AWS', 'Credential Rotation', 'Healthcare'],
   },
+  {
+    slug: 'resilient-rag-healthcare',
+    title: 'Resilient RAG for Healthcare AI',
+    description:
+      'How LangGraph orchestration, Kafka-backed streaming, and FHIR-aware context injection transform a simple retrieve-and-summarize pipeline into a production-grade AI engine',
+    tags: ['RAG', 'LangGraph', 'Kafka', 'Healthcare'],
+  },
 ]
 
 export default async function CaseStudiesPage(): Promise<JSX.Element | null> {
