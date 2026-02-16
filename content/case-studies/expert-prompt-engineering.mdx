@@ -1,0 +1,218 @@
+---
+title: 'Expert-Level Prompt Engineering Techniques'
+description: 'Seven production-tested techniques for getting better LLM results — from zero-shot and chain-of-thought to prompt chaining and cross-model comparison'
+---
+
+# Expert-Level Prompt Engineering Techniques
+
+*Seven techniques that trade fine-tuning's high cost for flexible, text-based control over LLM outputs.*
+
+---
+
+## Why Prompt Engineering Matters
+
+Prompt engineering involves crafting input text to guide large language models without additional weight updates. It is far faster and more resource-friendly than fine-tuning while preserving the model's broad knowledge. The techniques below represent the progression from basic to advanced — each one compounds on the previous.
+
+---
+
+## 1. Zero-Shot and Few-Shot Prompting
+
+**Zero-shot** provides only task instructions with no examples:
+
+```
+Classify the sentiment of the following review:
+"I absolutely love this product!"
+Sentiment:
+```
+
+**Few-shot** includes example input-output pairs demonstrating the desired behavior:
+
+```
+Classify the sentiment of the following reviews:
+Review: "The product broke after one use."
+Sentiment: Negative
+Review: "Excellent quality and fast shipping."
+Sentiment: Positive
+Review: "Not what I expected."
+Sentiment: Negative
+Review: "Great value for the price."
+Sentiment:
+```
+
+**Key insight:** "Well-chosen examples can even replace lengthy written instructions" — Google's Gemini guide recommends always including examples when possible.
+
+```
+┌──────────────────────────────────────────────────────┐
+│                ZERO-SHOT vs FEW-SHOT                 │
+│                                                      │
+│  Zero-Shot:  Instructions only ──▶ LLM ──▶ Output   │
+│                                                      │
+│  Few-Shot:   Instructions + 3-10 examples            │
+│              ──▶ LLM ──▶ More accurate output        │
+│                                                      │
+│  Rule of thumb: Start with few-shot. Fall back to    │
+│  zero-shot only if examples don't fit the context.   │
+└──────────────────────────────────────────────────────┘
+```
+
+---
+
+## 2. Chain-of-Thought (CoT) Prompting
+
+This technique prompts models to generate intermediate reasoning steps before arriving at an answer. Research by Wei et al. (2022) showed that providing exemplar reasoning chains significantly improves performance on math and logic problems.
+
+The simplest version is zero-shot CoT — just add "Let's think step by step":
+
+```
+Question: If a train travels at 60 miles per hour for 2.5 hours,
+how far does it travel?
+Let's think step by step:
+```
+
+**Self-consistency** enhances reliability by sampling multiple CoT outputs and selecting the majority answer:
+
+```
+┌────────────────────────────────────────────────┐
+│           SELF-CONSISTENCY WITH CoT            │
+│                                                │
+│           ┌──── CoT Path A ──── Answer: 150   │
+│           │                                    │
+│  Query ───┼──── CoT Path B ──── Answer: 150   │
+│           │                                    │
+│           └──── CoT Path C ──── Answer: 160   │
+│                                                │
+│  Majority vote: 150 (2/3 agreement)            │
+│  Final answer: 150 miles                       │
+└────────────────────────────────────────────────┘
+```
+
+---
+
+## 3. Role and System Prompts
+
+Assigning personas or system-level instructions produces more coherent, task-focused outputs.
+
+```
+You are a cybersecurity expert. List the top 3 OWASP API
+security risks in bullet points.
+```
+
+In the OpenAI API, system messages control behavior at a foundational level:
+
+```python
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[
+        {"role": "system", "content": "Assistant is a large "
+         "language model trained by OpenAI."},
+        {"role": "user", "content": "Who were the founders "
+         "of Microsoft?"}
+    ]
+)
+```
+
+Defining a persona activates relevant knowledge patterns from the model's training data and results in more coherent, task-focused output.
+
+---
+
+## 4. Structured Output Formatting
+
+Explicitly request specific formats — JSON, XML, bullet lists, or tables — for downstream parsing reliability.
+
+```
+Text: "John Doe, 35, software engineer in NY, joined in 2015."
+Format as JSON:
+```
+
+AWS's Claude guide recommends requesting JSON format when downstream parsing is needed. This is especially important for agentic workflows where the LLM's output feeds directly into code.
+
+---
+
+## 5. Prompt Chaining
+
+Breaking complex tasks into sequential subtasks improves accuracy and clarity. Each sub-prompt remains simpler, allowing isolated error correction.
+
+```
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│  Stage 1:    │    │  Stage 2:    │    │  Stage 3:    │
+│  Extract     │───▶│  Analyze     │───▶│  Format      │
+│  key facts   │    │  those facts │    │  final report│
+└──────────────┘    └──────────────┘    └──────────────┘
+```
+
+**Self-correction chains** feed the model's answer back with a revision prompt: *"Review your answer and fix any errors."* This creates an iterative refinement loop without human intervention.
+
+---
+
+## 6. Psychological and Linguistic Priming
+
+Using specific language cues shapes the LLM's internal context. Mentioning role, tone, or audience activates different knowledge areas and rhetorical styles from the model's training data.
+
+```
+You are a Chief Information Security Officer (CISO) at a
+fintech startup. Provide a risk assessment for storing
+customer data in an on-premises database with an academic
+tone suitable for a scientific paper to a high school
+student with no background in data science.
+```
+
+This single prompt combines three priming dimensions:
+
+| Dimension | Cue | Effect |
+|-----------|-----|--------|
+| Role | CISO at fintech startup | Activates security and compliance knowledge |
+| Tone | Academic, suitable for scientific paper | Produces structured, evidence-based language |
+| Audience | High school student, no data science background | Simplifies jargon, adds explanations |
+
+---
+
+## 7. Compare Across Multiple LLMs
+
+Different models (GPT-4, Claude, Gemini, LLaMA) have distinct strengths, training data, output styles, and policy filters. Comparing outputs across models:
+
+- **Identifies the best fit** for specific tasks
+- **Reveals gaps or biases** in individual model responses
+- **Spots hallucinations faster** through cross-validation
+- **Exposes JSON parsing tendencies** and format adherence differences
+
+This composite approach refines final prompts for optimal results. A prompt that works well on Claude may need adjustment for GPT-4, and vice versa.
+
+---
+
+## Putting It All Together
+
+These seven techniques compound. A production prompt often combines several:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│              COMBINED PROMPT ARCHITECTURE                │
+│                                                         │
+│  System: Role prompt (Technique 3)                      │
+│    "You are a senior data analyst..."                   │
+│                                                         │
+│  User: Few-shot examples (Technique 1)                  │
+│    + Chain-of-thought instruction (Technique 2)         │
+│    + Structured output format (Technique 4)             │
+│    "Given these examples... think step by step...       │
+│     return JSON with fields: ..."                       │
+│                                                         │
+│  Pipeline: Chained across stages (Technique 5)          │
+│    Extract → Analyze → Format                           │
+│                                                         │
+│  Validation: Cross-model comparison (Technique 7)       │
+│    Run on Claude + GPT-4 → compare outputs              │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Key Takeaways
+
+- **Start with few-shot over zero-shot** — well-chosen examples often outperform lengthy instructions
+- **Chain-of-thought is free accuracy** — adding "Let's think step by step" costs nothing but consistently improves reasoning tasks
+- **Role prompts are underrated** — a single persona sentence can dramatically shift output quality and focus
+- **Request structured output explicitly** — never hope the LLM will return parseable JSON; tell it to
+- **Prompt chaining beats monolithic prompts** — break complex tasks into stages for easier debugging and higher accuracy
+- **Always cross-validate on multiple models** — no single LLM is best at everything; comparing reveals blind spots
+
+*Based on the prompt engineering series by Cornellius Yudha Wijaya.*

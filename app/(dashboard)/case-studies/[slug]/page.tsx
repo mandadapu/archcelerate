@@ -28,6 +28,8 @@ const caseStudyPaths: Record<string, string> = {
     'content/case-studies/simple-rag-semantic-search.mdx',
   'deepmind-data-center-cooling':
     'content/case-studies/deepmind-data-center-cooling.mdx',
+  'expert-prompt-engineering':
+    'content/case-studies/expert-prompt-engineering.mdx',
 }
 
 interface Props {
