@@ -2,7 +2,7 @@
 
 > **Status**: Phase 1 Complete ✅ | Phase 2 In Progress 🚧
 > **Last Updated**: February 2026
-> **Live**: [archcelerate.com](https://www.archcelerate.com/)
+> **Live**: [archcelerate.com](https://archcelerate.com)
 
 ## Mission
 
