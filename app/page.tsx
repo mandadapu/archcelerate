@@ -55,6 +55,12 @@ export default function Home() {
 
     const error = searchParams.get('error')
     if (error) {
+      // If user is already authenticated, ignore OAuth errors and clean up URL
+      if (session) {
+        window.history.replaceState({}, '', '/')
+        return
+      }
+
       const errorMessages: Record<string, string> = {
         'OAuthAccountNotLinked': 'This email is already registered. Please sign in with your original provider.',
         'OAuthSignin': 'Error signing in with OAuth provider.',
@@ -72,7 +78,7 @@ export default function Home() {
         window.history.replaceState({}, '', '/')
       }, 5000)
     }
-  }, [searchParams])
+  }, [searchParams, session])
 
   return (
     <TooltipProvider delayDuration={200}>
