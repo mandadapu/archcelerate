@@ -2,7 +2,7 @@
 
 Transform from Software Engineer to AI Product Builder in 12 weeks through hands-on project-based learning.
 
-**Live at [archcelerate.com](https://www.archcelerate.com/)**
+**Live at [archcelerate.com](https://archcelerate.com)**
 
 ## 🎓 Curriculum Status: ✅ Complete
 
@@ -14,7 +14,7 @@ Transform from Software Engineer to AI Product Builder in 12 weeks through hands
 - **4 enhanced weeks** with comprehensive technical depth (4,000+ lines)
 - **Hands-on exercises** with runnable code
 
-Start learning today at [archcelerate.com](https://www.archcelerate.com/)
+Start learning today at [archcelerate.com](https://archcelerate.com)
 
 ## 🏗️ Tech Stack
 
