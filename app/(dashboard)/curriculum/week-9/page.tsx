@@ -4,15 +4,13 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import {
-  CheckCircle2,
-  Circle,
   Clock,
   ChevronRight,
   ArrowRight
 } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { LearningObjectives } from './components/LearningObjectives'
+import { WeekContentTabs } from '@/components/curriculum/WeekContentTabs'
 
 export const metadata: Metadata = {
   title: 'Week 9: Observability + Production',
@@ -91,124 +89,83 @@ export default async function Week9Page() {
         {/* Technical Milestones - Premium Collapsible */}
         <LearningObjectives objectives={objectives} />
 
-        {/* Progress Overview */}
-        {progress && (
-          <Card className="bg-red-50 dark:bg-red-950 border-red-200">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Your Progress</CardTitle>
-                <div className="text-sm text-muted-foreground">
-                  {progress.conceptsCompleted} / {progress.conceptsTotal} concepts
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  {progress.conceptsCompleted === progress.conceptsTotal ? (
-                    <CheckCircle2 className="h-5 w-5 text-green-600" />
-                  ) : (
-                    <Circle className="h-5 w-5 text-gray-400" />
-                  )}
-                  <span>Concepts</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {progress.labCompleted ? (
-                    <CheckCircle2 className="h-5 w-5 text-green-600" />
-                  ) : (
-                    <Circle className="h-5 w-5 text-gray-400" />
-                  )}
-                  <span>Lab</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {progress.projectCompleted ? (
-                    <CheckCircle2 className="h-5 w-5 text-green-600" />
-                  ) : (
-                    <Circle className="h-5 w-5 text-gray-400" />
-                  )}
-                  <span>Project</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Concepts */}
-        <div>
-          <h2 className="text-2xl font-bold mb-4">Concepts</h2>
-          <div className="grid gap-4">
-            {concepts.map((concept, i) => (
+        {/* Concepts / Lab / Project Tabs */}
+        <WeekContentTabs
+          conceptsCompleted={progress?.conceptsCompleted ?? 0}
+          conceptsTotal={progress?.conceptsTotal ?? concepts.length}
+          labCompleted={progress?.labCompleted ?? false}
+          projectCompleted={progress?.projectCompleted ?? false}
+          hasLab={!!lab}
+          hasProject={!!project}
+          conceptsContent={
+            <div className="grid gap-4">
+              {concepts.map((concept, i) => (
+                <Link
+                  key={concept.id}
+                  href={`/curriculum/week-9/concepts/${concept.slug}`}
+                  className="group border rounded-lg p-4 hover:border-red-600 transition-colors bg-red-50/50 dark:bg-red-950/50"
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1">
+                        Concept {i + 1}
+                      </div>
+                      <h3 className="font-semibold text-lg">{concept.title}</h3>
+                      {concept.estimatedMinutes && (
+                        <div className="flex items-center gap-1 mt-2 text-sm text-muted-foreground">
+                          <Clock className="h-4 w-4" />
+                          <span>{concept.estimatedMinutes} minutes</span>
+                        </div>
+                      )}
+                    </div>
+                    <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-red-600 group-hover:translate-x-0.5 transition-all" />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          }
+          labContent={
+            lab ? (
               <Link
-                key={concept.id}
-                href={`/curriculum/week-9/concepts/${concept.slug}`}
-                className="group border rounded-lg p-4 hover:border-red-600 transition-colors bg-red-50/50 dark:bg-red-950/50"
+                href={`/curriculum/week-9/lab/${lab.slug}`}
+                className="group border rounded-lg p-6 hover:border-purple-400 transition-colors block bg-gradient-to-r from-purple-50 to-cyan-50 dark:from-purple-950 dark:to-cyan-950"
+              >
+                <h3 className="font-semibold text-xl mb-2">{lab.title}</h3>
+                <p className="text-muted-foreground">{lab.description}</p>
+                <div className="mt-4 text-sm text-muted-foreground">
+                  {(lab.exercises as any[]).length} exercises
+                </div>
+              </Link>
+            ) : null
+          }
+          projectContent={
+            project ? (
+              <Link
+                href={`/curriculum/week-9/project/${project.slug}`}
+                className="group border rounded-lg p-6 hover:border-purple-400 transition-colors block bg-gradient-to-br from-purple-50 to-cyan-50 dark:from-purple-950 dark:to-cyan-950"
               >
                 <div className="flex items-start justify-between">
                   <div>
-                    <div className="text-sm text-muted-foreground mb-1">
-                      Concept {i + 1}
-                    </div>
-                    <h3 className="font-semibold text-lg">{concept.title}</h3>
-                    {concept.estimatedMinutes && (
-                      <div className="flex items-center gap-1 mt-2 text-sm text-muted-foreground">
-                        <Clock className="h-4 w-4" />
-                        <span>{concept.estimatedMinutes} minutes</span>
+                    <h3 className="font-semibold text-xl mb-2">{project.title}</h3>
+                    <p className="text-muted-foreground">{project.description}</p>
+                    <div className="flex items-center gap-4 mt-4 text-sm text-muted-foreground">
+                      {project.estimatedHours && (
+                        <div className="flex items-center gap-1">
+                          <Clock className="h-4 w-4" />
+                          <span>{project.estimatedHours} hours</span>
+                        </div>
+                      )}
+                      <div>
+                        {(project.requirements as string[]).length} requirements
                       </div>
-                    )}
+                    </div>
                   </div>
-                  <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-red-600 group-hover:translate-x-0.5 transition-all" />
+                  <ChevronRight className="h-6 w-6 text-muted-foreground group-hover:text-purple-600 group-hover:translate-x-0.5 transition-all" />
                 </div>
               </Link>
-            ))}
-          </div>
-        </div>
-
-        {/* Lab */}
-        {lab && (
-          <div>
-            <h2 className="text-2xl font-bold mb-4">Lab</h2>
-            <Link
-              href={`/curriculum/week-9/lab/${lab.slug}`}
-              className="group border rounded-lg p-6 hover:border-purple-400 transition-colors block bg-gradient-to-r from-purple-50 to-cyan-50 dark:from-purple-950 dark:to-cyan-950"
-            >
-              <h3 className="font-semibold text-xl mb-2">{lab.title}</h3>
-              <p className="text-muted-foreground">{lab.description}</p>
-              <div className="mt-4 text-sm text-muted-foreground">
-                {(lab.exercises as any[]).length} exercises
-              </div>
-            </Link>
-          </div>
-        )}
-
-        {/* Project */}
-        {project && (
-          <div>
-            <h2 className="text-2xl font-bold mb-4">Project</h2>
-            <Link
-              href={`/curriculum/week-9/project/${project.slug}`}
-              className="group border rounded-lg p-6 hover:border-purple-400 transition-colors block bg-gradient-to-br from-purple-50 to-cyan-50 dark:from-purple-950 dark:to-cyan-950"
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="font-semibold text-xl mb-2">{project.title}</h3>
-                  <p className="text-muted-foreground">{project.description}</p>
-                  <div className="flex items-center gap-4 mt-4 text-sm text-muted-foreground">
-                    {project.estimatedHours && (
-                      <div className="flex items-center gap-1">
-                        <Clock className="h-4 w-4" />
-                        <span>{project.estimatedHours} hours</span>
-                      </div>
-                    )}
-                    <div>
-                      {(project.requirements as string[]).length} requirements
-                    </div>
-                  </div>
-                </div>
-                <ChevronRight className="h-6 w-6 text-muted-foreground group-hover:text-purple-600 group-hover:translate-x-0.5 transition-all" />
-              </div>
-            </Link>
-          </div>
-        )}
+            ) : null
+          }
+        />
         {/* Next Week Button */}
         <div className="border-t pt-8 mt-8">
           <div className="flex justify-end">
