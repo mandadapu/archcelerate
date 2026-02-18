@@ -1,6 +1,6 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/db'
 import { analyzeDiagnosis, DiagnosisAnalysisInput } from '@/lib/ai/client'
 import { quizQuestions } from '@/lib/quiz/questions'
 import { QuizAnswer } from '@/types/diagnosis'
