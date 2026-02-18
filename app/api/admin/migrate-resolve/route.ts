@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import { validateAdminAuth } from '@/lib/admin-auth'
 
 const execFileAsync = promisify(execFile)
 
@@ -10,6 +11,9 @@ const ALLOWED_ACTIONS = ['applied', 'rolled-back'] as const
 const MIGRATION_NAME_REGEX = /^\d{14}_[a-z0-9_]+$/
 
 export async function POST(req: NextRequest) {
+  const authError = validateAdminAuth(req)
+  if (authError) return authError
+
   try {
     const body = await req.json()
     const { migration, action } = body
@@ -58,8 +62,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       message: `Migration ${migration} marked as ${action}`,
-      output: stdout,
-      errors: stderr || null
     })
   } catch (error) {
     console.error('Resolve error:', error)
@@ -68,8 +70,6 @@ export async function POST(req: NextRequest) {
       {
         success: false,
         error: 'Migration resolve failed',
-        details: error instanceof Error ? error.message : 'Unknown error',
-        stderr: error instanceof Error && 'stderr' in error ? (error as Record<string, unknown>).stderr : null
       },
       { status: 500 }
     )

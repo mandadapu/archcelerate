@@ -1,9 +1,13 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { validateAdminAuth } from '@/lib/admin-auth'
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const authError = validateAdminAuth(req)
+  if (authError) return authError
+
   try {
-    console.log('🔧 Applying schema fixes...')
+    console.log('Applying schema fixes...')
 
     // Fix 1: Add description column to Concept if missing
     try {
@@ -11,9 +15,9 @@ export async function POST() {
         ALTER TABLE "Concept"
         ADD COLUMN IF NOT EXISTS "description" TEXT;
       `)
-      console.log('✅ Added Concept.description column')
+      console.log('Added Concept.description column')
     } catch (error) {
-      console.log('ℹ️  Concept.description may already exist:', error)
+      console.log('Concept.description may already exist:', error)
     }
 
     // Fix 2: Mark failed migration as applied
@@ -26,9 +30,9 @@ export async function POST() {
         WHERE migration_name = '20260204063249_add_difficulty_level_to_diagnosis'
         AND finished_at IS NULL;
       `)
-      console.log('✅ Marked failed migration as applied')
+      console.log('Marked failed migration as applied')
     } catch (error) {
-      console.log('ℹ️  Migration may already be resolved:', error)
+      console.log('Migration may already be resolved:', error)
     }
 
     return NextResponse.json({
@@ -36,13 +40,12 @@ export async function POST() {
       message: 'Schema fixes applied successfully'
     })
   } catch (error) {
-    console.error('❌ Schema fix error:', error)
+    console.error('Schema fix error:', error)
 
     return NextResponse.json(
       {
         success: false,
         error: 'Schema fix failed',
-        details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
     )
