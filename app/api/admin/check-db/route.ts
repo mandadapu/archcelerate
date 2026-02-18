@@ -1,9 +1,11 @@
-import { NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/db'
+import { validateAdminAuth } from '@/lib/admin-auth'
 
-const prisma = new PrismaClient()
+export async function GET(req: NextRequest) {
+  const authError = validateAdminAuth(req)
+  if (authError) return authError
 
-export async function GET() {
   try {
     const weeks = await prisma.curriculumWeek.findMany({
       orderBy: { weekNumber: 'asc' },
@@ -24,10 +26,8 @@ export async function GET() {
     return NextResponse.json({ weeks })
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Database check failed' },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }

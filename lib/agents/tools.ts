@@ -87,36 +87,118 @@ const webSearchTool: Tool = {
   }
 }
 
+/**
+ * SSRF protection: block requests to private/internal networks.
+ * Returns an error message if the URL targets a blocked address, or null if safe.
+ */
+function checkSsrf(urlString: string): string | null {
+  let parsed: URL
+  try {
+    parsed = new URL(urlString)
+  } catch {
+    return 'Error: Invalid URL format'
+  }
+
+  // Only allow http and https
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return `Error: Protocol "${parsed.protocol}" is not allowed`
+  }
+
+  const hostname = parsed.hostname.toLowerCase()
+
+  // Block localhost variants
+  if (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === '0.0.0.0' ||
+    hostname.endsWith('.localhost')
+  ) {
+    return 'Error: Requests to localhost are not allowed'
+  }
+
+  // Block private IP ranges (RFC 1918, link-local, cloud metadata)
+  const ipMatch = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (ipMatch) {
+    const [, a, b] = ipMatch.map(Number)
+    if (
+      a === 10 ||                          // 10.0.0.0/8
+      (a === 172 && b >= 16 && b <= 31) || // 172.16.0.0/12
+      (a === 192 && b === 168) ||          // 192.168.0.0/16
+      (a === 169 && b === 254) ||          // 169.254.0.0/16 (link-local / cloud metadata)
+      a === 0 ||                           // 0.0.0.0/8
+      a >= 224                             // multicast + reserved
+    ) {
+      return 'Error: Requests to private/internal IP addresses are not allowed'
+    }
+  }
+
+  // Block cloud metadata endpoints by hostname
+  if (
+    hostname === 'metadata.google.internal' ||
+    hostname === 'metadata.google.com'
+  ) {
+    return 'Error: Requests to cloud metadata endpoints are not allowed'
+  }
+
+  return null
+}
+
 // 2. URL Fetch Tool
 const urlFetchTool: Tool = {
   name: 'url_fetch',
-  description: 'Fetch and extract text content from a URL',
+  description: 'Fetch and extract text content from a public URL. Cannot access private/internal networks.',
   parameters: {
     type: 'object',
     properties: {
       url: {
         type: 'string',
-        description: 'The URL to fetch'
+        description: 'The URL to fetch (must be a public URL)'
       }
     },
     required: ['url']
   },
   execute: async (params) => {
     try {
+      // SSRF protection: block private/internal addresses
+      const ssrfError = checkSsrf(params.url)
+      if (ssrfError) return ssrfError
+
       const response = await fetch(params.url, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; AIProductBuilder/1.0)'
-        }
+        },
+        redirect: 'manual', // Don't auto-follow redirects (prevents SSRF via redirect)
       })
+
+      // Handle redirects safely
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location')
+        if (location) {
+          const redirectError = checkSsrf(
+            location.startsWith('http') ? location : new URL(location, params.url).toString()
+          )
+          if (redirectError) return 'Error: Redirect target is not allowed (private/internal address)'
+          // Follow one level of safe redirect
+          const redirectResponse = await fetch(
+            location.startsWith('http') ? location : new URL(location, params.url).toString(),
+            {
+              headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AIProductBuilder/1.0)' },
+              redirect: 'manual',
+            }
+          )
+          if (!redirectResponse.ok) return `Error: Failed to fetch redirected URL (${redirectResponse.status})`
+          const html = await redirectResponse.text()
+          return extractTextFromHtml(html).substring(0, 5000) || 'No text content found'
+        }
+      }
 
       if (!response.ok) {
         return `Error: Failed to fetch URL (${response.status})`
       }
 
       const html = await response.text()
-      // Text extraction - strip HTML tags using indexOf-based approach
-      // to avoid regex-based HTML filtering issues (CodeQL alerts)
-      const text = extractTextFromHtml(html).substring(0, 5000) // Limit to 5000 chars
+      const text = extractTextFromHtml(html).substring(0, 5000)
 
       return text || 'No text content found'
     } catch (error) {
