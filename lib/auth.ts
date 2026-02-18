@@ -4,7 +4,7 @@ import FacebookProvider from 'next-auth/providers/facebook'
 import LinkedInProvider from 'next-auth/providers/linkedin'
 import GitHubProvider from 'next-auth/providers/github'
 import { PrismaAdapter } from '@auth/prisma-adapter'
-import { prisma } from './prisma'
+import { prisma } from './db'
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as any,
