@@ -1,8 +1,8 @@
 import { getDashboardMetrics, getUserActivity, getRecentUsers } from '../metrics'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/db'
 
 // Mock Prisma
-jest.mock('@/lib/prisma', () => ({
+jest.mock('@/lib/db', () => ({
   prisma: {
     user: {
       count: jest.fn(),

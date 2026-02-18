@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/db'
 import { startOfWeek, endOfWeek, subWeeks } from 'date-fns'
 
 export async function getDashboardMetrics() {
