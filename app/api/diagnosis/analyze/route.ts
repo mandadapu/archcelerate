@@ -63,48 +63,46 @@ export async function POST(request: Request) {
     // Analyze with Claude AI
     const analysis = await analyzeDiagnosis(analysisInput)
 
-    // Store results in database (including questions for review)
-    await prisma.skillDiagnosis.upsert({
-      where: {
-        userId: session.user.id,
-      },
-      update: {
-        difficultyLevel: level,
-        quizAnswers: answers as any,
-        quizQuestions: questionsToUse as any,
-        skillScores: analysis.skillScores as any,
-        recommendedPath: analysis.recommendedPath,
-        completedAt: new Date(),
-      },
-      create: {
-        userId: session.user.id,
-        difficultyLevel: level,
-        quizAnswers: answers as any,
-        quizQuestions: questionsToUse as any,
-        skillScores: analysis.skillScores as any,
-        recommendedPath: analysis.recommendedPath,
-      },
-    })
-
-    // Update user's diagnosis_completed flag
-    await prisma.user.update({
-      where: { id: session.user.id },
-      data: { diagnosisCompleted: true },
-    })
-
-    // Log event
-    await prisma.learningEvent.create({
-      data: {
-        userId: session.user.id,
-        eventType: 'diagnosis.completed',
-        eventData: {
+    // Store results, update user flag, and log event in parallel
+    await Promise.all([
+      prisma.skillDiagnosis.upsert({
+        where: {
+          userId: session.user.id,
+        },
+        update: {
           difficultyLevel: level,
-          score: answers.filter(a => a.isCorrect).length,
-          total: questionsToUse.length,
-          recommended_path: analysis.recommendedPath,
-        } as any,
-      },
-    })
+          quizAnswers: answers as any,
+          quizQuestions: questionsToUse as any,
+          skillScores: analysis.skillScores as any,
+          recommendedPath: analysis.recommendedPath,
+          completedAt: new Date(),
+        },
+        create: {
+          userId: session.user.id,
+          difficultyLevel: level,
+          quizAnswers: answers as any,
+          quizQuestions: questionsToUse as any,
+          skillScores: analysis.skillScores as any,
+          recommendedPath: analysis.recommendedPath,
+        },
+      }),
+      prisma.user.update({
+        where: { id: session.user.id },
+        data: { diagnosisCompleted: true },
+      }),
+      prisma.learningEvent.create({
+        data: {
+          userId: session.user.id,
+          eventType: 'diagnosis.completed',
+          eventData: {
+            difficultyLevel: level,
+            score: answers.filter(a => a.isCorrect).length,
+            total: questionsToUse.length,
+            recommended_path: analysis.recommendedPath,
+          } as any,
+        },
+      }),
+    ])
 
     return NextResponse.json({
       userId: session.user.id,

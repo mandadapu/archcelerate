@@ -11,18 +11,19 @@ export default async function SecurityAccessPage() {
     redirect('/login')
   }
 
-  const events = await prisma.learningEvent.findMany({
-    where: {
-      userId: session.user.id,
-      eventType: { in: ['session.login', 'session.logout'] },
-    },
-    orderBy: { occurredAt: 'desc' },
-    take: 20,
-  })
-
-  const activeSessions = await prisma.session.count({
-    where: { userId: session.user.id },
-  })
+  const [events, activeSessions] = await Promise.all([
+    prisma.learningEvent.findMany({
+      where: {
+        userId: session.user.id,
+        eventType: { in: ['session.login', 'session.logout'] },
+      },
+      orderBy: { occurredAt: 'desc' },
+      take: 20,
+    }),
+    prisma.session.count({
+      where: { userId: session.user.id },
+    }),
+  ])
 
   const serializedEvents = events.map((e) => ({
     id: e.id,

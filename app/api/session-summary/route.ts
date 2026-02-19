@@ -22,10 +22,21 @@ export async function GET() {
 
     const identity = session.user.email || 'UNKNOWN'
 
-    // Fetch skill diagnosis scores
-    const diagnosis = await prisma.skillDiagnosis.findUnique({
-      where: { userId: session.user.id },
-    })
+    // Fetch diagnosis, week progress, and study time in parallel
+    const [diagnosis, weekProgress, timeAgg] = await Promise.all([
+      prisma.skillDiagnosis.findUnique({
+        where: { userId: session.user.id },
+      }),
+      prisma.userWeekProgress.findMany({
+        where: { userId: session.user.id },
+        include: { week: { select: { weekNumber: true, title: true } } },
+        orderBy: { week: { weekNumber: 'desc' } },
+      }),
+      prisma.conceptCompletion.aggregate({
+        where: { userId: session.user.id },
+        _sum: { timeSpentSeconds: true },
+      }),
+    ])
 
     let topSkills: { name: string; score: number }[] = []
     if (diagnosis?.skillScores) {
@@ -39,23 +50,11 @@ export async function GET() {
         .slice(0, 2)
     }
 
-    // Fetch week progress — labs completed and highest week
-    const weekProgress = await prisma.userWeekProgress.findMany({
-      where: { userId: session.user.id },
-      include: { week: { select: { weekNumber: true, title: true } } },
-      orderBy: { week: { weekNumber: 'desc' } },
-    })
-
     const labsCompleted = weekProgress.filter((wp) => wp.labCompleted).length
     const highestWeek = weekProgress.length > 0
       ? { number: weekProgress[0].week.weekNumber, title: weekProgress[0].week.title }
       : null
 
-    // Fetch cumulative study time
-    const timeAgg = await prisma.conceptCompletion.aggregate({
-      where: { userId: session.user.id },
-      _sum: { timeSpentSeconds: true },
-    })
     const totalTimeHours = Math.floor((timeAgg._sum.timeSpentSeconds || 0) / 3600)
 
     return NextResponse.json({

@@ -3,7 +3,7 @@ import { Metadata } from 'next'
 import Link from 'next/link'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/db'
+import { getWeekData } from '@/lib/curriculum/get-week-data'
 import {
   CheckCircle2,
   Clock,
@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { WeekContentTabs } from '@/components/curriculum/WeekContentTabs'
-import { LearningObjectives } from './components/LearningObjectives'
+import { LearningObjectives } from '@/components/curriculum/LearningObjectives'
 
 // Concept visualization icons - Week 1: LLM Fundamentals
 function getConceptIllustration(slug: string) {
@@ -88,45 +88,11 @@ export default async function Week1Page() {
     return null // Middleware should redirect
   }
 
-  // Fetch Week 1 data
-  const week = await prisma.curriculumWeek.findUnique({
-    where: { weekNumber: 1 }
-  })
-
-  if (!week) {
+  const data = await getWeekData(1, session.user.email)
+  if (!data) {
     return <div className="container max-w-4xl py-8">Week 1 not found</div>
   }
-
-  // Fetch concepts
-  const concepts = await prisma.concept.findMany({
-    where: { weekId: week.id },
-    orderBy: { orderIndex: 'asc' }
-  })
-
-  // Fetch lab
-  const lab = await prisma.lab.findFirst({
-    where: { weekId: week.id }
-  })
-
-  // Fetch project
-  const project = await prisma.weekProject.findFirst({
-    where: { weekId: week.id }
-  })
-
-  // Fetch user from database
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email }
-  })
-
-  // Fetch user progress
-  const progress = user ? await prisma.userWeekProgress.findUnique({
-    where: {
-      userId_weekId: {
-        userId: user.id,
-        weekId: week.id
-      }
-    }
-  }) : null
+  const { week, concepts, lab, project, progress } = data
 
   const objectives = week.objectives as string[]
 

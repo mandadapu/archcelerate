@@ -1,8 +1,9 @@
 // lib/rag/embeddings.ts
 import { VoyageAIClient } from 'voyageai'
+import { env } from '@/src/lib/env'
 
 const voyage = new VoyageAIClient({
-  apiKey: process.env.VOYAGE_API_KEY!
+  apiKey: env.VOYAGE_API_KEY || ''
 })
 
 export async function generateEmbedding(text: string): Promise<number[]> {
