@@ -52,6 +52,13 @@ function validateEnv(): Env {
   const parsed = envSchema.safeParse(process.env)
 
   if (!parsed.success) {
+    // During next build, env vars may not be available — warn but don't crash
+    if (process.env.NEXT_PHASE === 'phase-production-build') {
+      console.warn('⚠️ Missing environment variables during build (expected in CI):')
+      const missing = Object.keys(parsed.error.format()).filter(k => k !== '_errors')
+      console.warn(`   ${missing.join(', ')}`)
+      return process.env as unknown as Env
+    }
     console.error('❌ Invalid environment variables:')
     console.error(JSON.stringify(parsed.error.format(), null, 2))
     throw new Error('Invalid environment variables')
