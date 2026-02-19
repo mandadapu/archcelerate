@@ -27,27 +27,8 @@ export default async function DashboardPage() {
   const tourCompleted = user?.tourCompleted || false
   const tourStartedAt = user?.tourStartedAt
 
-  // Fetch Week 1 data and progress
-  let week1Data = null
-  if (user) {
-    const week1 = await prisma.curriculumWeek.findUnique({
-      where: { weekNumber: 1 }
-    })
-    if (week1) {
-      const week1Progress = await prisma.userWeekProgress.findUnique({
-        where: {
-          userId_weekId: {
-            userId: user.id,
-            weekId: week1.id
-          }
-        }
-      })
-      week1Data = { weekNumber: 1, week: week1, progress: week1Progress }
-    }
-  }
-
-  // Fetch Week 2-12 progress
-  const weeks = await Promise.all([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(async (weekNum) => {
+  // Fetch all weeks and progress in parallel
+  const allWeeks = await Promise.all([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(async (weekNum) => {
     if (!user) return null
     const week = await prisma.curriculumWeek.findUnique({
       where: { weekNumber: weekNum }
@@ -66,17 +47,18 @@ export default async function DashboardPage() {
     return { weekNumber: weekNum, week, progress }
   }))
 
-  const week2Data = weeks.find(w => w?.weekNumber === 2)
-  const week3Data = weeks.find(w => w?.weekNumber === 3)
-  const week4Data = weeks.find(w => w?.weekNumber === 4)
-  const week5Data = weeks.find(w => w?.weekNumber === 5)
-  const week6Data = weeks.find(w => w?.weekNumber === 6)
-  const week7Data = weeks.find(w => w?.weekNumber === 7)
-  const week8Data = weeks.find(w => w?.weekNumber === 8)
-  const week9Data = weeks.find(w => w?.weekNumber === 9)
-  const week10Data = weeks.find(w => w?.weekNumber === 10)
-  const week11Data = weeks.find(w => w?.weekNumber === 11)
-  const week12Data = weeks.find(w => w?.weekNumber === 12)
+  const week1Data = allWeeks.find(w => w?.weekNumber === 1) ?? null
+  const week2Data = allWeeks.find(w => w?.weekNumber === 2)
+  const week3Data = allWeeks.find(w => w?.weekNumber === 3)
+  const week4Data = allWeeks.find(w => w?.weekNumber === 4)
+  const week5Data = allWeeks.find(w => w?.weekNumber === 5)
+  const week6Data = allWeeks.find(w => w?.weekNumber === 6)
+  const week7Data = allWeeks.find(w => w?.weekNumber === 7)
+  const week8Data = allWeeks.find(w => w?.weekNumber === 8)
+  const week9Data = allWeeks.find(w => w?.weekNumber === 9)
+  const week10Data = allWeeks.find(w => w?.weekNumber === 10)
+  const week11Data = allWeeks.find(w => w?.weekNumber === 11)
+  const week12Data = allWeeks.find(w => w?.weekNumber === 12)
 
   // Sprint progress removed - using Week-based curriculum instead
 

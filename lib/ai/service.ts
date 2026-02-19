@@ -2,14 +2,15 @@ import Anthropic from '@anthropic-ai/sdk'
 import { Message, ChatOptions, ChatResponse, StreamChatOptions } from './types'
 import { getCached, setCached } from '@/lib/redis/client'
 import { createHash } from 'crypto'
+import { env } from '@/src/lib/env'
 
 class AIService {
   private client: Anthropic
 
   constructor() {
     this.client = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY!,
-  dangerouslyAllowBrowser: process.env.NODE_ENV === 'test',
+      apiKey: env.ANTHROPIC_API_KEY,
+      dangerouslyAllowBrowser: env.NODE_ENV === 'test',
     })
   }
 

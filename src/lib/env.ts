@@ -14,14 +14,28 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string().min(1),
   OPENAI_API_KEY: z.string().optional(),
   TAVILY_API_KEY: z.string().optional(),
+  VOYAGE_API_KEY: z.string().optional(),
 
   // Authentication (NextAuth.js)
   NEXTAUTH_SECRET: z.string().min(32, 'NEXTAUTH_SECRET must be at least 32 characters'),
   NEXTAUTH_URL: z.string().url(),
 
-  // Google OAuth
+  // OAuth Providers
+  GITHUB_ID: z.string().min(1),
+  GITHUB_SECRET: z.string().min(1),
   GOOGLE_CLIENT_ID: z.string().min(1),
   GOOGLE_CLIENT_SECRET: z.string().min(1),
+  FACEBOOK_CLIENT_ID: z.string().optional(),
+  FACEBOOK_CLIENT_SECRET: z.string().optional(),
+  LINKEDIN_CLIENT_ID: z.string().optional(),
+  LINKEDIN_CLIENT_SECRET: z.string().optional(),
+
+  // Admin
+  ADMIN_API_KEY: z.string().optional(),
+
+  // External services
+  GITHUB_TOKEN: z.string().optional(),
+  E2B_API_KEY: z.string().optional(),
 
   // Monitoring (optional)
   NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
@@ -38,6 +52,13 @@ function validateEnv(): Env {
   const parsed = envSchema.safeParse(process.env)
 
   if (!parsed.success) {
+    // During next build, env vars may not be available — warn but don't crash
+    if (process.env.NEXT_PHASE === 'phase-production-build') {
+      console.warn('⚠️ Missing environment variables during build (expected in CI):')
+      const missing = Object.keys(parsed.error.format()).filter(k => k !== '_errors')
+      console.warn(`   ${missing.join(', ')}`)
+      return process.env as unknown as Env
+    }
     console.error('❌ Invalid environment variables:')
     console.error(JSON.stringify(parsed.error.format(), null, 2))
     throw new Error('Invalid environment variables')

@@ -3,12 +3,13 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import Anthropic from '@anthropic-ai/sdk'
 import Redis from 'ioredis'
+import { env } from '@/src/lib/env'
 
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
+  apiKey: env.ANTHROPIC_API_KEY,
 })
 
-const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379')
+const redis = new Redis(env.REDIS_URL)
 
 const CACHE_TTL = 60 * 60 * 24 * 7 // 7 days
 

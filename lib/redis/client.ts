@@ -1,6 +1,7 @@
 import Redis from 'ioredis'
+import { env } from '@/src/lib/env'
 
-export const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379')
+export const redis = new Redis(env.REDIS_URL)
 
 // Cache utilities
 export async function getCached<T>(key: string): Promise<T | null> {
