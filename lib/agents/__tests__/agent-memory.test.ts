@@ -7,15 +7,14 @@ jest.mock('@/lib/rag/embeddings', () => ({
   generateEmbedding: jest.fn().mockResolvedValue([0.1, 0.2, 0.3]),
 }))
 
-// Mock @upstash/redis (agent-memory.ts uses Upstash, not ioredis singleton)
-jest.mock('@upstash/redis', () => {
+// Mock @/lib/redis/client (agent-memory.ts uses ioredis singleton)
+jest.mock('@/lib/redis/client', () => {
   const mockGet = jest.fn()
-  const mockSet = jest.fn()
+  const mockSetex = jest.fn()
   const mockDel = jest.fn()
-  const mockInstance = { get: mockGet, set: mockSet, del: mockDel }
-  const MockRedis = jest.fn(() => mockInstance)
-  ;(MockRedis as any).__mockInstance = mockInstance
-  return { Redis: MockRedis }
+  const mockRedis = { get: mockGet, setex: mockSetex, del: mockDel }
+  ;(mockRedis as any).__mocks = { mockGet, mockSetex, mockDel }
+  return { redis: mockRedis }
 })
 
 // Mock Supabase
@@ -40,15 +39,15 @@ jest.mock('@/lib/supabase/server', () => {
   }
 })
 
-import { Redis } from '@upstash/redis'
+import { redis } from '@/lib/redis/client'
 import { createClient } from '@/lib/supabase/server'
 import { generateEmbedding } from '@/lib/rag/embeddings'
 import { AgentMemory } from '../agent-memory'
 
-const redisMocks = (Redis as any).__mockInstance as {
-  get: jest.Mock
-  set: jest.Mock
-  del: jest.Mock
+const redisMocks = (redis as any).__mocks as {
+  mockGet: jest.Mock
+  mockSetex: jest.Mock
+  mockDel: jest.Mock
 }
 
 async function getSupaMocks() {
@@ -169,7 +168,7 @@ describe('AgentMemory', () => {
 
   describe('working memory (Redis)', () => {
     it('getWorkingMemory returns parsed data from Redis', async () => {
-      redisMocks.get.mockResolvedValue(JSON.stringify({ step: 3, data: 'foo' }))
+      redisMocks.mockGet.mockResolvedValue(JSON.stringify({ step: 3, data: 'foo' }))
 
       const result = await memory.getWorkingMemory('exec-1')
 
@@ -177,7 +176,7 @@ describe('AgentMemory', () => {
     })
 
     it('getWorkingMemory returns empty object when no data', async () => {
-      redisMocks.get.mockResolvedValue(null)
+      redisMocks.mockGet.mockResolvedValue(null)
 
       const result = await memory.getWorkingMemory('exec-1')
 
@@ -185,24 +184,24 @@ describe('AgentMemory', () => {
     })
 
     it('updateWorkingMemory merges with existing data', async () => {
-      redisMocks.get.mockResolvedValue(JSON.stringify({ existing: 'data' }))
-      redisMocks.set.mockResolvedValue('OK')
+      redisMocks.mockGet.mockResolvedValue(JSON.stringify({ existing: 'data' }))
+      redisMocks.mockSetex.mockResolvedValue('OK')
 
       await memory.updateWorkingMemory('exec-1', { newKey: 'newVal' })
 
-      expect(redisMocks.set).toHaveBeenCalledWith(
+      expect(redisMocks.mockSetex).toHaveBeenCalledWith(
         'agent:working:exec-1',
-        JSON.stringify({ existing: 'data', newKey: 'newVal' }),
-        { ex: 3600 }
+        3600,
+        JSON.stringify({ existing: 'data', newKey: 'newVal' })
       )
     })
 
     it('clearWorkingMemory deletes the Redis key', async () => {
-      redisMocks.del.mockResolvedValue(1)
+      redisMocks.mockDel.mockResolvedValue(1)
 
       await memory.clearWorkingMemory('exec-1')
 
-      expect(redisMocks.del).toHaveBeenCalledWith('agent:working:exec-1')
+      expect(redisMocks.mockDel).toHaveBeenCalledWith('agent:working:exec-1')
     })
   })
 
