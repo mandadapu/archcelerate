@@ -1,20 +1,22 @@
 // app/api/workflows/route.ts
 import { NextRequest } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 
 // GET /api/workflows — List user's workflows
 export async function GET() {
-  const supabase = await createClient()
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  const supabase = await createClient()
 
   const { data: workflows, error } = await supabase
     .from('workflows')
     .select('id, name, description, status, is_template, created_at, updated_at')
-    .eq('user_id', user.id)
+    .eq('user_id', session.user.id)
     .order('updated_at', { ascending: false })
 
   if (error) {
@@ -26,12 +28,12 @@ export async function GET() {
 
 // POST /api/workflows — Create a new workflow
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  const supabase = await createClient()
 
   const body = await request.json()
   const { name, description, definition } = body
@@ -53,7 +55,7 @@ export async function POST(request: NextRequest) {
   const { data: workflow, error } = await supabase
     .from('workflows')
     .insert({
-      user_id: user.id,
+      user_id: session.user.id,
       name,
       description: description || null,
       definition,

@@ -33,6 +33,10 @@ const envSchema = z.object({
   // Admin
   ADMIN_API_KEY: z.string().optional(),
 
+  // Supabase (data access — auth handled by NextAuth)
+  NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+
   // External services
   GITHUB_TOKEN: z.string().optional(),
   E2B_API_KEY: z.string().optional(),

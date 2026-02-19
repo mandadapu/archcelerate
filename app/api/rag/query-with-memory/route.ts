@@ -1,5 +1,7 @@
 // app/api/rag/query-with-memory/route.ts
 import { NextRequest } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { queryWithMemory } from '@/lib/rag/memory-integration'
 import { trackCitations } from '@/lib/rag/citations'
@@ -11,17 +13,13 @@ import { createErrorResponse } from '@/lib/rag/utils'
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
+    return createErrorResponse('Unauthorized', 'auth')
+  }
   const supabase = await createClient()
 
   try {
-    // Authenticate
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return createErrorResponse('Unauthorized', 'auth')
-    }
 
     // Validate input
     const body = await request.json()
@@ -34,19 +32,19 @@ export async function POST(request: NextRequest) {
     const { content: query, conversationId } = validation.sanitized
 
     // Check rate limit
-    const rateLimit = await checkRateLimit(user.id, RATE_LIMITS.chat.limit, RATE_LIMITS.chat.window)
+    const rateLimit = await checkRateLimit(session.user.id, RATE_LIMITS.chat.limit, RATE_LIMITS.chat.window)
     if (!rateLimit.allowed) {
       return createErrorResponse('Rate limit exceeded', 'rate_limit')
     }
 
     // Check budget
-    const budget = await checkBudget(user.id)
+    const budget = await checkBudget(session.user.id)
     if (!budget.withinBudget) {
       return createErrorResponse('Budget exceeded', 'budget')
     }
 
     // Query with memory
-    const result = await queryWithMemory(user.id, query, conversationId)
+    const result = await queryWithMemory(session.user.id, query, conversationId)
 
     const avgRelevance =
       result.sources.length > 0
@@ -57,7 +55,7 @@ export async function POST(request: NextRequest) {
     const { data: queryRecord, error: queryError } = await supabase
       .from('rag_queries')
       .insert({
-        user_id: user.id,
+        user_id: session.user.id,
         query,
         retrieved_chunks: result.sources.map((s) => ({
           chunkId: s.chunkId,
@@ -92,7 +90,7 @@ export async function POST(request: NextRequest) {
     const cost = result.tokenUsage?.cost ?? 0
 
     await logLLMRequest({
-      userId: user.id,
+      userId: session.user.id,
       endpoint: '/api/rag/query-with-memory',
       model: 'claude-sonnet-4-5-20250929',
       promptTokens: result.tokenUsage?.input ?? 0,
@@ -103,7 +101,7 @@ export async function POST(request: NextRequest) {
       status: 'success',
     })
 
-    await trackCost(user.id, cost)
+    await trackCost(session.user.id, cost)
 
     return Response.json({
       answer: result.answer,

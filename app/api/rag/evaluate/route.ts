@@ -1,5 +1,7 @@
 // app/api/rag/evaluate/route.ts
 import { NextRequest } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { hybridSearch } from '@/lib/rag/retrieval'
 import { synthesizeFromMultipleSources } from '@/lib/rag/synthesis'
@@ -9,17 +11,13 @@ import { RAG_CONFIG } from '@/lib/rag/constants'
 import { createErrorResponse, chunkArray } from '@/lib/rag/utils'
 
 export async function POST(request: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
+    return createErrorResponse('Unauthorized', 'auth')
+  }
   const supabase = await createClient()
 
   try {
-    // Authenticate
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return createErrorResponse('Unauthorized', 'auth')
-    }
 
     const { datasetId } = await request.json()
 
@@ -52,7 +50,7 @@ export async function POST(request: NextRequest) {
     for (const batch of batches) {
       // Process batch in parallel
       const batchResults = await Promise.allSettled(
-        batch.map((question) => evaluateQuestion(user.id, question, datasetId, supabase))
+        batch.map((question) => evaluateQuestion(session.user.id, question, datasetId, supabase))
       )
 
       // Collect results and errors

@@ -1,5 +1,7 @@
 // app/api/workflows/[workflowId]/route.ts
 import { NextRequest } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 
 interface RouteParams {
@@ -9,12 +11,13 @@ interface RouteParams {
 // GET /api/workflows/:id — Get workflow detail
 export async function GET(_request: NextRequest, { params }: RouteParams) {
   const { workflowId } = await params
-  const supabase = await createClient()
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  const supabase = await createClient()
 
   const { data: workflow, error } = await supabase
     .from('workflows')
@@ -27,7 +30,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
   }
 
   // Check ownership (unless template)
-  if (workflow.user_id !== user.id && !workflow.is_template) {
+  if (workflow.user_id !== session.user.id && !workflow.is_template) {
     return Response.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -37,12 +40,13 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
 // PUT /api/workflows/:id — Update workflow
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   const { workflowId } = await params
-  const supabase = await createClient()
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  const supabase = await createClient()
 
   const body = await request.json()
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
@@ -80,7 +84,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     .from('workflows')
     .update(updates)
     .eq('id', workflowId)
-    .eq('user_id', user.id)
+    .eq('user_id', session.user.id)
     .select()
     .single()
 
@@ -94,18 +98,19 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 // DELETE /api/workflows/:id — Delete workflow
 export async function DELETE(_request: NextRequest, { params }: RouteParams) {
   const { workflowId } = await params
-  const supabase = await createClient()
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  const supabase = await createClient()
 
   const { error } = await supabase
     .from('workflows')
     .delete()
     .eq('id', workflowId)
-    .eq('user_id', user.id)
+    .eq('user_id', session.user.id)
 
   if (error) {
     return Response.json({ error: error.message }, { status: 500 })

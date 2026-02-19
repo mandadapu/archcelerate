@@ -1,3 +1,6 @@
+import { redirect } from 'next/navigation'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -7,12 +10,13 @@ import { AgentMetricsCard } from '@/components/dashboard/agent-metrics'
 import { PlayCircle } from 'lucide-react'
 
 export default async function AgentsDashboardPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const session = await getServerSession(authOptions)
 
-  if (!user) {
-    return <div>Unauthorized</div>
+  if (!session?.user?.id) {
+    redirect('/')
   }
+
+  const supabase = await createClient()
 
   // Fetch recent executions
   const { data: executions } = await supabase
@@ -21,7 +25,7 @@ export default async function AgentsDashboardPage() {
       *,
       agent_definition:agent_definitions(name, slug)
     `)
-    .eq('user_id', user.id)
+    .eq('user_id', session.user.id)
     .order('started_at', { ascending: false })
     .limit(20)
 

@@ -1,6 +1,8 @@
 // app/api/chat/route.ts
 import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { validateChatInput } from '@/lib/governance/input-validator'
 import { moderateContent } from '@/lib/governance/content-moderator'
@@ -15,14 +17,13 @@ const client = new Anthropic({
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   const supabase = await createClient()
 
   try {
-    // 1. Authenticate user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 })
-    }
 
     // 2. Parse and validate input
     const body = await request.json()
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     if (!validation.valid) {
       await logAuditEvent(
-        user.id,
+        session.user.id,
         'chat_validation_failed',
         'message',
         undefined,
@@ -47,14 +48,14 @@ export async function POST(request: NextRequest) {
 
     // 3. Check rate limit
     const rateLimit = await checkRateLimit(
-      user.id,
+      session.user.id,
       RATE_LIMITS.chat.limit,
       RATE_LIMITS.chat.window
     )
 
     if (!rateLimit.allowed) {
       await logLLMRequest({
-        userId: user.id,
+        userId: session.user.id,
         endpoint: '/api/chat',
         model: 'claude-sonnet-4-5-20250929',
         promptTokens: 0,
@@ -79,7 +80,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Check budget
-    const budget = await checkBudget(user.id)
+    const budget = await checkBudget(session.user.id)
     if (!budget.withinBudget) {
       return Response.json(
         { error: 'Monthly budget exceeded', budget },
@@ -88,10 +89,10 @@ export async function POST(request: NextRequest) {
     }
 
     // 5. Moderate input content
-    const inputModeration = await moderateContent(user.id, content, 'input')
+    const inputModeration = await moderateContent(session.user.id, content, 'input')
     if (inputModeration.flagged) {
       await logAuditEvent(
-        user.id,
+        session.user.id,
         'content_moderation_blocked',
         'message',
         undefined,
@@ -132,10 +133,10 @@ export async function POST(request: NextRequest) {
     const latencyMs = Date.now() - startTime
 
     // 8. Moderate output content
-    const outputModeration = await moderateContent(user.id, assistantMessage, 'output')
+    const outputModeration = await moderateContent(session.user.id, assistantMessage, 'output')
     if (outputModeration.flagged) {
       await logAuditEvent(
-        user.id,
+        session.user.id,
         'output_moderation_blocked',
         'message',
         undefined,
@@ -154,7 +155,7 @@ export async function POST(request: NextRequest) {
       // Create new conversation
       const { data: newConv } = await supabase
         .from('conversations')
-        .insert({ user_id: user.id, title: content.substring(0, 50) })
+        .insert({ user_id: session.user.id, title: content.substring(0, 50) })
         .select()
         .single()
 
@@ -184,7 +185,7 @@ export async function POST(request: NextRequest) {
     )
 
     await logLLMRequest({
-      userId: user.id,
+      userId: session.user.id,
       endpoint: '/api/chat',
       model: 'claude-sonnet-4-5-20250929',
       promptTokens: response.usage.input_tokens,
@@ -195,10 +196,10 @@ export async function POST(request: NextRequest) {
       status: 'success'
     })
 
-    await trackCost(user.id, cost)
+    await trackCost(session.user.id, cost)
 
     await logAuditEvent(
-      user.id,
+      session.user.id,
       'chat_message_sent',
       'conversation',
       actualConversationId,
@@ -236,11 +237,10 @@ export async function POST(request: NextRequest) {
     console.error('Chat API error:', error)
 
     const latencyMs = Date.now() - startTime
-    const { data: { user } } = await supabase.auth.getUser()
 
-    if (user) {
+    if (session?.user?.id) {
       await logLLMRequest({
-        userId: user.id,
+        userId: session.user.id,
         endpoint: '/api/chat',
         model: 'claude-sonnet-4-5-20250929',
         promptTokens: 0,

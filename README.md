@@ -8,7 +8,7 @@ Transform from Software Engineer to AI Product Builder in 12 weeks through hands
 
 **All 12 weeks of production-ready curriculum are now available!**
 
-- **51 MDX content files** covering fundamentals to enterprise production
+- **133 MDX content files** covering fundamentals to enterprise production
 - **60+ code examples** with complete TypeScript implementations
 - **Real cost/performance metrics** throughout all lessons
 - **4 enhanced weeks** with comprehensive technical depth (4,000+ lines)
@@ -19,8 +19,8 @@ Start learning today at [archcelerate.com](https://archcelerate.com)
 ## 🏗️ Tech Stack
 
 ### Frontend
-- **Next.js 14.2** (App Router) with TypeScript
-- **React 18** with Server Components and Server Actions
+- **Next.js 15.5** (App Router) with TypeScript
+- **React 19** with Server Components and Server Actions
 - **Tailwind CSS 3** + **shadcn/ui** component library
 - **Radix UI** primitives for accessibility
 - **next-mdx-remote** for MDX content rendering
@@ -28,13 +28,14 @@ Start learning today at [archcelerate.com](https://archcelerate.com)
 ### Backend & Database
 - **PostgreSQL** with **Prisma ORM**
 - **pgvector** extension for vector similarity search
-- **NextAuth.js** for authentication (GitHub, Google OAuth)
+- **NextAuth.js** for authentication (GitHub, Google, LinkedIn, Facebook OAuth)
 - **Redis** for caching and rate limiting
 - **Next.js API Routes** for backend logic
 
 ### AI & ML
-- **Claude API** (Anthropic) - Primary LLM (Sonnet 4, Haiku 4)
-- **OpenAI API** - Embeddings (text-embedding-3-small)
+- **Claude API** (Anthropic) - Primary LLM (Sonnet 4.5, Haiku 4.5)
+- **Voyage AI** - Embeddings (voyage-large-2)
+- **OpenAI API** - Used in indexing scripts
 - **Tavily Search API** - Web search for agents
 
 ### Development & Deployment
@@ -130,7 +131,7 @@ Start learning today at [archcelerate.com](https://archcelerate.com)
 - Security and compliance implementation
 - **3 concepts** · **2,100+ lines** of enterprise patterns
 
-**Total**: **51 MDX files** · **60+ code examples** · **4,000+ lines** of enhanced content
+**Total**: **133 MDX files** · **60+ code examples** · **4,000+ lines** of enhanced content
 
 ---
 
@@ -141,7 +142,7 @@ Start learning today at [archcelerate.com](https://archcelerate.com)
 - **Node.js 20+** (required for latest Next.js features)
 - **Docker Desktop** (for local PostgreSQL and Redis)
 - **Anthropic API Key** (Claude)
-- **OpenAI API Key** (embeddings)
+- **Voyage AI API Key** (embeddings)
 
 ### Quick Start with Docker
 
@@ -190,7 +191,7 @@ NEXTAUTH_SECRET="your-secret-here"
 GITHUB_ID="your-github-oauth-id"
 GITHUB_SECRET="your-github-oauth-secret"
 ANTHROPIC_API_KEY="sk-ant-..."
-OPENAI_API_KEY="sk-..."
+VOYAGE_API_KEY="pa-..."
 
 # 4. Run migrations
 npx prisma migrate dev
@@ -225,7 +226,8 @@ GOOGLE_CLIENT_SECRET="your-google-oauth-client-secret"
 
 # AI Services
 ANTHROPIC_API_KEY="sk-ant-api03-..."
-OPENAI_API_KEY="sk-..."
+VOYAGE_API_KEY="pa-..."    # Voyage AI embeddings
+OPENAI_API_KEY="sk-..."    # Used in indexing scripts
 
 # Optional: Agent Tools
 TAVILY_API_KEY="tvly-..."
@@ -293,7 +295,7 @@ archcelerate/
 │   └── page.tsx                      # Landing page
 │
 ├── content/                          # MDX curriculum content
-│   └── week{1-12}/                   # 51 MDX files
+│   └── week{1-12}/                   # 133 MDX files
 │       ├── *.mdx                     # Concept files
 │       └── lab-*.mdx                 # Lab exercises
 │
@@ -411,7 +413,7 @@ docker run -p 3000:3000 \
 
 ### For Students
 
-- ✅ **12-week structured curriculum** with 51 MDX lessons
+- ✅ **12-week structured curriculum** with 133 MDX lessons
 - ✅ **Interactive exercises** with runnable code
 - ✅ **Progress tracking** across weeks and projects
 - ✅ **AI Mentor** for personalized guidance
@@ -431,7 +433,7 @@ docker run -p 3000:3000 \
 ## 📊 Content Statistics
 
 - **Weeks**: 12 complete curriculum weeks
-- **Concepts**: 51 MDX concept files
+- **Concepts**: 133 MDX content files
 - **Labs**: 12 hands-on lab exercises
 - **Projects**: 12 week-end projects
 - **Code Examples**: 60+ production-ready TypeScript examples

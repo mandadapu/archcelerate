@@ -1,5 +1,4 @@
 import { Metadata } from 'next'
-import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { DollarSign, Activity, Shield, Clock } from 'lucide-react'

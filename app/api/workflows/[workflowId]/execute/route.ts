@@ -1,5 +1,7 @@
 // app/api/workflows/[workflowId]/execute/route.ts
 import { NextRequest } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { checkRateLimit } from '@/lib/governance/rate-limiter'
 import { WorkflowExecutor } from '@/lib/workflows/workflow-executor'
@@ -10,15 +12,16 @@ interface RouteParams {
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
   const { workflowId } = await params
-  const supabase = await createClient()
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const supabase = await createClient()
+
   // Rate limit: 5 executions per hour
-  const rateLimit = await checkRateLimit(user.id, 5, 3600)
+  const rateLimit = await checkRateLimit(session.user.id, 5, 3600)
   if (!rateLimit.allowed) {
     return Response.json(
       { error: 'Rate limit exceeded. Try again later.', resetAt: rateLimit.resetAt },
@@ -38,7 +41,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   }
 
   // Check ownership (unless template)
-  if (workflow.user_id !== user.id && !workflow.is_template) {
+  if (workflow.user_id !== session.user.id && !workflow.is_template) {
     return Response.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -50,7 +53,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   }
 
   // Execute workflow
-  const executor = new WorkflowExecutor(user.id, workflowId)
+  const executor = new WorkflowExecutor(session.user.id, workflowId)
   const result = await executor.execute(workflow.definition, input)
 
   // Convert Map to plain object for JSON serialization

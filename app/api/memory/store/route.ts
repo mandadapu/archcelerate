@@ -1,21 +1,20 @@
 // app/api/memory/store/route.ts
 import { NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { MemoryManager } from '@/lib/memory/memory-manager'
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-
   try {
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const body = await request.json()
     const { type, data } = body
 
-    const memoryManager = new MemoryManager(user.id)
+    const memoryManager = new MemoryManager(session.user.id)
 
     switch (type) {
       case 'episodic':

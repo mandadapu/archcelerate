@@ -1,17 +1,18 @@
 // app/api/documents/upload/route.ts
 import { NextRequest } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { processDocument } from '@/lib/rag/document-processor'
 
 export async function POST(request: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   const supabase = await createClient()
 
   try {
-    // Authenticate
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 })
-    }
 
     // Parse multipart form data
     const formData = await request.formData()
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Upload file to Supabase Storage
-    const filePath = `${user.id}/${Date.now()}-${file.name}`
+    const filePath = `${session.user.id}/${Date.now()}-${file.name}`
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('documents')
       .upload(filePath, file)
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
     const { data: document, error: docError } = await supabase
       .from('documents')
       .insert({
-        user_id: user.id,
+        user_id: session.user.id,
         filename: file.name,
         file_path: publicUrl,
         file_size: file.size,

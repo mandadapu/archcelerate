@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 
 export async function GET(
@@ -6,12 +8,11 @@ export async function GET(
   { params }: { params: Promise<{ executionId: string }> }
 ) {
   const { executionId } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  const supabase = await createClient()
 
   const { data: execution, error: execError } = await supabase
     .from('agent_executions')
@@ -20,7 +21,7 @@ export async function GET(
       agent_definition:agent_definitions(*)
     `)
     .eq('id', executionId)
-    .eq('user_id', user.id)
+    .eq('user_id', session.user.id)
     .single()
 
   if (execError) {

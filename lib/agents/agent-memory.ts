@@ -1,11 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { generateEmbedding } from '@/lib/rag/embeddings'
-import { Redis } from '@upstash/redis'
-
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!
-})
+import { redis } from '@/lib/redis/client'
 
 export interface AgentMemoryContext {
   shortTerm: Record<string, any>
@@ -126,7 +121,7 @@ export class AgentMemory {
     const updated = { ...current, ...updates }
 
     // Working memory expires after 1 hour
-    await redis.set(key, JSON.stringify(updated), { ex: 3600 })
+    await redis.setex(key, 3600, JSON.stringify(updated))
   }
 
   async clearWorkingMemory(executionId: string): Promise<void> {
