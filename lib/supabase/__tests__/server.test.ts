@@ -13,7 +13,12 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '../server'
 
 describe('Supabase server client', () => {
-  it('creates admin client with service role key (no cookie auth)', () => {
+  it('lazily creates admin client with service role key on first call', async () => {
+    // Client is lazy — not created until createClient() is called
+    expect(createSupabaseClient).not.toHaveBeenCalled()
+
+    await createClient()
+
     expect(createSupabaseClient).toHaveBeenCalledWith(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
       process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -25,6 +30,8 @@ describe('Supabase server client', () => {
     const client2 = await createClient()
 
     expect(client1).toBe(client2)
+    // Only created once despite two calls
+    expect(createSupabaseClient).toHaveBeenCalledTimes(1)
   })
 
   it('returned client has data query methods', async () => {
