@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { getToken } from 'next-auth/jwt'
 
 // API routes that don't require authentication
 const PUBLIC_API_ROUTES = ['/api/health', '/api/auth/']
 // Admin routes use their own ADMIN_API_KEY auth
 const ADMIN_API_PREFIX = '/api/admin/'
+
+// NextAuth session cookie names (database strategy uses session tokens, not JWTs)
+const SESSION_COOKIE_NAME = 'next-auth.session-token'
+const SECURE_SESSION_COOKIE_NAME = '__Secure-next-auth.session-token'
 
 export async function middleware(request: NextRequest) {
   const hostname = request.headers.get('host') || ''
@@ -32,9 +35,12 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next()
     }
 
-    // Check for valid session token
-    const token = await getToken({ req: request })
-    if (!token) {
+    // Check for session cookie presence (works with both JWT and database strategies).
+    // Route handlers validate the full session via getServerSession().
+    const hasSession =
+      request.cookies.has(SESSION_COOKIE_NAME) ||
+      request.cookies.has(SECURE_SESSION_COOKIE_NAME)
+    if (!hasSession) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
   }
