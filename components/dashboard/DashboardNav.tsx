@@ -13,7 +13,6 @@ interface DashboardNavProps {
 
 const navLinks = [
   { href: '/dashboard', label: 'Dashboard' },
-  { href: '/watch', label: 'Course' },
   { href: '/mentor/new', label: 'AI Mentor' },
   { href: '/workflows', label: 'Workflows' },
   { href: '/portfolio', label: 'Portfolio' },
