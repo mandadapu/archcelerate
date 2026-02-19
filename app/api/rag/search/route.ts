@@ -1,19 +1,20 @@
 // app/api/rag/search/route.ts
 import { NextRequest } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { hybridSearch } from '@/lib/rag/retrieval'
 import { validateChatInput } from '@/lib/governance/input-validator'
 import { checkRateLimit } from '@/lib/governance/rate-limiter'
 
 export async function POST(request: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   const supabase = await createClient()
 
   try {
-    // Authenticate
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 })
-    }
 
     // Validate input
     const body = await request.json()
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
     const { content: query } = validation.sanitized
 
     // Check rate limit (20 searches per minute)
-    const rateLimit = await checkRateLimit(user.id, 20, 60)
+    const rateLimit = await checkRateLimit(session.user.id, 20, 60)
 
     if (!rateLimit.allowed) {
       return Response.json(
@@ -43,12 +44,12 @@ export async function POST(request: NextRequest) {
 
     // Perform hybrid search
     const startTime = Date.now()
-    const results = await hybridSearch(user.id, query, 5)
+    const results = await hybridSearch(session.user.id, query, 5)
     const latencyMs = Date.now() - startTime
 
     // Log query for analytics
     await supabase.from('rag_queries').insert({
-      user_id: user.id,
+      user_id: session.user.id,
       query,
       retrieved_chunks: results.map(r => ({
         chunkId: r.chunkId,

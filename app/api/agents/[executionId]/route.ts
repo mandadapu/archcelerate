@@ -1,3 +1,5 @@
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -7,17 +9,11 @@ export async function GET(
 ) {
   try {
     const { executionId } = await params
-    const supabase = await createClient()
-
-    // Authenticate user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const supabase = await createClient()
 
     // Fetch execution with agent definition
     const { data: execution, error: executionError } = await supabase
@@ -34,7 +30,7 @@ export async function GET(
     }
 
     // Check user ownership
-    if (execution.user_id !== user.id) {
+    if (execution.user_id !== session.user.id) {
       return NextResponse.json(
         { error: 'Execution not found' },
         { status: 404 }

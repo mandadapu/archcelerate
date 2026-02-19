@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  const supabase = await createClient()
 
   const { searchParams } = new URL(request.url)
   const status = searchParams.get('status')
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
       *,
       agent_definition:agent_definitions(name, slug, category)
     `)
-    .eq('user_id', user.id)
+    .eq('user_id', session.user.id)
     .order('started_at', { ascending: false })
     .limit(limit)
 

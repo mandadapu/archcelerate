@@ -1,10 +1,5 @@
 // lib/governance/rate-limiter.ts
-import { Redis } from '@upstash/redis'
-
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!
-})
+import { redis } from '@/lib/redis/client'
 
 export interface RateLimitResult {
   allowed: boolean
@@ -31,7 +26,7 @@ export async function checkRateLimit(
 
     if (count >= limit) {
       // Find when the oldest request will expire
-      const oldest = await redis.zrange(key, 0, 0, { withScores: true })
+      const oldest = await redis.zrange(key, 0, 0, 'WITHSCORES')
       const resetAt = oldest.length > 0
         ? Number(oldest[1]) + windowSeconds * 1000
         : now + windowSeconds * 1000
@@ -40,7 +35,7 @@ export async function checkRateLimit(
     }
 
     // Add current request
-    await redis.zadd(key, { score: now, member: `${now}-${Math.random()}` })
+    await redis.zadd(key, now, `${now}-${Math.random()}`)
     await redis.expire(key, windowSeconds)
 
     return {

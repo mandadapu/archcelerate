@@ -1,5 +1,7 @@
 'use server'
 
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
@@ -11,14 +13,13 @@ export async function submitProject(data: {
   writeupContent: string
   action: 'draft' | 'submit'
 }) {
-  const supabase = await createClient()
+  const session = await getServerSession(authOptions)
 
-  // Get authenticated user
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-  if (authError || !user) {
+  if (!session?.user?.id) {
     throw new Error('Unauthorized')
   }
+
+  const supabase = await createClient()
 
   const status = data.action === 'submit' ? 'submitted' : 'draft'
   const now = new Date().toISOString()
@@ -27,7 +28,7 @@ export async function submitProject(data: {
   const { error } = await supabase
     .from('project_submissions')
     .upsert({
-      user_id: user.id,
+      user_id: session.user.id,
       project_id: data.projectId,
       github_url: data.githubUrl,
       deployed_url: data.deployedUrl,
@@ -49,7 +50,7 @@ export async function submitProject(data: {
     await supabase
       .from('user_week_progress')
       .upsert({
-        user_id: user.id,
+        user_id: session.user.id,
         week_id: data.weekId,
         project_completed: true,
         concepts_total: 3, // Week 2 has 3 concepts

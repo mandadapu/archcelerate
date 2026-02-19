@@ -1,5 +1,7 @@
 'use server'
 
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
@@ -8,20 +10,19 @@ export async function submitLabExercise(
   exerciseNumber: number,
   submission: string
 ) {
-  const supabase = await createClient()
+  const session = await getServerSession(authOptions)
 
-  // Get authenticated user
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-  if (authError || !user) {
+  if (!session?.user?.id) {
     throw new Error('Unauthorized')
   }
+
+  const supabase = await createClient()
 
   // Upsert submission
   const { error } = await supabase
     .from('lab_submissions')
     .upsert({
-      user_id: user.id,
+      user_id: session.user.id,
       lab_id: labId,
       exercise_number: exerciseNumber,
       submission_data: { text: submission },
@@ -49,7 +50,7 @@ export async function submitLabExercise(
     const { data: submissions } = await supabase
       .from('lab_submissions')
       .select('exercise_number')
-      .eq('user_id', user.id)
+      .eq('user_id', session.user.id)
       .eq('lab_id', labId)
       .eq('completed', true)
 
@@ -60,7 +61,7 @@ export async function submitLabExercise(
       await supabase
         .from('user_week_progress')
         .upsert({
-          user_id: user.id,
+          user_id: session.user.id,
           week_id: lab.week_id,
           lab_completed: true,
           concepts_total: 3 // Week 2 has 3 concepts

@@ -1,6 +1,7 @@
 import { Metadata } from 'next'
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { DocumentUpload } from '@/components/rag/document-upload'
 import { QAInterface } from '@/components/rag/qa-interface'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,13 +13,10 @@ export const metadata: Metadata = {
 
 export default async function RAGPage() {
   // Check authentication
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const session = await getServerSession(authOptions)
 
-  if (!user) {
-    redirect('/login')
+  if (!session?.user?.id) {
+    redirect('/')
   }
 
   return (

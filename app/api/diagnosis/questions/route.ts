@@ -1,46 +1,11 @@
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
-import Redis from 'ioredis'
+import { redis } from '@/lib/redis/client'
 import { quizQuestions, getQuestionsByDifficulty, selectRandomQuestions } from '@/lib/quiz/questions'
 import { QuizQuestion, DifficultyLevel } from '@/types/diagnosis'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
-})
-
-const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-  connectTimeout: 10000, // 10 second timeout for VPC connector
-  commandTimeout: 5000, // 5 second timeout for commands
-  retryStrategy: (times) => {
-    console.log(`🔄 Redis retry attempt ${times}`)
-    // Retry up to 3 times with exponential backoff
-    if (times > 3) return null
-    return Math.min(times * 100, 3000)
-  },
-  lazyConnect: false, // Connect immediately on startup
-  enableReadyCheck: true, // Wait for Redis to be ready
-  maxRetriesPerRequest: 2, // Retry commands twice
-})
-
-// Add connection event handlers for debugging
-redis.on('connect', () => {
-  console.log('✅ Redis connection established')
-})
-
-redis.on('ready', () => {
-  console.log('✅ Redis ready to accept commands')
-})
-
-redis.on('error', (err) => {
-  console.error('❌ Redis connection error:', err.message)
-})
-
-redis.on('close', () => {
-  console.log('⚠️ Redis connection closed')
-})
-
-redis.on('reconnecting', () => {
-  console.log('🔄 Redis reconnecting...')
 })
 
 const CACHE_TTL = 60 * 60 * 24 * 7 // 7 days

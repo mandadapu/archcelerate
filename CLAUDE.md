@@ -17,7 +17,7 @@ Transform software engineers into AI product builders through a 12-week accelera
 | Vision (VISION.md) | Implementation | Status |
 |-------------------|----------------|--------|
 | 12-week curriculum | `app/(dashboard)/curriculum/week-{1-12}/` | ✅ 100% |
-| 51 MDX content files | `content/week{1-12}/*.mdx` | ✅ 100% |
+| 133 MDX content files | `content/week{1-12}/*.mdx` | ✅ 100% |
 | 60+ code examples | TypeScript examples throughout | ✅ 100% |
 | 4 enhanced weeks | Weeks 1, 2, 3, 8 (4,000+ lines) | ✅ 100% |
 | Interview prep | Week 8 (1,500+ lines) | ✅ 100% |
@@ -47,7 +47,7 @@ Transform software engineers into AI product builders through a 12-week accelera
 - ✅ `README-DEV.md` - Developer setup guide
 - ✅ `QUICK_REFERENCE.md` - Quick commands reference
 - ✅ `docs/vision-comparison.md` - Evolution history
-- ✅ 51 MDX files - Student curriculum content
+- ✅ 133 MDX files - Student curriculum content
 - ✅ E2E tests documented with inline comments
 - ✅ API routes with JSDoc comments
 
@@ -56,21 +56,22 @@ Transform software engineers into AI product builders through a 12-week accelera
 ## 🏗️ Tech Stack
 
 **Frontend**:
-- Next.js 14.2 (App Router) with TypeScript
-- React 18 (Server Components + Server Actions)
+- Next.js 15.5 (App Router) with TypeScript
+- React 19 (Server Components + Server Actions)
 - Tailwind CSS 3 + shadcn/ui
 - Radix UI primitives
 
 **Backend & Database**:
 - Next.js API Routes
-- NextAuth.js (GitHub, Google OAuth)
+- NextAuth.js (GitHub, Google, LinkedIn, Facebook OAuth)
 - Prisma ORM + PostgreSQL
 - pgvector extension (vector similarity search)
 - Redis (caching, rate limiting)
 
 **AI & ML**:
-- Anthropic Claude API (Sonnet 4, Haiku 4)
-- OpenAI API (text-embedding-3-small)
+- Anthropic Claude API (Sonnet 4.5, Haiku 4.5)
+- Voyage AI (voyage-large-2 embeddings)
+- OpenAI API (used in indexing scripts)
 - Tavily Search API (agent web search)
 
 **Development & Deployment**:
@@ -88,7 +89,7 @@ Transform software engineers into AI product builders through a 12-week accelera
 ### Phase 1: Core Curriculum ✅ COMPLETE
 
 - ✅ 12-week curriculum structure
-- ✅ 51 MDX content files
+- ✅ 133 MDX content files
 - ✅ 60+ production-ready code examples
 - ✅ 4 enhanced weeks with deep technical content
 - ✅ Core features (auth, progress, mentor, RAG, agents)
@@ -177,7 +178,8 @@ GOOGLE_CLIENT_SECRET="your-google-oauth-client-secret"
 
 # AI Services
 ANTHROPIC_API_KEY="sk-ant-api03-..."
-OPENAI_API_KEY="sk-..."
+VOYAGE_API_KEY="pa-..."    # Voyage AI embeddings
+OPENAI_API_KEY="sk-..."    # Used in indexing scripts
 
 # Optional
 TAVILY_API_KEY="tvly-..."  # For agent web search
@@ -215,7 +217,7 @@ archcelerate/
 │       ├── chat/                       # Chat endpoints
 │       ├── agents/                     # Agent execution
 │       └── rag/                        # RAG queries
-├── content/week{1-12}/                 # ✅ 51 MDX files
+├── content/week{1-12}/                 # ✅ 133 MDX files
 ├── components/                         # React components
 ├── lib/                                # Core libraries
 │   ├── auth.ts                         # NextAuth config
@@ -244,7 +246,7 @@ archcelerate/
 | Metric | Target | Current |
 |--------|--------|---------|
 | Curriculum completion | 12 weeks | ✅ 12/12 (100%) |
-| Content files | 51 files | ✅ 51/51 (100%) |
+| Content files | 133 files | ✅ 133/133 (100%) |
 | Code examples | 50+ | ✅ 60+ (120%) |
 | Test coverage | >70% | 🚧 ~40% (Phase 2) |
 | Platform features | >70% | ✅ ~85% |

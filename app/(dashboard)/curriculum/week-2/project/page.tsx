@@ -1,6 +1,8 @@
 import { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,14 +15,13 @@ export const metadata: Metadata = {
 }
 
 export default async function Week2ProjectPage() {
-  const supabase = await createClient()
+  const session = await getServerSession(authOptions)
 
-  // Check authentication
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect('/login')
+  if (!session?.user?.id) {
+    redirect('/')
   }
+
+  const supabase = await createClient()
 
   // Fetch Week 2
   const { data: week } = await supabase
@@ -51,7 +52,7 @@ export default async function Week2ProjectPage() {
   const { data: submission } = await supabase
     .from('project_submissions')
     .select('*')
-    .eq('user_id', user.id)
+    .eq('user_id', session.user.id)
     .eq('project_id', project.id)
     .single()
 

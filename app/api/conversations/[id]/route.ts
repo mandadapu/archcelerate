@@ -1,5 +1,7 @@
 // app/api/conversations/[id]/route.ts
 import { NextRequest } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 
 export async function GET(
@@ -7,15 +9,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  const supabase = await createClient()
 
-  // Authenticate
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-  if (authError || !user) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const supabase = await createClient()
   const conversationId = id
 
   // Verify conversation belongs to user
@@ -23,7 +23,7 @@ export async function GET(
     .from('conversations')
     .select('*')
     .eq('id', conversationId)
-    .eq('user_id', user.id)
+    .eq('user_id', session.user.id)
     .single()
 
   if (convError || !conversation) {
