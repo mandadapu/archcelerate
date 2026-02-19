@@ -17,7 +17,7 @@ export default function WatchLayout({
   const slug = pathname.split('/watch/')[1] || ''
 
   return (
-    <div className="flex h-[calc(100vh-4rem)]">
+    <div className="-mx-4 sm:-mx-6 lg:-mx-8 -my-8 flex h-[calc(100vh-4rem)]">
       {/* Main content */}
       <main className="flex-1 overflow-y-auto">{children}</main>
 
