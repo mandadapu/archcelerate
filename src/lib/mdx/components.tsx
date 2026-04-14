@@ -160,6 +160,13 @@ export function Quiz({ question, options }: QuizProps) {
   )
 }
 
+// Browser extensions (e.g. those injecting `data-stripe-id`) mutate the
+// disabled checkboxes that remark-gfm renders for task lists before React
+// hydrates, so mark them as intentionally mismatchable.
+function MdxInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  return <input {...props} suppressHydrationWarning />
+}
+
 // MDX Components Map
 export const mdxComponents = {
   Callout,
@@ -167,4 +174,5 @@ export const mdxComponents = {
   CodeSandbox,
   Quiz,
   CyberDefenseDesign,
+  input: MdxInput,
 }
