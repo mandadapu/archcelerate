@@ -2,9 +2,11 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
-  useState,
   useEffect,
+  useMemo,
+  useState,
   type ReactNode,
 } from 'react'
 import { useSearchParams } from 'next/navigation'
@@ -65,10 +67,11 @@ export function LandingClient({ children }: { children: ReactNode }) {
     return () => clearTimeout(timer)
   }, [searchParams, session])
 
-  const openLogin = () => setShowLoginModal(true)
+  const openLogin = useCallback(() => setShowLoginModal(true), [])
+  const contextValue = useMemo(() => ({ openLogin }), [openLogin])
 
   return (
-    <LandingAuthContext.Provider value={{ openLogin }}>
+    <LandingAuthContext.Provider value={contextValue}>
       <Header onLoginClick={openLogin} />
 
       {errorMessage && (
@@ -78,7 +81,7 @@ export function LandingClient({ children }: { children: ReactNode }) {
             <button
               type="button"
               onClick={() => setErrorMessage(null)}
-              className="text-red-500 hover:text-red-700 text-sm"
+              className="text-red-500 hover:text-red-700 text-base leading-none p-1 -m-1 rounded"
               aria-label="Dismiss error"
             >
               ×
