@@ -21,7 +21,7 @@ export function Header({ onLoginClick }: HeaderProps) {
           <a
             href="https://github.com/mandadapu/archcelerate"
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             className="text-sm font-medium text-gray-600 hover:text-gray-900"
           >
             GitHub
