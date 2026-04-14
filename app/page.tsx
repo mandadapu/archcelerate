@@ -63,7 +63,7 @@ export default async function Home() {
 
   return (
     <LandingClient>
-      <div className="min-h-screen bg-white scroll-smooth pt-14">
+      <div className="min-h-screen bg-white pt-14">
         {/* Hero */}
         <section className="min-h-[60vh] flex items-center">
           <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
@@ -83,7 +83,7 @@ export default async function Home() {
                 href="#curriculum"
                 className="px-5 py-3 rounded-md border border-gray-300 text-gray-900 text-sm font-semibold hover:bg-gray-50 transition-colors"
               >
-                View the curriculum ↓
+                View the curriculum <span aria-hidden="true">↓</span>
               </a>
             </div>
           </div>
