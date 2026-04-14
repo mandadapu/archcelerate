@@ -260,7 +260,7 @@ Every concept must include:
 - Playwright (E2E tests)
 - ESLint + Prettier
 - GitHub Actions (CI/CD)
-- Google Cloud Run (production deployment)
+- GCP Compute Engine VM (Docker Compose, production deployment)
 
 ## Roadmap
 

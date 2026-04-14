@@ -92,7 +92,7 @@ export default function PrivacyPage() {
               <strong>OpenAI</strong> — Text embeddings for the RAG search system
             </li>
             <li>
-              <strong>Google Cloud</strong> — Application hosting (Cloud Run)
+              <strong>Google Cloud</strong> — Application hosting (Compute Engine)
             </li>
           </ul>
           <p>

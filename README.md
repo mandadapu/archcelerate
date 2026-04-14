@@ -384,14 +384,9 @@ npm run test:e2e:ui      # Playwright UI mode
 
 ## 📦 Deployment
 
-### Google Cloud Run (Production)
+### GCP Compute Engine VM (Production)
 
-Deployed via GitHub Actions CI/CD pipeline. See `.github/workflows/deploy-production.yml`.
-
-Secrets are managed via Google Secret Manager.
-
-**Database**: Cloud SQL PostgreSQL
-**Redis**: Managed Redis instance
+Deployed to a Compute Engine VM using the repo's `docker-compose.yml`. SSH to the VM, `git pull`, and `./dev.sh up` (or `docker compose up -d`).
 
 ### Docker Production
 
