@@ -7,6 +7,7 @@ export interface ThemeProviderProps {
   children: React.ReactNode
   attribute?: 'class' | 'data-theme'
   defaultTheme?: string
+  forcedTheme?: string
   enableSystem?: boolean
   disableTransitionOnChange?: boolean
 }
