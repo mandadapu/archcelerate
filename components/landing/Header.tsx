@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
+import { ArchcelerateLogo } from '@/components/brand/ArchcelerateLogo'
 
 interface HeaderProps {
   onLoginClick: () => void
@@ -13,8 +14,8 @@ export function Header({ onLoginClick }: HeaderProps) {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 h-14 bg-white border-b border-gray-200">
       <div className="max-w-7xl mx-auto h-full px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-        <Link href="/" className="font-display text-lg font-semibold text-gray-900 tracking-tight">
-          Archcelerate
+        <Link href="/" className="flex items-center">
+          <ArchcelerateLogo variant="compact" className="h-9 w-auto" />
         </Link>
 
         <div className="flex items-center gap-6">

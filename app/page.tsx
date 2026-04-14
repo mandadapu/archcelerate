@@ -63,7 +63,22 @@ export default async function Home() {
 
   return (
     <LandingClient>
-      <div className="min-h-screen bg-white pt-14">
+      <div className="relative isolate min-h-screen bg-slate-50 pt-14">
+        {/* Subtle dot-grid background, fades out below the hero */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[720px] -z-10"
+          style={{
+            backgroundImage:
+              'radial-gradient(circle, rgb(156 163 175) 1px, transparent 1px)',
+            backgroundSize: '24px 24px',
+            WebkitMaskImage:
+              'linear-gradient(to bottom, black 0%, black 55%, transparent 100%)',
+            maskImage:
+              'linear-gradient(to bottom, black 0%, black 55%, transparent 100%)',
+          }}
+        />
+
         {/* Hero */}
         <section className="min-h-[60vh] flex items-center">
           <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
@@ -71,9 +86,8 @@ export default async function Home() {
               Learn to architect production LLM systems.
             </h1>
             <p className="mt-6 text-lg sm:text-xl text-gray-600 leading-relaxed max-w-2xl mx-auto">
-              A free, hands-on curriculum for working engineers. Twelve weeks of lessons on
-              retrieval, agents, evaluation, and the systems work that happens <em>around</em>{' '}
-              the model.
+              A free, hands-on curriculum for working engineers — retrieval, agents,
+              evaluation, and the systems work that happens <em>around</em> the model.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center items-center">
               <SignInButton className="px-5 py-3 rounded-md bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors">
@@ -108,7 +122,7 @@ export default async function Home() {
                 to keep running on Monday morning.
               </p>
               <p>
-                The curriculum works through that system, week by week, with runnable code.
+                The curriculum works through that system, step by step, with runnable code.
                 You&apos;ll read lessons, run examples, and build the pieces yourself — no
                 videos, no quizzes to unlock the next module, no certificates. Just the
                 material, open source, free to use.
@@ -131,8 +145,8 @@ export default async function Home() {
                     className="block px-5 py-5 hover:bg-gray-50 transition-colors"
                   >
                     <div className="flex items-baseline gap-4">
-                      <span className="text-sm font-mono text-gray-500 w-14 shrink-0">
-                        Week {w.weekNumber}
+                      <span className="text-sm font-mono text-gray-500 w-20 shrink-0">
+                        Module {w.weekNumber}
                       </span>
                       <div className="flex-1 min-w-0">
                         <h3 className="text-lg font-semibold text-gray-900">{w.title}</h3>
@@ -163,10 +177,10 @@ export default async function Home() {
         <section className="py-16">
           <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
             <h2 className="font-display text-2xl sm:text-3xl font-bold text-gray-900 mb-4">
-              Start with Week 1
+              Start with the first module
             </h2>
             <p className="text-lg text-gray-600 leading-relaxed max-w-2xl mx-auto">
-              Sign in with GitHub to track your progress across weeks. No payment, no email
+              Sign in with GitHub to track your progress across modules. No payment, no email
               capture, no newsletter — your progress lives on this server, and you can delete
               it any time.
             </p>
