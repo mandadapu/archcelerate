@@ -80,7 +80,7 @@ Transform software engineers into AI product builders through a 12-week accelera
 - Playwright (E2E tests)
 - ESLint + Prettier
 - GitHub Actions (CI/CD)
-- Google Cloud Run (production deployment)
+- GCP Compute Engine VM (Docker Compose, production deployment)
 
 ---
 
